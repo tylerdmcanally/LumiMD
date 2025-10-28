@@ -1,0 +1,452 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Model
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  phone             String?   @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime
+  profilePhoto      String?
+
+  // Medical Profile
+  conditions        Condition[]
+  medications       Medication[]
+  allergies         Allergy[]
+  emergencyContacts EmergencyContact[]
+
+  // Relationships
+  visits            Visit[]
+  providers         Provider[]
+  visitFolders      VisitFolder[]
+  trustedAccess     TrustedAccess[] @relation("TrustedUser")
+  grantedAccess     TrustedAccess[] @relation("GrantingUser")
+  pendingInvitations PendingInvitation[]
+  documents         Document[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+
+  // Metadata
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastActiveAt      DateTime?
+
+  @@map("users")
+}
+
+// Medical Condition Model
+model Condition {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  diagnosedDate DateTime?
+  notes       String?  @db.Text
+  active      Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("conditions")
+}
+
+// Medication Model
+model Medication {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  dosage          String
+  frequency       String
+  prescribedDate  DateTime
+  prescribedBy    String?
+  reason          String?
+  active          Boolean   @default(true)
+
+  reminders       MedicationReminder[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("medications")
+}
+
+// Allergy Model
+model Allergy {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  allergen    String
+  reaction    String?
+  severity    AllergySeverity @default(MODERATE)
+  notes       String?       @db.Text
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("allergies")
+}
+
+// Emergency Contact Model
+model EmergencyContact {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name          String
+  relationship  String
+  phone         String
+  email         String?
+  isPrimary     Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("emergency_contacts")
+}
+
+// Provider Model
+model Provider {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  specialty       String
+  practice        String?
+  phone           String?
+  address         String?
+  notes           String?   @db.Text
+
+  visits          Visit[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("providers")
+}
+
+// Visit Model
+model Visit {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  providerId      String?
+  provider        Provider?   @relation(fields: [providerId], references: [id])
+
+  visitDate       DateTime
+  visitType       VisitType   @default(IN_PERSON)
+
+  // Recording & Processing
+  audioFileUrl    String?
+  audioFileName   String?
+  duration        Int?        // seconds
+  transcription   String?     @db.Text
+  summary         Json?       // Structured summary object
+
+  // Status
+  status          VisitStatus @default(RECORDING)
+  processingError String?     @db.Text
+
+  // Organization
+  folderId        String?
+  folder          VisitFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  tags            VisitTag[]
+
+  // Relationships
+  actionItems     ActionItem[]
+  sharedWith      SharedVisit[]
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("visits")
+}
+
+// Visit Folder Model
+model VisitFolder {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  color           String?     // Hex color code
+  icon            String?     // Icon identifier
+
+  visits          Visit[]
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([userId, name])
+  @@map("visit_folders")
+}
+
+// Visit Tag Model
+model VisitTag {
+  id              String      @id @default(uuid())
+  visitId         String
+  visit           Visit       @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  tag             String
+
+  createdAt       DateTime    @default(now())
+
+  @@unique([visitId, tag])
+  @@map("visit_tags")
+}
+
+// Action Item Model
+model ActionItem {
+  id              String      @id @default(uuid())
+  userId          String
+  visitId         String?
+  visit           Visit?      @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  type            ActionType
+  description     String      @db.Text
+  dueDate         DateTime?
+  completed       Boolean     @default(false)
+  completedAt     DateTime?
+
+  reminder        Reminder?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("action_items")
+}
+
+// Reminder Model
+model Reminder {
+  id              String      @id @default(uuid())
+  actionItemId    String?     @unique
+  actionItem      ActionItem? @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+
+  reminderDate    DateTime
+  reminderTime    String
+  sent            Boolean     @default(false)
+  sentAt          DateTime?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("reminders")
+}
+
+// Medication Reminder Model
+model MedicationReminder {
+  id              String      @id @default(uuid())
+  medicationId    String
+  medication      Medication  @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  time            String      // "08:00", "14:00", etc.
+  days            String[]    // ["Monday", "Tuesday", etc.]
+  active          Boolean     @default(true)
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("medication_reminders")
+}
+
+// Trusted Access Model
+model TrustedAccess {
+  id              String      @id @default(uuid())
+
+  grantingUserId  String
+  grantingUser    User        @relation("GrantingUser", fields: [grantingUserId], references: [id], onDelete: Cascade)
+
+  trustedUserId   String
+  trustedUser     User        @relation("TrustedUser", fields: [trustedUserId], references: [id], onDelete: Cascade)
+
+  accessLevel     AccessLevel @default(VIEW_ONLY)
+  relationship    String      // "Son", "Daughter", "Caregiver", etc.
+
+  createdAt       DateTime    @default(now())
+  revokedAt       DateTime?
+
+  @@unique([grantingUserId, trustedUserId])
+  @@map("trusted_access")
+}
+
+// Pending Invitation Model (for inviting caregivers before they have accounts)
+model PendingInvitation {
+  id              String      @id @default(uuid())
+
+  inviterUserId   String
+  inviterUser     User        @relation(fields: [inviterUserId], references: [id], onDelete: Cascade)
+
+  inviteeEmail    String
+  relationship    String      // "Son", "Daughter", "Caregiver", etc.
+  accessLevel     AccessLevel @default(VIEW_ONLY)
+
+  token           String      @unique // Unique token for the invite link
+  pin             String?     @unique // Simple 6-digit PIN for easy sharing
+
+  status          InvitationStatus @default(PENDING)
+  acceptedAt      DateTime?
+  expiresAt       DateTime    // Invites expire after 7 days
+
+  createdAt       DateTime    @default(now())
+
+  @@unique([inviterUserId, inviteeEmail])
+  @@map("pending_invitations")
+}
+
+// Shared Visit Model
+model SharedVisit {
+  id              String      @id @default(uuid())
+  visitId         String
+  visit           Visit       @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  sharedWithId    String
+  sharedByUserId  String
+
+  sharedAt        DateTime    @default(now())
+
+  @@unique([visitId, sharedWithId])
+  @@map("shared_visits")
+}
+
+// Document Model
+model Document {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fileName        String
+  fileUrl         String
+  fileType        DocumentType
+  fileSize        Int           // bytes
+  description     String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("documents")
+}
+
+// Notification Model
+model Notification {
+  id              String            @id @default(uuid())
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type            NotificationType
+  title           String
+  message         String            @db.Text
+  read            Boolean           @default(false)
+
+  // Optional reference data
+  referenceId     String?
+  referenceType   String?
+
+  createdAt       DateTime          @default(now())
+  readAt          DateTime?
+
+  @@map("notifications")
+}
+
+// Audit Log Model (HIPAA Compliance)
+model AuditLog {
+  id              String      @id @default(uuid())
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action          String      // "CREATE", "READ", "UPDATE", "DELETE"
+  resource        String      // "Visit", "User", "Medication", etc.
+  resourceId      String?
+
+  ipAddress       String?
+  userAgent       String?     @db.Text
+
+  // Additional context
+  details         Json?
+
+  createdAt       DateTime    @default(now())
+
+  @@map("audit_logs")
+}
+
+// Enums
+enum VisitType {
+  IN_PERSON
+  TELEHEALTH
+  ER
+  URGENT_CARE
+  PHONE_CALL
+  OTHER
+}
+
+enum VisitStatus {
+  RECORDING
+  UPLOADING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ActionType {
+  FOLLOW_UP_APPOINTMENT
+  LAB_WORK
+  IMAGING
+  MEDICATION_START
+  MEDICATION_CHANGE
+  MEDICATION_STOP
+  MEDICATION
+  SPECIALIST_REFERRAL
+  OTHER
+}
+
+enum AccessLevel {
+  VIEW_ONLY
+  VIEW_AND_EDIT
+  FULL_ACCESS
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum AllergySeverity {
+  MILD
+  MODERATE
+  SEVERE
+  LIFE_THREATENING
+}
+
+enum DocumentType {
+  LAB_RESULT
+  IMAGING
+  PRESCRIPTION
+  INSURANCE
+  OTHER
+}
+
+enum NotificationType {
+  APPOINTMENT_REMINDER
+  MEDICATION_REMINDER
+  LAB_WORK_DUE
+  TRUSTED_USER_ACTIVITY
+  VISIT_PROCESSED
+  SYSTEM_ALERT
+}
