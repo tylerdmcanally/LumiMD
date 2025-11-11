@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
+  ArrowLeft,
   Copy,
   HelpCircle,
   Sparkles,
@@ -469,9 +470,10 @@ export default function VisitDetailPage() {
             variant="ghost"
             size="sm"
             onClick={() => router.push('/visits')}
-            className="text-brand-primary hover:text-brand-primary-dark"
+            leftIcon={<ArrowLeft className="h-4 w-4" />}
+            className="w-full justify-start text-brand-primary hover:text-brand-primary-dark sm:w-auto"
           >
-            ← Back to visits
+            Back to visits
           </Button>
         </div>
 
@@ -608,7 +610,7 @@ function SummaryCard({ summary }: { summary?: string }) {
     <Card className="relative overflow-hidden border-none bg-gradient-to-br from-brand-primary/10 via-card to-card shadow-floating">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.45),_transparent_60%)]" />
       <CardHeader className="relative z-10 flex flex-col gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
             <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-brand-primary shadow-sm">
               <Sparkles className="h-3 w-3" />
@@ -622,7 +624,7 @@ function SummaryCard({ summary }: { summary?: string }) {
           <Button
             variant="outline"
             size="sm"
-            className="rounded-full border-white/70 bg-white/80 text-text-primary shadow-sm hover:bg-white"
+            className="w-full justify-center rounded-full border-white/70 bg-white/80 text-text-primary shadow-sm hover:bg-white sm:w-auto"
             onClick={handleCopy}
             disabled={!summary || !summary.trim()}
             leftIcon={<Copy className="h-4 w-4" />}
@@ -767,7 +769,7 @@ function DiagnosesCard({
                   <button
                     type="button"
                     onClick={() => toggleExpanded(key)}
-                    className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
+                  className="flex w-full items-start justify-between gap-3 px-4 py-4 text-left sm:px-5"
                   >
                     <div className="flex flex-col gap-1">
                       <span className="font-semibold text-text-primary">{diagnosis}</span>
@@ -786,15 +788,15 @@ function DiagnosesCard({
                               onClick={handleInfoClick}
                               disabled={isFetching}
                               className={cn(
-                                'flex h-6 w-6 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+                                'flex h-8 w-8 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
                                 isFetching && 'cursor-progress opacity-80',
                               )}
                               aria-label={`Get more information about ${diagnosis}`}
                             >
                               {isFetching ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
+                                <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Info className="h-3 w-3" />
+                                <Info className="h-4 w-4" />
                               )}
                             </button>
                           </TooltipTrigger>

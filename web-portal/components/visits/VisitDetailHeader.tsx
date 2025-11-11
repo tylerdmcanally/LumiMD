@@ -56,7 +56,7 @@ export function VisitDetailHeader({
 
   return (
     <Card className="border border-border bg-card shadow-card">
-      <CardContent className="flex flex-col gap-6 p-6 lg:flex-row lg:items-center lg:justify-between">
+      <CardContent className="flex flex-col gap-6 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold text-foreground">
@@ -118,11 +118,19 @@ export function VisitDetailHeader({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={onManageTags}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <Button
+            variant="outline"
+            onClick={onManageTags}
+            className="w-full justify-center sm:w-auto"
+          >
             Organize
           </Button>
-          <Button variant="secondary" onClick={onEditMetadata}>
+          <Button
+            variant="secondary"
+            onClick={onEditMetadata}
+            className="w-full justify-center sm:w-auto"
+          >
             Edit details
           </Button>
           <Button
@@ -130,7 +138,7 @@ export function VisitDetailHeader({
             onClick={onDeleteVisit}
             disabled={isDeleting}
             className={cn(
-              'text-destructive hover:bg-destructive/10 hover:text-destructive',
+              'w-full justify-center text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto',
               isDeleting && 'opacity-60',
             )}
           >
