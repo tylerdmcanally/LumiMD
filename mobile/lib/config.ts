@@ -5,7 +5,7 @@
 
 export const cfg = {
   apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5001',
-  webPortalUrl: process.env.EXPO_PUBLIC_WEB_PORTAL_URL || 'https://app.lumimd.com',
+  webPortalUrl: process.env.EXPO_PUBLIC_WEB_PORTAL_URL || 'https://lumimd.app',
   
   firebase: {
     apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY!,
