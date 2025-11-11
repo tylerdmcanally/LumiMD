@@ -145,21 +145,22 @@ export default function MedicationsPage() {
         {/* Add Medication */}
         <Card variant="elevated" padding="lg">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+            <div>
               <h3 className="text-lg font-semibold text-text-primary">Add a medication</h3>
               <p className="text-sm text-text-secondary">
                 Keep your list current by adding new prescriptions as you receive them.
-            </p>
-          </div>
+              </p>
+            </div>
             <Button
               variant="primary"
               size="lg"
               leftIcon={<Plus className="h-5 w-5" />}
               onClick={() => setCreateDialogOpen(true)}
+              className="w-full justify-center sm:w-auto"
             >
-            Add medication
-          </Button>
-        </div>
+              Add medication
+            </Button>
+          </div>
         </Card>
 
         {/* Active Medications */}
@@ -270,7 +271,7 @@ function MedicationGroup({
 }: MedicationGroupProps) {
   return (
     <Card variant="elevated" padding="none">
-      <div className="flex flex-col gap-2 px-6 pt-6">
+      <div className="flex flex-col gap-2 px-5 pt-6 sm:px-6">
         <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
         <p className="text-sm text-text-secondary">{description}</p>
       </div>
@@ -285,20 +286,143 @@ function MedicationGroup({
           <p className="mt-4 text-sm text-text-secondary">{emptyMessage}</p>
         </div>
       ) : (
-        <div className="mt-4 divide-y divide-border-light">
-          {medications.map((medication: any) => (
-            <MedicationRow
-              key={medication.id}
-              medication={medication}
+        <>
+          <div className="mt-4 hidden md:block">
+            <div className="divide-y divide-border-light">
+              {medications.map((medication: any) => (
+                <MedicationRow
+                  key={medication.id}
+                  medication={medication}
+                  onView={() => onView(medication)}
+                  onEdit={() => onEdit(medication)}
+                  onDelete={() => onDelete(medication)}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 space-y-3 px-5 pb-6 md:hidden">
+            {medications.map((medication: any) => (
+              <MedicationCard
+                key={medication.id}
+                medication={medication}
                 onView={() => onView(medication)}
-              onEdit={() => onEdit(medication)}
-              onDelete={() => onDelete(medication)}
-            />
-          ))}
-    </div>
+                onEdit={() => onEdit(medication)}
+                onDelete={() => onDelete(medication)}
+              />
+            ))}
+          </div>
+        </>
       )}
     </Card>
   );
+}
+
+function useMedicationInsightHelpers(medication: any) {
+  const shortIndication = React.useMemo(() => {
+    if (typeof medication?.indicationShort === 'string' && medication.indicationShort.trim().length) {
+      return medication.indicationShort.trim();
+    }
+    if (typeof medication?.indication === 'string' && medication.indication.trim().length) {
+      return medication.indication.trim();
+    }
+    return null;
+  }, [medication?.indicationShort, medication?.indication]);
+
+  const detailedIndication = React.useMemo(() => {
+    if (typeof medication?.indicationDetail === 'string' && medication.indicationDetail.trim().length) {
+      return medication.indicationDetail.trim();
+    }
+    return null;
+  }, [medication?.indicationDetail]);
+
+  const drugClass = React.useMemo(() => {
+    if (typeof medication?.drugClass === 'string' && medication.drugClass.trim().length) {
+      return medication.drugClass.trim();
+    }
+    return null;
+  }, [medication?.drugClass]);
+
+  const showInfoCta = !shortIndication || !drugClass || !detailedIndication;
+  const [isFetchingInfo, setIsFetchingInfo] = React.useState(false);
+
+  const handleNeedInfoClick = React.useCallback(
+    async (event?: React.MouseEvent<HTMLButtonElement>) => {
+      if (event) {
+        event.stopPropagation();
+      }
+
+      if (isFetchingInfo) return;
+      if (!medication?.name) {
+        toast.error('Add a medication name before requesting more info.');
+        return;
+      }
+      if (!medication?.id) {
+        toast.error('Please save this medication before requesting more info.');
+        return;
+      }
+
+      setIsFetchingInfo(true);
+      try {
+        const response = await fetch('/api/medications/insight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: medication.name }),
+        });
+
+        let data: any = null;
+        try {
+          data = await response.json();
+        } catch (parseError) {
+          console.error('[medications] Failed to parse insight response', parseError);
+        }
+
+        if (!response.ok || !data) {
+          throw new Error(data?.error || 'Unable to fetch medication details.');
+        }
+
+        const updatePayload: Record<string, any> = {};
+        if (typeof data.shortIndication === 'string' && data.shortIndication.trim().length) {
+          updatePayload.indicationShort = toTitleCase(data.shortIndication.trim());
+        }
+        if (typeof data.detailedIndication === 'string' && data.detailedIndication.trim().length) {
+          updatePayload.indicationDetail = data.detailedIndication.trim();
+        }
+        if (typeof data.drugClass === 'string' && data.drugClass.trim().length) {
+          updatePayload.drugClass = toTitleCase(data.drugClass.trim());
+        }
+
+        if (Object.keys(updatePayload).length === 0) {
+          toast.info('No additional information was returned.');
+          return;
+        }
+
+        updatePayload.insightSource = 'openai';
+        updatePayload.insightFetchedAt = serverTimestamp();
+
+        await updateDoc(doc(db, 'medications', medication.id), updatePayload);
+        toast.success('Medication insights saved.');
+      } catch (error) {
+        console.error('[medications] Insight fetch failed', error);
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Unable to retrieve medication details. Please try again.',
+        );
+      } finally {
+        setIsFetchingInfo(false);
+      }
+    },
+    [isFetchingInfo, medication],
+  );
+
+  return {
+    shortIndication,
+    detailedIndication,
+    drugClass,
+    showInfoCta,
+    isFetchingInfo,
+    handleNeedInfoClick,
+  };
 }
 
 function MedicationRow({
@@ -313,82 +437,8 @@ function MedicationRow({
   onDelete: () => void;
 }) {
   const isActive = medication.active !== false && !medication.stoppedAt;
-  const shortIndication =
-    typeof medication.indicationShort === 'string' && medication.indicationShort.trim().length
-      ? medication.indicationShort.trim()
-      : typeof medication.indication === 'string' && medication.indication.trim().length
-        ? medication.indication.trim()
-        : null;
-  const detailedIndication =
-    typeof medication.indicationDetail === 'string' && medication.indicationDetail.trim().length
-      ? medication.indicationDetail.trim()
-      : null;
-  const drugClass =
-    typeof medication.drugClass === 'string' && medication.drugClass.trim().length
-      ? medication.drugClass.trim()
-      : null;
-  const showInfoCta = !shortIndication || !drugClass || !detailedIndication;
-  const [isFetchingInfo, setIsFetchingInfo] = React.useState(false);
-
-  const handleNeedInfoClick = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    if (isFetchingInfo) return;
-    if (!medication?.name) {
-      toast.error('Add a medication name before requesting more info.');
-      return;
-    }
-
-    setIsFetchingInfo(true);
-    try {
-      const response = await fetch('/api/medications/insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: medication.name }),
-      });
-
-      let data: any = null;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        console.error('[medications] Failed to parse insight response', parseError);
-      }
-
-      if (!response.ok || !data) {
-        throw new Error(data?.error || 'Unable to fetch medication details.');
-      }
-
-      const updatePayload: Record<string, any> = {};
-      if (typeof data.shortIndication === 'string' && data.shortIndication.trim().length) {
-        updatePayload.indicationShort = toTitleCase(data.shortIndication.trim());
-      }
-      if (typeof data.detailedIndication === 'string' && data.detailedIndication.trim().length) {
-        updatePayload.indicationDetail = data.detailedIndication.trim();
-      }
-      if (typeof data.drugClass === 'string' && data.drugClass.trim().length) {
-        updatePayload.drugClass = toTitleCase(data.drugClass.trim());
-      }
-
-      if (Object.keys(updatePayload).length === 0) {
-        toast.info('No additional information was returned.');
-        return;
-      }
-
-      updatePayload.insightSource = 'openai';
-      updatePayload.insightFetchedAt = serverTimestamp();
-
-      await updateDoc(doc(db, 'medications', medication.id), updatePayload);
-      toast.success('Medication insights saved.');
-    } catch (error) {
-      console.error('[medications] Insight fetch failed', error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Unable to retrieve medication details. Please try again.',
-      );
-    } finally {
-      setIsFetchingInfo(false);
-    }
-  };
+  const { shortIndication, drugClass, showInfoCta, isFetchingInfo, handleNeedInfoClick } =
+    useMedicationInsightHelpers(medication);
 
   return (
     <div
@@ -497,6 +547,193 @@ function MedicationRow({
             event.stopPropagation();
             onDelete();
           }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MedicationCard({
+  medication,
+  onView,
+  onEdit,
+  onDelete,
+}: {
+  medication: any;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const isActive = medication.active !== false && !medication.stoppedAt;
+  const {
+    shortIndication,
+    detailedIndication,
+    drugClass,
+    showInfoCta,
+    isFetchingInfo,
+    handleNeedInfoClick,
+  } = useMedicationInsightHelpers(medication);
+
+  const doseLabel =
+    typeof medication.dose === 'string' && medication.dose.trim().length
+      ? medication.dose.trim()
+      : '—';
+  const frequencyLabel =
+    typeof medication.frequency === 'string' && medication.frequency.trim().length
+      ? medication.frequency.trim()
+      : '—';
+  const notesLabel =
+    typeof medication.notes === 'string' && medication.notes.trim().length
+      ? medication.notes.trim()
+      : null;
+
+  const handleCardClick = () => {
+    onView();
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onView();
+    }
+  };
+
+  return (
+    <div
+      className="relative rounded-3xl border border-border-light bg-surface px-5 py-5 shadow-soft transition-smooth hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+      role="button"
+      tabIndex={0}
+      onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
+            isActive ? 'bg-success-light text-success-dark' : 'bg-error-light text-error-dark',
+          )}
+        >
+          <PillIcon className="h-5 w-5" />
+        </div>
+        <div className="flex-1 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-start gap-2">
+                <h3 className="text-lg font-semibold text-text-primary">
+                  {medication.name || 'Medication'}
+                </h3>
+                {showInfoCta ? (
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={(event) => handleNeedInfoClick(event)}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+                          aria-label="Fetch more medication info"
+                          disabled={isFetchingInfo}
+                          aria-busy={isFetchingInfo}
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+                        Need a quick summary? Click for medication type and common uses. We’ll then add it to your list for next time.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : null}
+              </div>
+              {shortIndication ? (
+                <p className="text-sm text-text-secondary capitalize">{shortIndication}</p>
+              ) : null}
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
+                {isActive ? 'Active' : 'Stopped'}
+              </Badge>
+              {drugClass ? (
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        tone="neutral"
+                        variant="outline"
+                        size="sm"
+                        className="max-w-[160px] truncate cursor-help"
+                      >
+                        {drugClass}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+                      {drugClass}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-2 text-sm text-text-secondary">
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-medium text-text-primary">Dose</span>
+              <span className="text-right text-text-secondary">{doseLabel}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-medium text-text-primary">Frequency</span>
+              <span className="text-right text-text-secondary">{frequencyLabel}</span>
+            </div>
+          </div>
+
+          {detailedIndication ? (
+            <p className="text-sm text-text-secondary/90">{detailedIndication}</p>
+          ) : null}
+          {notesLabel ? (
+            <div className="rounded-2xl border border-dashed border-border-light/80 bg-background-subtle/60 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Notes
+              </p>
+              <p className="mt-1 text-sm text-text-secondary/90 whitespace-pre-line">{notesLabel}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 min-w-[150px] justify-center"
+          onClick={(event) => {
+            event.stopPropagation();
+            onView();
+          }}
+        >
+          View details
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="flex-1 min-w-[120px] justify-center"
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit();
+          }}
+        >
+          Edit
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-10 w-10 shrink-0 rounded-full border border-error/30 bg-error/10 text-error hover:text-error focus-visible:ring-error"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          aria-label="Delete medication"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
