@@ -6,7 +6,6 @@ import { format } from 'date-fns';
 import { Stethoscope, Pill, ClipboardCheck, ArrowRight } from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useActions, useMedications, useUserProfile, useVisits } from '@/lib/api/hooks';
@@ -138,77 +137,42 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid gap-8 lg:grid-cols-3">
-          {/* Left Column - Activity Timeline */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Recent Activity */}
-            <Card variant="elevated" padding="lg">
-              <div className="space-y-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-text-primary">
-                      Recent Activity
-                    </h2>
-                    <p className="text-sm text-text-secondary mt-1">
-                      Your latest visits and updates
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {recentVisits.length > 0 ? (
-                    recentVisits.map((visit: any) => (
-                      <ActivityItem
-                        key={visit.id}
-                        title={visit.provider || 'Medical Visit'}
-                        subtitle={visit.specialty || 'General'}
-                        date={visit.createdAt}
-                        icon={<Stethoscope className="h-4 w-4" />}
-                        href={`/visits/${visit.id}`}
-                      />
-                    ))
-                  ) : (
-                    <p className="text-center py-8 text-text-muted">
-                      No recent activity yet
-                    </p>
-                  )}
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Quick Actions */}
-            <Card variant="elevated" padding="lg" className="bg-background-subtle">
-              <div className="space-y-4">
+        {/* Main Content */}
+        <div className="space-y-8">
+          {/* Recent Activity */}
+          <Card variant="elevated" padding="lg">
+            <div className="space-y-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="font-semibold text-text-primary">Quick Actions</h3>
-                  <p className="text-sm text-text-secondary">
-                    Jump to the most common tasks.
+                  <h2 className="text-xl font-semibold text-text-primary">
+                    Recent Activity
+                  </h2>
+                  <p className="text-sm text-text-secondary mt-1">
+                    Your latest visits and updates
                   </p>
                 </div>
-                <div className="space-y-3">
-                  <Button variant="outline" size="md" fullWidth className="h-12 text-base font-semibold" asChild>
-                    <Link href="/medications">
-                      <span className="w-full text-center">Add Medication</span>
-                    </Link>
-                  </Button>
-                  <Button variant="outline" size="md" fullWidth className="h-12 text-base font-semibold" asChild>
-                    <Link href="/actions">
-                      <span className="w-full text-center">Create Task</span>
-                    </Link>
-                  </Button>
-                  <Button variant="outline" size="md" fullWidth className="h-12 text-base font-semibold" asChild>
-                    <Link href="/profile">
-                      <span className="w-full text-center">Update Allergies</span>
-                    </Link>
-                  </Button>
-                </div>
               </div>
-            </Card>
-          </div>
+
+              <div className="space-y-4">
+                {recentVisits.length > 0 ? (
+                  recentVisits.map((visit: any) => (
+                    <ActivityItem
+                      key={visit.id}
+                      title={visit.provider || 'Medical Visit'}
+                      subtitle={visit.specialty || 'General'}
+                      date={visit.createdAt}
+                      icon={<Stethoscope className="h-4 w-4" />}
+                      href={`/visits/${visit.id}`}
+                    />
+                  ))
+                ) : (
+                  <p className="text-center py-8 text-text-muted">
+                    No recent activity yet
+                  </p>
+                )}
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
     </PageContainer>
