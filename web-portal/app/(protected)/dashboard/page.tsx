@@ -108,7 +108,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Quick Stats */}
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard
             icon={<ClipboardCheck className="h-6 w-6" />}
             label="Pending Actions"
@@ -145,7 +145,7 @@ export default function DashboardPage() {
             {/* Recent Activity */}
             <Card variant="elevated" padding="lg">
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-xl font-semibold text-text-primary">
                       Recent Activity
@@ -190,17 +190,17 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="space-y-3">
-                  <Button variant="outline" size="sm" fullWidth asChild>
+                  <Button variant="outline" size="md" fullWidth className="h-12 text-base font-semibold" asChild>
                     <Link href="/medications">
                       <span className="w-full text-center">Add Medication</span>
                     </Link>
                   </Button>
-                  <Button variant="outline" size="sm" fullWidth asChild>
+                  <Button variant="outline" size="md" fullWidth className="h-12 text-base font-semibold" asChild>
                     <Link href="/actions">
                       <span className="w-full text-center">Create Task</span>
                     </Link>
                   </Button>
-                  <Button variant="outline" size="sm" fullWidth asChild>
+                  <Button variant="outline" size="md" fullWidth className="h-12 text-base font-semibold" asChild>
                     <Link href="/profile">
                       <span className="w-full text-center">Update Allergies</span>
                     </Link>
