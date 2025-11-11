@@ -455,7 +455,7 @@ function MedicationRow({
         {medication.frequency || '—'}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={isActive ? 'success' : 'neutral'} size="sm">
+        <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
           {isActive ? 'Active' : 'Stopped'}
         </Badge>
         {drugClass ? (
@@ -463,8 +463,8 @@ function MedicationRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Badge
-                  variant="outline"
                   tone="neutral"
+                  variant="outline"
                   size="sm"
                   className="max-w-[160px] truncate cursor-help"
                 >

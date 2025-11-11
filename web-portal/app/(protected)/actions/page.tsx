@@ -864,7 +864,7 @@ function ActionCard({
             )}
 
             {action.visitId && (
-              <Badge variant="brand" size="sm" leftIcon={<ExternalLink className="h-3 w-3" />}>
+              <Badge tone="brand" variant="soft" size="sm" leftIcon={<ExternalLink className="h-3 w-3" />}>
                 From Visit
               </Badge>
             )}
@@ -1021,7 +1021,7 @@ function DeleteActionDialog({
           <Button variant="outline" onClick={onCancel} disabled={isDeleting}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} loading={isDeleting}>
+          <Button variant="danger" onClick={onConfirm} loading={isDeleting}>
             Delete
           </Button>
         </DialogFooter>

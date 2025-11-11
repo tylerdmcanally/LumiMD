@@ -107,8 +107,10 @@ export default function VisitsPage() {
     return result;
   }, [visits, filters]);
 
+  type VisitStats = { total: number } & Record<string, number>;
+
   // Stats
-  const stats = React.useMemo(() => {
+  const stats = React.useMemo<VisitStats>(() => {
     const statusMap: Record<string, number> = {};
     filteredVisits.forEach((visit: any) => {
       const status = normalizeVisitStatus(visit);
@@ -502,11 +504,17 @@ function VisitRow({
     ? format(new Date(visit.createdAt), 'MMM d, yyyy')
     : '—';
 
-  const statusVariants: Record<string, any> = {
-    completed: 'success',
-    processing: 'warning',
-    pending: 'neutral',
-    failed: 'error',
+  const statusStyles: Record<
+    string,
+    {
+      tone: 'brand' | 'neutral' | 'success' | 'warning' | 'danger' | 'info';
+      variant: 'soft' | 'solid' | 'outline';
+    }
+  > = {
+    completed: { tone: 'success', variant: 'soft' },
+    processing: { tone: 'warning', variant: 'soft' },
+    pending: { tone: 'neutral', variant: 'outline' },
+    failed: { tone: 'danger', variant: 'soft' },
   };
 
   const columnsClass = selectionMode
@@ -584,7 +592,11 @@ function VisitRow({
 
       {/* Status */}
       <div className="flex items-center">
-        <Badge variant={statusVariants[status] || 'neutral'} size="sm">
+        <Badge
+          tone={statusStyles[status]?.tone ?? 'neutral'}
+          variant={statusStyles[status]?.variant ?? 'outline'}
+          size="sm"
+        >
           {status}
         </Badge>
       </div>

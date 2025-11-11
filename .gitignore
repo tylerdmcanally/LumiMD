@@ -83,3 +83,4 @@ functions/lib/
 
 # Local environment secrets
 web-portal/.env.local
+.vercel

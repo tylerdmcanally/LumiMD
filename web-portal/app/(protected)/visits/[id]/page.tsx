@@ -571,7 +571,7 @@ export default function VisitDetailPage() {
             </DialogClose>
             <Button
               type="button"
-              variant="destructive"
+              variant="danger"
               onClick={handleDeleteConfirm}
               disabled={deleteVisitMutation.isPending}
             >
