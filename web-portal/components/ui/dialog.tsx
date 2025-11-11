@@ -40,13 +40,14 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-modal grid w-full max-w-2xl translate-x-[-50%] translate-y-[-50%]',
-        'gap-6 rounded-2xl border border-border-light bg-surface p-8 shadow-floating',
+        'fixed inset-x-4 top-[5vh] z-modal grid w-auto max-w-full gap-6 rounded-3xl border border-border-light bg-surface p-6 shadow-floating',
+        'max-h-[calc(100vh-80px)] overflow-y-auto',
         'duration-300',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
         'data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%]',
+        'sm:left-[50%] sm:top-[50%] sm:max-w-2xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:p-8',
         className
       )}
       {...props}
@@ -54,8 +55,8 @@ const DialogContent = React.forwardRef<
       {children}
       <DialogPrimitive.Close
         className={cn(
-          'absolute right-6 top-6 rounded-full p-2',
-          'text-text-tertiary hover:text-text-primary hover:bg-hover',
+          'absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full',
+          'bg-background-subtle text-text-tertiary hover:text-text-primary hover:bg-hover',
           'transition-smooth focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
           'disabled:pointer-events-none'
         )}
