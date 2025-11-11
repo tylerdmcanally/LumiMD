@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "lumimd-dev",
+    "dev": "lumimd-dev",
+    "prod": "lumimd"
+  }
+}

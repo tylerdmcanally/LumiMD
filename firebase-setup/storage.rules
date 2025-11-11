@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
+    function isViewerOf(ownerId) {
+      return signedIn() &&
+        firestore.exists(/databases/(default)/documents/shares/$(ownerId + '_' + request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/shares/$(ownerId + '_' + request.auth.uid)).data.status == 'accepted';
+    }
+
+    match /audio/{userId}/{fileName} {
+      allow write: if isOwner(userId);
+      allow read: if isOwner(userId) || isViewerOf(userId);
+    }
+
+    match /visits/{userId}/{fileName} {
+      allow write: if isOwner(userId);
+      allow read: if isOwner(userId) || isViewerOf(userId);
+    }
+  }
+}

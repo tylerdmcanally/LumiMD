@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "LumiMD",
+    "slug": "lumimd",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0A99A4"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lumimd.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "LumiMD needs access to your microphone to record your medical visits.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A99A4"
+      },
+      "package": "com.lumimd.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "scheme": "lumimd",
+    "plugins": [
+      "expo-router",
+      "expo-dev-client",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow LumiMD to record audio for your medical visit recordings."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e496534e-6396-4109-9051-6569d134e1f7"
+      }
+    }
+  }
+}

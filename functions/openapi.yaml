@@ -1,0 +1,719 @@
+openapi: 3.1.0
+info:
+  title: LumiMD API
+  version: 1.0.0
+  description: |
+    Backend API for LumiMD - a patient-facing medical navigation app.
+    
+    ## Authentication
+    Most endpoints require a Firebase ID token in the Authorization header:
+    ```
+    Authorization: Bearer <firebase-id-token>
+    ```
+    
+    ## Error Format
+    All errors follow this format:
+    ```json
+    {
+      "code": "error_code",
+      "message": "Human readable message",
+      "details": { "field": "optional context" }
+    }
+    ```
+
+servers:
+  - url: https://us-central1-lumimd.cloudfunctions.net/api
+    description: Production
+  - url: https://us-central1-lumimd-dev.cloudfunctions.net/api
+    description: Development
+
+tags:
+  - name: auth
+    description: Authentication and handoff operations
+  - name: visits
+    description: Visit recording and management
+  - name: actions
+    description: Action items and tasks
+  - name: meds
+    description: Medication tracking
+  - name: shares
+    description: Caregiver sharing
+  - name: devices
+    description: Push notification device registration
+  - name: integrations
+    description: External service webhooks
+
+paths:
+  # ==================== Auth ====================
+  /v1/auth/create-handoff:
+    post:
+      tags: [auth]
+      summary: Create auth handoff code
+      description: |
+        Creates a one-time code for seamless mobile → web authentication.
+        Used when mobile app opens web portal to avoid re-login.
+        
+        Code expires in 5 minutes and can only be used once.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Handoff code created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code]
+                properties:
+                  code:
+                    type: string
+                    description: One-time handoff code (valid for 5 minutes)
+                    example: "xyz789abc123..."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /v1/auth/exchange-handoff:
+    post:
+      tags: [auth]
+      summary: Exchange handoff code for custom token
+      description: |
+        Exchanges a one-time handoff code for a Firebase custom token.
+        Web portal uses this to authenticate users coming from mobile.
+        
+        The code is invalidated after use to prevent replay attacks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: The handoff code from create-handoff
+                  example: "xyz789abc123..."
+      responses:
+        '200':
+          description: Custom token generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token:
+                    type: string
+                    description: Firebase custom token for signInWithCustomToken()
+                    example: "eyJhbGc..."
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid, expired, or already-used code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ==================== Visits ====================
+  /v1/visits:
+    post:
+      tags: [visits]
+      summary: Start a new visit
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startedAt]
+              properties:
+                startedAt:
+                  type: string
+                  format: date-time
+                  example: "2024-01-15T10:30:00Z"
+      responses:
+        '201':
+          description: Visit created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    get:
+      tags: [visits]
+      summary: List user visits
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [recording, completed]
+      responses:
+        '200':
+          description: List of visits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Visit'
+
+  /v1/visits/{id}:
+    get:
+      tags: [visits]
+      summary: Get visit detail
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Visit details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== Actions ====================
+  /v1/actions:
+    get:
+      tags: [actions]
+      summary: List action items
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, done]
+      responses:
+        '200':
+          description: List of actions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActionItem'
+
+    post:
+      tags: [actions]
+      summary: Create action item
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionItemInput'
+      responses:
+        '201':
+          description: Action created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionItem'
+
+  /v1/actions/{id}:
+    patch:
+      tags: [actions]
+      summary: Update action item
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionItemPatch'
+      responses:
+        '200':
+          description: Action updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionItem'
+
+    delete:
+      tags: [actions]
+      summary: Delete action item
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Action deleted
+
+  # ==================== Medications ====================
+  /v1/meds:
+    get:
+      tags: [meds]
+      summary: List medications
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of medications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Medication'
+
+    post:
+      tags: [meds]
+      summary: Create medication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationInput'
+      responses:
+        '201':
+          description: Medication created
+
+  /v1/meds/{id}:
+    patch:
+      tags: [meds]
+      summary: Update medication
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicationInput'
+      responses:
+        '200':
+          description: Medication updated
+
+    delete:
+      tags: [meds]
+      summary: Delete medication
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Medication deleted
+
+  # ==================== Sharing ====================
+  /v1/shares:
+    get:
+      tags: [shares]
+      summary: List owner shares
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of shares
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Share'
+
+    post:
+      tags: [shares]
+      summary: Invite caregiver (viewer)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [caregiverEmail]
+              properties:
+                caregiverEmail:
+                  type: string
+                  format: email
+                  example: "caregiver@example.com"
+      responses:
+        '200':
+          description: Invite sent
+
+  /v1/shares/accept:
+    post:
+      tags: [shares]
+      summary: Accept caregiver invite
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ownerId]
+              properties:
+                ownerId:
+                  type: string
+                  description: User ID of the share owner
+      responses:
+        '200':
+          description: Invite accepted
+
+  /v1/shares/{shareId}:
+    delete:
+      tags: [shares]
+      summary: Revoke share
+      description: ShareId format is ownerId_caregiverUserId
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9]+_[a-zA-Z0-9]+$'
+            example: "owner123_caregiver456"
+      responses:
+        '204':
+          description: Share revoked
+
+  # ==================== Devices ====================
+  /v1/devices:
+    post:
+      tags: [devices]
+      summary: Register device token for push notifications
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, token]
+              properties:
+                platform:
+                  type: string
+                  enum: [ios, android]
+                  example: "ios"
+                token:
+                  type: string
+                  description: FCM or APNs device token
+                  example: "ExponentPushToken[xxx]"
+      responses:
+        '204':
+          description: Token registered
+
+  # ==================== Integrations ====================
+  /v1/integrations/make/visit-processed:
+    post:
+      tags: [integrations]
+      summary: Persist processed visit payload from Make.com
+      description: |
+        Called by Make.com after AI processing completes.
+        Updates visit with summary and creates action items.
+        
+        Requires webhook signature validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitProcessed'
+      responses:
+        '204':
+          description: Visit updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid webhook signature
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+# ==================== Components ====================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase ID token
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [unauthorized, forbidden, not_found, validation_failed, rate_limited, conflict, server_error]
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    Visit:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [recording, completed]
+        audioPath:
+          type: string
+        transcriptPath:
+          type: string
+        summary:
+          $ref: '#/components/schemas/VisitSummary'
+
+    VisitSummary:
+      type: object
+      properties:
+        chiefConcern:
+          type: string
+        assessment:
+          type: string
+        plan:
+          type: string
+        redFlags:
+          type: array
+          items:
+            type: string
+
+    ActionItem:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        visitId:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        due:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [open, done]
+        critical:
+          type: boolean
+
+    ActionItemInput:
+      type: object
+      required: [title, subtitle]
+      properties:
+        title:
+          type: string
+          example: "Schedule follow-up"
+        subtitle:
+          type: string
+          example: "Cardiology – 2 weeks"
+        due:
+          type: string
+          format: date
+          example: "2024-02-01"
+        critical:
+          type: boolean
+          default: false
+
+    ActionItemPatch:
+      type: object
+      properties:
+        title:
+          type: string
+        subtitle:
+          type: string
+        due:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [open, done]
+        critical:
+          type: boolean
+
+    Medication:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        dose:
+          type: string
+        frequency:
+          type: string
+        notes:
+          type: string
+
+    MedicationInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: "Lisinopril"
+        dose:
+          type: string
+          example: "10 mg"
+        frequency:
+          type: string
+          example: "Daily"
+        notes:
+          type: string
+
+    Share:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Format is ownerId_caregiverUserId
+        ownerId:
+          type: string
+        caregiverUserId:
+          type: string
+        caregiverEmail:
+          type: string
+        role:
+          type: string
+          enum: [viewer]
+        status:
+          type: string
+          enum: [pending, accepted, revoked]
+        createdAt:
+          type: string
+          format: date-time
+
+    VisitProcessed:
+      type: object
+      required: [visitId, transcriptUrl, summary]
+      properties:
+        visitId:
+          type: string
+        transcriptUrl:
+          type: string
+          format: uri
+          example: "https://storage.googleapis.com/..."
+        summary:
+          allOf:
+            - $ref: '#/components/schemas/VisitSummary'
+            - required: [chiefConcern, plan]
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionItemInput'
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "unauthorized"
+            message: "Missing or invalid authorization header"
+
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "validation_failed"
+            message: "Invalid request body"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "not_found"
+            message: "Resource not found"
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "server_error"
+            message: "An unexpected error occurred"
+
+
