@@ -15,7 +15,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Colors, spacing, Card } from '../components/ui';
 import { useVisits } from '../lib/api/hooks';
-import { openWebDashboard } from '../lib/linking';
+import { openWebVisit } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 dayjs.extend(relativeTime);
@@ -102,8 +102,18 @@ export default function VisitsScreen() {
               </Pressable>
               <Text style={styles.title}>Recent Visits</Text>
             </View>
-            <Pressable onPress={openWebDashboard}>
-              <Text style={styles.link}>Open web portal</Text>
+            <Pressable
+              style={styles.webLink}
+              onPress={() => {
+                if (sortedVisits[0]?.id) {
+                  openWebVisit(sortedVisits[0].id);
+                } else {
+                  openWebVisit('');
+                }
+              }}
+            >
+              <Ionicons name="open-outline" size={18} color={Colors.primary} />
+              <Text style={styles.webLinkText}>Manage on Web</Text>
             </Pressable>
           </View>
 
@@ -202,7 +212,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
   },
-  link: {
+  webLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+  },
+  webLinkText: {
     fontSize: 14,
     fontWeight: '600',
     color: Colors.primary,
