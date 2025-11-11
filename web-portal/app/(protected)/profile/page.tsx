@@ -228,9 +228,11 @@ export default function ProfilePage() {
           subtitle="Maintain allergy and safety information so LumiMD can flag potential issues."
           actions={
             user?.email ? (
-              <div className="hidden items-center gap-2 rounded-full border border-border-light bg-background-subtle px-4 py-2 text-sm text-text-secondary md:flex">
+              <div className="flex items-center gap-2 rounded-2xl border border-border-light bg-background-subtle px-4 py-2 text-sm text-text-secondary">
                 <User className="h-4 w-4 text-brand-primary" />
-                <span className="font-medium text-text-primary">{user.email}</span>
+                <span className="font-medium text-text-primary truncate max-w-[200px] sm:max-w-none">
+                  {user.email}
+                </span>
               </div>
             ) : undefined
           }
@@ -256,7 +258,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <form className="space-y-6" onSubmit={handlePersonalInfoSubmit}>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="profile-preferred-name">Preferred name</Label>
                   <Input
@@ -308,7 +310,7 @@ export default function ProfilePage() {
                     onChange={handlePersonalInfoFieldChange('emergencyContactName')}
                   />
                 </div>
-                <div className="space-y-2 md:col-span-1 lg:col-span-1">
+                <div className="space-y-2 sm:col-span-2 lg:col-span-1">
                   <Label htmlFor="profile-emergency-contact-phone">Emergency contact phone</Label>
                   <Input
                     id="profile-emergency-contact-phone"
@@ -320,11 +322,16 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-border-light pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 border-t border-border-light pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-text-secondary">
                   These details stay private to you and help us tailor visit summaries and alerts.
                 </p>
-                <Button type="submit" variant="primary" loading={updatePersonalInfo.isPending}>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  loading={updatePersonalInfo.isPending}
+                  className="w-full sm:w-auto"
+                >
                   Save personal info
                 </Button>
               </div>
@@ -359,9 +366,9 @@ export default function ProfilePage() {
 
               <form
                 onSubmit={handleAddMedicalHistory}
-                className="flex flex-col gap-4 rounded-xl border border-border-light bg-background-subtle/60 p-4 sm:flex-row sm:items-center sm:gap-3"
+                className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle/60 p-4 sm:flex-row sm:items-center sm:gap-3"
               >
-                <div className="flex-1">
+                <div className="flex-1 w-full">
                   <Input
                     placeholder="Add a condition (e.g. Hypertension)"
                     value={newMedicalHistory}
@@ -374,6 +381,7 @@ export default function ProfilePage() {
                   size="md"
                   leftIcon={<Plus className="h-4 w-4" />}
                   loading={updateMedicalHistory.isPending}
+                  className="w-full sm:w-auto"
                 >
                   Add condition
                 </Button>
@@ -411,11 +419,11 @@ export default function ProfilePage() {
                 removeLabel="Remove allergy"
               />
 
-      <form
-        onSubmit={handleAddAllergy}
-        className="flex flex-col gap-4 rounded-xl border border-border-light bg-background-subtle/60 p-4 sm:flex-row sm:items-center sm:gap-3"
-      >
-                <div className="flex-1">
+              <form
+                onSubmit={handleAddAllergy}
+                className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle/60 p-4 sm:flex-row sm:items-center sm:gap-3"
+              >
+                <div className="flex-1 w-full">
                   <Input
                     placeholder="Add an allergy (e.g. Penicillin)"
                     value={newAllergy}
@@ -428,6 +436,7 @@ export default function ProfilePage() {
                   size="md"
                   leftIcon={<Plus className="h-4 w-4" />}
                   loading={updateAllergies.isPending}
+                  className="w-full sm:w-auto"
                 >
                   Add allergy
                 </Button>
