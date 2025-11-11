@@ -215,7 +215,7 @@ export default function VisitsPage() {
         />
 
         {/* Stats Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           <StatCard label="Total Visits" value={stats.total} />
           <StatCard
             label="Completed"
@@ -238,7 +238,7 @@ export default function VisitsPage() {
               <h3 className="font-semibold text-text-primary">Filters</h3>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
               <Input
                 placeholder="Search visits..."
                 value={filters.search}

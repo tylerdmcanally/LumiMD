@@ -107,7 +107,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Quick Stats */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard
             icon={<ClipboardCheck className="h-6 w-6" />}
             label="Pending Actions"
@@ -153,7 +153,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {recentVisits.length > 0 ? (
                   recentVisits.map((visit: any) => (
                     <ActivityItem
