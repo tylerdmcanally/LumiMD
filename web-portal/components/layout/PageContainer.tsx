@@ -25,7 +25,7 @@ export function PageContainer({
     <main className="flex-1 overflow-auto bg-background">
       <div
         className={cn(
-          'mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10',
+          'mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 md:px-8 md:py-10 lg:px-10 lg:py-12 xl:px-12',
           maxWidthClasses[maxWidth],
           className
         )}
@@ -64,7 +64,11 @@ export function PageHeader({
           <p className="text-base text-text-secondary max-w-2xl">{subtitle}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-3">{actions}</div>}
+      {actions && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }
