@@ -19,7 +19,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useVisits } from '@/lib/api/hooks';
 import { normalizeVisitStatus } from '@/lib/visits/status';
 import { format } from 'date-fns';
-import { Search, Filter, Calendar, MapPin, Stethoscope, Trash2, CheckSquare } from 'lucide-react';
+import { Search, Filter, Calendar, MapPin, Stethoscope, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { deleteDoc, doc } from 'firebase/firestore';
 
@@ -46,6 +46,19 @@ const DEFAULT_FILTERS: VisitFilters = {
   status: 'all',
   provider: 'all',
   sortBy: 'date_desc',
+};
+
+const VISIT_STATUS_STYLES: Record<
+  string,
+  {
+    tone: 'brand' | 'neutral' | 'success' | 'warning' | 'danger' | 'info';
+    variant: 'soft' | 'solid' | 'outline';
+  }
+> = {
+  completed: { tone: 'success', variant: 'soft' },
+  processing: { tone: 'warning', variant: 'soft' },
+  pending: { tone: 'neutral', variant: 'outline' },
+  failed: { tone: 'danger', variant: 'soft' },
 };
 
 export default function VisitsPage() {
@@ -314,10 +327,10 @@ export default function VisitsPage() {
             <div className="space-y-4">
               <div
                 className={cn(
-                  'px-6 pt-4 text-sm transition-smooth',
+                  'px-4 pt-4 text-sm transition-smooth sm:px-6',
                   isSelectionMode
-                    ? 'rounded-t-3xl border border-border-light bg-background-subtle/70 py-3'
-                    : 'flex items-center justify-between',
+                    ? 'rounded-t-3xl border border-border-light bg-background-subtle/70 pb-4'
+                    : 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
                 )}
               >
                 {isSelectionMode ? (
@@ -333,8 +346,8 @@ export default function VisitsPage() {
                         : 'Tap visits to select them'}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="ghost"
+          <Button
+            variant="ghost"
                         size="sm"
                         onClick={clearSelection}
                         className="text-text-secondary hover:text-text-primary"
@@ -356,8 +369,8 @@ export default function VisitsPage() {
                         onClick={handleToggleSelectionMode}
                       >
                         Cancel
-                      </Button>
-                    </div>
+          </Button>
+        </div>
                   </div>
                 ) : (
                   <>
@@ -369,6 +382,7 @@ export default function VisitsPage() {
                       variant="outline"
                       size="sm"
                       onClick={handleToggleSelectionMode}
+                      className="w-full justify-center sm:w-auto"
                     >
                       Select visits
                     </Button>
@@ -376,43 +390,60 @@ export default function VisitsPage() {
                 )}
               </div>
 
-              {/* Table Header */}
-              <div
-                className={cn(
-                  'items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-sm font-semibold text-text-secondary',
-                  isSelectionMode
-                    ? 'grid grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
-                    : 'grid grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_minmax(0,1fr)_96px]',
-                )}
-              >
-                {isSelectionMode && (
-                  <div className="flex items-center justify-center pr-8">
-                    <button
-                      type="button"
-                      onClick={() => toggleSelectAll(!allSelected)}
-                      aria-pressed={allSelected}
-                      className={cn(
-                        'rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide transition-smooth shadow-sm',
-                        allSelected
-                          ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
-                          : 'border-brand-primary/40 bg-brand-primary/8 text-brand-primary hover:bg-brand-primary/12',
-                      )}
-                    >
-                      {allSelected ? 'Clear all' : 'Select all'}
-                    </button>
-                  </div>
-                )}
-                <div>Provider & Specialty</div>
-                <div>Date</div>
-                <div>Location</div>
-                <div>Status</div>
-                <div className="text-right">Actions</div>
+              <div className="hidden md:block">
+                {/* Table Header */}
+                <div
+                  className={cn(
+                    'grid items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-sm font-semibold text-text-secondary',
+                    isSelectionMode
+                      ? 'grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
+                      : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_minmax(0,1fr)_96px]',
+                  )}
+                >
+                  {isSelectionMode && (
+                    <div className="flex items-center justify-center pr-8">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelectAll(!allSelected)}
+                        aria-pressed={allSelected}
+                        className={cn(
+                          'rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide transition-smooth shadow-sm',
+                          allSelected
+                            ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
+                            : 'border-brand-primary/40 bg-brand-primary/8 text-brand-primary hover:bg-brand-primary/12',
+                        )}
+                      >
+                        {allSelected ? 'Clear all' : 'Select all'}
+                      </button>
+                    </div>
+                  )}
+                  <div>Provider & Specialty</div>
+                  <div>Date</div>
+                  <div>Location</div>
+                  <div>Status</div>
+                  <div className="text-right">Actions</div>
+                </div>
+
+                {/* Table Body */}
+                <div className="divide-y divide-border-light">
+                  {filteredVisits.map((visit: any) => (
+                    <VisitRow
+                      key={visit.id}
+                      visit={visit}
+                      selectionMode={isSelectionMode}
+                      selected={selectedVisitIds.has(visit.id)}
+                      onToggleSelect={() => toggleSelectVisit(visit.id)}
+                      onDelete={() => openDeleteDialogFor([visit.id])}
+                      onView={() => router.push(`/visits/${visit.id}`)}
+                    />
+                  ))}
+                </div>
               </div>
 
-              {/* Table Body */}
-              <div className="divide-y divide-border-light">
+              {/* Mobile Cards */}
+              <div className="space-y-3 px-4 pb-5 md:hidden">
                 {filteredVisits.map((visit: any) => (
-                  <VisitRow
+                  <VisitCard
                     key={visit.id}
                     visit={visit}
                     selectionMode={isSelectionMode}
@@ -448,7 +479,7 @@ export default function VisitsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
+    </div>
     </PageContainer>
   );
 }
@@ -503,19 +534,6 @@ function VisitRow({
   const date = visit.createdAt
     ? format(new Date(visit.createdAt), 'MMM d, yyyy')
     : '—';
-
-  const statusStyles: Record<
-    string,
-    {
-      tone: 'brand' | 'neutral' | 'success' | 'warning' | 'danger' | 'info';
-      variant: 'soft' | 'solid' | 'outline';
-    }
-  > = {
-    completed: { tone: 'success', variant: 'soft' },
-    processing: { tone: 'warning', variant: 'soft' },
-    pending: { tone: 'neutral', variant: 'outline' },
-    failed: { tone: 'danger', variant: 'soft' },
-  };
 
   const columnsClass = selectionMode
     ? 'grid grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
@@ -593,8 +611,8 @@ function VisitRow({
       {/* Status */}
       <div className="flex items-center">
         <Badge
-          tone={statusStyles[status]?.tone ?? 'neutral'}
-          variant={statusStyles[status]?.variant ?? 'outline'}
+          tone={VISIT_STATUS_STYLES[status]?.tone ?? 'neutral'}
+          variant={VISIT_STATUS_STYLES[status]?.variant ?? 'outline'}
           size="sm"
         >
           {status}
@@ -628,4 +646,147 @@ function VisitRow({
       </div>
     </div>
   );
+}
+
+function VisitCard({
+  visit,
+  selectionMode,
+  selected,
+  onToggleSelect,
+  onDelete,
+  onView,
+}: {
+  visit: any;
+  selectionMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onDelete: () => void;
+  onView: () => void;
+}) {
+  const status = normalizeVisitStatus(visit);
+  const visitDate = visit.createdAt ? new Date(visit.createdAt) : null;
+  const formattedDate = visitDate ? format(visitDate, 'MMM d, yyyy') : '—';
+  const formattedTime = visitDate ? format(visitDate, 'h:mm a') : null;
+
+  const locationLabel =
+    typeof visit.location === 'string' && visit.location.trim().length
+      ? visit.location.trim()
+      : 'No location noted';
+
+  const summarySnippet =
+    typeof visit.summary === 'string' && visit.summary.trim().length
+      ? truncateText(visit.summary.trim(), 220)
+      : null;
+
+  const handleCardClick = () => {
+    if (selectionMode) {
+      onToggleSelect();
+    } else {
+      onView();
+    }
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleCardClick();
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        'relative rounded-3xl border border-border-light bg-surface px-5 py-5 shadow-soft transition-smooth',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+        selectionMode ? 'cursor-pointer' : 'cursor-pointer hover:shadow-hover',
+        selectionMode && selected && 'border-brand-primary ring-2 ring-brand-primary/40 shadow-elevated',
+      )}
+      role="button"
+      tabIndex={0}
+      onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+            {formattedDate}
+            {formattedTime ? ` • ${formattedTime}` : ''}
+          </p>
+          <div>
+            <h3 className="text-lg font-semibold text-text-primary">
+              {visit.provider || 'Unknown provider'}
+            </h3>
+            <p className="text-sm text-text-secondary">
+              {visit.specialty || 'General'}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <Badge
+            tone={VISIT_STATUS_STYLES[status]?.tone ?? 'neutral'}
+            variant={VISIT_STATUS_STYLES[status]?.variant ?? 'outline'}
+            size="sm"
+          >
+            {status}
+          </Badge>
+          {selectionMode && (
+            <span
+              className={cn(
+                'rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide',
+                selected
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-brand-primary/10 text-brand-primary',
+              )}
+            >
+              {selected ? 'Selected' : 'Tap to select'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-start gap-2 text-sm text-text-secondary">
+        <MapPin className="mt-0.5 h-4 w-4 text-brand-primary/80" />
+        <span className="flex-1">
+          {locationLabel}
+        </span>
+      </div>
+
+      {summarySnippet ? (
+        <p className="mt-4 text-sm leading-relaxed text-text-secondary/90">{summarySnippet}</p>
+      ) : null}
+
+      <div className="mt-5 flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 justify-center"
+          onClick={(event) => {
+            event.stopPropagation();
+            onView();
+          }}
+          disabled={selectionMode}
+        >
+          View details
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-error hover:text-error focus-visible:ring-error"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          disabled={selectionMode}
+          aria-label="Delete visit"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength).trimEnd()}…`;
 }
