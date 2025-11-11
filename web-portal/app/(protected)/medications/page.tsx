@@ -478,7 +478,7 @@ function MedicationRow({
                         handleNeedInfoClick(event);
                       }}
                       onKeyDown={(event) => event.stopPropagation()}
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
                       aria-label="Fetch more medication info"
                       disabled={isFetchingInfo}
                       aria-busy={isFetchingInfo}
@@ -632,7 +632,7 @@ function MedicationCard({
                           type="button"
                           onClick={(event) => handleNeedInfoClick(event)}
                           onKeyDown={(event) => event.stopPropagation()}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
                           aria-label="Fetch more medication info"
                           disabled={isFetchingInfo}
                           aria-busy={isFetchingInfo}

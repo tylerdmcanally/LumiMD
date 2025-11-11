@@ -24,9 +24,9 @@ const buttonVariants = cva(
           'border-2 border-border bg-surface text-text-primary hover:bg-background-subtle hover:border-brand-primary/40',
       },
       size: {
-        sm: 'h-9 px-4 text-sm',
-        md: 'h-11 px-6 text-base',
-        lg: 'h-[52px] px-8 text-lg',
+        sm: 'min-h-[44px] px-4 text-sm',
+        md: 'min-h-[48px] px-6 text-base',
+        lg: 'min-h-[56px] px-8 text-lg',
       },
       fullWidth: {
         true: 'w-full',
