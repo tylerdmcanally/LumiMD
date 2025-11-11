@@ -515,12 +515,12 @@ function ActionCalendar({
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 rounded-full p-0"
+            className="h-10 w-10 rounded-full p-0"
             onClick={() => setCurrentMonth((prev) => subMonths(prev, 1))}
           >
             <ChevronLeft className="h-4 w-4" />
@@ -529,7 +529,7 @@ function ActionCalendar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 rounded-full p-0"
+            className="h-10 w-10 rounded-full p-0"
             onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
           >
             <ChevronRight className="h-4 w-4" />
@@ -538,7 +538,7 @@ function ActionCalendar({
         <Button
           variant="outline"
           size="sm"
-          className="rounded-full px-4 text-xs font-semibold"
+          className="w-full rounded-full px-4 text-xs font-semibold sm:w-auto"
           onClick={onAddAction}
         >
           Add calendar item
@@ -735,21 +735,21 @@ function ActionSection({
 }) {
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
           {collapsible && actions.length > 0 && (
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-full px-4 text-xs font-semibold text-text-secondary border-border-light hover:text-brand-primary hover:border-brand-primary/60"
+              className="h-10 rounded-full px-5 text-xs font-semibold text-text-secondary border-border-light hover:text-brand-primary hover:border-brand-primary/60"
               onClick={() => onToggleCollapse?.()}
             >
               {collapsed ? 'Show completed' : 'Hide completed'}
             </Button>
           )}
         </div>
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm font-medium text-text-secondary sm:text-right">
           {actions.length} {actions.length === 1 ? 'item' : 'items'}
         </p>
       </div>
@@ -797,12 +797,11 @@ function ActionCard({
       variant="elevated"
       padding="none"
       className={cn(
-        'transition-smooth',
-        isCompleted && 'opacity-70',
-        'hover:shadow-hover'
+        'transition-smooth hover:shadow-hover',
+        isCompleted && 'opacity-80'
       )}
     >
-      <div className="flex items-start gap-4 p-6">
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:gap-6">
         {/* Checkbox */}
         <button
           onClick={(e) => {
@@ -812,51 +811,51 @@ function ActionCard({
             }
           }}
           className={cn(
-            'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-smooth mt-0.5',
+            'flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
             isCompleted
               ? 'border-success bg-success text-white'
-              : 'border-border hover:border-brand-primary',
-            isUpdating && 'opacity-60 cursor-wait'
+              : 'border-border hover:border-brand-primary/60',
+            isUpdating && 'cursor-wait opacity-60'
           )}
           aria-label={isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
           disabled={isUpdating}
         >
           {isUpdating ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-5 w-5 animate-spin" />
           ) : isCompleted ? (
-            <CheckCircle2 className="h-5 w-5" />
+            <CheckCircle2 className="h-6 w-6" />
           ) : (
-            <Circle className="h-5 w-5 opacity-0 group-hover:opacity-50" />
+            <Circle className="h-6 w-6 text-text-tertiary/30" />
           )}
         </button>
 
         {/* Content */}
-        <div className="flex-1 min-w-0 space-y-2">
-          <div>
+        <div className="flex-1 min-w-0 space-y-4">
+          <div className="space-y-2">
             <h3
               className={cn(
-                'font-semibold text-text-primary',
+                'text-lg font-semibold text-text-primary',
                 isCompleted && 'line-through text-text-secondary'
               )}
             >
               {action.description || 'Action item'}
             </h3>
             {action.notes && (
-              <p className="text-sm text-text-secondary mt-1">{action.notes}</p>
+              <p className="text-sm leading-relaxed text-text-secondary/90">{action.notes}</p>
             )}
           </div>
 
           {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
             {dueDate && (
               <div
                 className={cn(
-                  'flex items-center gap-1.5',
+                  'flex items-center gap-1.5 rounded-full bg-background-subtle px-3 py-1',
                   isOverdue ? 'text-error' : 'text-text-tertiary'
                 )}
               >
                 <Calendar className="h-4 w-4" />
-                <span>
+                <span className="font-medium">
                   Due {format(dueDate, 'MMM d, yyyy')}
                   {isOverdue && ' (Overdue)'}
                 </span>
@@ -870,27 +869,39 @@ function ActionCard({
             )}
 
             {action.completedAt && (
-              <span className="text-text-muted">
+              <span className="rounded-full bg-background-subtle px-3 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
                 Completed {format(new Date(action.completedAt), 'MMM d')}
               </span>
             )}
           </div>
-        </div>
 
-        {/* Actions Menu */}
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onEdit} leftIcon={<Pencil className="h-4 w-4" />}>
-            Edit
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-error hover:text-error"
-            onClick={onDelete}
-            leftIcon={<Trash2 className="h-4 w-4" />}
-          >
-            Delete
-          </Button>
+          {/* Actions Menu */}
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit?.();
+              }}
+              className="w-full justify-center sm:w-auto"
+              leftIcon={<Pencil className="h-4 w-4" />}
+            >
+              Edit
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center text-error hover:text-error focus-visible:ring-error sm:w-auto"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete?.();
+              }}
+              leftIcon={<Trash2 className="h-4 w-4" />}
+            >
+              Delete
+            </Button>
+          </div>
         </div>
       </div>
     </Card>
