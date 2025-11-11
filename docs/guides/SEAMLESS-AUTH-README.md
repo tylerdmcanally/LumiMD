@@ -22,7 +22,7 @@ Mobile App (authenticated)
     ↓
 Handoff code stored in Firestore (5 min TTL)
     ↓
-    [2] Open URL: app.lumimd.com/auth/handoff?code=xyz
+    [2] Open URL: lumimd.app/auth/handoff?code=xyz
     ↓
 Web Portal
     ↓
@@ -141,7 +141,7 @@ cp .env.template .env
 
 # Edit .env with your Firebase config
 # EXPO_PUBLIC_API_BASE_URL=https://us-central1-lumimd-dev.cloudfunctions.net/api
-# EXPO_PUBLIC_WEB_PORTAL_URL=https://app.lumimd.com
+# EXPO_PUBLIC_WEB_PORTAL_URL=https://lumimd.app
 # ... (Firebase credentials)
 ```
 
@@ -193,7 +193,7 @@ firebase deploy --only hosting
    ```
 
 3. **Verify:**
-   - Browser opens to `app.lumimd.com/auth/handoff?code=...`
+   - Browser opens to `lumimd.app/auth/handoff?code=...`
    - Loading spinner appears briefly
    - Redirects to `/actions` (or returnTo param)
    - User is authenticated (check auth state in dev tools)
@@ -420,7 +420,7 @@ If you want even simpler (but less secure):
 
 **Universal Links** - Configure deep links that auto-authenticate:
 ```
-https://app.lumimd.com/dashboard?token=<short-lived-token>
+https://lumimd.app/dashboard?token=<short-lived-token>
 ```
 
 Not recommended for production due to token exposure in URLs.

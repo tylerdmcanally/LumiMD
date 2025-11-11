@@ -34,7 +34,7 @@ npm install
 
 ```bash
 EXPO_PUBLIC_API_BASE_URL=https://us-central1-lumimd-dev.cloudfunctions.net/api
-EXPO_PUBLIC_WEB_PORTAL_URL=https://app.lumimd.com
+EXPO_PUBLIC_WEB_PORTAL_URL=https://lumimd.app
 EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_auth_domain
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
@@ -106,11 +106,11 @@ Open [http://localhost:3000](http://localhost:3000)
 ```
 Mobile (tap card)
     ↓
-Safari opens: app.lumimd.com/auth/handoff?code=xyz...
+Safari opens: lumimd.app/auth/handoff?code=xyz...
     ↓
 "Signing you in..." (< 1 second)
     ↓
-Redirects to: app.lumimd.com/dashboard
+Redirects to: lumimd.app/dashboard
     ↓
 ✅ Authenticated!
 ```

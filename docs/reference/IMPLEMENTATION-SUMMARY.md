@@ -118,7 +118,7 @@ web-portal/
 │    URL       │
 └──────┬──────┘
        │
-       │ [3] https://app.lumimd.com/auth/handoff?code=xyz
+       │ [3] https://lumimd.app/auth/handoff?code=xyz
        ▼
 ┌─────────────────┐
 │  Web Portal     │
@@ -192,7 +192,7 @@ web-portal/
 ✅ Firebase project (dev + prod)  
 ✅ Node.js 20+  
 ✅ Firebase CLI installed  
-⚠️ Domain for web portal (e.g., app.lumimd.com)  
+⚠️ Domain for web portal (e.g., lumimd.app)  
 ⚠️ Firebase Auth configured (Email + Google)
 
 ### Next Steps to Deploy

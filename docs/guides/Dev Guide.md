@@ -238,7 +238,7 @@ OpenAPI spec kept in repo and source of truth for generated types.
    - Accept: consent check; record/pause/stop; m4a saved; upload to Storage; new `visits/{id}` with `status='recording'`.
 3. **Status Screen + Deep Links**
    - Files: `app/status/index.tsx`, `lib/linking.ts`.
-   - Accept: shows last 5 visits (processing/completed); “View details →” opens portal link `https://app.lumimd.com/visits/{id}`.
+   - Accept: shows last 5 visits (processing/completed); “View details →” opens portal link `https://lumimd.app/visits/{id}`.
 4. **Notifications**
    - Files: `lib/notifications.ts`, `functions/src/routes/devices.ts`.
    - Accept: device token registered; on visit completion, push “Summary ready →” with universal link.
