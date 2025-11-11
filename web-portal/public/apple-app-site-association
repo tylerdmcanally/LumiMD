@@ -1,0 +1,21 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "ABCDE12345.com.lumimd.app",
+        "paths": [
+          "/",
+          "/sign-in",
+          "/visits/*",
+          "/actions/*",
+          "/medications",
+          "/actions",
+          "/profile",
+          "/dashboard"
+        ]
+      }
+    ]
+  }
+}
+
