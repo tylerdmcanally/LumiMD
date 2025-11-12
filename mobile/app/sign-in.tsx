@@ -14,7 +14,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -23,12 +22,11 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSignIn = async () => {
@@ -62,29 +60,6 @@ export default function SignInScreen() {
 
   const handleForgotPassword = () => {
     router.push('/forgot-password');
-  };
-
-  const handleGoogleSignIn = async () => {
-    setError('');
-    setGoogleLoading(true);
-
-    try {
-      const { error: signInError } = await signInWithGoogle();
-      
-      if (signInError) {
-        setError(signInError);
-        setGoogleLoading(false);
-        return;
-      }
-
-      // Success - navigate to home
-      console.log('[SignIn] Google sign-in success');
-      router.replace('/');
-    } catch (err: any) {
-      console.error('[SignIn] Google sign-in error:', err);
-      setError('An unexpected error occurred with Google sign-in');
-      setGoogleLoading(false);
-    }
   };
 
   return (
@@ -158,7 +133,7 @@ export default function SignInScreen() {
             <TouchableOpacity
               style={styles.forgotPassword}
               onPress={handleForgotPassword}
-              disabled={loading || googleLoading}
+              disabled={loading}
             >
               <Text style={styles.forgotPasswordText}>Forgot password?</Text>
             </TouchableOpacity>
@@ -170,21 +145,10 @@ export default function SignInScreen() {
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Google Sign-In Button */}
-            <TouchableOpacity
-              style={[styles.googleButton, googleLoading && styles.buttonDisabled]}
-              onPress={handleGoogleSignIn}
-              disabled={loading || googleLoading}
-            >
-              {googleLoading ? (
-                <ActivityIndicator color={Colors.text} />
-              ) : (
-                <>
-                  <Text style={styles.googleIcon}>G</Text>
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {/* Email Sign-Up Prompt */}
+            <View style={styles.helpTextContainer}>
+              <Text style={styles.helpText}>Need an account? Sign up below.</Text>
+            </View>
           </View>
 
           {/* Footer */}
@@ -192,7 +156,7 @@ export default function SignInScreen() {
             <Text style={styles.footerText}>Don't have an account? </Text>
             <TouchableOpacity
               onPress={() => router.push('/sign-up')}
-              disabled={loading || googleLoading}
+              disabled={loading}
             >
               <Text style={styles.footerLink}>Sign Up</Text>
             </TouchableOpacity>
@@ -281,20 +245,6 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: 14,
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: 14,
-    color: Colors.textMuted,
-  },
-  footerLink: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '600',
-  },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -311,25 +261,26 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '500',
   },
-  googleButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingVertical: spacing(4),
-    flexDirection: 'row',
+  helpTextContainer: {
     alignItems: 'center',
+    marginBottom: spacing(4),
+  },
+  helpText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+  },
+  footer: {
+    flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  googleIcon: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#4285F4',
-    marginRight: spacing(2),
+  footerText: {
+    fontSize: 14,
+    color: Colors.textMuted,
   },
-  googleButtonText: {
-    color: Colors.text,
-    fontSize: 16,
+  footerLink: {
+    fontSize: 14,
+    color: Colors.primary,
     fontWeight: '600',
   },
 });

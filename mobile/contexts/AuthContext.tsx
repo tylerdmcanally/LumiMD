@@ -12,14 +12,12 @@ import {
   signOut as authSignOut,
   getCurrentUser
 } from '../lib/auth';
-import { signInWithGoogle, signOutFromGoogle } from '../lib/googleAuth';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -66,25 +64,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSignInWithGoogle = async () => {
-    try {
-      const { error } = await signInWithGoogle();
-      if (error) {
-        return { error };
-      }
-      return { error: null };
-    } catch (err: any) {
-      return { error: err.message || 'Failed to sign in with Google' };
-    }
-  };
-
   const signOut = async () => {
     try {
-      // Sign out from both Firebase and Google
-      await Promise.all([
-        authSignOut(),
-        signOutFromGoogle()
-      ]);
+      await authSignOut();
     } catch (err) {
       console.error('[AuthContext] Sign out error:', err);
     }
@@ -95,7 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     signIn,
     signUp,
-    signInWithGoogle: handleSignInWithGoogle,
     signOut,
     isAuthenticated: user !== null,
   };

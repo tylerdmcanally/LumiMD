@@ -22,13 +22,12 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { signUp, signInWithGoogle } = useAuth();
+  const { signUp } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSignUp = async () => {
@@ -74,29 +73,6 @@ export default function SignUpScreen() {
       console.error('[SignUp] Error:', err);
       setError('An unexpected error occurred');
       setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setError('');
-    setGoogleLoading(true);
-
-    try {
-      const { error: signInError } = await signInWithGoogle();
-      
-      if (signInError) {
-        setError(signInError);
-        setGoogleLoading(false);
-        return;
-      }
-
-      // Success - navigate to home
-      console.log('[SignUp] Google sign-in success');
-      router.replace('/');
-    } catch (err: any) {
-      console.error('[SignUp] Google sign-in error:', err);
-      setError('An unexpected error occurred with Google sign-in');
-      setGoogleLoading(false);
     }
   };
 
@@ -175,7 +151,7 @@ export default function SignUpScreen() {
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleSignUp}
-              disabled={loading || googleLoading}
+              disabled={loading}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
@@ -188,28 +164,13 @@ export default function SignUpScreen() {
               By signing up, you agree to our Terms of Service and Privacy Policy
             </Text>
 
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
+            {/* Already have an account */}
+            <View style={styles.helperBox}>
+              <Text style={styles.helperText}>Already have an account?</Text>
+              <TouchableOpacity onPress={() => router.replace('/sign-in')} disabled={loading}>
+                <Text style={styles.helperLink}>Sign in</Text>
+              </TouchableOpacity>
             </View>
-
-            {/* Google Sign-In Button */}
-            <TouchableOpacity
-              style={[styles.googleButton, googleLoading && styles.buttonDisabled]}
-              onPress={handleGoogleSignIn}
-              disabled={loading || googleLoading}
-            >
-              {googleLoading ? (
-                <ActivityIndicator color={Colors.text} />
-              ) : (
-                <>
-                  <Text style={styles.googleIcon}>G</Text>
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
-                </>
-              )}
-            </TouchableOpacity>
           </View>
 
           {/* Footer */}
@@ -217,7 +178,7 @@ export default function SignUpScreen() {
             <Text style={styles.footerText}>Already have an account? </Text>
             <TouchableOpacity
               onPress={() => router.back()}
-              disabled={loading || googleLoading}
+              disabled={loading}
             >
               <Text style={styles.footerLink}>Sign In</Text>
             </TouchableOpacity>
@@ -319,42 +280,19 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '600',
   },
-  divider: {
+  helperBox: {
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: spacing(4),
-    marginTop: spacing(6),
+    marginTop: spacing(4),
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    marginHorizontal: spacing(3),
+  helperText: {
     fontSize: 14,
     color: Colors.textMuted,
-    fontWeight: '500',
   },
-  googleButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingVertical: spacing(4),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleIcon: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#4285F4',
-    marginRight: spacing(2),
-  },
-  googleButtonText: {
-    color: Colors.text,
-    fontSize: 16,
+  helperLink: {
+    fontSize: 14,
+    color: Colors.primary,
     fontWeight: '600',
   },
 });
