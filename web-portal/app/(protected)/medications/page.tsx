@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pill as PillIcon, Trash2, Info } from 'lucide-react';
+import { Plus, Pill as PillIcon, Trash2, Info, Loader2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
