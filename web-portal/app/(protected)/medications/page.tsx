@@ -108,9 +108,9 @@ export default function MedicationsPage() {
         const isActive = med.active !== false && !med.stoppedAt;
         if (isActive) {
           acc.active.push(med);
-        } else {
+    } else {
           acc.stopped.push(med);
-        }
+    }
         return acc;
       },
       { active: [], stopped: [] },
@@ -145,12 +145,12 @@ export default function MedicationsPage() {
         {/* Add Medication */}
         <Card variant="elevated" padding="lg">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+          <div>
               <h3 className="text-lg font-semibold text-text-primary">Add a medication</h3>
               <p className="text-sm text-text-secondary">
                 Keep your list current by adding new prescriptions as you receive them.
-              </p>
-            </div>
+            </p>
+          </div>
             <Button
               variant="primary"
               size="lg"
@@ -158,9 +158,9 @@ export default function MedicationsPage() {
               onClick={() => setCreateDialogOpen(true)}
               className="w-full justify-center sm:w-auto"
             >
-              Add medication
-            </Button>
-          </div>
+            Add medication
+          </Button>
+        </div>
         </Card>
 
         {/* Active Medications */}
@@ -758,7 +758,7 @@ function toTitleCase(value: string): string {
     .map((word) => (word.length ? word[0].toUpperCase() + word.slice(1) : ''))
     .join(' ')
     .replace(/\b(of|and|for|to|in|on|the)\b/gi, (match) => match.toLowerCase());
-}
+  }
 
 function sanitizeOptionalString(value?: string | null): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -780,7 +780,7 @@ function formatInsightTimestamp(value: unknown): string | null {
           hour: 'numeric',
           minute: '2-digit',
         });
-      }
+}
     }
 
     if (typeof value === 'object' && value !== null) {
