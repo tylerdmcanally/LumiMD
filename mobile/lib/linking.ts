@@ -112,7 +112,7 @@ export async function openWebActions(): Promise<void> {
  * Opens the medications page
  */
 export async function openWebMeds(): Promise<void> {
-  await openWebUrl('/meds');
+  await openWebUrl('/medications');
 }
 
 /**

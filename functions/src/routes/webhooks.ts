@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
+import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 
 export const webhooksRouter = Router();
 
@@ -85,6 +86,7 @@ webhooksRouter.post('/visit-processed', async (req, res) => {
     const userId = visit.userId;
 
     const now = admin.firestore.Timestamp.now();
+    const referenceDate = resolveVisitReferenceDate(visit, now.toDate());
 
     await visitRef.update({
       transcript,
@@ -112,6 +114,8 @@ webhooksRouter.post('/visit-processed', async (req, res) => {
 
     nextSteps.forEach(step => {
       const actionRef = actionsCollection.doc();
+      const parsedDueDate = parseActionDueDate(step, referenceDate);
+
       batch.set(actionRef, {
         userId,
         visitId,
@@ -121,6 +125,7 @@ webhooksRouter.post('/visit-processed', async (req, res) => {
         notes: '',
         createdAt: now,
         updatedAt: now,
+        dueAt: parsedDueDate ? admin.firestore.Timestamp.fromDate(parsedDueDate) : null,
       });
     });
 

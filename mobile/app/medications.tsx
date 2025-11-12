@@ -286,17 +286,6 @@ export default function MedicationsScreen() {
                       inactiveMeds.map((med, index) => renderMedicationCard(med, index, false))}
                   </Card>
                 )}
-
-                <View style={styles.manageSection}>
-                  <Pressable style={styles.manageButton} onPress={openWebMeds}>
-                    <Ionicons name="create-outline" size={20} color={Colors.primary} />
-                    <Text style={styles.manageButtonText}>Manage medications</Text>
-                    <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
-                  </Pressable>
-                  <Text style={styles.manageHint}>
-                    Add, edit, or remove medications from the full dashboard.
-                  </Text>
-                </View>
               </>
             )}
           </ScrollView>
@@ -478,36 +467,6 @@ const styles = StyleSheet.create({
   emptyActiveText: {
     fontSize: 14,
     color: Colors.textMuted,
-  },
-  manageSection: {
-    marginTop: spacing(8),
-    marginBottom: spacing(10),
-    alignItems: 'center',
-  },
-  manageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing(3.5),
-    paddingHorizontal: spacing(4),
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.stroke,
-    gap: spacing(2),
-  },
-  manageButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.primary,
-    flex: 1,
-    textAlign: 'center',
-  },
-  manageHint: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing(2),
   },
   emptyContainer: {
     alignItems: 'center',

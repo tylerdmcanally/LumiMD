@@ -27,6 +27,14 @@ const formatDate = (date?: string | null) => {
   }
 };
 
+const getActionTitle = (description?: string | null) => {
+  if (!description || typeof description !== 'string') {
+    return 'Action item';
+  }
+  const [title] = description.split(/[-–—]/);
+  return title.trim() || description.trim();
+};
+
 export default function ActionsScreen() {
   const router = useRouter();
   const [showCompleted, setShowCompleted] = useState(false);
@@ -78,7 +86,9 @@ export default function ActionsScreen() {
   };
 
   const renderActionRow = (action: any, isLast: boolean = false) => {
+    const dueDate = formatDate(action.dueAt);
     const visitDate = formatDate(action.createdAt);
+    const displayTitle = getActionTitle(action.description);
 
     return (
       <Pressable
@@ -95,11 +105,13 @@ export default function ActionsScreen() {
         </View>
         <View style={styles.actionContent}>
           <Text style={[styles.actionTitle, action.completed && styles.actionTitleCompleted]}>
-            {action.description || 'Action item'}
+            {displayTitle}
           </Text>
           <Text style={styles.actionMeta}>
             {action.completed
               ? `Completed ${formatDate(action.completedAt)}`
+              : dueDate
+              ? `Due on ${dueDate}`
               : visitDate
               ? `From visit on ${visitDate}`
               : 'Tap to mark complete'}

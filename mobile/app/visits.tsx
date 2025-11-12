@@ -108,7 +108,7 @@ export default function VisitsScreen() {
                 if (sortedVisits[0]?.id) {
                   openWebVisit(sortedVisits[0].id);
                 } else {
-                  openWebVisit('');
+                  openWebDashboard();
                 }
               }}
             >

@@ -2,6 +2,7 @@ import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { getOpenAIService } from './openai';
 import { normalizeMedicationSummary, syncMedicationsFromSummary } from './medicationSync';
+import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 
 const db = () => admin.firestore();
 
@@ -73,8 +74,12 @@ export async function summarizeVisit({
 
     existingActions.docs.forEach((doc) => batch.delete(doc.ref));
 
+    const referenceDate = resolveVisitReferenceDate(visitData, processedAt.toDate());
+
     summary.nextSteps.forEach((step) => {
       const actionRef = actionsCollection.doc();
+      const parsedDueDate = parseActionDueDate(step, referenceDate);
+
       batch.set(actionRef, {
         userId: visitData.userId,
         visitId: visitRef.id,
@@ -84,6 +89,7 @@ export async function summarizeVisit({
         notes: '',
         createdAt: processedAt,
         updatedAt: processedAt,
+        dueAt: parsedDueDate ? admin.firestore.Timestamp.fromDate(parsedDueDate) : null,
       });
     });
 

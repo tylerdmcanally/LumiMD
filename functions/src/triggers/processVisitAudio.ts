@@ -52,8 +52,22 @@ export const processVisitAudio = functions
     }
 
     if (visitSnapshot.empty) {
-      functions.logger.error(`[processVisitAudio] No visit document found for file: ${filePath}`);
-      return;
+      const visitIdMatch = filePath.match(/^visits\/([^/]+)/);
+      const derivedVisitId = visitIdMatch?.[1];
+
+      if (derivedVisitId) {
+        const derivedRef = db().collection('visits').doc(derivedVisitId);
+        const derivedDoc = await derivedRef.get();
+        if (derivedDoc.exists) {
+          visitSnapshot = {
+            docs: [derivedDoc],
+          } as unknown as FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+        }
+      }
+    }
+
+    if (visitSnapshot.empty) {
+      throw new Error(`[processVisitAudio] No visit document found for file: ${filePath}`);
     }
 
     const visitDoc = visitSnapshot.docs[0];

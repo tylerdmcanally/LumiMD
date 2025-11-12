@@ -594,7 +594,7 @@ function ActionCalendar({
                           : 'bg-background-subtle text-text-secondary',
                       )}
                     >
-                      {action.description || 'Action item'}
+                      {getActionTitle(action.description)}
                     </button>
                   );
                 })}
@@ -838,7 +838,7 @@ function ActionCard({
                 isCompleted && 'line-through text-text-secondary'
               )}
             >
-              {action.description || 'Action item'}
+              {getActionTitle(action.description)}
             </h3>
             {action.notes && (
               <p className="text-sm leading-relaxed text-text-secondary/90">{action.notes}</p>
@@ -1053,6 +1053,14 @@ function sanitizeOptionalString(value?: string | null): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length ? trimmed : undefined;
+}
+
+function getActionTitle(description?: unknown): string {
+  if (typeof description !== 'string' || !description.trim()) {
+    return 'Action item';
+  }
+  const [title] = description.split(/[-–—]/);
+  return title.trim() || description.trim();
 }
 
 function formatDateInput(date: Date): string {
