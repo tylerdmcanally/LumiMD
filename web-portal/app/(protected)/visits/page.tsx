@@ -36,15 +36,17 @@ import { db } from '@/lib/firebase';
 
 type VisitFilters = {
   search: string;
-  status: string;
   provider: string;
+  specialty: string;
+  location: string;
   sortBy: 'date_desc' | 'date_asc';
 };
 
 const DEFAULT_FILTERS: VisitFilters = {
   search: '',
-  status: 'all',
   provider: 'all',
+  specialty: 'all',
+  location: 'all',
   sortBy: 'date_desc',
 };
 
@@ -69,18 +71,27 @@ export default function VisitsPage() {
   const { data: visits = [], isLoading } = useVisits(user?.uid);
 
   // Extract unique providers and statuses for filters
-  const { providers, statuses } = React.useMemo(() => {
+  const { providers, specialties, locations } = React.useMemo(() => {
     const providerSet = new Set<string>();
-    const statusSet = new Set<string>();
+    const specialtySet = new Set<string>();
+    const locationSet = new Set<string>();
 
     visits.forEach((visit: any) => {
-      if (visit.provider) providerSet.add(visit.provider);
-      statusSet.add(normalizeVisitStatus(visit));
+      if (typeof visit.provider === 'string' && visit.provider.trim().length) {
+        providerSet.add(visit.provider.trim());
+      }
+      if (typeof visit.specialty === 'string' && visit.specialty.trim().length) {
+        specialtySet.add(visit.specialty.trim());
+      }
+      if (typeof visit.location === 'string' && visit.location.trim().length) {
+        locationSet.add(visit.location.trim());
+      }
     });
 
     return {
       providers: Array.from(providerSet).sort(),
-      statuses: Array.from(statusSet).sort(),
+      specialties: Array.from(specialtySet).sort(),
+      locations: Array.from(locationSet).sort(),
     };
   }, [visits]);
 
@@ -98,16 +109,31 @@ export default function VisitsPage() {
       );
     }
 
-    // Status filter
-    if (filters.status !== 'all') {
+    // Provider filter
+    if (filters.provider !== 'all') {
       result = result.filter(
-        (visit: any) => normalizeVisitStatus(visit) === filters.status
+        (visit: any) =>
+          (typeof visit.provider === 'string' ? visit.provider.trim() : '') ===
+          filters.provider,
       );
     }
 
-    // Provider filter
-    if (filters.provider !== 'all') {
-      result = result.filter((visit: any) => visit.provider === filters.provider);
+    // Specialty filter
+    if (filters.specialty !== 'all') {
+      result = result.filter(
+        (visit: any) =>
+          (typeof visit.specialty === 'string' ? visit.specialty.trim() : '') ===
+          filters.specialty,
+      );
+    }
+
+    // Location filter
+    if (filters.location !== 'all') {
+      result = result.filter(
+        (visit: any) =>
+          (typeof visit.location === 'string' ? visit.location.trim() : '') ===
+          filters.location,
+      );
     }
 
     // Sort
@@ -217,21 +243,21 @@ export default function VisitsPage() {
         {/* Stats Cards */}
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           <StatCard label="Total Visits" value={stats.total} />
-          <div className="hidden lg:block">
+          <div className="hidden xl:block">
             <StatCard
               label="Completed"
               value={stats.completed || 0}
               variant="success"
             />
           </div>
-          <div className="hidden lg:block">
+          <div className="hidden xl:block">
             <StatCard
               label="Processing"
               value={stats.processing || 0}
               variant="warning"
             />
           </div>
-          <div className="hidden lg:block">
+          <div className="hidden xl:block">
             <StatCard
               label="Pending"
               value={stats.pending || 0}
@@ -248,7 +274,7 @@ export default function VisitsPage() {
               <h3 className="font-semibold text-text-primary">Filters</h3>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
               <Input
                 placeholder="Search visits..."
                 value={filters.search}
@@ -257,25 +283,6 @@ export default function VisitsPage() {
                 }
                 leftIcon={<Search className="h-4 w-4" />}
               />
-
-              <Select
-                value={filters.status}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, status: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {statuses.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {status}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
 
               <Select
                 value={filters.provider}
@@ -291,6 +298,44 @@ export default function VisitsPage() {
                   {providers.map((provider) => (
                     <SelectItem key={provider} value={provider}>
                       {provider}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.specialty}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({ ...prev, specialty: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Specialties" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Specialties</SelectItem>
+                  {specialties.map((specialty) => (
+                    <SelectItem key={specialty} value={specialty}>
+                      {specialty}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.location}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({ ...prev, location: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {locations.map((location) => (
+                    <SelectItem key={location} value={location}>
+                      {location}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -328,7 +373,10 @@ export default function VisitsPage() {
                 No visits found
               </h3>
               <p className="mt-2 text-sm text-text-secondary">
-                {filters.search || filters.status !== 'all' || filters.provider !== 'all'
+                {filters.search ||
+                filters.provider !== 'all' ||
+                filters.specialty !== 'all' ||
+                filters.location !== 'all'
                   ? 'Try adjusting your filters'
                   : 'Record your first visit to get started'}
               </p>
