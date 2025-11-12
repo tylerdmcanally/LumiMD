@@ -1353,7 +1353,7 @@ function getVisitFolders(visit: any): string[] {
     .filter((folder: unknown): folder is string => typeof folder === 'string')
     .map((folder: string) => folder.trim())
     .filter((folder: string) => folder.length > 0)
-    .sort((a, b) => a.localeCompare(b));
+    .sort((a: string, b: string) => a.localeCompare(b));
 }
 
 function truncateText(value: string, maxLength: number): string {
