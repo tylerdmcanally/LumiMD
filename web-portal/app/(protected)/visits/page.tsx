@@ -20,7 +20,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useVisits } from '@/lib/api/hooks';
 import { normalizeVisitStatus } from '@/lib/visits/status';
 import { format } from 'date-fns';
-import { Search, Filter, Calendar, MapPin, Stethoscope, Trash2 } from 'lucide-react';
+import { Search, Filter, Calendar, ChevronDown, Folder, MapPin, Stethoscope, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { deleteDoc, doc } from 'firebase/firestore';
 
@@ -40,6 +40,7 @@ type VisitFilters = {
   provider: string;
   specialty: string;
   location: string;
+  folder: string;
   sortBy: 'date_desc' | 'date_asc';
 };
 
@@ -48,6 +49,7 @@ const DEFAULT_FILTERS: VisitFilters = {
   provider: 'all',
   specialty: 'all',
   location: 'all',
+  folder: 'all',
   sortBy: 'date_desc',
 };
 
@@ -72,10 +74,11 @@ export default function VisitsPage() {
   const { data: visits = [], isLoading } = useVisits(user?.uid);
 
   // Extract unique providers and statuses for filters
-  const { providers, specialties, locations } = React.useMemo(() => {
+  const { providers, specialties, locations, folders } = React.useMemo(() => {
     const providerSet = new Set<string>();
     const specialtySet = new Set<string>();
     const locationSet = new Set<string>();
+    const folderSet = new Set<string>();
 
     visits.forEach((visit: any) => {
       if (typeof visit.provider === 'string' && visit.provider.trim().length) {
@@ -87,12 +90,20 @@ export default function VisitsPage() {
       if (typeof visit.location === 'string' && visit.location.trim().length) {
         locationSet.add(visit.location.trim());
       }
+      if (Array.isArray(visit.folders)) {
+        visit.folders.forEach((folder: unknown) => {
+          if (typeof folder === 'string' && folder.trim().length) {
+            folderSet.add(folder.trim());
+          }
+        });
+      }
     });
 
     return {
       providers: Array.from(providerSet).sort(),
       specialties: Array.from(specialtySet).sort(),
       locations: Array.from(locationSet).sort(),
+      folders: Array.from(folderSet).sort(),
     };
   }, [visits]);
 
@@ -137,6 +148,23 @@ export default function VisitsPage() {
       );
     }
 
+    if (filters.folder !== 'all') {
+      result = result.filter((visit: any) => {
+        const visitFolders = Array.isArray(visit.folders)
+          ? visit.folders
+              .filter((folder: unknown): folder is string => typeof folder === 'string')
+              .map((folder) => folder.trim())
+              .filter((folder) => folder.length > 0)
+          : [];
+
+        if (filters.folder === 'none') {
+          return visitFolders.length === 0;
+        }
+
+        return visitFolders.includes(filters.folder);
+      });
+    }
+
     // Sort
     result.sort((a, b) => {
       const aTime = new Date(a.createdAt || 0).getTime();
@@ -146,6 +174,102 @@ export default function VisitsPage() {
 
     return result;
   }, [visits, filters]);
+
+  const [viewMode, setViewMode] = React.useState<'list' | 'folders'>('list');
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+  const groupedVisits = React.useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        label: string;
+        visits: any[];
+      }
+    >();
+
+    filteredVisits.forEach((visit: any) => {
+      const visitFolders = Array.isArray(visit.folders)
+        ? visit.folders
+            .filter((folder: unknown): folder is string => typeof folder === 'string')
+            .map((folder) => folder.trim())
+            .filter((folder) => folder.length > 0)
+        : [];
+
+      if (visitFolders.length === 0) {
+        const key = '__unfiled__';
+        const entry = groups.get(key);
+        if (entry) {
+          entry.visits.push(visit);
+        } else {
+          groups.set(key, {
+            label: 'Unfiled visits',
+            visits: [visit],
+          });
+        }
+        return;
+      }
+
+      visitFolders.forEach((folder) => {
+        const entry = groups.get(folder);
+        if (entry) {
+          entry.visits.push(visit);
+        } else {
+          groups.set(folder, {
+            label: folder,
+            visits: [visit],
+          });
+        }
+      });
+    });
+
+    return Array.from(groups.entries())
+      .sort(([a], [b]) => {
+        if (a === '__unfiled__') return 1;
+        if (b === '__unfiled__') return -1;
+        return a.localeCompare(b);
+      })
+      .map(([key, value]) => ({
+        key,
+        label: value.label,
+        visits: value.visits,
+      }));
+  }, [filteredVisits]);
+  const canShowFolderView = React.useMemo(
+    () => groupedVisits.some((group) => group.key !== '__unfiled__' && group.visits.length > 0),
+    [groupedVisits],
+  );
+  const allGroupsCollapsed = React.useMemo(
+    () =>
+      groupedVisits.length > 0 &&
+      groupedVisits.every((group) => collapsedGroups.has(group.key)),
+    [groupedVisits, collapsedGroups],
+  );
+  const toggleGroup = React.useCallback((groupKey: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  }, []);
+  const handleToggleAllGroups = React.useCallback(() => {
+    setCollapsedGroups((prev) => {
+      if (groupedVisits.length === 0) {
+        return prev;
+      }
+      const shouldCollapse = groupedVisits.some((group) => !prev.has(group.key));
+      if (!shouldCollapse) {
+        return new Set<string>();
+      }
+      const next = new Set<string>();
+      groupedVisits.forEach((group) => next.add(group.key));
+      return next;
+    });
+  }, [groupedVisits]);
 
   type VisitStats = { total: number } & Record<string, number>;
 
@@ -210,6 +334,34 @@ export default function VisitsPage() {
     }
   };
 
+  React.useEffect(() => {
+    if (isSelectionMode && viewMode === 'folders') {
+      setViewMode('list');
+    }
+  }, [isSelectionMode, viewMode]);
+
+  React.useEffect(() => {
+    if (!canShowFolderView && viewMode === 'folders') {
+      setViewMode('list');
+    }
+  }, [canShowFolderView, viewMode]);
+
+  React.useEffect(() => {
+    setCollapsedGroups((prev) => {
+      const validKeys = new Set(groupedVisits.map((group) => group.key));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((key) => {
+        if (validKeys.has(key)) {
+          next.add(key);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [groupedVisits]);
+
   const handleConfirmDelete = async () => {
     const ids = Array.from(selectedVisitIds);
     if (ids.length === 0) {
@@ -239,6 +391,7 @@ export default function VisitsPage() {
       filters.provider !== 'all' ||
       filters.specialty !== 'all' ||
       filters.location !== 'all' ||
+      filters.folder !== 'all' ||
       filters.sortBy !== DEFAULT_FILTERS.sortBy
     );
   }, [filters]);
@@ -290,7 +443,7 @@ export default function VisitsPage() {
               <h3 className="font-semibold text-text-primary">Filters</h3>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <Input
                 placeholder="Search visits..."
                 value={filters.search}
@@ -358,6 +511,26 @@ export default function VisitsPage() {
               </Select>
 
               <Select
+                value={filters.folder}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({ ...prev, folder: value }))
+                }
+              >
+                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
+                  <SelectValue placeholder="All Folders" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
+                  <SelectItem value="all">All Folders</SelectItem>
+                  <SelectItem value="none">No Folder</SelectItem>
+                  {folders.map((folder) => (
+                    <SelectItem key={folder} value={folder}>
+                      {folder}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
                 value={filters.sortBy}
                 onValueChange={(value: any) =>
                   setFilters((prev) => ({ ...prev, sortBy: value }))
@@ -375,7 +548,7 @@ export default function VisitsPage() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-text-secondary">
-                Search and filter by provider, specialty, or location. Sorting updates instantly.
+                Search and filter by provider, specialty, location, or folder. Sorting updates instantly.
               </p>
               <Button
                 variant="ghost"
@@ -462,86 +635,250 @@ export default function VisitsPage() {
         </div>
                   </div>
                 ) : (
-                  <>
+                  <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <p className="text-text-secondary">
                       Showing {filteredVisits.length} visit
                       {filteredVisits.length === 1 ? '' : 's'}
                     </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleToggleSelectionMode}
-                      className="w-full justify-center sm:w-auto"
-                    >
-                      Select visits
-                    </Button>
-                  </>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!isSelectionMode && canShowFolderView ? (
+                        <div className="flex items-center gap-1 rounded-full border border-border-light bg-background-subtle p-1">
+                          <button
+                            type="button"
+                            onClick={() => setViewMode('list')}
+                            className={cn(
+                              'rounded-full px-3 py-1 text-xs font-semibold transition-smooth',
+                              viewMode === 'list'
+                                ? 'bg-brand-primary text-white shadow-sm'
+                                : 'text-text-secondary hover:text-text-primary',
+                            )}
+                            aria-pressed={viewMode === 'list'}
+                          >
+                            List
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewMode('folders')}
+                            className={cn(
+                              'rounded-full px-3 py-1 text-xs font-semibold transition-smooth',
+                              viewMode === 'folders'
+                                ? 'bg-brand-primary text-white shadow-sm'
+                                : 'text-text-secondary hover:text-text-primary',
+                            )}
+                            aria-pressed={viewMode === 'folders'}
+                          >
+                            By folder
+                          </button>
+                        </div>
+                      ) : null}
+                      {viewMode === 'folders' && groupedVisits.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={handleToggleAllGroups}
+                          className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary transition-smooth hover:text-text-primary"
+                        >
+                          {allGroupsCollapsed ? 'Expand all' : 'Collapse all'}
+                        </button>
+                      ) : null}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleToggleSelectionMode}
+                        className="w-full justify-center sm:w-auto"
+                      >
+                        Select visits
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
 
               <div className="hidden md:block">
-                {/* Table Header */}
-                <div
-                  className={cn(
-                    'grid items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-sm font-semibold text-text-secondary',
-                    isSelectionMode
-                      ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
-                      : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
-                  )}
-                >
-                  {isSelectionMode && (
-                    <div className="flex items-center justify-center pr-8">
-                      <button
-                        type="button"
-                        onClick={() => toggleSelectAll(!allSelected)}
-                        aria-pressed={allSelected}
-                        className={cn(
-                          'rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide transition-smooth shadow-sm',
-                          allSelected
-                            ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
-                            : 'border-brand-primary/40 bg-brand-primary/8 text-brand-primary hover:bg-brand-primary/12',
-                        )}
-                      >
-                        {allSelected ? 'Clear all' : 'Select all'}
-                      </button>
+                {viewMode === 'list' ? (
+                  <>
+                    <div
+                      className={cn(
+                        'grid items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-sm font-semibold text-text-secondary',
+                        isSelectionMode
+                          ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
+                          : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
+                      )}
+                    >
+                      {isSelectionMode && (
+                        <div className="flex items-center justify-center pr-8">
+                          <button
+                            type="button"
+                            onClick={() => toggleSelectAll(!allSelected)}
+                            aria-pressed={allSelected}
+                            className={cn(
+                              'rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide transition-smooth shadow-sm',
+                              allSelected
+                                ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
+                                : 'border-brand-primary/40 bg-brand-primary/8 text-brand-primary hover:bg-brand-primary/12',
+                            )}
+                          >
+                            {allSelected ? 'Clear all' : 'Select all'}
+                          </button>
+                        </div>
+                      )}
+                      <div>Provider & Specialty</div>
+                      <div>Date</div>
+                      <div className="hidden lg:block">Location</div>
+                      <div>Status</div>
+                      <div className="text-right">Actions</div>
                     </div>
-                  )}
-                  <div>Provider & Specialty</div>
-                  <div>Date</div>
-                  <div className="hidden lg:block">Location</div>
-                  <div>Status</div>
-                  <div className="text-right">Actions</div>
-                </div>
 
-                {/* Table Body */}
-                <div className="divide-y divide-border-light">
-                  {filteredVisits.map((visit: any) => (
-                    <VisitRow
-                      key={visit.id}
-                      visit={visit}
-                      selectionMode={isSelectionMode}
-                      selected={selectedVisitIds.has(visit.id)}
-                      onToggleSelect={() => toggleSelectVisit(visit.id)}
-                      onDelete={() => openDeleteDialogFor([visit.id])}
-                      onView={() => router.push(`/visits/${visit.id}`)}
-                    />
-                  ))}
-                </div>
+                    <div className="divide-y divide-border-light">
+                      {filteredVisits.map((visit: any) => (
+                        <VisitRow
+                          key={visit.id}
+                          visit={visit}
+                          selectionMode={isSelectionMode}
+                          selected={selectedVisitIds.has(visit.id)}
+                          onToggleSelect={() => toggleSelectVisit(visit.id)}
+                          onDelete={() => openDeleteDialogFor([visit.id])}
+                          onView={() => router.push(`/visits/${visit.id}`)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4 px-6 pb-6">
+                    {groupedVisits.map((group) => {
+                      const collapsed = collapsedGroups.has(group.key);
+                      return (
+                        <div
+                          key={group.key}
+                          className="rounded-3xl border border-border-light bg-background-subtle/40"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(group.key)}
+                            className="flex w-full items-center justify-between gap-3 rounded-3xl px-5 py-4 text-left transition-smooth hover:bg-background-subtle/80"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Folder className="h-4 w-4 text-brand-primary" />
+                              <div>
+                                <p className="font-semibold text-text-primary">{group.label}</p>
+                                <p className="text-xs text-text-secondary">
+                                  {group.visits.length} visit
+                                  {group.visits.length === 1 ? '' : 's'}
+                                </p>
+                              </div>
+                            </div>
+                            <ChevronDown
+                              className={cn(
+                                'h-4 w-4 text-text-secondary transition-transform',
+                                collapsed ? '-rotate-90' : 'rotate-0',
+                              )}
+                              aria-hidden="true"
+                            />
+                          </button>
+                          {!collapsed ? (
+                            <>
+                              <div
+                                className={cn(
+                                  'grid items-center gap-4 border-t border-border-light bg-background-subtle px-5 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary',
+                                  isSelectionMode
+                                    ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
+                                    : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
+                                )}
+                              >
+                                {isSelectionMode && (
+                                  <div className="flex items-center justify-center pr-8 text-[11px] font-semibold">
+                                    Select
+                                  </div>
+                                )}
+                                <div>Provider & Specialty</div>
+                                <div>Date</div>
+                                <div className="hidden lg:block">Location</div>
+                                <div>Status</div>
+                                <div className="text-right">Actions</div>
+                              </div>
+                              <div className="divide-y divide-border-light">
+                                {group.visits.map((visit: any) => (
+                                  <VisitRow
+                                    key={`${group.key}-${visit.id}`}
+                                    visit={visit}
+                                    selectionMode={isSelectionMode}
+                                    selected={selectedVisitIds.has(visit.id)}
+                                    onToggleSelect={() => toggleSelectVisit(visit.id)}
+                                    onDelete={() => openDeleteDialogFor([visit.id])}
+                                    onView={() => router.push(`/visits/${visit.id}`)}
+                                  />
+                                ))}
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Mobile Cards */}
               <div className="space-y-3 px-4 pb-5 md:hidden">
-                {filteredVisits.map((visit: any) => (
-                  <VisitCard
-                    key={visit.id}
-                    visit={visit}
-                    selectionMode={isSelectionMode}
-                    selected={selectedVisitIds.has(visit.id)}
-                    onToggleSelect={() => toggleSelectVisit(visit.id)}
-                    onDelete={() => openDeleteDialogFor([visit.id])}
-                    onView={() => router.push(`/visits/${visit.id}`)}
-                  />
-                ))}
+                {viewMode === 'list'
+                  ? filteredVisits.map((visit: any) => (
+                      <VisitCard
+                        key={visit.id}
+                        visit={visit}
+                        selectionMode={isSelectionMode}
+                        selected={selectedVisitIds.has(visit.id)}
+                        onToggleSelect={() => toggleSelectVisit(visit.id)}
+                        onDelete={() => openDeleteDialogFor([visit.id])}
+                        onView={() => router.push(`/visits/${visit.id}`)}
+                      />
+                    ))
+                  : groupedVisits.map((group) => {
+                      const collapsed = collapsedGroups.has(group.key);
+                      return (
+                        <div
+                          key={group.key}
+                          className="rounded-3xl border border-border-light bg-background-subtle/50"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(group.key)}
+                            className="flex w-full items-center justify-between gap-3 rounded-3xl px-4 py-3 text-left transition-smooth hover:bg-background-subtle/80"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Folder className="h-4 w-4 text-brand-primary" />
+                              <div>
+                                <p className="font-semibold text-text-primary">{group.label}</p>
+                                <p className="text-xs text-text-secondary">
+                                  {group.visits.length} visit
+                                  {group.visits.length === 1 ? '' : 's'}
+                                </p>
+                              </div>
+                            </div>
+                            <ChevronDown
+                              className={cn(
+                                'h-4 w-4 text-text-secondary transition-transform',
+                                collapsed ? '-rotate-90' : 'rotate-0',
+                              )}
+                              aria-hidden="true"
+                            />
+                          </button>
+                          {!collapsed ? (
+                            <div className="space-y-3 px-2 pb-4 pt-1">
+                              {group.visits.map((visit: any) => (
+                                <VisitCard
+                                  key={`${group.key}-${visit.id}`}
+                                  visit={visit}
+                                  selectionMode={isSelectionMode}
+                                  selected={selectedVisitIds.has(visit.id)}
+                                  onToggleSelect={() => toggleSelectVisit(visit.id)}
+                                  onDelete={() => openDeleteDialogFor([visit.id])}
+                                  onView={() => router.push(`/visits/${visit.id}`)}
+                                />
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
               </div>
             </div>
           )}
@@ -661,6 +998,9 @@ function VisitRow({
   const showProviderTooltip = providerName.length > 28;
   const showSpecialtyTooltip = specialtyLabel.length > 28;
   const showLocationTooltip = locationLabel.length > 32;
+  const visitFolders = React.useMemo(() => getVisitFolders(visit), [visit]);
+  const displayFolders = React.useMemo(() => visitFolders.slice(0, 3), [visitFolders]);
+  const remainingFolderCount = visitFolders.length - displayFolders.length;
 
   const providerLabel = (
     <p className="font-semibold text-text-primary truncate" title={providerName}>
@@ -754,8 +1094,8 @@ function VisitRow({
         )}
       </div>
 
-      {/* Status */}
-      <div className="flex items-center">
+      {/* Status & Folders */}
+      <div className="flex flex-col items-end gap-2 text-right">
         <Badge
           tone={VISIT_STATUS_STYLES[status]?.tone ?? 'neutral'}
           variant={VISIT_STATUS_STYLES[status]?.variant ?? 'outline'}
@@ -763,6 +1103,40 @@ function VisitRow({
         >
           {status}
         </Badge>
+        {visitFolders.length ? (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {displayFolders.map((folder) => {
+              const folderBadge = (
+                <Badge
+                  size="sm"
+                  tone="neutral"
+                  variant="outline"
+                  className="max-w-[140px] truncate bg-background-subtle/90 text-text-secondary"
+                  leftIcon={<Folder className="h-3 w-3 text-text-tertiary" aria-hidden="true" />}
+                  title={folder}
+                >
+                  <span className="truncate">{folder}</span>
+                </Badge>
+              );
+
+              if (folder.length > 18) {
+                return (
+                  <Tooltip key={folder}>
+                    <TooltipTrigger asChild>{folderBadge}</TooltipTrigger>
+                    <TooltipContent className={tooltipClassName}>{folder}</TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return <React.Fragment key={folder}>{folderBadge}</React.Fragment>;
+            })}
+            {remainingFolderCount > 0 ? (
+              <span className="rounded-full bg-background-subtle px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
+                +{remainingFolderCount}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {/* Actions */}
@@ -820,6 +1194,11 @@ function VisitCard({
     typeof visit.summary === 'string' && visit.summary.trim().length
       ? truncateText(visit.summary.trim(), 220)
       : null;
+  const visitFolders = React.useMemo(() => getVisitFolders(visit), [visit]);
+  const displayedFolders = React.useMemo(() => visitFolders.slice(0, 3), [visitFolders]);
+  const remainingFolderCount = visitFolders.length - displayedFolders.length;
+  const folderTooltipClassName =
+    'max-w-xs text-sm font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2';
 
   const handleCardClick = () => {
     if (selectionMode) {
@@ -862,6 +1241,40 @@ function VisitCard({
             <p className="text-sm text-text-secondary line-clamp-1" title={specialtyLabel}>
               {specialtyLabel}
             </p>
+            {visitFolders.length ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {displayedFolders.map((folder) => {
+                  const badge = (
+                    <Badge
+                      size="sm"
+                      tone="neutral"
+                      variant="soft"
+                      className="max-w-[160px] truncate bg-background-subtle text-text-secondary"
+                      leftIcon={<Folder className="h-3 w-3 text-text-tertiary" aria-hidden="true" />}
+                      title={folder}
+                    >
+                      <span className="truncate">{folder}</span>
+                    </Badge>
+                  );
+
+                  if (folder.length > 20) {
+                    return (
+                      <Tooltip key={folder}>
+                        <TooltipTrigger asChild>{badge}</TooltipTrigger>
+                        <TooltipContent className={folderTooltipClassName}>{folder}</TooltipContent>
+                      </Tooltip>
+                    );
+                  }
+
+                  return <React.Fragment key={folder}>{badge}</React.Fragment>;
+                })}
+                {remainingFolderCount > 0 ? (
+                  <span className="rounded-full bg-background-subtle px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-text-secondary">
+                    +{remainingFolderCount}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -929,6 +1342,18 @@ function VisitCard({
       </div>
     </div>
   );
+}
+
+function getVisitFolders(visit: any): string[] {
+  if (!visit || !Array.isArray(visit.folders)) {
+    return [];
+  }
+
+  return visit.folders
+    .filter((folder: unknown): folder is string => typeof folder === 'string')
+    .map((folder) => folder.trim())
+    .filter((folder) => folder.length > 0)
+    .sort((a, b) => a.localeCompare(b));
 }
 
 function truncateText(value: string, maxLength: number): string {

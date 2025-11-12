@@ -41,7 +41,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, type ApiError } from '@/lib/api/client';
-import { queryKeys, useVisit } from '@/lib/api/hooks';
+import { queryKeys, useUserProfile, useVisit } from '@/lib/api/hooks';
 import type { Visit } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import {
@@ -64,6 +64,21 @@ export default function VisitDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useCurrentUser();
+  const { data: profile } = useUserProfile(user?.uid);
+  const profileFolders = useMemo(() => {
+    if (!profile?.folders || !Array.isArray(profile.folders)) {
+      return [];
+    }
+    const unique = new Set<string>();
+    profile.folders.forEach((folder) => {
+      if (typeof folder !== 'string') return;
+      const trimmed = folder.trim();
+      if (trimmed) {
+        unique.add(trimmed);
+      }
+    });
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [profile?.folders]);
 
   const visitId =
     typeof params?.id === 'string'
@@ -193,6 +208,41 @@ export default function VisitDetailPage() {
     folders: string[];
   }) => {
     await updateTagsMutation.mutateAsync(values);
+
+    if (!user?.uid) {
+      return;
+    }
+
+    const mergedMap = new Map<string, string>();
+    profileFolders.forEach((folder) => mergedMap.set(folder.toLowerCase(), folder));
+    const beforeSize = mergedMap.size;
+
+    values.folders.forEach((folder) => {
+      if (typeof folder !== 'string') return;
+      const trimmed = folder.trim();
+      if (!trimmed) return;
+      const lower = trimmed.toLowerCase();
+      if (!mergedMap.has(lower)) {
+        mergedMap.set(lower, trimmed);
+      }
+    });
+
+    if (mergedMap.size > beforeSize) {
+      const mergedFolders = Array.from(mergedMap.values()).sort((a, b) =>
+        a.localeCompare(b),
+      );
+      try {
+        await api.users.updateCurrent({ folders: mergedFolders });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.userProfile(user.uid),
+        });
+      } catch (error) {
+        console.error('[visits] Failed to sync folders to profile', error);
+        toast.error(
+          'Visit folders saved, but syncing to your folder library did not complete. Please try again.',
+        );
+      }
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -554,6 +604,7 @@ export default function VisitDetailPage() {
         }
         onSave={handleOrganizeSave}
         isSaving={updateTagsMutation.isPending}
+        suggestedFolders={profileFolders}
       />
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
