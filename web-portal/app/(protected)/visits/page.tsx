@@ -306,10 +306,10 @@ export default function VisitsPage() {
                   setFilters((prev) => ({ ...prev, provider: value }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
                   <SelectValue placeholder="All Providers" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
                   <SelectItem value="all">All Providers</SelectItem>
                   {providers.map((provider) => (
                     <SelectItem key={provider} value={provider}>
@@ -325,10 +325,10 @@ export default function VisitsPage() {
                   setFilters((prev) => ({ ...prev, specialty: value }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
                   <SelectValue placeholder="All Specialties" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
                   <SelectItem value="all">All Specialties</SelectItem>
                   {specialties.map((specialty) => (
                     <SelectItem key={specialty} value={specialty}>
@@ -344,10 +344,10 @@ export default function VisitsPage() {
                   setFilters((prev) => ({ ...prev, location: value }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
                   <SelectValue placeholder="All Locations" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
                   <SelectItem value="all">All Locations</SelectItem>
                   {locations.map((location) => (
                     <SelectItem key={location} value={location}>
@@ -363,10 +363,10 @@ export default function VisitsPage() {
                   setFilters((prev) => ({ ...prev, sortBy: value }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
                   <SelectValue placeholder="Sort By" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
                   <SelectItem value="date_desc">Newest First</SelectItem>
                   <SelectItem value="date_asc">Oldest First</SelectItem>
                 </SelectContent>
