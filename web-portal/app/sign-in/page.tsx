@@ -153,30 +153,7 @@ export default function SignInPage() {
             </div>
 
             {/* Alternative Sign In */}
-            <Button
-              variant="outline"
-              size="lg"
-              fullWidth
-              className="h-12 justify-center"
-              onClick={() => {
-                // TODO: Implement Google Sign In
-                console.log('Google Sign In');
-              }}
-            >
-              <span className="flex items-center gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
-                  <Image
-                    src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                    alt="Google"
-                    width={18}
-                    height={18}
-                  />
-                </span>
-                <span className="text-sm font-semibold text-text-primary">
-                  Sign in with Google
-                </span>
-              </span>
-            </Button>
+            {/* Google sign-in temporarily disabled */}
           </div>
         </Card>
 
