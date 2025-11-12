@@ -525,7 +525,7 @@ function MedicationRow({
                   tone="neutral"
                   variant="outline"
                   size="sm"
-                  className="max-w-[160px] truncate cursor-help"
+                  className="hidden lg:inline-flex max-w-[160px] truncate cursor-help"
                 >
                   {drugClass}
                 </Badge>
