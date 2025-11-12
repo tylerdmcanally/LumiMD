@@ -478,12 +478,21 @@ function MedicationRow({
                         handleNeedInfoClick(event);
                       }}
                       onKeyDown={(event) => event.stopPropagation()}
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+                      className={cn(
+                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
+                        isFetchingInfo
+                          ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                          : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary'
+                      )}
                       aria-label="Fetch more medication info"
                       disabled={isFetchingInfo}
                       aria-busy={isFetchingInfo}
                     >
-                      <Info className="h-3 w-3" />
+                      {isFetchingInfo ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Info className="h-3 w-3" />
+                      )}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">

@@ -794,7 +794,7 @@ function DiagnosesCard({
                               aria-label={`Get more information about ${diagnosis}`}
                             >
                               {isFetching ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
                               ) : (
                                 <Info className="h-4 w-4" />
                               )}
