@@ -156,7 +156,7 @@ export default function MedicationsPage() {
               size="lg"
               leftIcon={<Plus className="h-5 w-5" />}
               onClick={() => setCreateDialogOpen(true)}
-              className="w-full justify-center sm:w-auto"
+              className="w-full justify-center sm:w-auto sm:justify-start sm:px-6 sm:whitespace-nowrap"
             >
             Add medication
           </Button>
