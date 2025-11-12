@@ -580,22 +580,32 @@ function ActionCalendar({
                 {dayActions.slice(0, 3).map((action) => {
                   const pending = action.completed !== true;
                   return (
-                    <button
-                      type="button"
-                      key={action.id}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelectAction?.(action);
-                      }}
-                      className={cn(
-                        'w-full truncate rounded-full px-2 py-1 text-left text-[11px] font-medium transition-smooth hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
-                        pending
-                          ? 'bg-brand-primary-pale text-brand-primary'
-                          : 'bg-background-subtle text-text-secondary',
-                      )}
-                    >
-                      {getActionTitle(action.description)}
-                    </button>
+                    <TooltipProvider delayDuration={150} key={action.id}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onSelectAction?.(action);
+                            }}
+                            className={cn(
+                              'w-full rounded-full px-2 py-1 text-left text-[11px] font-medium transition-smooth hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+                              pending
+                                ? 'bg-brand-primary-pale text-brand-primary'
+                                : 'bg-background-subtle text-text-secondary',
+                            )}
+                          >
+                            <span className="inline-block max-w-full overflow-hidden text-ellipsis whitespace-nowrap align-middle">
+                              {getActionTitle(action.description)}
+                            </span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[220px] text-xs font-medium leading-snug text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+                          {getActionTitle(action.description)}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   );
                 })}
                 {dayActions.length > 3 ? (
