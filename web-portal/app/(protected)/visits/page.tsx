@@ -152,9 +152,9 @@ export default function VisitsPage() {
       result = result.filter((visit: any) => {
         const visitFolders = Array.isArray(visit.folders)
           ? visit.folders
-              .filter((folder: unknown): folder is string => typeof folder === 'string')
-              .map((folder) => folder.trim())
-              .filter((folder) => folder.length > 0)
+        .filter((folder: unknown): folder is string => typeof folder === 'string')
+        .map((folder: string) => folder.trim())
+        .filter((folder: string) => folder.length > 0)
           : [];
 
         if (filters.folder === 'none') {
@@ -192,8 +192,8 @@ export default function VisitsPage() {
       const visitFolders = Array.isArray(visit.folders)
         ? visit.folders
             .filter((folder: unknown): folder is string => typeof folder === 'string')
-            .map((folder) => folder.trim())
-            .filter((folder) => folder.length > 0)
+            .map((folder: string) => folder.trim())
+            .filter((folder: string) => folder.length > 0)
         : [];
 
       if (visitFolders.length === 0) {
@@ -210,7 +210,7 @@ export default function VisitsPage() {
         return;
       }
 
-      visitFolders.forEach((folder) => {
+      visitFolders.forEach((folder: string) => {
         const entry = groups.get(folder);
         if (entry) {
           entry.visits.push(visit);
@@ -1351,8 +1351,8 @@ function getVisitFolders(visit: any): string[] {
 
   return visit.folders
     .filter((folder: unknown): folder is string => typeof folder === 'string')
-    .map((folder) => folder.trim())
-    .filter((folder) => folder.length > 0)
+    .map((folder: string) => folder.trim())
+    .filter((folder: string) => folder.length > 0)
     .sort((a, b) => a.localeCompare(b));
 }
 
