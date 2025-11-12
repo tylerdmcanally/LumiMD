@@ -34,6 +34,7 @@ type ManageTagsDialogProps = {
   isSaving?: boolean;
   suggestedFolders?: string[];
   templateFolders?: string[];
+  currentSpecialty?: string | null;
 };
 
 export function ManageTagsDialog({
@@ -45,6 +46,7 @@ export function ManageTagsDialog({
   isSaving,
   suggestedFolders,
   templateFolders,
+  currentSpecialty,
 }: ManageTagsDialogProps) {
   const [tags, setTags] = useState(() => [...initialTags]);
   const [folders, setFolders] = useState(() => [...initialFolders]);
@@ -174,15 +176,31 @@ export function ManageTagsDialog({
         <DialogHeader>
           <DialogTitle>Organize visit</DialogTitle>
           <DialogDescription>
-            Add descriptive tags and folders to keep visits grouped by specialty,
-            provider, or treatment plan.
+            Specialty is managed in “Edit visit details.” Use tags and folders here to
+            layer on custom groupings and shortcuts that make sense to you.
           </DialogDescription>
         </DialogHeader>
 
         <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
+          <div className="rounded-2xl border border-border-light bg-background-subtle/70 px-4 py-3 text-sm text-text-secondary">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+                Specialty (read-only)
+              </span>
+              <span className="text-sm font-medium text-text-primary">
+                {currentSpecialty && currentSpecialty.trim().length
+                  ? currentSpecialty
+                  : 'Not set yet'}
+              </span>
+              <span className="text-xs text-text-secondary">
+                Update specialty from the “Edit visit details” panel when you need to change the provider’s discipline.
+              </span>
+            </div>
+          </div>
+
           <Section
             title="Tags"
-            description="Quick filters for search and insights. Examples: “cardiology”, “labs”, “post-op”."
+            description="Quick keywords that enhance search and insights. Examples: “cardiology”, “labs”, “post-op”."
           >
             <div className="flex gap-2">
               <Input
@@ -210,7 +228,7 @@ export function ManageTagsDialog({
 
           <Section
             title="Folders"
-            description="High-level groupings that show in the visits list. Examples: “Specialists”, “Annual”, “Oncology”."
+            description="High-level, user-defined groupings shown in your visits list. Examples: “Specialists”, “Annual”, “Oncology”."
           >
             <div className="flex gap-2">
               <Input

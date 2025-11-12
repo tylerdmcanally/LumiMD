@@ -605,6 +605,9 @@ export default function VisitDetailPage() {
         onSave={handleOrganizeSave}
         isSaving={updateTagsMutation.isPending}
         suggestedFolders={profileFolders}
+        currentSpecialty={
+          typeof visit.specialty === 'string' ? visit.specialty : null
+        }
       />
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
