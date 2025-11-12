@@ -288,6 +288,13 @@ function MedicationGroup({
       ) : (
         <>
           <div className="mt-4 hidden md:block">
+            <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_minmax(0,1fr)_160px] items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              <div>Medication & Details</div>
+              <div>Dose</div>
+              <div>Frequency</div>
+              <div className="hidden lg:block">Status</div>
+              <div className="text-right">Actions</div>
+            </div>
             <div className="divide-y divide-border-light">
               {medications.map((medication: any) => (
                 <MedicationRow
@@ -440,25 +447,44 @@ function MedicationRow({
   const { shortIndication, drugClass, showInfoCta, isFetchingInfo, handleNeedInfoClick } =
     useMedicationInsightHelpers(medication);
   const columnTemplate =
-    'grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1fr)_160px]';
+    'grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_minmax(0,1fr)_160px]';
+  const medicationName =
+    typeof medication.name === 'string' && medication.name.trim().length
+      ? medication.name.trim()
+      : 'Medication';
+  const doseLabel =
+    typeof medication.dose === 'string' && medication.dose.trim().length
+      ? medication.dose.trim()
+      : '—';
+  const frequencyLabel =
+    typeof medication.frequency === 'string' && medication.frequency.trim().length
+      ? medication.frequency.trim()
+      : '—';
+  const tooltipClassName =
+    'max-w-xs text-sm font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2';
+  const showNameTooltip = medicationName.length > 26;
+  const showIndicationTooltip = (shortIndication?.length ?? 0) > 32;
+  const showDoseTooltip = doseLabel.length > 18;
+  const showFrequencyTooltip = frequencyLabel.length > 18;
 
   return (
-    <div
-      className={cn(
-        'group items-center gap-4 px-6 py-5 transition-smooth hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/20 cursor-pointer',
-        'grid',
-        columnTemplate,
-      )}
-      role="button"
-      tabIndex={0}
-      onClick={onView}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onView();
-        }
-      }}
-    >
+    <TooltipProvider delayDuration={150}>
+      <div
+        className={cn(
+          'group items-center gap-4 px-6 py-5 transition-smooth hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/20 cursor-pointer',
+          'grid',
+          columnTemplate,
+        )}
+        role="button"
+        tabIndex={0}
+        onClick={onView}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onView();
+          }
+        }}
+      >
       <div className="flex items-center gap-3">
         <div
           className={cn(
@@ -470,77 +496,129 @@ function MedicationRow({
         </div>
         <div className="min-w-0 space-y-1">
           <div className="flex items-start gap-2">
-            <p className="font-semibold text-text-primary truncate">
-              {medication.name || 'Medication'}
-            </p>
+            {showNameTooltip ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="font-semibold text-text-primary truncate" title={medicationName}>
+                    {medicationName}
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent className={tooltipClassName}>{medicationName}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <p className="font-semibold text-text-primary truncate" title={medicationName}>
+                {medicationName}
+              </p>
+            )}
             {showInfoCta ? (
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleNeedInfoClick(event);
-                      }}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      className={cn(
-                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
-                        isFetchingInfo
-                          ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
-                          : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary'
-                      )}
-                      aria-label="Fetch more medication info"
-                      disabled={isFetchingInfo}
-                      aria-busy={isFetchingInfo}
-                    >
-                      {isFetchingInfo ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Info className="h-3 w-3" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                    Need a quick summary? Click for medication type and common uses. We’ll then add it to your list for next time.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleNeedInfoClick(event);
+                    }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    className={cn(
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
+                      isFetchingInfo
+                        ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                        : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary'
+                    )}
+                    aria-label="Fetch more medication info"
+                    disabled={isFetchingInfo}
+                    aria-busy={isFetchingInfo}
+                  >
+                    {isFetchingInfo ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Info className="h-3 w-3" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+                  Need a quick summary? Click for medication type and common uses. We’ll then add it to your list for next time.
+                </TooltipContent>
+              </Tooltip>
             ) : null}
           </div>
           {shortIndication ? (
-            <p className="text-sm text-text-secondary truncate capitalize">{shortIndication}</p>
+            showIndicationTooltip ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p
+                    className="text-sm text-text-secondary truncate capitalize"
+                    title={shortIndication}
+                  >
+                    {shortIndication}
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent className={tooltipClassName}>{shortIndication}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <p className="text-sm text-text-secondary truncate capitalize" title={shortIndication}>
+                {shortIndication}
+              </p>
+            )
+          ) : null}
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-secondary lg:hidden">
+          <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
+            {isActive ? 'Active' : 'Stopped'}
+          </Badge>
+          {drugClass ? (
+            <Badge tone="neutral" variant="outline" size="sm" className="truncate max-w-[140px]" title={drugClass}>
+              {drugClass}
+            </Badge>
           ) : null}
         </div>
       </div>
-      <div className="text-sm text-text-secondary truncate">
-        {medication.dose || '—'}
+      <div className="text-sm text-text-secondary truncate" title={doseLabel}>
+        {showDoseTooltip ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>{doseLabel}</span>
+            </TooltipTrigger>
+            <TooltipContent className={tooltipClassName}>{doseLabel}</TooltipContent>
+          </Tooltip>
+        ) : (
+          doseLabel
+        )}
       </div>
-      <div className="text-sm text-text-secondary truncate">
-        {medication.frequency || '—'}
+      <div className="text-sm text-text-secondary truncate" title={frequencyLabel}>
+        {showFrequencyTooltip ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>{frequencyLabel}</span>
+            </TooltipTrigger>
+            <TooltipContent className={tooltipClassName}>{frequencyLabel}</TooltipContent>
+          </Tooltip>
+        ) : (
+          frequencyLabel
+        )}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="hidden lg:flex items-center gap-2">
         <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
           {isActive ? 'Active' : 'Stopped'}
         </Badge>
         {drugClass ? (
-          <TooltipProvider delayDuration={150}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge
-                  tone="neutral"
-                  variant="outline"
-                  size="sm"
-                  className="hidden lg:inline-flex max-w-[160px] truncate cursor-help"
-                >
-                  {drugClass}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent className="text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                tone="neutral"
+                variant="outline"
+                size="sm"
+                className="inline-flex max-w-[160px] truncate cursor-help"
+                title={drugClass}
+              >
                 {drugClass}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+              {drugClass}
+            </TooltipContent>
+          </Tooltip>
         ) : null}
       </div>
       <div className="flex items-center justify-end gap-2">
@@ -566,7 +644,8 @@ function MedicationRow({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -590,6 +669,16 @@ function MedicationCard({
     isFetchingInfo,
     handleNeedInfoClick,
   } = useMedicationInsightHelpers(medication);
+
+  const medicationName =
+    typeof medication.name === 'string' && medication.name.trim().length
+      ? medication.name.trim()
+      : 'Medication';
+  const tooltipClassName =
+    'max-w-xs text-sm font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2';
+  const showNameTooltip = medicationName.length > 28;
+  const showShortIndicationTooltip = (shortIndication?.length ?? 0) > 32;
+  const showDetailedTooltip = (detailedIndication?.length ?? 0) > 160;
 
   const doseLabel =
     typeof medication.dose === 'string' && medication.dose.trim().length
@@ -636,9 +725,26 @@ function MedicationCard({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
               <div className="flex items-start gap-2">
-                <h3 className="text-lg font-semibold text-text-primary">
-                  {medication.name || 'Medication'}
-                </h3>
+                {showNameTooltip ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <h3
+                        className="text-lg font-semibold text-text-primary line-clamp-2"
+                        title={medicationName}
+                      >
+                        {medicationName}
+                      </h3>
+                    </TooltipTrigger>
+                    <TooltipContent className={tooltipClassName}>{medicationName}</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <h3
+                    className="text-lg font-semibold text-text-primary line-clamp-2"
+                    title={medicationName}
+                  >
+                    {medicationName}
+                  </h3>
+                )}
                 {showInfoCta ? (
                   <TooltipProvider delayDuration={150}>
                     <Tooltip>
@@ -663,7 +769,28 @@ function MedicationCard({
                 ) : null}
               </div>
               {shortIndication ? (
-                <p className="text-sm text-text-secondary capitalize">{shortIndication}</p>
+                showShortIndicationTooltip ? (
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <p
+                          className="text-sm text-text-secondary capitalize line-clamp-2"
+                          title={shortIndication}
+                        >
+                          {shortIndication}
+                        </p>
+                      </TooltipTrigger>
+                      <TooltipContent className={tooltipClassName}>{shortIndication}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <p
+                    className="text-sm text-text-secondary capitalize line-clamp-2"
+                    title={shortIndication}
+                  >
+                    {shortIndication}
+                  </p>
+                )
               ) : null}
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -695,23 +822,47 @@ function MedicationCard({
           <div className="grid gap-2 text-sm text-text-secondary">
             <div className="flex items-center justify-between gap-4">
               <span className="font-medium text-text-primary">Dose</span>
-              <span className="text-right text-text-secondary">{doseLabel}</span>
+              <span className="text-right text-text-secondary line-clamp-2" title={doseLabel}>
+                {doseLabel}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="font-medium text-text-primary">Frequency</span>
-              <span className="text-right text-text-secondary">{frequencyLabel}</span>
+              <span className="text-right text-text-secondary line-clamp-2" title={frequencyLabel}>
+                {frequencyLabel}
+              </span>
             </div>
           </div>
 
           {detailedIndication ? (
-            <p className="text-sm text-text-secondary/90">{detailedIndication}</p>
+            showDetailedTooltip ? (
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p
+                      className="text-sm text-text-secondary/90 line-clamp-4"
+                      title={detailedIndication}
+                    >
+                      {detailedIndication}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent className={tooltipClassName}>{detailedIndication}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <p className="text-sm text-text-secondary/90 line-clamp-4" title={detailedIndication}>
+                {detailedIndication}
+              </p>
+            )
           ) : null}
           {notesLabel ? (
             <div className="rounded-2xl border border-dashed border-border-light/80 bg-background-subtle/60 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                 Notes
               </p>
-              <p className="mt-1 text-sm text-text-secondary/90 whitespace-pre-line">{notesLabel}</p>
+              <p className="mt-1 text-sm text-text-secondary/90 whitespace-pre-line line-clamp-5" title={notesLabel}>
+                {notesLabel}
+              </p>
             </div>
           ) : null}
         </div>

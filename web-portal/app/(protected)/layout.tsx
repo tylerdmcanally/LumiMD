@@ -11,10 +11,10 @@ export default function ProtectedLayout({
 }) {
   return (
     <AuthGuard>
-      <div className="flex h-screen bg-background">
+      <div className="flex min-h-screen min-h-[var(--app-height)] bg-background">
         <Sidebar />
         <div className="flex flex-1 flex-col lg:pb-0 min-h-0">
-          <div className="flex-1 overflow-y-auto pb-24 lg:pb-0">
+          <div className="flex-1 overflow-y-auto scroll-touch overscroll-contain pb-24 lg:pb-0">
             {children}
           </div>
           <MobileBottomNav />

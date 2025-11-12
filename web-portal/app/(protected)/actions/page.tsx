@@ -807,6 +807,13 @@ function ActionCard({
   const isCompleted = action.completed === true;
   const dueDate = action.dueAt ? new Date(action.dueAt) : null;
   const isOverdue = dueDate && dueDate < new Date() && !isCompleted;
+  const descriptionText = getActionTitle(action.description);
+  const notesText =
+    typeof action.notes === 'string' && action.notes.trim().length ? action.notes.trim() : '';
+  const tooltipClassName =
+    'max-w-xs text-sm font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2';
+  const showDescriptionTooltip = descriptionText.length > 96;
+  const showNotesTooltip = notesText.length > 180;
 
   return (
     <Card
@@ -848,17 +855,58 @@ function ActionCard({
         {/* Content */}
         <div className="flex-1 min-w-0 space-y-4">
           <div className="space-y-2">
-            <h3
-              className={cn(
-                'text-lg font-semibold text-text-primary',
-                isCompleted && 'line-through text-text-secondary'
-              )}
-            >
-              {getActionTitle(action.description)}
-            </h3>
-            {action.notes && (
-              <p className="text-sm leading-relaxed text-text-secondary/90">{action.notes}</p>
+            {showDescriptionTooltip ? (
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <h3
+                      className={cn(
+                        'text-lg font-semibold text-text-primary line-clamp-2',
+                        isCompleted && 'line-through text-text-secondary'
+                      )}
+                      title={descriptionText}
+                    >
+                      {descriptionText}
+                    </h3>
+                  </TooltipTrigger>
+                  <TooltipContent className={tooltipClassName}>{descriptionText}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <h3
+                className={cn(
+                  'text-lg font-semibold text-text-primary line-clamp-2',
+                  isCompleted && 'line-through text-text-secondary'
+                )}
+                title={descriptionText}
+              >
+                {descriptionText}
+              </h3>
             )}
+            {notesText ? (
+              showNotesTooltip ? (
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p
+                        className="text-sm leading-relaxed text-text-secondary/90 line-clamp-3"
+                        title={notesText}
+                      >
+                        {notesText}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent className={tooltipClassName}>{notesText}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <p
+                  className="text-sm leading-relaxed text-text-secondary/90 line-clamp-3"
+                  title={notesText}
+                >
+                  {notesText}
+                </p>
+              )
+            ) : null}
           </div>
 
           {/* Metadata */}

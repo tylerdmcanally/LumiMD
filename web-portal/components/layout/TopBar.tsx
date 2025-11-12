@@ -47,7 +47,7 @@ export function TopBar({ title, subtitle, actions, onMenuClick }: TopBarProps) {
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            inputSize="sm"
+            inputSize="md"
             leftIcon={<Search className="h-4 w-4" />}
           />
         </div>

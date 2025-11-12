@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useVisits } from '@/lib/api/hooks';
 import { normalizeVisitStatus } from '@/lib/visits/status';
@@ -232,13 +233,28 @@ export default function VisitsPage() {
     }
   };
 
+  const isFilterActive = React.useMemo(() => {
+    return (
+      filters.search.trim().length > 0 ||
+      filters.provider !== 'all' ||
+      filters.specialty !== 'all' ||
+      filters.location !== 'all' ||
+      filters.sortBy !== DEFAULT_FILTERS.sortBy
+    );
+  }, [filters]);
+
+  const handleResetFilters = () => {
+    setFilters(() => ({ ...DEFAULT_FILTERS }));
+  };
+
   return (
-    <PageContainer maxWidth="2xl">
-      <div className="space-y-8 animate-fade-in-up">
-        <PageHeader
-          title="Visits"
-          subtitle="View and manage your medical visit history"
-        />
+    <TooltipProvider delayDuration={150}>
+      <PageContainer maxWidth="2xl">
+        <div className="space-y-8 animate-fade-in-up">
+          <PageHeader
+            title="Visits"
+            subtitle="View and manage your medical visit history"
+          />
 
         {/* Stats Cards */}
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
@@ -274,7 +290,7 @@ export default function VisitsPage() {
               <h3 className="font-semibold text-text-primary">Filters</h3>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               <Input
                 placeholder="Search visits..."
                 value={filters.search}
@@ -356,6 +372,21 @@ export default function VisitsPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-text-secondary">
+                Search and filter by provider, specialty, or location. Sorting updates instantly.
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start sm:self-auto"
+                onClick={handleResetFilters}
+                disabled={!isFilterActive}
+              >
+                Reset filters
+              </Button>
+            </div>
           </div>
         </Card>
 
@@ -388,7 +419,7 @@ export default function VisitsPage() {
                   'px-4 pt-4 text-sm transition-smooth sm:px-6',
                   isSelectionMode
                     ? 'rounded-t-3xl border border-border-light bg-background-subtle/70 pb-4'
-                    : 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
+                    : 'flex flex-col gap-3 md:flex-row md:items-center md:justify-between',
                 )}
               >
                 {isSelectionMode ? (
@@ -454,8 +485,8 @@ export default function VisitsPage() {
                   className={cn(
                     'grid items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-sm font-semibold text-text-secondary',
                     isSelectionMode
-                      ? 'grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
-                      : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_minmax(0,1fr)_96px]',
+                      ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
+                      : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
                   )}
                 >
                   {isSelectionMode && (
@@ -477,7 +508,7 @@ export default function VisitsPage() {
                   )}
                   <div>Provider & Specialty</div>
                   <div>Date</div>
-                  <div>Location</div>
+                  <div className="hidden lg:block">Location</div>
                   <div>Status</div>
                   <div className="text-right">Actions</div>
                 </div>
@@ -537,8 +568,9 @@ export default function VisitsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-    </div>
-    </PageContainer>
+        </div>
+      </PageContainer>
+    </TooltipProvider>
   );
 }
 
@@ -594,8 +626,8 @@ function VisitRow({
     : '—';
 
   const columnsClass = selectionMode
-    ? 'grid grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
-    : 'grid grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.6fr)_minmax(0,1fr)_96px]';
+    ? 'grid grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
+    : 'grid grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]';
 
   const handleRowClick = () => {
     if (selectionMode) {
@@ -611,6 +643,42 @@ function VisitRow({
       handleRowClick();
     }
   };
+
+  const providerName =
+    typeof visit.provider === 'string' && visit.provider.trim().length
+      ? visit.provider.trim()
+      : 'Unknown Provider';
+  const specialtyLabel =
+    typeof visit.specialty === 'string' && visit.specialty.trim().length
+      ? visit.specialty.trim()
+      : 'General';
+  const locationLabel =
+    typeof visit.location === 'string' && visit.location.trim().length
+      ? visit.location.trim()
+      : '—';
+  const tooltipClassName =
+    'max-w-xs text-sm font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2';
+  const showProviderTooltip = providerName.length > 28;
+  const showSpecialtyTooltip = specialtyLabel.length > 28;
+  const showLocationTooltip = locationLabel.length > 32;
+
+  const providerLabel = (
+    <p className="font-semibold text-text-primary truncate" title={providerName}>
+      {providerName}
+    </p>
+  );
+
+  const specialtyLabelNode = (
+    <p className="text-sm text-text-secondary truncate" title={specialtyLabel}>
+      {specialtyLabel}
+    </p>
+  );
+
+  const locationLabelNode = (
+    <span className="truncate text-sm" title={locationLabel}>
+      {locationLabel}
+    </span>
+  );
 
   return (
     <div
@@ -645,11 +713,24 @@ function VisitRow({
           <Stethoscope className="h-5 w-5 text-brand-primary" />
         </div>
         <div className="min-w-0">
-          <p className="font-semibold text-text-primary truncate">
-            {visit.provider || 'Unknown Provider'}
-          </p>
-          <p className="text-sm text-text-secondary truncate">
-            {visit.specialty || 'General'}
+          {showProviderTooltip ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{providerLabel}</TooltipTrigger>
+              <TooltipContent className={tooltipClassName}>{providerName}</TooltipContent>
+            </Tooltip>
+          ) : (
+            providerLabel
+          )}
+          {showSpecialtyTooltip ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{specialtyLabelNode}</TooltipTrigger>
+              <TooltipContent className={tooltipClassName}>{specialtyLabel}</TooltipContent>
+            </Tooltip>
+          ) : (
+            specialtyLabelNode
+          )}
+          <p className="mt-1 line-clamp-1 text-xs text-text-muted lg:hidden" title={locationLabel}>
+            {locationLabel}
           </p>
         </div>
       </div>
@@ -661,9 +742,16 @@ function VisitRow({
       </div>
 
       {/* Location */}
-      <div className="flex items-center gap-2 text-text-secondary">
+      <div className="hidden lg:flex items-center gap-2 text-text-secondary">
         <MapPin className="h-4 w-4" />
-        <span className="truncate text-sm">{visit.location || '—'}</span>
+        {showLocationTooltip ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{locationLabelNode}</TooltipTrigger>
+            <TooltipContent className={tooltipClassName}>{locationLabel}</TooltipContent>
+          </Tooltip>
+        ) : (
+          locationLabelNode
+        )}
       </div>
 
       {/* Status */}
@@ -715,6 +803,14 @@ function VisitCard({
   const formattedDate = visitDate ? format(visitDate, 'MMM d, yyyy') : '—';
   const formattedTime = visitDate ? format(visitDate, 'h:mm a') : null;
 
+  const providerName =
+    typeof visit.provider === 'string' && visit.provider.trim().length
+      ? visit.provider.trim()
+      : 'Unknown provider';
+  const specialtyLabel =
+    typeof visit.specialty === 'string' && visit.specialty.trim().length
+      ? visit.specialty.trim()
+      : 'General';
   const locationLabel =
     typeof visit.location === 'string' && visit.location.trim().length
       ? visit.location.trim()
@@ -760,11 +856,11 @@ function VisitCard({
             {formattedTime ? ` • ${formattedTime}` : ''}
           </p>
           <div>
-            <h3 className="text-lg font-semibold text-text-primary">
-              {visit.provider || 'Unknown provider'}
+            <h3 className="text-lg font-semibold text-text-primary line-clamp-2" title={providerName}>
+              {providerName}
             </h3>
-            <p className="text-sm text-text-secondary">
-              {visit.specialty || 'General'}
+            <p className="text-sm text-text-secondary line-clamp-1" title={specialtyLabel}>
+              {specialtyLabel}
             </p>
           </div>
         </div>
@@ -793,13 +889,15 @@ function VisitCard({
 
       <div className="mt-4 flex items-start gap-2 text-sm text-text-secondary">
         <MapPin className="mt-0.5 h-4 w-4 text-brand-primary/80" />
-        <span className="flex-1">
+        <span className="flex-1 line-clamp-2" title={locationLabel}>
           {locationLabel}
         </span>
       </div>
 
       {summarySnippet ? (
-        <p className="mt-4 text-sm leading-relaxed text-text-secondary/90">{summarySnippet}</p>
+        <p className="mt-4 line-clamp-4 text-sm leading-relaxed text-text-secondary/90" title={summarySnippet}>
+          {summarySnippet}
+        </p>
       ) : null}
 
       <div className="mt-5 flex items-center gap-2">

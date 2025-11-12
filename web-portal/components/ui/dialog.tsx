@@ -6,6 +6,101 @@ import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+const mergeRefs = <T,>(...refs: (React.Ref<T> | undefined)[]) => {
+  return (value: T | null) => {
+    refs.forEach((ref) => {
+      if (typeof ref === 'function') {
+        ref(value);
+      } else if (ref != null) {
+        (ref as React.MutableRefObject<T | null>).current = value;
+      }
+    });
+  };
+};
+
+type VisualViewportSnapshot = {
+  height: number | null;
+  offsetTop: number;
+  innerHeight: number | null;
+  baselineHeight: number | null;
+};
+
+function useVisualViewportSnapshot(): VisualViewportSnapshot {
+  const baselineRef = React.useRef<number | null>(null);
+  const [viewport, setViewport] = React.useState<{ height: number | null; offsetTop: number }>({
+    height: null,
+    offsetTop: 0,
+  });
+  const [innerHeight, setInnerHeight] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleResize = () => {
+      setInnerHeight(window.innerHeight);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) {
+      return;
+    }
+
+    const { visualViewport } = window;
+
+    const updateViewport = () => {
+      if (visualViewport == null) {
+        return;
+      }
+
+      if (
+        visualViewport.offsetTop === 0 &&
+        baselineRef.current !== null &&
+        Math.abs(visualViewport.height - baselineRef.current) > 120
+      ) {
+        baselineRef.current = visualViewport.height;
+      }
+
+      if (
+        baselineRef.current === null ||
+        visualViewport.height > (baselineRef.current ?? 0) + 32
+      ) {
+        baselineRef.current = visualViewport.height;
+      }
+
+      setViewport({
+        height: visualViewport.height,
+        offsetTop: visualViewport.offsetTop,
+      });
+    };
+
+    updateViewport();
+    visualViewport.addEventListener('resize', updateViewport);
+    visualViewport.addEventListener('scroll', updateViewport);
+
+    return () => {
+      visualViewport.removeEventListener('resize', updateViewport);
+      visualViewport.removeEventListener('scroll', updateViewport);
+    };
+  }, []);
+
+  return {
+    height: viewport.height,
+    offsetTop: viewport.offsetTop,
+    innerHeight,
+    baselineHeight: baselineRef.current,
+  };
+}
+
 const Dialog = DialogPrimitive.Root;
 
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -34,41 +129,109 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed inset-x-4 top-[5vh] z-modal grid w-auto max-w-full gap-6 rounded-3xl border border-border-light bg-surface p-6 shadow-floating',
-        'max-h-[calc(100vh-80px)] overflow-y-auto pb-24 sm:pb-10',
-        'duration-300',
-        'sm:left-[50%] sm:top-[30vh] sm:translate-x-[-50%] sm:translate-y-[-50%]',
-        'lg:top-[35vh]',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out',
-        'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-        'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        'data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%]',
-        'sm:left-[50%] sm:top-[50%] sm:max-w-2xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:p-8',
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
+>(({ className, children, style, ...props }, ref) => {
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const mergedRef = React.useMemo(() => mergeRefs(ref, contentRef), [ref]);
+  const { height, offsetTop, innerHeight, baselineHeight } = useVisualViewportSnapshot();
+
+  const shouldAdapt = React.useMemo(() => {
+    if (!height) {
+      return false;
+    }
+    const baseline = baselineHeight ?? innerHeight ?? height;
+    const heightDelta = baseline != null ? baseline - height : 0;
+    return (offsetTop ?? 0) > 0 || heightDelta > 80;
+  }, [baselineHeight, height, innerHeight, offsetTop]);
+
+  const dynamicStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    if (!shouldAdapt || !height) {
+      return undefined;
+    }
+    const offset = Math.max(offsetTop ?? 0, 16);
+    const availableHeight = Math.max(height - offset - 24, 280);
+    return {
+      top: `calc(${offset}px + env(safe-area-inset-top, 0px))`,
+      maxHeight: `${availableHeight}px`,
+    };
+  }, [height, offsetTop, shouldAdapt]);
+
+  const contentStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    if (!dynamicStyle) {
+      return style;
+    }
+    return {
+      ...style,
+      ...dynamicStyle,
+    };
+  }, [dynamicStyle, style]);
+
+  React.useEffect(() => {
+    const node = contentRef.current;
+    if (!node) {
+      return;
+    }
+
+    const handleFocus = (event: FocusEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || !node.contains(target)) {
+        return;
+      }
+      if (typeof target.scrollIntoView !== 'function') {
+        return;
+      }
+      requestAnimationFrame(() => {
+        target.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+          behavior: 'smooth',
+        });
+      });
+    };
+
+    node.addEventListener('focusin', handleFocus);
+
+    return () => {
+      node.removeEventListener('focusin', handleFocus);
+    };
+  }, []);
+
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={mergedRef}
+        style={contentStyle}
         className={cn(
-          'absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full',
-          'bg-background-subtle text-text-tertiary hover:text-text-primary hover:bg-hover',
-          'transition-smooth focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
-          'disabled:pointer-events-none'
+          'fixed inset-x-4 top-[5vh] z-modal grid w-auto max-w-full gap-6 rounded-3xl border border-border-light bg-surface p-6 shadow-floating',
+          'max-h-[calc(var(--app-height)-80px)] overflow-y-auto pb-24 sm:pb-10',
+          'duration-300 scroll-touch overscroll-contain',
+          'sm:left-[50%] sm:top-[30vh] sm:translate-x-[-50%] sm:translate-y-[-50%]',
+          'lg:top-[35vh]',
+          'data-[state=open]:animate-in data-[state=closed]:animate-out',
+          'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+          'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          'data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%]',
+          'sm:left-[50%] sm:top-[50%] sm:max-w-2xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:p-8',
+          className
         )}
+        {...props}
       >
-        <X className="h-5 w-5" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+        {children}
+        <DialogPrimitive.Close
+          className={cn(
+            'absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full',
+            'bg-background-subtle text-text-tertiary hover:text-text-primary hover:bg-hover',
+            'transition-smooth focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
+            'disabled:pointer-events-none'
+          )}
+        >
+          <X className="h-5 w-5" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({

@@ -273,8 +273,12 @@ function ActivityItem({
           {icon}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-text-primary">{title}</p>
-          <p className="text-sm text-text-secondary mt-0.5">{subtitle}</p>
+          <p className="font-medium text-text-primary truncate" title={title}>
+            {title}
+          </p>
+          <p className="text-sm text-text-secondary mt-0.5 truncate" title={subtitle}>
+            {subtitle}
+          </p>
           <p className="text-xs text-text-muted mt-1">
             {format(new Date(date), 'MMM d, yyyy')}
           </p>
