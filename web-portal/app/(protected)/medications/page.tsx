@@ -439,10 +439,16 @@ function MedicationRow({
   const isActive = medication.active !== false && !medication.stoppedAt;
   const { shortIndication, drugClass, showInfoCta, isFetchingInfo, handleNeedInfoClick } =
     useMedicationInsightHelpers(medication);
+  const columnTemplate =
+    'grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1fr)_160px]';
 
   return (
     <div
-      className="group grid grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1fr)_160px] items-center gap-4 px-6 py-5 transition-smooth hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/20 cursor-pointer"
+      className={cn(
+        'group items-center gap-4 px-6 py-5 transition-smooth hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/20 cursor-pointer',
+        'grid',
+        columnTemplate,
+      )}
       role="button"
       tabIndex={0}
       onClick={onView}
