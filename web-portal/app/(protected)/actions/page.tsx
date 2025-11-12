@@ -578,11 +578,12 @@ function ActionCalendar({
                 {format(day, 'd')}
               </span>
               <div className="mt-3 space-y-1">
-                {dayActions.slice(0, 3).map((action) => {
-                  const pending = action.completed !== true;
-                  return (
-                    <TooltipProvider delayDuration={150} key={action.id}>
-                      <Tooltip>
+                <TooltipProvider delayDuration={150}>
+                  {dayActions.slice(0, 3).map((action) => {
+                    const pending = action.completed !== true;
+                    const title = getActionTitle(action.description);
+                    return (
+                      <Tooltip key={action.id}>
                         <TooltipTrigger asChild>
                           <button
                             type="button"
@@ -591,24 +592,24 @@ function ActionCalendar({
                               onSelectAction?.(action);
                             }}
                             className={cn(
-                              'w-full rounded-full px-2 py-1 text-left text-[11px] font-medium transition-smooth hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+                              'w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-full px-2 py-1 text-left text-[11px] font-medium transition-smooth hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
                               pending
                                 ? 'bg-brand-primary-pale text-brand-primary'
                                 : 'bg-background-subtle text-text-secondary',
                             )}
                           >
-                            <span className="inline-block max-w-full overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                              {getActionTitle(action.description)}
+                            <span className="block overflow-hidden text-ellipsis whitespace-nowrap align-middle">
+                              {title}
                             </span>
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-[220px] text-xs font-medium leading-snug text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                          {getActionTitle(action.description)}
+                          {title}
                         </TooltipContent>
                       </Tooltip>
-                    </TooltipProvider>
-                  );
-                })}
+                    );
+                  })}
+                </TooltipProvider>
                 {dayActions.length > 3 ? (
                   <div className="text-[11px] font-medium text-text-muted">
                     +{dayActions.length - 3} more
