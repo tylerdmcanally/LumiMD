@@ -581,7 +581,11 @@ function ActionCalendar({
                 <TooltipProvider delayDuration={150}>
                   {dayActions.slice(0, 3).map((action) => {
                     const pending = action.completed !== true;
-                    const title = getActionTitle(action.description);
+                    const fullTitle = getActionTitle(action.description);
+                    const displayTitle =
+                      typeof fullTitle === 'string' && fullTitle.length > 28
+                        ? `${fullTitle.slice(0, 27).trimEnd()}…`
+                        : fullTitle;
                     return (
                       <Tooltip key={action.id}>
                         <TooltipTrigger asChild>
@@ -599,12 +603,12 @@ function ActionCalendar({
                             )}
                           >
                             <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                              {title}
+                              {displayTitle}
                             </span>
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-[220px] text-xs font-medium leading-snug text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                          {title}
+                          {fullTitle}
                         </TooltipContent>
                       </Tooltip>
                     );
