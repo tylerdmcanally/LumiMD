@@ -39,7 +39,9 @@
         {
           "microphonePermission": "Allow LumiMD to record audio for your medical visit recordings."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "extra": {
       "router": {},
