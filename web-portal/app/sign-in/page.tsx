@@ -163,7 +163,7 @@ export default function SignInPage() {
                 console.log('Google Sign In');
               }}
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
                 <Image
                   src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
                   alt="Google"
