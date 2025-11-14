@@ -153,6 +153,7 @@ const config: Config = {
         popover: '600',
         toast: '700',
         tooltip: '800',
+        header: '900',
       },
 
       // Animation
