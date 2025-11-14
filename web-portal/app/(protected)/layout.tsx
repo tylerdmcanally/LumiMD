@@ -13,9 +13,20 @@ export default function ProtectedLayout({
 }) {
   const [drawerOpen, setDrawerOpen] = React.useState(false);
 
+  // Set fixed viewport height on mount to prevent layout shifts from browser chrome
+  React.useEffect(() => {
+    const setAppHeight = () => {
+      const vh = window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${vh}px`);
+    };
+
+    setAppHeight();
+    // Don't update on resize to prevent shifts when browser chrome shows/hides
+  }, []);
+
   return (
     <AuthGuard>
-      <div className="flex h-screen h-[var(--app-height)] bg-background overflow-hidden">
+      <div className="flex h-[100vh] lg:h-screen h-[var(--app-height)] bg-background overflow-hidden">
         <Sidebar />
         <MobileSidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
