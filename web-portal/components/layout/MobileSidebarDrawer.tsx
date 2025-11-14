@@ -19,6 +19,7 @@ import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
+import { useUserProfile } from '@/lib/api/hooks';
 
 type NavItem = {
   label: string;
@@ -64,6 +65,30 @@ interface MobileSidebarDrawerProps {
 export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps) {
   const user = useCurrentUser();
   const pathname = usePathname();
+  const userId = user?.uid ?? null;
+
+  const { data: profile } = useUserProfile(userId, {
+    enabled: Boolean(userId),
+  });
+
+  const displayName = React.useMemo(() => {
+    const profileName =
+      (typeof profile?.preferredName === 'string' && profile.preferredName.trim()) ||
+      (typeof profile?.firstName === 'string' && profile.firstName.trim());
+    if (profileName && profileName.length > 0) {
+      return profileName;
+    }
+
+    if (typeof user?.displayName === 'string' && user.displayName.trim().length > 0) {
+      return user.displayName.trim().split(' ')[0];
+    }
+
+    if (typeof user?.email === 'string' && user.email.length > 0) {
+      return user.email.split('@')[0];
+    }
+
+    return 'User';
+  }, [profile?.preferredName, profile?.firstName, user?.displayName, user?.email]);
 
   // Close drawer when route changes
   React.useEffect(() => {
@@ -184,7 +209,7 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
               </div>
               <div className="flex-1 min-w-0">
                 <p className="truncate text-sm font-semibold text-text-primary">
-                  {user.displayName || 'User'}
+                  {displayName}
                 </p>
                 <p className="truncate text-xs text-text-muted">
                   {user.email}
