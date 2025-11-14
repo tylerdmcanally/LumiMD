@@ -15,7 +15,7 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-sticky bg-surface/80 backdrop-blur-xl border-b border-border-light lg:hidden',
+        'z-sticky bg-surface border-b border-border-light lg:hidden shrink-0',
         className
       )}
       style={{
