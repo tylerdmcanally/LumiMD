@@ -21,7 +21,7 @@ export default function ProtectedLayout({
 
         <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
           <TopBar onMenuClick={() => setDrawerOpen(true)} />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain pb-8">
             {children}
           </div>
         </main>
