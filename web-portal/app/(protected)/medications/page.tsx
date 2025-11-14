@@ -799,9 +799,9 @@ function MedicationCard({
             </p>
           )}
 
-          {/* Drug class */}
+          {/* Drug class - mobile only */}
           {drugClass && (
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary md:hidden">
               {drugClass}
             </p>
           )}
