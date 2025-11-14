@@ -435,15 +435,16 @@ export default function VisitsPage() {
           </div>
         </div>
 
-        {/* Filters */}
-        <Card variant="elevated" padding="lg">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-text-tertiary" />
-              <h3 className="font-semibold text-text-primary">Filters</h3>
-            </div>
+        {/* Filters - Desktop only, mobile gets simple search */}
+        <div className="hidden md:block">
+          <Card variant="elevated" padding="lg">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Filter className="h-5 w-5 text-text-tertiary" />
+                <h3 className="font-semibold text-text-primary">Filters</h3>
+              </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <Input
                 placeholder="Search visits..."
                 value={filters.search}
@@ -562,6 +563,20 @@ export default function VisitsPage() {
             </div>
           </div>
         </Card>
+        </div>
+
+        {/* Mobile-only simple search */}
+        <div className="md:hidden">
+          <Input
+            placeholder="Search visits..."
+            value={filters.search}
+            onChange={(e) =>
+              setFilters((prev) => ({ ...prev, search: e.target.value }))
+            }
+            leftIcon={<Search className="h-4 w-4" />}
+            className="w-full"
+          />
+        </div>
 
         {/* Visits Table/List */}
         <Card variant="elevated" padding="none">
