@@ -824,7 +824,7 @@ function ActionCard({
         isCompleted && 'opacity-80'
       )}
     >
-      <div className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-start sm:gap-6 sm:p-5">
+      <div className="flex items-start gap-3 p-3.5 sm:gap-4 sm:p-5">
         {/* Checkbox */}
         <button
           onClick={(e) => {
@@ -834,34 +834,35 @@ function ActionCard({
             }
           }}
           className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 sm:h-12 sm:w-12',
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
             isCompleted
-              ? 'border-success bg-success text-white'
-              : 'border-border hover:border-brand-primary/60',
+              ? 'border-success bg-success text-white shadow-sm'
+              : 'border-brand-primary/30 bg-brand-primary-pale/40 hover:bg-brand-primary-pale hover:border-brand-primary/60 hover:shadow-md hover:scale-105 active:scale-95',
             isUpdating && 'cursor-wait opacity-60'
           )}
           aria-label={isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
           disabled={isUpdating}
         >
           {isUpdating ? (
-            <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" />
+            <Loader2 className="h-5 w-5 animate-spin text-brand-primary" />
           ) : isCompleted ? (
-            <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6" />
+            <CheckCircle2 className="h-6 w-6" />
           ) : (
-            <Circle className="h-5 w-5 text-text-tertiary/30 sm:h-6 sm:w-6" />
+            <Circle className="h-6 w-6 text-brand-primary/40" />
           )}
         </button>
 
         {/* Content */}
-        <div className="flex-1 min-w-0 space-y-2.5 sm:space-y-4">
-          <div className="space-y-1.5 sm:space-y-2">
+        <div className="flex-1 min-w-0 space-y-2.5 sm:space-y-3">
+          {/* Title and Notes */}
+          <div className="space-y-1.5">
             {showDescriptionTooltip ? (
               <TooltipProvider delayDuration={150}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <h3
                       className={cn(
-                        'text-base font-semibold text-text-primary line-clamp-2 sm:text-lg',
+                        'text-base font-semibold text-text-primary line-clamp-2 leading-snug',
                         isCompleted && 'line-through text-text-secondary'
                       )}
                       title={descriptionText}
@@ -875,7 +876,7 @@ function ActionCard({
             ) : (
               <h3
                 className={cn(
-                  'text-base font-semibold text-text-primary line-clamp-2 sm:text-lg',
+                  'text-base font-semibold text-text-primary line-clamp-2 leading-snug',
                   isCompleted && 'line-through text-text-secondary'
                 )}
                 title={descriptionText}
@@ -889,7 +890,7 @@ function ActionCard({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <p
-                        className="text-sm leading-relaxed text-text-secondary/90 line-clamp-2 sm:line-clamp-3"
+                        className="text-sm leading-relaxed text-text-secondary/90 line-clamp-2"
                         title={notesText}
                       >
                         {notesText}
@@ -900,7 +901,7 @@ function ActionCard({
                 </TooltipProvider>
               ) : (
                 <p
-                  className="text-sm leading-relaxed text-text-secondary/90 line-clamp-2 sm:line-clamp-3"
+                  className="text-sm leading-relaxed text-text-secondary/90 line-clamp-2"
                   title={notesText}
                 >
                   {notesText}
@@ -910,16 +911,16 @@ function ActionCard({
           </div>
 
           {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary sm:gap-3 sm:text-sm">
+          <div className="flex flex-wrap items-center gap-2">
             {dueDate && (
               <div
                 className={cn(
-                  'flex items-center gap-1 rounded-full bg-background-subtle px-2.5 py-1 sm:gap-1.5 sm:px-3',
+                  'flex items-center gap-1.5 rounded-full bg-background-subtle px-3 py-1.5 text-xs font-medium',
                   isOverdue ? 'text-error' : 'text-text-tertiary'
                 )}
               >
-                <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span className="font-medium">
+                <Calendar className="h-3.5 w-3.5" />
+                <span>
                   Due {format(dueDate, 'MMM d, yyyy')}
                   {isOverdue && ' (Overdue)'}
                 </span>
@@ -933,14 +934,14 @@ function ActionCard({
             )}
 
             {action.completedAt && (
-              <span className="rounded-full bg-background-subtle px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted sm:px-3">
+              <span className="rounded-full bg-background-subtle px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
                 Completed {format(new Date(action.completedAt), 'MMM d')}
               </span>
             )}
           </div>
 
           {/* Actions Menu */}
-          <div className="flex items-center gap-2 sm:justify-end">
+          <div className="flex items-center gap-2 pt-1">
             <Button
               variant="ghost"
               size="sm"
