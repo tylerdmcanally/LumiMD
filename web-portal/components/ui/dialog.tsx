@@ -135,7 +135,16 @@ const DialogContent = React.forwardRef<
   const mergedRef = React.useMemo(() => mergeRefs(ref, contentRef), [ref]);
   const { height, offsetTop, innerHeight, baselineHeight } = useVisualViewportSnapshot();
 
+  // Disable dynamic viewport adjustment on mobile - we use fixed sizing instead
+  // Only apply dynamic styles on desktop (sm breakpoint and above)
   const shouldAdapt = React.useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    // Only adapt on desktop (768px and above)
+    if (window.innerWidth < 768) {
+      return false;
+    }
     if (!height) {
       return false;
     }
