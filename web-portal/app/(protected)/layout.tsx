@@ -13,20 +13,40 @@ export default function ProtectedLayout({
 }) {
   const [drawerOpen, setDrawerOpen] = React.useState(false);
 
-  // Set fixed viewport height on mount to prevent layout shifts from browser chrome
+  // Set viewport height for consistent cross-browser mobile experience
   React.useEffect(() => {
     const setAppHeight = () => {
-      const vh = window.innerHeight;
+      // Use visualViewport if available (more accurate on mobile browsers)
+      const vh = window.visualViewport?.height || window.innerHeight;
       document.documentElement.style.setProperty('--app-height', `${vh}px`);
     };
 
     setAppHeight();
-    // Don't update on resize to prevent shifts when browser chrome shows/hides
+
+    // Update on orientation change (but not on scroll-triggered resize)
+    let lastOrientation = window.orientation;
+    const handleResize = () => {
+      if (window.orientation !== lastOrientation) {
+        lastOrientation = window.orientation;
+        setAppHeight();
+      }
+    };
+
+    window.addEventListener('orientationchange', setAppHeight);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('orientationchange', setAppHeight);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   return (
     <AuthGuard>
-      <div className="flex h-[100vh] lg:h-screen h-[var(--app-height)] bg-background overflow-hidden">
+      <div
+        className="flex bg-background overflow-hidden"
+        style={{ height: 'var(--app-height)' }}
+      >
         <Sidebar />
         <MobileSidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 

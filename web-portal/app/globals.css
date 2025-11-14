@@ -7,7 +7,9 @@
    ============================================================================ */
 
 :root {
-  --app-height: 100vh; /* Fallback, will be set by JS on mount */
+  /* Viewport height - set by JS for cross-browser mobile compatibility */
+  --app-height: 100vh; /* Fallback for SSR, updated on client mount */
+
   /* Colors - Brand */
   --color-brand-primary: #0a99a4;
   --color-brand-primary-dark: #064e6d;
