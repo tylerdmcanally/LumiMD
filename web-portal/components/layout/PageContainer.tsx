@@ -22,17 +22,17 @@ export function PageContainer({
   maxWidth = '2xl',
 }: PageContainerProps) {
   return (
-    <main className="flex-1 overflow-auto bg-background">
+    <div className="min-h-full bg-background">
       <div
         className={cn(
-          'mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 md:px-8 md:py-10 lg:px-10 lg:py-12 xl:px-12',
+          'mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10',
           maxWidthClasses[maxWidth],
           className
         )}
       >
         {children}
       </div>
-    </main>
+    </div>
   );
 }
 

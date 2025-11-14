@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 
 import './globals.css';
@@ -8,6 +8,14 @@ import { QueryProvider } from '@/components/providers/query-provider';
 export const metadata: Metadata = {
   title: 'LumiMD',
   description: 'Your medical navigation companion',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
 };
 
 const inter = Inter({

@@ -1,24 +1,32 @@
 'use client';
 
+import * as React from 'react';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
+import { MobileSidebarDrawer } from '@/components/layout/MobileSidebarDrawer';
+import { TopBar } from '@/components/layout/TopBar';
 
 export default function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+
   return (
     <AuthGuard>
-      <div className="flex min-h-screen min-h-[var(--app-height)] bg-background">
+      <div className="flex h-screen h-[var(--app-height)] bg-background overflow-hidden">
         <Sidebar />
-        <div className="flex flex-1 flex-col lg:pb-0 min-h-0">
-          <div className="flex-1 overflow-y-auto scroll-touch overscroll-contain pb-24 lg:pb-0">
+        <MobileSidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+        <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
+          <TopBar onMenuClick={() => setDrawerOpen(true)} />
+          <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain pb-24 lg:pb-0">
             {children}
           </div>
           <MobileBottomNav />
-        </div>
+        </main>
       </div>
     </AuthGuard>
   );
