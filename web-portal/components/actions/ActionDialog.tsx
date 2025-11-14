@@ -168,7 +168,7 @@ export function ActionDialog({
 
           <Field label="Notes">
             <Textarea
-              rows={4}
+              rows={3}
               placeholder="Add helpful context, contact details, or instructions."
               value={form.notes}
               onChange={(event) => updateField('notes', event.target.value)}

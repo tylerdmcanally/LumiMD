@@ -199,7 +199,7 @@ export function MedicationDialog({
 
           <Field label="Notes">
             <Textarea
-              rows={4}
+              rows={3}
               value={form.notes}
               placeholder="Include instructions, allergy checks, or reasons for changes."
               onChange={(event) => handleChange('notes', event.target.value)}

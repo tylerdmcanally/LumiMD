@@ -130,7 +130,7 @@ export function EditVisitMetadataDialog({
             <Textarea
               placeholder="Add any personal notes or reminders. These stay private to you."
               value={notes}
-              rows={4}
+              rows={3}
               onChange={(event) => setNotes(event.target.value)}
             />
           </Field>
