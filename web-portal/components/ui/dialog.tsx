@@ -212,18 +212,12 @@ const DialogContent = React.forwardRef<
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={mergedRef}
-        style={{
-          ...contentStyle,
-          marginTop: 'max(env(safe-area-inset-top, 0px), 8px)',
-          marginBottom: 'env(safe-area-inset-bottom, 0px)',
-        }}
+        style={contentStyle}
         className={cn(
-          'fixed inset-x-4 z-modal w-auto max-w-full border border-border-light bg-surface shadow-floating',
-          // Mobile: maximize space with 90vh height, positioned near top
-          'top-2 bottom-auto h-[90vh] max-h-[90vh] rounded-2xl overflow-hidden flex flex-col',
-          // Desktop: centered modal
-          'sm:h-auto sm:max-h-[85vh] sm:top-[50%] sm:bottom-auto',
-          'sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:rounded-2xl',
+          'fixed inset-x-4 top-4 z-modal w-auto max-w-full rounded-3xl border border-border-light bg-surface shadow-floating',
+          'h-[70vh] max-h-[500px] overflow-hidden flex flex-col',
+          'sm:h-auto sm:max-h-[85vh]',
+          'sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:rounded-2xl',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -232,16 +226,16 @@ const DialogContent = React.forwardRef<
         )}
         {...props}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-6 pb-12 sm:p-8 scroll-touch [&_input]:text-base [&_select]:text-base [&_textarea]:text-base">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-6 pb-8 sm:p-8 [&_input]:text-base [&_select]:text-base [&_textarea]:text-base">
           <div className="flex flex-col gap-4 sm:gap-6">
             {children}
           </div>
         </div>
         <DialogPrimitive.Close
           className={cn(
-            'absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full z-10 touch-target',
+            'absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full z-10',
             'bg-background-subtle text-text-tertiary hover:text-text-primary hover:bg-hover',
-            'active:scale-95 transition-smooth focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
+            'transition-smooth focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
             'disabled:pointer-events-none'
           )}
         >
