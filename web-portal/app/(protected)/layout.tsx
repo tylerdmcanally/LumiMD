@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { MobileSidebarDrawer } from '@/components/layout/MobileSidebarDrawer';
 import { TopBar } from '@/components/layout/TopBar';
 
@@ -22,10 +21,9 @@ export default function ProtectedLayout({
 
         <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
           <TopBar onMenuClick={() => setDrawerOpen(true)} />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain pb-24 lg:pb-0">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain">
             {children}
           </div>
-          <MobileBottomNav />
         </main>
       </div>
     </AuthGuard>
