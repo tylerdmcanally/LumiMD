@@ -199,6 +199,21 @@ const normalizeMedicationEntry = (
       result.original = originalValue;
     }
 
+    if (typeof entry.needsConfirmation === 'boolean') {
+      result.needsConfirmation = entry.needsConfirmation;
+    }
+
+    const warningValue = typeof entry.warning === 'string' ? entry.warning.trim() : '';
+    if (warningValue) {
+      result.warning = warningValue;
+    }
+
+    const statusValue =
+      typeof entry.status === 'string' ? entry.status.trim().toLowerCase() : undefined;
+    if (statusValue === 'matched' || statusValue === 'fuzzy' || statusValue === 'unverified') {
+      result.status = statusValue;
+    }
+
     return result;
   }
 
@@ -285,6 +300,8 @@ const upsertMedication = async ({
     updatedAt: processedAt,
     lastSyncedAt: processedAt,
     needsConfirmation: entry.needsConfirmation ?? false,
+    medicationStatus: entry.status ?? null,
+    medicationWarning: entry.warning ?? null,
   };
 
   if (existingDoc) {
@@ -306,6 +323,8 @@ const upsertMedication = async ({
       updates.changedAt = processedAt;
     }
     updates.needsConfirmation = entry.needsConfirmation ?? false;
+    updates.medicationStatus = entry.status ?? null;
+    updates.medicationWarning = entry.warning ?? null;
 
     await existingDoc.ref.update(updates);
     return;

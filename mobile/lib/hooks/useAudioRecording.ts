@@ -3,11 +3,14 @@
  * Manages audio recording state and operations
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Audio } from 'expo-av';
 import { Platform } from 'react-native';
 
 export type RecordingState = 'idle' | 'recording' | 'paused' | 'stopped';
+export type AutoStopReason = 'interruption' | 'maxDuration';
+
+export const MAX_RECORDING_MS = 90 * 60 * 1000; // 90 minutes
 
 export interface UseAudioRecordingResult {
   // State
@@ -16,6 +19,7 @@ export interface UseAudioRecordingResult {
   uri: string | null;
   isRecording: boolean;
   isPaused: boolean;
+  autoStopReason: AutoStopReason | null;
   
   // Actions
   startRecording: () => Promise<void>;
@@ -35,7 +39,145 @@ export function useAudioRecording(): UseAudioRecordingResult {
   const [duration, setDuration] = useState(0);
   const [uri, setUri] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [durationInterval, setDurationInterval] = useState<NodeJS.Timeout | null>(null);
+  const [autoStopReason, setAutoStopReason] = useState<AutoStopReason | null>(null);
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingStateRef = useRef<RecordingState>('idle');
+  const activeSegmentStartRef = useRef<number | null>(null);
+  const accumulatedDurationRef = useRef(0);
+
+  const getFallbackDuration = () =>
+    accumulatedDurationRef.current +
+    (activeSegmentStartRef.current ? Date.now() - activeSegmentStartRef.current : 0);
+
+  const syncDuration = (status?: Audio.RecordingStatus) => {
+    const fallbackDuration = getFallbackDuration();
+    let nextDuration = fallbackDuration;
+
+    if (status && typeof status.durationMillis === 'number') {
+      const statusMs = status.durationMillis;
+
+      if (
+        recordingStateRef.current === 'recording' &&
+        activeSegmentStartRef.current &&
+        statusMs >= accumulatedDurationRef.current
+      ) {
+        const currentSegment = statusMs - accumulatedDurationRef.current;
+        activeSegmentStartRef.current = Date.now() - currentSegment;
+      }
+
+      if (statusMs > fallbackDuration) {
+        nextDuration = statusMs;
+      }
+    }
+
+    setDuration(nextDuration);
+    return nextDuration;
+  };
+
+  const clearDurationTimer = () => {
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = null;
+    }
+  };
+
+  const finalizeRecording = async (
+    activeRecording: Audio.Recording,
+    options: { reason?: AutoStopReason } = {}
+  ) => {
+    clearDurationTimer();
+
+    try {
+      const status = await activeRecording.getStatusAsync();
+      if (activeSegmentStartRef.current) {
+        accumulatedDurationRef.current += Date.now() - activeSegmentStartRef.current;
+        activeSegmentStartRef.current = null;
+      }
+      const fallbackDuration = accumulatedDurationRef.current;
+      const statusDuration =
+        typeof status.durationMillis === 'number' ? status.durationMillis : fallbackDuration;
+      setDuration(statusDuration);
+    } catch (statusError) {
+      console.warn('[Recording] Unable to read recording status during finalize:', statusError);
+    }
+
+    try {
+      activeRecording.setOnRecordingStatusUpdate(null);
+      await activeRecording.stopAndUnloadAsync();
+    } catch (stopError) {
+      if (options.reason === 'interruption') {
+        console.warn('[Recording] stopAndUnloadAsync called after interruption:', stopError);
+      } else {
+        console.error('[Recording] Failed to stop recording cleanly:', stopError);
+      }
+    }
+
+    const recordingUri = activeRecording.getURI() ?? null;
+    setUri(recordingUri);
+    setRecording(null);
+    recordingStateRef.current = 'stopped';
+    accumulatedDurationRef.current = 0;
+    activeSegmentStartRef.current = null;
+    setRecordingState('stopped');
+
+    if (options.reason === 'interruption') {
+      console.warn('[Recording] Recording stopped unexpectedly (likely background interruption).');
+    }
+
+    if (options.reason) {
+      setAutoStopReason(options.reason);
+    } else {
+      setAutoStopReason(null);
+    }
+  };
+
+  const registerRecordingStatusUpdates = (rec: Audio.Recording) => {
+    rec.setProgressUpdateInterval(500);
+    rec.setOnRecordingStatusUpdate((status) => {
+      syncDuration(status);
+
+      if (recordingStateRef.current !== 'recording') {
+        return;
+      }
+
+      if (
+        typeof status.durationMillis === 'number' &&
+        status.durationMillis >= MAX_RECORDING_MS
+      ) {
+        finalizeRecording(rec, { reason: 'maxDuration' }).catch((error) => {
+          console.error('[Recording] Failed to finalize after max duration:', error);
+        });
+        return;
+      }
+
+      if (!status.isRecording && !status.canRecord) {
+        finalizeRecording(rec, { reason: 'interruption' }).catch((error) => {
+          console.error('[Recording] Failed to finalize after interruption:', error);
+        });
+      }
+    });
+  };
+
+  const unregisterRecordingStatusUpdates = (rec: Audio.Recording) => {
+    rec.setOnRecordingStatusUpdate(null);
+  };
+
+  const startDurationTimer = (activeRecording: Audio.Recording) => {
+    clearDurationTimer();
+
+    durationIntervalRef.current = setInterval(() => {
+      const currentDuration = syncDuration();
+
+      if (
+        currentDuration >= MAX_RECORDING_MS &&
+        recordingStateRef.current === 'recording'
+      ) {
+        finalizeRecording(activeRecording, { reason: 'maxDuration' }).catch((error) => {
+          console.error('[Recording] Failed to auto-stop after max duration:', error);
+        });
+      }
+    }, 250);
+  };
 
   // Request microphone permission
   const requestPermission = async (): Promise<boolean> => {
@@ -56,12 +198,16 @@ export function useAudioRecording(): UseAudioRecordingResult {
     requestPermission();
   }, []);
 
+  useEffect(() => {
+    recordingStateRef.current = recordingState;
+  }, [recordingState]);
+
   // Configure audio mode for recording
   const configureAudioMode = async () => {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
+      staysActiveInBackground: true,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     });
@@ -78,25 +224,33 @@ export function useAudioRecording(): UseAudioRecordingResult {
         }
       }
 
+      setAutoStopReason(null);
       // Configure audio
       await configureAudioMode();
 
       console.log('[Recording] Starting recording...');
       
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      const recordingOptions = {
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        ios: {
+          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
+          extension: '.m4a',
+          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+        },
+      };
+      const { recording: newRecording } = await Audio.Recording.createAsync(recordingOptions);
 
       setRecording(newRecording);
+      recordingStateRef.current = 'recording';
       setRecordingState('recording');
       setDuration(0);
       setUri(null);
+      accumulatedDurationRef.current = 0;
+      activeSegmentStartRef.current = Date.now();
+      registerRecordingStatusUpdates(newRecording);
 
       // Start duration tracker
-      const interval = setInterval(() => {
-        setDuration(prev => prev + 100);
-      }, 100);
-      setDurationInterval(interval);
+      startDurationTimer(newRecording);
 
       console.log('[Recording] Recording started');
     } catch (error) {
@@ -111,11 +265,23 @@ export function useAudioRecording(): UseAudioRecordingResult {
       if (!recording) return;
       
       await recording.pauseAsync();
+      unregisterRecordingStatusUpdates(recording);
+      recordingStateRef.current = 'paused';
       setRecordingState('paused');
       
-      if (durationInterval) {
-        clearInterval(durationInterval);
-        setDurationInterval(null);
+      clearDurationTimer();
+      if (activeSegmentStartRef.current) {
+        accumulatedDurationRef.current += Date.now() - activeSegmentStartRef.current;
+        activeSegmentStartRef.current = null;
+      }
+
+      try {
+        const status = await recording.getStatusAsync();
+        if (typeof status.durationMillis === 'number') {
+          setDuration(status.durationMillis);
+        }
+      } catch (error) {
+        console.warn('[Recording] Failed to read status on pause:', error);
       }
       
       console.log('[Recording] Paused');
@@ -130,14 +296,15 @@ export function useAudioRecording(): UseAudioRecordingResult {
     try {
       if (!recording) return;
       
+      await configureAudioMode();
       await recording.startAsync();
+      activeSegmentStartRef.current = Date.now();
+      registerRecordingStatusUpdates(recording);
+      recordingStateRef.current = 'recording';
       setRecordingState('recording');
       
       // Restart duration tracker
-      const interval = setInterval(() => {
-        setDuration(prev => prev + 100);
-      }, 100);
-      setDurationInterval(interval);
+      startDurationTimer(recording);
       
       console.log('[Recording] Resumed');
     } catch (error) {
@@ -153,19 +320,9 @@ export function useAudioRecording(): UseAudioRecordingResult {
 
       console.log('[Recording] Stopping recording...');
       
-      const recordingUri = recording.getURI();
-      await recording.stopAndUnloadAsync();
-      
-      setUri(recordingUri);
-      setRecording(null);
-      setRecordingState('stopped');
-      
-      if (durationInterval) {
-        clearInterval(durationInterval);
-        setDurationInterval(null);
-      }
-      
-      console.log('[Recording] Stopped. URI:', recordingUri);
+      await finalizeRecording(recording);
+
+      console.log('[Recording] Stopped. URI:', recording.getURI());
     } catch (error) {
       console.error('[Recording] Failed to stop:', error);
       throw error;
@@ -174,15 +331,19 @@ export function useAudioRecording(): UseAudioRecordingResult {
 
   // Reset to initial state
   const resetRecording = () => {
-    if (durationInterval) {
-      clearInterval(durationInterval);
-      setDurationInterval(null);
-    }
+    clearDurationTimer();
     
+    if (recording) {
+      unregisterRecordingStatusUpdates(recording);
+    }
     setRecording(null);
+    recordingStateRef.current = 'idle';
     setRecordingState('idle');
     setDuration(0);
     setUri(null);
+    setAutoStopReason(null);
+    accumulatedDurationRef.current = 0;
+    activeSegmentStartRef.current = null;
   };
 
   // Cleanup on unmount
@@ -194,11 +355,10 @@ export function useAudioRecording(): UseAudioRecordingResult {
           console.log('[Recording] Cleanup - recording already unloaded');
         });
       }
-      if (durationInterval) {
-        clearInterval(durationInterval);
-      }
+      clearDurationTimer();
+      activeSegmentStartRef.current = null;
     };
-  }, [recording, durationInterval]);
+  }, [recording]);
 
   return {
     recordingState,
@@ -206,6 +366,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
     uri,
     isRecording: recordingState === 'recording',
     isPaused: recordingState === 'paused',
+    autoStopReason,
     hasPermission,
     requestPermission,
     startRecording,

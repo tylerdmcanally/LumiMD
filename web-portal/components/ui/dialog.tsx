@@ -202,16 +202,14 @@ const DialogContent = React.forwardRef<
         ref={mergedRef}
         style={contentStyle}
         className={cn(
-          'fixed inset-x-4 top-[5vh] z-modal grid w-auto max-w-full gap-6 rounded-3xl border border-border-light bg-surface p-6 shadow-floating',
+          'fixed inset-x-4 top-[min(5vh,3rem)] z-modal grid w-auto max-w-full gap-6 rounded-3xl border border-border-light bg-surface p-6 shadow-floating',
           'max-h-[calc(var(--app-height)-80px)] overflow-y-auto pb-24 sm:pb-10',
-          'duration-300 scroll-touch overscroll-contain',
-          'sm:left-[50%] sm:top-[30vh] sm:translate-x-[-50%] sm:translate-y-[-50%]',
-          'lg:top-[35vh]',
+      'duration-300 scroll-touch overscroll-contain will-change-scroll',
+          'sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:rounded-2xl sm:p-8',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
           'data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%]',
-          'sm:left-[50%] sm:top-[50%] sm:max-w-2xl sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:p-8',
           className
         )}
         {...props}

@@ -12,6 +12,8 @@ export interface MedicationChangeEntry {
   display?: string;
   original?: string;
   needsConfirmation?: boolean;
+  status?: 'matched' | 'fuzzy' | 'unverified';
+  warning?: string;
 }
 
 export interface VisitSummaryResult {
@@ -295,6 +297,17 @@ const normalizeMedicationEntry = (value: unknown): MedicationChangeEntry | null 
       result.needsConfirmation = record.needsConfirmation;
     }
 
+    const statusValueRaw = sanitizeText(record.status);
+    const statusValue = statusValueRaw?.toLowerCase();
+    if (statusValue === 'matched' || statusValue === 'fuzzy' || statusValue === 'unverified') {
+      result.status = statusValue;
+    }
+
+    const warningValue = sanitizeText(record.warning);
+    if (warningValue) {
+      result.warning = warningValue;
+    }
+
     return result;
   }
 
@@ -328,8 +341,19 @@ const ensureMedicationsObject = (value: unknown) => {
   };
 };
 
-const normalizeDrugName = (name: string): string =>
-  name.toLowerCase().replace(/[^a-z0-9]/g, '');
+const DRUG_NAME_ALIASES: Record<string, string> = {
+  hctz: 'hydrochlorothiazide',
+  hct: 'hydrochlorothiazide',
+  hcthydrochlorothiazide: 'hydrochlorothiazide',
+  asa: 'aspirin',
+};
+
+const normalizeDrugName = (name: string): string => {
+  if (!name) return '';
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const aliasKey = normalized.replace(/\d+/g, '');
+  return DRUG_NAME_ALIASES[aliasKey] ?? DRUG_NAME_ALIASES[normalized] ?? normalized;
+};
 
 const levenshteinDistance = (a: string, b: string): number => {
   if (a === b) return 0;
@@ -363,10 +387,32 @@ const refineMedicationListWithKnownNames = (
   list: MedicationChangeEntry[],
   knownNames: string[],
 ): MedicationChangeEntry[] => {
+  const FUZZY_WARNING =
+    'Medication name auto-corrected from the transcript. Please confirm with the prescribing provider before taking or adjusting this medication.';
+  const UNVERIFIED_WARNING =
+    'Unable to confidently identify this medication from the transcript. Confirm the exact name with the prescribing provider before use.';
+  const COMBO_SPLIT_PATTERN =
+    /\/|,|;|&|\+|-|\band\b|\bwith\b|\bplus\b|\balong with\b|\bcombined with\b/;
+  const COMBO_SPLIT_REGEX = new RegExp(COMBO_SPLIT_PATTERN.source, 'gi');
+
+  const isComboCandidate = (text?: string | null): boolean => {
+    if (!text || typeof text !== 'string') return false;
+    return COMBO_SPLIT_PATTERN.test(text.toLowerCase());
+  };
+
+  const extractComboComponents = (text: string): string[] => {
+    return text
+      .split(COMBO_SPLIT_REGEX)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 1);
+  };
+
   if (!Array.isArray(list) || list.length === 0 || knownNames.length === 0) {
     return list.map((entry) => ({
       ...entry,
       needsConfirmation: entry.needsConfirmation ?? false,
+      status: entry.status ?? (entry.needsConfirmation ? 'unverified' : 'matched'),
+      warning: entry.warning,
     }));
   }
 
@@ -378,9 +424,77 @@ const refineMedicationListWithKnownNames = (
   return list.map((entry) => {
     const result: MedicationChangeEntry = { ...entry };
     const normalizedEntryName = normalizeDrugName(entry.name);
+    const comboSources = [entry.name, entry.display, entry.original, entry.note].filter(
+      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+    );
+    const isCombo = comboSources.some((source) => isComboCandidate(source));
 
     if (!normalizedEntryName) {
       result.needsConfirmation = true;
+      result.status = result.status ?? 'unverified';
+      if (!result.warning) {
+        result.warning = UNVERIFIED_WARNING;
+      }
+      if (!result.note) {
+        result.note = UNVERIFIED_WARNING;
+      }
+      return result;
+    }
+
+    if (isCombo) {
+      const comboMatchesMap = new Map<string, KnownMedicationEntry>();
+
+      for (const source of comboSources) {
+        const components = extractComboComponents(source);
+        for (const component of components) {
+          const normalizedComponent = normalizeDrugName(component.replace(/\d+(?:\.\d+)?/g, ''));
+          const strippedComponent = normalizedComponent.replace(/\d+/g, '');
+          const candidate = strippedComponent || normalizedComponent;
+          if (!candidate) {
+            continue;
+          }
+
+          const match = normalizedKnown.find(
+            (item) =>
+              item.normalized === candidate ||
+              candidate === item.normalized ||
+              candidate.includes(item.normalized) ||
+              item.normalized.includes(candidate),
+          );
+
+          if (match) {
+            comboMatchesMap.set(match.original.toLowerCase(), match);
+          }
+        }
+      }
+
+      const comboMatches = Array.from(comboMatchesMap.values());
+
+      if (comboMatches.length >= 2) {
+        const combinedName = comboMatches.map((item) => item.original).join(' + ');
+        result.name = combinedName;
+        result.needsConfirmation = entry.needsConfirmation ?? false;
+        result.status = 'matched';
+        if (!result.display) {
+          result.display = combinedName;
+        }
+        if (!result.original) {
+          result.original = entry.original ?? entry.display ?? entry.name;
+        }
+        if (!result.needsConfirmation) {
+          result.warning = undefined;
+        }
+        return result;
+      }
+
+      result.needsConfirmation = true;
+      result.status = 'unverified';
+      if (!result.warning) {
+        result.warning = UNVERIFIED_WARNING;
+      }
+      if (!result.note) {
+        result.note = result.original ?? entry.display ?? entry.name;
+      }
       return result;
     }
 
@@ -394,6 +508,10 @@ const refineMedicationListWithKnownNames = (
     if (directMatch) {
       result.name = directMatch.original;
       result.needsConfirmation = entry.needsConfirmation ?? false;
+      result.status = 'matched';
+      if (!result.needsConfirmation) {
+        result.warning = undefined;
+      }
       return result;
     }
 
@@ -413,12 +531,26 @@ const refineMedicationListWithKnownNames = (
       const tolerance = Math.ceil(baseLength * 0.35);
       if (bestMatchScore <= tolerance) {
         result.name = bestMatchItem.original;
-        result.needsConfirmation = entry.needsConfirmation ?? false;
+        result.needsConfirmation = true;
+        result.status = 'fuzzy';
+        if (!result.warning) {
+          result.warning = FUZZY_WARNING;
+        }
+        if (!result.note) {
+          result.note = result.warning;
+        }
         return result;
       }
     }
 
     result.needsConfirmation = true;
+    result.status = 'unverified';
+    if (!result.warning) {
+      result.warning = UNVERIFIED_WARNING;
+    }
+    if (!result.note) {
+      result.note = result.warning;
+    }
     return result;
   });
 };
@@ -526,6 +658,8 @@ export class OpenAIService {
               '  • Set original to the exact transcript text or closest paraphrase.',
               '  • If no medications are covered, return empty arrays.',
               '  • If unsure about the exact medication name, set `needsConfirmation: true`, keep your best-guess `name`, and include the verbatim text in `original`.',
+              '  • Whenever `needsConfirmation` is true, also include a short `warning` message telling the patient to confirm with their prescribing provider, and set `status` to `"fuzzy"` (best guess) or `"unverified"` (unable to process).',
+              '  • If you truly cannot identify the medication, set `status: "unverified"`, keep the transcript excerpt in `original`, provide a concise `warning`, and leave the `name` as your safest description (e.g., "Unknown medication from transcript").',
               '  • Use the provided known medication list to correct obvious transcription errors whenever possible.',
               '',
               'Imaging/labs:',
@@ -540,9 +674,21 @@ export class OpenAIService {
               'Next steps:',
               '  • Provide concise, patient-facing tasks.',
               '  • Format each item as "Short title — follow up in timeframe".',
-              '    - Keep the title to 2-4 words (e.g., "Clinic follow up").',
-              '    - Place the natural-language timing only after the em dash (e.g., "Clinic follow up — follow up in about six months").',
-              '    - Always include clear temporal phrases ("in 3 months", "within 2 weeks") in the trailing clause so downstream systems can parse due dates.',
+              '    - Keep the title to 2-4 words using standardized phrases when possible:',
+              '        • "Clinic follow up"',
+              '        • "Return to clinic"',
+              '        • "Nurse visit"',
+              '        • "Blood pressure check"',
+              '        • "Lab draw"',
+              '        • "Imaging appointment"',
+              '        • "Medication review"',
+              '        • Use "Other task" sparingly when nothing else fits.',
+              '    - The phrase before the em dash identifies the task category; the phrase after the dash must contain the natural-language timing when a specific date or timeframe is provided (e.g., "Return to clinic — follow up in about three months").',
+              '    - If the clinician only orders something (e.g., "We will order a 7-day cardiac monitor" or "Order coronary CT angiogram") and no due date is specified, omit the em dash and timing so the item becomes a single label like "Imaging appointment". Do NOT invent or infer a timeframe.',
+              '    - Only include temporal phrases ("in 3 months", "within 2 weeks") when the clinician explicitly provided them. If no timing was stated, leave the item without a timeframe.',
+              '  • ALWAYS create an action item when the clinician orders a diagnostic test, imaging study, monitoring device, referral, or nurse visit—even if no date was given. Use the appropriate short label (e.g., "Imaging appointment", "Nurse visit") without a timeframe.',
+              '  • Each task should cover a single actionable next step. Split combined instructions into separate tasks if they require different actions or timelines.',
+              '  • If the visit explicitly defers to patient discretion (e.g., "call us if symptoms worsen"), create a "Contact clinic" task with the conditional phrasing after the em dash.',
               '',
               'Education object:',
               '  {',

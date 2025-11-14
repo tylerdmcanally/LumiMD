@@ -3,7 +3,7 @@
  * Audio recording interface for medical visits
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,11 +16,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from '../components/ui';
-import { useAudioRecording } from '../lib/hooks/useAudioRecording';
+import { useAudioRecording, MAX_RECORDING_MS } from '../lib/hooks/useAudioRecording';
 import { uploadAudioFile, UploadProgress } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { activateKeepAwake, deactivateKeepAwake } from 'expo-keep-awake';
+
+const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
+const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
+const RECORDING_LIMIT_MINUTES = MAX_RECORDING_MS / (60 * 1000);
 
 export default function RecordVisitScreen() {
   const router = useRouter();
@@ -38,6 +43,7 @@ export default function RecordVisitScreen() {
     resumeRecording,
     stopRecording,
     resetRecording,
+    autoStopReason,
   } = useAudioRecording();
 
   const [uploading, setUploading] = useState(false);
@@ -45,9 +51,14 @@ export default function RecordVisitScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isIdle = recordingState === 'idle';
   const isFinished = recordingState === 'stopped';
+  const longRecordingWarningShown = useRef(false);
   const showError = (message: string) => {
     setErrorMessage(message);
   };
+
+  const isPrimaryDisabled = uploading || isFinished;
+  const primaryIconName = isRecording ? 'pause' : isPaused ? 'play' : 'mic';
+  const primaryIconColor = isRecording || isPaused ? Colors.surface : Colors.primary;
 
   const extractUserMessage = (error: unknown, fallback: string) => {
     if (error && typeof error === 'object') {
@@ -94,6 +105,7 @@ export default function RecordVisitScreen() {
         }
       }
       setErrorMessage(null);
+      longRecordingWarningShown.current = false;
       await startRecording();
     } catch (error: any) {
       console.error('[RecordVisit] Start error:', error);
@@ -112,13 +124,34 @@ export default function RecordVisitScreen() {
     }
   };
 
-  const handleMicPress = async () => {
-    if (isIdle && !uploading) {
+  const handlePauseToggle = async () => {
+    try {
+      if (isPaused) {
+        await resumeRecording();
+      } else {
+        await pauseRecording();
+      }
+    } catch (error: any) {
+      console.error('[RecordVisit] Pause/resume error:', error);
+      showError('We ran into a problem updating the recording. Please try again.');
+      Alert.alert('Recording issue', 'We couldn’t update the recording state. Please try again.');
+    }
+  };
+
+  const handlePrimaryAction = async () => {
+    if (uploading || isFinished) return;
+
+    if (isRecording || isPaused) {
+      await handlePauseToggle();
+      return;
+    }
+
+    if (isIdle) {
       await handleStartRecording();
     }
   };
 
-  const handleUpload = async () => {
+  const performUpload = async () => {
     if (!uri || !user) return;
 
     setUploading(true);
@@ -171,6 +204,30 @@ export default function RecordVisitScreen() {
     }
   };
 
+  const handleUpload = () => {
+    if (!uri || !user || uploading) return;
+
+    if (duration >= LONG_RECORDING_CONFIRM_THRESHOLD_MS) {
+      Alert.alert(
+        'Upload long recording?',
+        'This visit runs longer than an hour. Long recordings cost more to transcribe. Do you still want to send it?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Send',
+            style: 'destructive',
+            onPress: () => {
+              void performUpload();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    void performUpload();
+  };
+
   const handleCancel = () => {
     Alert.alert(
       'Cancel Recording',
@@ -188,6 +245,74 @@ export default function RecordVisitScreen() {
       ]
     );
   };
+
+  // Prevent auto-sleep while recording
+  useEffect(() => {
+    const manageKeepAwake = () => {
+      try {
+        if (isRecording) {
+          activateKeepAwake('visit-recording');
+        } else {
+          deactivateKeepAwake('visit-recording');
+        }
+      } catch (error) {
+        console.warn('[RecordVisit] Failed to toggle keep-awake state:', error);
+      }
+    };
+
+    manageKeepAwake();
+
+    return () => {
+      try {
+        deactivateKeepAwake('visit-recording');
+      } catch {
+        // Swallow errors on cleanup
+      }
+    };
+  }, [isRecording]);
+
+  // Warn before reaching the recording cap
+  useEffect(() => {
+    if (
+      isRecording &&
+      duration >= LONG_RECORDING_WARNING_THRESHOLD_MS &&
+      !longRecordingWarningShown.current
+    ) {
+      Alert.alert(
+        'Recording still running',
+        `Recordings stop automatically after ${RECORDING_LIMIT_MINUTES} minutes. Wrap up soon and tap stop when the visit ends.`
+      );
+      longRecordingWarningShown.current = true;
+    }
+  }, [duration, isRecording]);
+
+  // Reset long-recording warning when returning to idle
+  useEffect(() => {
+    if (recordingState === 'idle') {
+      longRecordingWarningShown.current = false;
+    }
+  }, [recordingState]);
+
+  // Notify about auto-stop reasons
+  useEffect(() => {
+    if (!autoStopReason) return;
+
+    if (autoStopReason === 'maxDuration') {
+      showError(`Recording stopped after reaching the ${RECORDING_LIMIT_MINUTES}-minute limit.`);
+      Alert.alert(
+        'Recording saved',
+        `We automatically stopped recording after ${RECORDING_LIMIT_MINUTES} minutes. Tap Save to upload or Retake to start over.`
+      );
+    } else if (autoStopReason === 'interruption') {
+      showError(
+        'Recording stopped because the app lost microphone access. Please keep the app open to continue recording.'
+      );
+      Alert.alert(
+        'Recording interrupted',
+        'We lost access to the microphone. Keep LumiMD open during the visit to avoid losing audio.'
+      );
+    }
+  }, [autoStopReason]);
 
   return (
     <ErrorBoundary
@@ -235,21 +360,21 @@ export default function RecordVisitScreen() {
               </View>
             )}
           </View>
-
-          {/* Microphone Icon */}
+          {/* Primary Control */}
           <Pressable
             style={[
               styles.iconContainer,
               isRecording && styles.iconRecording,
-              !isIdle && styles.iconDisabled,
+              isPaused && styles.iconPaused,
+              isPrimaryDisabled && styles.iconDisabled,
             ]}
-            onPress={handleMicPress}
-            disabled={!isIdle || uploading}
+            onPress={handlePrimaryAction}
+            disabled={isPrimaryDisabled}
           >
             <Ionicons
-              name={isRecording ? 'stop-circle' : 'mic'}
+              name={primaryIconName}
               size={80}
-              color={isRecording ? Colors.error : Colors.primary}
+              color={primaryIconColor}
             />
           </Pressable>
 
@@ -269,6 +394,11 @@ export default function RecordVisitScreen() {
               Tap the microphone to start recording your medical visit
             </Text>
           )}
+          {isPaused && !uploading && (
+            <Text style={styles.instructions}>
+              Tap the play button to resume recording or use Stop Recording to wrap up your visit
+            </Text>
+          )}
           {isFinished && !uploading && (
             <Text style={styles.instructions}>
               Tap save to upload your recording or retake to start over
@@ -277,52 +407,42 @@ export default function RecordVisitScreen() {
         </View>
 
         {/* Controls */}
-        {(recordingState === 'recording' || recordingState === 'paused' || isFinished) && (
+        {/* Stop + Post Actions */}
+        {isFinished && !uploading && (
           <View style={styles.controls}>
-            {(recordingState === 'recording' || recordingState === 'paused') && (
-              <View style={styles.recordingControls}>
-                <Pressable
-                  style={[styles.controlButton, styles.secondaryButton]}
-                  onPress={isPaused ? resumeRecording : pauseRecording}
-                >
-                  <Ionicons
-                    name={isPaused ? 'play' : 'pause'}
-                    size={24}
-                    color={Colors.primary}
-                  />
-                </Pressable>
+            <Pressable
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={() => {
+                resetRecording();
+              }}
+            >
+              <Ionicons name="refresh" size={20} color={Colors.primary} />
+              <Text style={styles.secondaryButtonText}>Retake</Text>
+            </Pressable>
 
-                <Pressable
-                  style={[styles.controlButton, styles.stopButton]}
-                  onPress={handleStopAndSave}
-                >
-                  <Ionicons name="stop" size={24} color="#fff" />
-                </Pressable>
-              </View>
-            )}
-
-            {isFinished && !uploading && (
-              <View style={styles.stoppedControls}>
-                <Pressable
-                  style={[styles.actionButton, styles.secondaryButton]}
-                  onPress={() => {
-                    resetRecording();
-                  }}
-                >
-                  <Ionicons name="refresh" size={20} color={Colors.primary} />
-                  <Text style={styles.secondaryButtonText}>Retake</Text>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.actionButton, styles.saveButton]}
-                  onPress={handleUpload}
-                >
-                  <Ionicons name="checkmark" size={20} color="#fff" />
-                  <Text style={styles.saveButtonText}>Save Visit</Text>
-                </Pressable>
-              </View>
-            )}
+            <Pressable
+              style={[styles.actionButton, styles.saveButton]}
+              onPress={handleUpload}
+            >
+              <Ionicons name="checkmark" size={20} color="#fff" />
+              <Text style={styles.saveButtonText}>Save Visit</Text>
+            </Pressable>
           </View>
+        )}
+
+        {(recordingState === 'recording' || recordingState === 'paused') && (
+          <Pressable
+            onPress={handleStopAndSave}
+            disabled={uploading}
+            style={({ pressed }) => [
+              styles.stopBar,
+              pressed && styles.stopBarPressed,
+              uploading && styles.stopBarDisabled,
+            ]}
+          >
+            <Ionicons name="stop" size={24} color="#fff" />
+            <Text style={styles.stopBarText}>Stop Recording</Text>
+          </Pressable>
         )}
       </SafeAreaView>
     </ErrorBoundary>
@@ -391,14 +511,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing(8),
+    gap: spacing(2),
   },
   iconRecording: {
-    backgroundColor: Colors.surface,
-    borderWidth: 4,
-    borderColor: Colors.error,
+    backgroundColor: Colors.error,
+    borderWidth: 0,
+  },
+  iconPaused: {
+    backgroundColor: Colors.primary,
+    borderWidth: 0,
   },
   iconDisabled: {
-    opacity: 1,
+    opacity: 0.4,
   },
   uploadContainer: {
     alignItems: 'center',
@@ -438,36 +562,10 @@ const styles = StyleSheet.create({
     maxWidth: 300,
   },
   controls: {
+    flexDirection: 'row',
     paddingHorizontal: spacing(6),
     paddingBottom: spacing(6),
-  },
-  mainButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing(4),
-    borderRadius: 16,
-    gap: spacing(2),
-  },
-  recordButton: {
-    backgroundColor: Colors.primary,
-  },
-  mainButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  recordingControls: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing(4),
-  },
-  controlButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing(3),
   },
   secondaryButton: {
     backgroundColor: Colors.surface,
@@ -502,6 +600,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  stopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing(2),
+    backgroundColor: Colors.error,
+    paddingVertical: spacing(4),
+    marginHorizontal: spacing(4),
+    marginBottom: spacing(6),
+    borderRadius: 16,
+  },
+  stopBarPressed: {
+    opacity: 0.85,
+  },
+  stopBarDisabled: {
+    opacity: 0.5,
+  },
+  stopBarText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
