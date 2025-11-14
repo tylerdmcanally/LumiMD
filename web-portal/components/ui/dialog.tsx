@@ -216,7 +216,7 @@ const DialogContent = React.forwardRef<
         )}
         {...props}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 sm:p-8">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 sm:p-8 [&_input]:text-base [&_select]:text-base [&_textarea]:text-base">
           <div className="flex flex-col gap-4 sm:gap-6">
             {children}
           </div>
