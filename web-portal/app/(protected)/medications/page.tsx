@@ -732,116 +732,79 @@ function MedicationCard({
         >
           <PillIcon className="h-5 w-5" />
         </div>
-        <div className="flex-1 space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1">
-              <div className="flex items-start gap-2">
-                {showNameTooltip ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <h3
-                        className="text-lg font-semibold text-text-primary line-clamp-2"
-                        title={medicationName}
-                      >
-                        {medicationName}
-                      </h3>
-                    </TooltipTrigger>
-                    <TooltipContent className={tooltipClassName}>{medicationName}</TooltipContent>
-                  </Tooltip>
-                ) : (
+        <div className="flex-1 space-y-2.5">
+          {/* Medication name with info button */}
+          <div className="flex items-start gap-2">
+            {showNameTooltip ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <h3
                     className="text-lg font-semibold text-text-primary line-clamp-2"
                     title={medicationName}
                   >
                     {medicationName}
                   </h3>
-                )}
-                {showInfoCta ? (
-                  <TooltipProvider delayDuration={150}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleNeedInfoClick(event);
-                          }}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          className={cn(
-                            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
-                            isFetchingInfo
-                              ? 'border-brand-primary bg-brand-primary/10 text-brand-primary animate-pulse'
-                              : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary hover:scale-110'
-                          )}
-                          aria-label="Fetch more medication info"
-                          disabled={isFetchingInfo}
-                          aria-busy={isFetchingInfo}
-                        >
-                          {isFetchingInfo ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Info className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                        {isFetchingInfo ? 'Fetching medication info...' : 'Need a quick summary? Click for medication type and common uses.'}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ) : null}
-              </div>
-              {shortIndication ? (
-                showShortIndicationTooltip ? (
-                  <TooltipProvider delayDuration={150}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <p
-                          className="text-sm text-text-secondary capitalize line-clamp-2"
-                          title={shortIndication}
-                        >
-                          {shortIndication}
-                        </p>
-                      </TooltipTrigger>
-                      <TooltipContent className={tooltipClassName}>{shortIndication}</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ) : (
-                  <p
-                    className="text-sm text-text-secondary capitalize line-clamp-2"
-                    title={shortIndication}
-                  >
-                    {shortIndication}
-                  </p>
-                )
-              ) : null}
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
-                {isActive ? 'Active' : 'Stopped'}
-              </Badge>
-              {drugClass ? (
-                <TooltipProvider delayDuration={150}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge
-                        tone="neutral"
-                        variant="outline"
-                        size="sm"
-                        className="max-w-[160px] truncate cursor-help"
-                      >
-                        {drugClass}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent className="text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                      {drugClass}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : null}
-            </div>
+                </TooltipTrigger>
+                <TooltipContent className={tooltipClassName}>{medicationName}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <h3
+                className="text-lg font-semibold text-text-primary line-clamp-2"
+                title={medicationName}
+              >
+                {medicationName}
+              </h3>
+            )}
+            {showInfoCta ? (
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleNeedInfoClick(event);
+                      }}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      className={cn(
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
+                        isFetchingInfo
+                          ? 'border-brand-primary bg-brand-primary/10 text-brand-primary animate-pulse'
+                          : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary hover:scale-110'
+                      )}
+                      aria-label="Fetch more medication info"
+                      disabled={isFetchingInfo}
+                      aria-busy={isFetchingInfo}
+                    >
+                      {isFetchingInfo ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Info className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+                    {isFetchingInfo ? 'Fetching medication info...' : 'Need a quick summary? Click for medication type and common uses.'}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : null}
           </div>
+
+          {/* Indication */}
+          {shortIndication && (
+            <p className="text-sm text-text-secondary capitalize leading-relaxed">
+              {shortIndication}
+            </p>
+          )}
+
+          {/* Drug class */}
+          {drugClass && (
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+              {drugClass}
+            </p>
+          )}
 
           {/* Simplified dose/frequency for mobile */}
           <div className="flex items-center gap-3 text-sm">
