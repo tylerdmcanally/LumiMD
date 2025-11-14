@@ -521,10 +521,10 @@ function MedicationRow({
                     }}
                     onKeyDown={(event) => event.stopPropagation()}
                     className={cn(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
                       isFetchingInfo
-                        ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
-                        : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary'
+                        ? 'border-brand-primary bg-brand-primary/10 text-brand-primary animate-pulse'
+                        : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary hover:scale-110'
                     )}
                     aria-label="Fetch more medication info"
                     disabled={isFetchingInfo}
@@ -538,7 +538,7 @@ function MedicationRow({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                  Need a quick summary? Click for medication type and common uses. We’ll then add it to your list for next time.
+                  {isFetchingInfo ? 'Fetching medication info...' : 'Need a quick summary? Click for medication type and common uses.'}
                 </TooltipContent>
               </Tooltip>
             ) : null}
@@ -660,6 +660,7 @@ function MedicationCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [isExpanded, setIsExpanded] = React.useState(false);
   const isActive = medication.active !== false && !medication.stoppedAt;
   const {
     shortIndication,
@@ -678,7 +679,6 @@ function MedicationCard({
     'max-w-xs text-sm font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2';
   const showNameTooltip = medicationName.length > 28;
   const showShortIndicationTooltip = (shortIndication?.length ?? 0) > 32;
-  const showDetailedTooltip = (detailedIndication?.length ?? 0) > 160;
 
   const doseLabel =
     typeof medication.dose === 'string' && medication.dose.trim().length
@@ -693,24 +693,35 @@ function MedicationCard({
       ? medication.notes.trim()
       : null;
 
+  const hasExpandableContent = detailedIndication || notesLabel;
+
   const handleCardClick = () => {
-    onView();
+    if (hasExpandableContent) {
+      setIsExpanded(!isExpanded);
+    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      onView();
+      if (hasExpandableContent) {
+        setIsExpanded(!isExpanded);
+      }
     }
   };
 
   return (
     <div
-      className="relative rounded-3xl border border-border-light bg-surface px-5 py-5 shadow-soft transition-smooth hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
-      role="button"
-      tabIndex={0}
+      className={cn(
+        'relative rounded-3xl border border-border-light bg-surface px-5 py-5 shadow-soft transition-all',
+        hasExpandableContent && 'cursor-pointer hover:shadow-hover active:scale-[0.99]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40'
+      )}
+      role={hasExpandableContent ? 'button' : undefined}
+      tabIndex={hasExpandableContent ? 0 : undefined}
       onClick={handleCardClick}
       onKeyDown={handleKeyDown}
+      aria-expanded={hasExpandableContent ? isExpanded : undefined}
     >
       <div className="flex items-start gap-3">
         <div
@@ -751,18 +762,31 @@ function MedicationCard({
                       <TooltipTrigger asChild>
                         <button
                           type="button"
-                          onClick={(event) => handleNeedInfoClick(event)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleNeedInfoClick(event);
+                          }}
                           onKeyDown={(event) => event.stopPropagation()}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border-light bg-background-subtle text-text-secondary transition-smooth hover:border-brand-primary hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+                          className={cn(
+                            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
+                            isFetchingInfo
+                              ? 'border-brand-primary bg-brand-primary/10 text-brand-primary animate-pulse'
+                              : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary hover:scale-110'
+                          )}
                           aria-label="Fetch more medication info"
                           disabled={isFetchingInfo}
                           aria-busy={isFetchingInfo}
                         >
-                          <Info className="h-3.5 w-3.5" />
+                          {isFetchingInfo ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Info className="h-3.5 w-3.5" />
+                          )}
                         </button>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                        Need a quick summary? Click for medication type and common uses. We’ll then add it to your list for next time.
+                        {isFetchingInfo ? 'Fetching medication info...' : 'Need a quick summary? Click for medication type and common uses.'}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -819,82 +843,82 @@ function MedicationCard({
             </div>
           </div>
 
-          <div className="grid gap-2 text-sm text-text-secondary">
-            <div className="flex items-center justify-between gap-4">
-              <span className="font-medium text-text-primary">Dose</span>
-              <span className="text-right text-text-secondary line-clamp-2" title={doseLabel}>
-                {doseLabel}
-              </span>
+          {/* Simplified dose/frequency for mobile */}
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium text-text-secondary">Dose:</span>
+              <span className="text-text-primary font-semibold">{doseLabel}</span>
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <span className="font-medium text-text-primary">Frequency</span>
-              <span className="text-right text-text-secondary line-clamp-2" title={frequencyLabel}>
-                {frequencyLabel}
-              </span>
+            <span className="text-text-tertiary">•</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium text-text-secondary">Freq:</span>
+              <span className="text-text-primary font-semibold">{frequencyLabel}</span>
             </div>
           </div>
 
-          {detailedIndication ? (
-            showDetailedTooltip ? (
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <p
-                      className="text-sm text-text-secondary/90 line-clamp-4"
-                      title={detailedIndication}
-                    >
-                      {detailedIndication}
-                    </p>
-                  </TooltipTrigger>
-                  <TooltipContent className={tooltipClassName}>{detailedIndication}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <p className="text-sm text-text-secondary/90 line-clamp-4" title={detailedIndication}>
-                {detailedIndication}
-              </p>
-            )
-          ) : null}
-          {notesLabel ? (
-            <div className="rounded-2xl border border-dashed border-border-light/80 bg-background-subtle/60 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                Notes
-              </p>
-              <p className="mt-1 text-sm text-text-secondary/90 whitespace-pre-line line-clamp-5" title={notesLabel}>
-                {notesLabel}
-              </p>
-            </div>
-          ) : null}
+          {/* Expandable details section */}
+          {hasExpandableContent && (
+            <>
+              {isExpanded ? (
+                <div className="space-y-3 animate-fade-in-up">
+                  {detailedIndication && (
+                    <div className="rounded-2xl border border-border-light bg-background-subtle/40 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-2">
+                        About this medication
+                      </p>
+                      <p className="text-sm text-text-primary leading-relaxed">
+                        {detailedIndication}
+                      </p>
+                    </div>
+                  )}
+                  {notesLabel && (
+                    <div className="rounded-2xl border border-dashed border-border-light/80 bg-background-subtle/60 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-2">
+                        Personal notes
+                      </p>
+                      <p className="text-sm text-text-secondary/90 whitespace-pre-line">
+                        {notesLabel}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsExpanded(true);
+                  }}
+                  className="text-sm text-brand-primary font-semibold hover:text-brand-primary-dark transition-colors flex items-center gap-1"
+                >
+                  <span>See more details</span>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-2">
+      {/* Simplified action buttons */}
+      <div className="mt-5 flex items-center justify-between gap-3 pt-3 border-t border-border-light/60">
         <Button
           variant="outline"
           size="sm"
-          className="flex-1 min-w-[150px] justify-center"
-          onClick={(event) => {
-            event.stopPropagation();
-            onView();
-          }}
-        >
-          View details
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="flex-1 min-w-[120px] justify-center"
           onClick={(event) => {
             event.stopPropagation();
             onEdit();
           }}
+          className="flex-1 justify-center"
         >
-          Edit
+          Edit medication
         </Button>
         <Button
           variant="ghost"
           size="sm"
-          className="h-10 w-10 shrink-0 rounded-full border border-error/30 bg-error/10 text-error hover:text-error focus-visible:ring-error"
+          className="h-10 w-10 shrink-0 rounded-full text-text-tertiary hover:text-error hover:bg-error/10 active:scale-95"
           onClick={(event) => {
             event.stopPropagation();
             onDelete();
