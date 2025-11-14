@@ -15,7 +15,7 @@ export default function DashboardPage() {
   const user = useCurrentUser();
   const userId = user?.uid ?? null;
 
-  const { data: profile } = useUserProfile(userId, {
+  const { data: profile, isLoading: profileLoading } = useUserProfile(userId, {
     enabled: Boolean(userId),
   });
   const { data: visits = [], isLoading: visitsLoading } = useVisits(userId, {
@@ -73,12 +73,13 @@ export default function DashboardPage() {
       return user.displayName.trim().split(' ')[0];
     }
 
-    if (typeof user?.email === 'string' && user.email.length > 0) {
+    // Don't show email while profile is loading - go straight to fallback
+    if (!profileLoading && typeof user?.email === 'string' && user.email.length > 0) {
       return user.email.split('@')[0];
     }
 
     return 'there';
-  }, [profile?.preferredName, profile?.firstName, user?.displayName, user?.email]);
+  }, [profile?.preferredName, profile?.firstName, user?.displayName, user?.email, profileLoading]);
 
   return (
     <PageContainer maxWidth="2xl">
