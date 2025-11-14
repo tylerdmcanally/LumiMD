@@ -568,7 +568,7 @@ function MedicationRow({
             {isActive ? 'Active' : 'Stopped'}
           </Badge>
           {drugClass ? (
-            <Badge tone="neutral" variant="outline" size="sm" className="truncate max-w-[140px]" title={drugClass}>
+            <Badge tone="neutral" variant="outline" size="sm" className="truncate max-w-[140px] md:hidden" title={drugClass}>
               {drugClass}
             </Badge>
           ) : null}
@@ -602,24 +602,6 @@ function MedicationRow({
         <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
           {isActive ? 'Active' : 'Stopped'}
         </Badge>
-        {drugClass ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge
-                tone="neutral"
-                variant="outline"
-                size="sm"
-                className="inline-flex max-w-[160px] truncate cursor-help"
-                title={drugClass}
-              >
-                {drugClass}
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent className="text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-              {drugClass}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button
