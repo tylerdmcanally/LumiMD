@@ -217,14 +217,15 @@ const DialogContent = React.forwardRef<
           // Mobile: Full-width with margins, fixed height for keyboard
           'fixed inset-x-4 top-4 z-modal w-auto max-w-full rounded-2xl border border-border-light bg-surface shadow-floating',
           'h-[75vh] max-h-[500px] overflow-hidden flex flex-col',
-          // Tablet: Centered with better proportions
-          'md:inset-x-auto md:left-[50%] md:top-[50%] md:translate-x-[-50%] md:translate-y-[-50%]',
-          'md:h-auto md:max-h-[80vh] md:w-[90vw] md:max-w-2xl',
+          // Tablet: Top-aligned, horizontally centered to avoid keyboard blocking
+          'md:inset-x-auto md:left-[50%] md:top-4 md:translate-x-[-50%] md:translate-y-0',
+          'md:h-auto md:max-h-[70vh] md:w-[90vw] md:max-w-2xl',
           // Desktop: Standard centered dialog
+          'lg:left-[50%] lg:top-[50%] lg:translate-x-[-50%] lg:translate-y-[-50%]',
           'lg:h-auto lg:max-h-[85vh] lg:w-auto lg:max-w-2xl',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-          'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          'data-[state=closed]:zoom-out-95 data-[state-open]:zoom-in-95',
           'data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%]',
           className
         )}
