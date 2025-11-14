@@ -135,14 +135,14 @@ const DialogContent = React.forwardRef<
   const mergedRef = React.useMemo(() => mergeRefs(ref, contentRef), [ref]);
   const { height, offsetTop, innerHeight, baselineHeight } = useVisualViewportSnapshot();
 
-  // Disable dynamic viewport adjustment on mobile - we use fixed sizing instead
-  // Only apply dynamic styles on desktop (sm breakpoint and above)
+  // Disable dynamic viewport adjustment on mobile and tablet - we use fixed sizing instead
+  // Only apply dynamic styles on desktop (lg breakpoint and above - 1024px+)
   const shouldAdapt = React.useMemo(() => {
     if (typeof window === 'undefined') {
       return false;
     }
-    // Only adapt on desktop (768px and above)
-    if (window.innerWidth < 768) {
+    // Only adapt on desktop (1024px and above)
+    if (window.innerWidth < 1024) {
       return false;
     }
     if (!height) {
@@ -216,8 +216,8 @@ const DialogContent = React.forwardRef<
         className={cn(
           'fixed inset-x-4 top-4 z-modal w-auto max-w-full rounded-3xl border border-border-light bg-surface shadow-floating',
           'h-[70vh] max-h-[500px] overflow-hidden flex flex-col',
-          'sm:h-auto sm:max-h-[85vh]',
-          'sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:rounded-2xl',
+          'lg:h-auto lg:max-h-[85vh]',
+          'lg:left-[50%] lg:top-[50%] lg:translate-x-[-50%] lg:translate-y-[-50%] lg:max-w-2xl lg:rounded-2xl',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -226,8 +226,8 @@ const DialogContent = React.forwardRef<
         )}
         {...props}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-6 pb-8 sm:p-8 [&_input]:text-base [&_select]:text-base [&_textarea]:text-base">
-          <div className="flex flex-col gap-4 sm:gap-6">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-6 pb-8 lg:p-8 [&_input]:text-base [&_select]:text-base [&_textarea]:text-base">
+          <div className="flex flex-col gap-4 lg:gap-6">
             {children}
           </div>
         </div>
@@ -265,7 +265,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex flex-col-reverse gap-3 sm:flex-row sm:justify-end',
+      'flex flex-col-reverse gap-3 lg:flex-row lg:justify-end',
       className
     )}
     {...props}
@@ -294,7 +294,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn('text-base text-text-secondary hidden sm:block', className)}
+    className={cn('text-base text-text-secondary hidden lg:block', className)}
     {...props}
   />
 ));
