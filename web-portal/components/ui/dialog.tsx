@@ -135,14 +135,9 @@ const DialogContent = React.forwardRef<
   const mergedRef = React.useMemo(() => mergeRefs(ref, contentRef), [ref]);
   const { height, offsetTop, innerHeight, baselineHeight } = useVisualViewportSnapshot();
 
-  // Disable dynamic viewport adjustment on mobile - tablets and desktop use auto-sizing
-  // Only apply dynamic keyboard detection on desktop (lg breakpoint and above - 1024px+)
+  // Enable dynamic viewport adjustment across all devices for keyboard handling
   const shouldAdapt = React.useMemo(() => {
     if (typeof window === 'undefined') {
-      return false;
-    }
-    // Only adapt on desktop (1024px and above)
-    if (window.innerWidth < 1024) {
       return false;
     }
     if (!height) {
@@ -214,12 +209,12 @@ const DialogContent = React.forwardRef<
         ref={mergedRef}
         style={contentStyle}
         className={cn(
-          // Mobile: Full-width with margins, fixed height for keyboard
+          // Mobile: Full-width with margins, dynamic height based on viewport
           'fixed inset-x-4 top-4 z-modal w-auto max-w-full rounded-2xl border border-border-light bg-surface shadow-floating',
-          'h-[75vh] max-h-[500px] overflow-hidden flex flex-col',
+          'h-auto max-h-[85vh] overflow-hidden flex flex-col',
           // Tablet: Top-aligned, horizontally centered to avoid keyboard blocking
           'md:inset-x-auto md:left-[50%] md:top-4 md:translate-x-[-50%] md:translate-y-0',
-          'md:h-auto md:max-h-[70vh] md:w-[90vw] md:max-w-2xl',
+          'md:h-auto md:max-h-[75vh] md:w-[90vw] md:max-w-2xl',
           // Desktop: Standard centered dialog
           'lg:left-[50%] lg:top-[50%] lg:translate-x-[-50%] lg:translate-y-[-50%]',
           'lg:h-auto lg:max-h-[85vh] lg:w-auto lg:max-w-2xl',
@@ -231,7 +226,7 @@ const DialogContent = React.forwardRef<
         )}
         {...props}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-6 pb-8 md:p-7 lg:p-8 [&_input]:text-base [&_select]:text-base [&_textarea]:text-base">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-6 pb-8 md:p-7 lg:p-8 [&_input]:text-[16px] [&_select]:text-[16px] [&_textarea]:text-[16px]">
           <div className="flex flex-col gap-4 md:gap-5 lg:gap-6">
             {children}
           </div>

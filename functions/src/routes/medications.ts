@@ -131,6 +131,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     const medRef = await getDb().collection('medications').add({
       userId,
       name: data.name,
+      nameLower: data.name.toLowerCase(),
       dose: data.dose || '',
       frequency: data.frequency || '',
       notes: data.notes || '',
@@ -205,11 +206,21 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
     
-    // Update medication
-    await medRef.update({
-      ...data,
+    // Update medication - only update fields that are explicitly provided
+    const updates: Record<string, any> = {
       updatedAt: admin.firestore.Timestamp.now(),
-    });
+    };
+
+    if (data.name !== undefined) {
+      updates.name = data.name;
+      updates.nameLower = data.name.toLowerCase();
+    }
+    if (data.dose !== undefined) updates.dose = data.dose;
+    if (data.frequency !== undefined) updates.frequency = data.frequency;
+    if (data.notes !== undefined) updates.notes = data.notes;
+    if (data.active !== undefined) updates.active = data.active;
+
+    await medRef.update(updates);
     
     const updatedDoc = await medRef.get();
     const updatedMed = updatedDoc.data()!;

@@ -3,6 +3,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
+import { webhookConfig } from '../config';
 
 export const webhooksRouter = Router();
 
@@ -29,7 +30,7 @@ const visitProcessedSchema = z.object({
   processingStatus: z.enum(['pending', 'processing', 'completed', 'failed']).optional().default('completed'),
 });
 
-const WEBHOOK_SECRET = process.env.VISIT_PROCESSING_WEBHOOK_SECRET;
+const WEBHOOK_SECRET = webhookConfig.visitProcessingSecret;
 
 if (!WEBHOOK_SECRET) {
   functions.logger.warn(

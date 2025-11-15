@@ -30,5 +30,11 @@ export const storageConfig = {
   bucket: process.env.STORAGE_BUCKET || 'lumimd-dev.appspot.com',
 };
 
+export const webhookConfig = {
+  visitProcessingSecret:
+    process.env.VISIT_PROCESSING_WEBHOOK_SECRET ||
+    getFunctionsConfigValue<string>(['webhook', 'visit_processing_secret'], ''),
+};
+
 
 

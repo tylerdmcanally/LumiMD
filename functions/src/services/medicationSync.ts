@@ -230,6 +230,70 @@ const normalizeMedicationList = (entries?: MedicationEntryInput[]): MedicationCh
     .filter((entry): entry is MedicationChangeEntry => entry !== null);
 };
 
+/**
+ * Detect and split multiple medications mentioned together
+ * KEEPS slash-notation combos together (e.g., "HCTZ/Lisinopril" stays as ONE - matches pill bottle)
+ * SPLITS separate medications (e.g., "Aspirin and Plavix" becomes TWO - two different pill bottles)
+ *
+ * Examples:
+ *   "HCTZ/Lisinopril 12.5/20 mg" -> ONE medication (fixed-dose combo pill)
+ *   "Aspirin and Plavix" -> TWO medications (separate pills)
+ *   "Tylenol & Ibuprofen" -> TWO medications (separate pills)
+ */
+const splitComboMedication = (entry: MedicationChangeEntry): MedicationChangeEntry[] => {
+  // Don't split if it has slash notation - this indicates a fixed-dose combo (one pill)
+  if (/\//.test(entry.name)) {
+    return [entry];
+  }
+
+  // Don't split if it contains "with" - usually indicates descriptive qualifier or single product
+  // Examples: "Vitamin D with K2", "Calcium with Vitamin D"
+  if (/ with /i.test(entry.name)) {
+    return [entry];
+  }
+
+  // Only split on "and", "&", "+" - these indicate truly separate medications (different pills)
+  const separatorPatterns = [
+    / and /i,
+    / & /,
+    / \+ /,
+  ];
+
+  let matchedPattern: RegExp | null = null;
+  for (const pattern of separatorPatterns) {
+    if (pattern.test(entry.name)) {
+      matchedPattern = pattern;
+      break;
+    }
+  }
+
+  // No separator found, return as single medication
+  if (!matchedPattern) {
+    return [entry];
+  }
+
+  // Split into separate medications
+  const parts = entry.name.split(matchedPattern).map(part => part.trim()).filter(Boolean);
+
+  // If only got one part, return original
+  if (parts.length <= 1) {
+    return [entry];
+  }
+
+  // Create separate entries for each medication
+  return parts.map(medName => ({
+    name: medName,
+    dose: entry.dose,
+    frequency: entry.frequency,
+    note: entry.note,
+    display: `${medName} (from: ${entry.display || entry.name})`,
+    original: entry.original,
+    needsConfirmation: entry.needsConfirmation,
+    status: entry.status,
+    warning: entry.warning,
+  }));
+};
+
 const getMedicationDoc = async (
   userId: string,
   nameLower: string,
@@ -246,7 +310,7 @@ const getMedicationDoc = async (
     return exactSnapshot.docs[0];
   }
 
-  const userSnapshot = await medsCollection.where('userId', '==', userId).limit(25).get();
+  const userSnapshot = await medsCollection.where('userId', '==', userId).get();
   const firstToken = nameLower.split(' ')[0];
 
   for (const doc of userSnapshot.docs) {
@@ -311,17 +375,35 @@ const upsertMedication = async ({
       updates.active = true;
       updates.startedAt = existingDoc.get('startedAt') || processedAt;
       updates.stoppedAt = null;
+      // Clear changedAt on restart to avoid confusion
+      if (!existingDoc.get('active')) {
+        updates.changedAt = null;
+      }
     }
 
     if (status === 'stopped') {
       updates.active = false;
       updates.stoppedAt = processedAt;
+      // Ensure startedAt exists when stopping
+      if (!existingDoc.get('startedAt')) {
+        updates.startedAt = processedAt;
+      }
     }
 
     if (status === 'changed') {
       updates.active = existingDoc.get('active') ?? true;
       updates.changedAt = processedAt;
+      // Ensure medication has been started before it can be changed
+      if (!existingDoc.get('startedAt')) {
+        updates.startedAt = processedAt;
+      }
+      // If medication was stopped, clear stoppedAt since it's being changed (reactivated)
+      if (!updates.active && existingDoc.get('stoppedAt')) {
+        updates.active = true;
+        updates.stoppedAt = null;
+      }
     }
+
     updates.needsConfirmation = entry.needsConfirmation ?? false;
     updates.medicationStatus = entry.status ?? null;
     updates.medicationWarning = entry.warning ?? null;
@@ -394,7 +476,8 @@ export const normalizeMedicationSummary = (
     const sanitize = (entries: MedicationEntryInput[]) =>
       entries
         .map((entry) => normalizeMedicationEntry(entry))
-        .filter((entry): entry is MedicationChangeEntry => entry !== null);
+        .filter((entry): entry is MedicationChangeEntry => entry !== null)
+        .flatMap((entry) => splitComboMedication(entry));
 
     return {
       started: sanitize(maybeNormalized.started),
@@ -403,10 +486,13 @@ export const normalizeMedicationSummary = (
     };
   }
 
+  const normalize = (entries?: MedicationEntryInput[]) =>
+    normalizeMedicationList(entries).flatMap((entry) => splitComboMedication(entry));
+
   return {
-    started: normalizeMedicationList((medications as MedicationSummary).started),
-    stopped: normalizeMedicationList((medications as MedicationSummary).stopped),
-    changed: normalizeMedicationList((medications as MedicationSummary).changed),
+    started: normalize((medications as MedicationSummary).started),
+    stopped: normalize((medications as MedicationSummary).stopped),
+    changed: normalize((medications as MedicationSummary).changed),
   };
 };
 

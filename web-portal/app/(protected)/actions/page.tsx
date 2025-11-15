@@ -521,19 +521,19 @@ function ActionCalendar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-10 w-10 rounded-full p-0"
+            className="h-11 w-11 min-h-[44px] min-w-[44px] rounded-full p-0"
             onClick={() => setCurrentMonth((prev) => subMonths(prev, 1))}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-5 w-5" />
           </Button>
           <h2 className="text-lg font-semibold text-text-primary">{monthLabel}</h2>
           <Button
             variant="ghost"
             size="sm"
-            className="h-10 w-10 rounded-full p-0"
+            className="h-11 w-11 min-h-[44px] min-w-[44px] rounded-full p-0"
             onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-5 w-5" />
           </Button>
         </div>
         <Button

@@ -686,7 +686,7 @@ function RemovableChipList({
           title={removeLabel}
           aria-label={`${removeLabel}: ${item}`}
           className={cn(
-            'group inline-flex min-h-[44px] items-center gap-2 rounded-full border border-brand-primary/30 bg-brand-primary-pale px-4 py-2.5 text-sm font-semibold text-brand-primary transition-smooth',
+            'group inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-full border border-brand-primary/30 bg-brand-primary-pale px-4 py-2.5 text-sm font-semibold text-brand-primary transition-smooth',
             isMutating && 'cursor-not-allowed opacity-70',
           )}
         >

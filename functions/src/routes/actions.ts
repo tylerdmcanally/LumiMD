@@ -101,6 +101,14 @@ actionsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       dueAt: action.dueAt?.toDate?.().toISOString() || null,
     });
   } catch (error) {
+    functions.logger.error('[actions] Error getting action:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch action',
+    });
+  }
+});
+
 /**
  * POST /v1/actions
  * Create a manual action item
@@ -154,14 +162,6 @@ actionsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to create action item',
-    });
-  }
-});
-
-    functions.logger.error('[actions] Error getting action:', error);
-    res.status(500).json({
-      code: 'server_error',
-      message: 'Failed to fetch action',
     });
   }
 });

@@ -1,52 +1,146 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
-    function isViewerOf(ownerId) {
-      return signedIn() &&
-        exists(/databases/$(database)/documents/shares/$(ownerId + '_' + request.auth.uid)) &&
-        get(/databases/$(database)/documents/shares/$(ownerId + '_' + request.auth.uid)).data.status == 'accepted';
+
+    // ============================================================================
+    // HELPER FUNCTIONS
+    // ============================================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isViewerOf(ownerId) {
+      return exists(/databases/$(database)/documents/shares/$(ownerId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/shares/$(ownerId + '_' + request.auth.uid)).data.status == 'accepted';
+    }
+
+    function canRead(userId) {
+      return isOwner(userId) || isViewerOf(userId);
+    }
+
+    // ============================================================================
+    // COLLECTION RULES
+    // ============================================================================
+
     match /users/{userId} {
-      allow read, update: if isOwner(userId);
-      allow create: if signedIn();
+      // Users can only read/update their own profile
+      allow read: if isAuthenticated() && isOwner(userId);
+
+      // Account creation - ensure userId matches auth.uid
+      allow create: if isAuthenticated()
+        && isOwner(userId)
+        && request.resource.data.userId == request.auth.uid;
+
+      // Update own profile - prevent userId modification, whitelist allowed fields
+      allow update: if isAuthenticated()
+        && isOwner(userId)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['firstName', 'lastName', 'preferredName', 'allergies', 'tags', 'updatedAt']);
+
+      // No deletes - use Cloud Function for cascading delete
+      allow delete: if false;
     }
 
     match /visits/{visitId} {
-      allow create: if signedIn() && isOwner(request.resource.data.userId);
-      allow read: if isOwner(resource.data.userId) || isViewerOf(resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      // Owner and caregivers can read
+      allow read: if isAuthenticated() && canRead(resource.data.userId);
+
+      // Only owner can create - enforce userId matches auth
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+
+      // Only owner can update - prevent userId modification
+      allow update: if isAuthenticated()
+        && isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+
+      // Only owner can delete
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
     }
 
     match /actions/{actionId} {
-      allow create: if signedIn() && isOwner(request.resource.data.userId);
-      allow read: if isOwner(resource.data.userId) || isViewerOf(resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      // Owner and caregivers can read (viewer permission)
+      allow read: if isAuthenticated() && canRead(resource.data.userId);
+
+      // Only owner can create - enforce userId matches auth
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+
+      // Only owner can update - prevent userId modification
+      allow update: if isAuthenticated()
+        && isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+
+      // Only owner can delete
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
     }
 
     match /medications/{medId} {
-      allow create: if signedIn() && isOwner(request.resource.data.userId);
-      allow read: if isOwner(resource.data.userId) || isViewerOf(resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      // Owner and caregivers can read
+      allow read: if isAuthenticated() && canRead(resource.data.userId);
+
+      // Only owner can create - enforce userId matches auth
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+
+      // Only owner can update - prevent userId modification
+      allow update: if isAuthenticated()
+        && isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+
+      // Only owner can delete
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
     }
 
     match /shares/{shareId} {
-      // shareId must be ownerId_caregiverUserId
-      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow read: if isOwner(resource.data.ownerId) || (signedIn() && resource.id == (resource.data.ownerId + '_' + request.auth.uid));
-      allow delete, update: if isOwner(resource.data.ownerId);
+      // shareId format: {ownerId}_{caregiverUserId}
+      // Owner and caregiver can both read their share relationship
+      allow read: if isAuthenticated()
+        && (request.auth.uid == resource.data.ownerId
+            || request.auth.uid == resource.data.caregiverUserId);
+
+      // Only owner can create shares - enforce initial status is 'pending'
+      allow create: if isAuthenticated()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.role == 'viewer'; // Only viewer role allowed
+
+      // Owner can revoke, caregiver can accept
+      allow update: if isAuthenticated()
+        && (
+          // Owner revoking access
+          (request.auth.uid == resource.data.ownerId
+           && request.resource.data.status == 'revoked')
+          ||
+          // Caregiver accepting invitation
+          (request.auth.uid == resource.data.caregiverUserId
+           && resource.data.status == 'pending'
+           && request.resource.data.status == 'accepted')
+        );
+
+      // No deletes - use 'revoked' status instead for audit trail
+      allow delete: if false;
     }
 
     match /devices/{deviceId} {
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      // Users can only manage their own devices
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+
+      allow read, update, delete: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
     }
-    
+
     match /auth_handoffs/{code} {
-      // Allow Cloud Functions to create/update/delete handoff codes
-      allow read, write: if request.auth != null;
+      // SECURITY: Handoff codes should only be created/managed by Cloud Functions
+      // using admin SDK, not by client code. Deny all client access.
+      allow read, write: if false;
     }
   }
 }

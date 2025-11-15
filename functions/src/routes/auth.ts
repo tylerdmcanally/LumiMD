@@ -3,9 +3,13 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
+import { authLimiter } from '../middlewares/rateLimit';
 import { randomBytes } from 'crypto';
 
 export const authRouter = Router();
+
+// Apply auth rate limiting to all routes
+authRouter.use(authLimiter);
 
 // Getter function to access Firestore after initialization
 const getDb = () => admin.firestore();

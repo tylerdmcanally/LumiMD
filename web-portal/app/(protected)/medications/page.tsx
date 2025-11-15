@@ -521,7 +521,7 @@ function MedicationRow({
                     }}
                     onKeyDown={(event) => event.stopPropagation()}
                     className={cn(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
+                      'flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
                       isFetchingInfo
                         ? 'border-brand-primary bg-brand-primary/10 text-brand-primary animate-pulse'
                         : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary hover:scale-110'
@@ -531,9 +531,9 @@ function MedicationRow({
                     aria-busy={isFetchingInfo}
                   >
                     {isFetchingInfo ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Info className="h-3 w-3" />
+                      <Info className="h-4 w-4" />
                     )}
                   </button>
                 </TooltipTrigger>
@@ -848,7 +848,7 @@ function MedicationCard({
       </div>
 
       {/* Simplified action buttons */}
-      <div className="mt-5 flex items-center justify-between gap-3 pt-3 border-t border-border-light/60">
+      <div className="mt-5 flex items-center justify-between gap-4 pt-3 border-t border-border-light/60">
         <Button
           variant="outline"
           size="sm"
@@ -863,14 +863,14 @@ function MedicationCard({
         <Button
           variant="ghost"
           size="sm"
-          className="h-10 w-10 shrink-0 rounded-full text-text-tertiary hover:text-error hover:bg-error/10 active:scale-95"
+          className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 rounded-full text-text-tertiary hover:text-error hover:bg-error/10 active:scale-95"
           onClick={(event) => {
             event.stopPropagation();
             onDelete();
           }}
           aria-label="Delete medication"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-5 w-5" />
         </Button>
       </div>
     </div>
