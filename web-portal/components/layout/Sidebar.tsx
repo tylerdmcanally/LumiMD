@@ -127,7 +127,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="hidden lg:flex lg:w-sidebar shrink-0 flex-col bg-surface border-r border-border-light shadow-elevated">
+    <aside className="hidden md:flex md:w-sidebar shrink-0 flex-col bg-surface border-r border-border-light shadow-elevated">
       {/* Brand Header */}
       <div className="flex items-center justify-center px-8 py-10 border-b border-border-light/60">
         <Link

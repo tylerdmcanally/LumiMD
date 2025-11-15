@@ -564,7 +564,7 @@ function ActionCalendar({
               key={key}
               onClick={() => onSelectDate?.(day)}
               className={cn(
-                'flex min-h-[110px] min-w-0 flex-col overflow-hidden rounded-xl border p-3 text-left transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+                'flex min-h-[110px] md:min-h-[130px] min-w-0 flex-col overflow-hidden rounded-xl border p-3 text-left transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
                 isCurrentMonth ? 'border-border-light bg-surface' : 'border-border-light/60 bg-background-subtle/60',
                 isToday && 'border-brand-primary/60 shadow-soft',
               )}

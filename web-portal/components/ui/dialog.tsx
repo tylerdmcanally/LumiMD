@@ -212,11 +212,9 @@ const DialogContent = React.forwardRef<
           // Mobile: Full-width with margins, dynamic height based on viewport
           'fixed inset-x-4 top-4 z-modal w-auto max-w-full rounded-2xl border border-border-light bg-surface shadow-floating',
           'h-auto max-h-[85vh] overflow-hidden flex flex-col',
-          // Tablet: Top-aligned, horizontally centered to avoid keyboard blocking
-          'md:inset-x-auto md:left-[50%] md:top-4 md:translate-x-[-50%] md:translate-y-0',
-          'md:h-auto md:max-h-[75vh] md:w-[90vw] md:max-w-2xl',
-          // Desktop: Standard centered dialog
-          'lg:left-[50%] lg:top-[50%] lg:translate-x-[-50%] lg:translate-y-[-50%]',
+          // Tablet & Desktop: Centered dialog (dynamic positioning when keyboard active)
+          'md:inset-x-auto md:left-[50%] md:top-[50%] md:translate-x-[-50%] md:translate-y-[-50%]',
+          'md:h-auto md:max-h-[80vh] md:w-[90vw] md:max-w-2xl',
           'lg:h-auto lg:max-h-[85vh] lg:w-auto lg:max-w-2xl',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',

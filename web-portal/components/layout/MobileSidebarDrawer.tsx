@@ -123,7 +123,7 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
       {/* Overlay */}
       <div
         className={cn(
-          'fixed inset-0 z-[600] bg-overlay transition-opacity duration-300 lg:hidden',
+          'fixed inset-0 z-[600] bg-overlay transition-opacity duration-300 md:hidden',
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         )}
         onClick={onClose}
@@ -133,7 +133,7 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
       {/* Drawer */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-[700] w-[280px] max-w-[85vw] flex flex-col bg-surface border-r border-border-light shadow-2xl transition-transform duration-300 lg:hidden',
+          'fixed inset-y-0 left-0 z-[700] w-[280px] max-w-[85vw] flex flex-col bg-surface border-r border-border-light shadow-2xl transition-transform duration-300 md:hidden',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
         style={{

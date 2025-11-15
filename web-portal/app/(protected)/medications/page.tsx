@@ -287,12 +287,12 @@ function MedicationGroup({
         </div>
       ) : (
         <>
-          <div className="mt-4 hidden md:block">
-            <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_minmax(0,1fr)_160px] items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          <div className="mt-4 hidden lg:block">
+            <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_minmax(0,1fr)_160px] items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-xs font-semibold uppercase tracking-wide text-text-secondary">
               <div>Medication & Details</div>
               <div>Dose</div>
               <div>Frequency</div>
-              <div className="hidden lg:block">Status</div>
+              <div>Status</div>
               <div className="text-right">Actions</div>
             </div>
             <div className="divide-y divide-border-light">
@@ -307,7 +307,7 @@ function MedicationGroup({
               ))}
             </div>
           </div>
-          <div className="mt-4 space-y-3 px-5 pb-6 md:hidden">
+          <div className="mt-4 space-y-3 px-5 pb-6 lg:hidden">
             {medications.map((medication: any) => (
               <MedicationCard
                 key={medication.id}

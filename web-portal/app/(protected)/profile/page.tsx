@@ -399,7 +399,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <form className="space-y-6" onSubmit={handlePersonalInfoSubmit}>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="profile-preferred-name">Preferred name</Label>
                   <Input

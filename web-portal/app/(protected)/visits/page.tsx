@@ -410,29 +410,23 @@ export default function VisitsPage() {
           />
 
         {/* Stats Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           <StatCard label="Total Visits" value={stats.total} />
-          <div className="hidden xl:block">
-            <StatCard
-              label="Completed"
-              value={stats.completed || 0}
-              variant="success"
-            />
-          </div>
-          <div className="hidden xl:block">
-            <StatCard
-              label="Processing"
-              value={stats.processing || 0}
-              variant="warning"
-            />
-          </div>
-          <div className="hidden xl:block">
-            <StatCard
-              label="Pending"
-              value={stats.pending || 0}
-              variant="neutral"
-            />
-          </div>
+          <StatCard
+            label="Completed"
+            value={stats.completed || 0}
+            variant="success"
+          />
+          <StatCard
+            label="Processing"
+            value={stats.processing || 0}
+            variant="warning"
+          />
+          <StatCard
+            label="Pending"
+            value={stats.pending || 0}
+            variant="neutral"
+          />
         </div>
 
         {/* Filters - Desktop only, mobile gets simple search */}
@@ -444,7 +438,7 @@ export default function VisitsPage() {
                 <h3 className="font-semibold text-text-primary">Filters</h3>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
               <Input
                 placeholder="Search visits..."
                 value={filters.search}
