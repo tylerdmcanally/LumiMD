@@ -33,16 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn('min-h-screen bg-background text-text-primary antialiased', inter.variable)}>
-        <ErrorBoundary
-          onError={(error, errorInfo) => {
-            // Log errors in development
-            if (process.env.NODE_ENV === 'development') {
-              console.error('[ErrorBoundary] Caught error:', error);
-              console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
-            }
-            // TODO: Send to error monitoring service (e.g., Sentry) when implemented
-          }}
-        >
+        <ErrorBoundary>
           <QueryProvider>{children}</QueryProvider>
           <ToastProvider />
         </ErrorBoundary>
