@@ -381,7 +381,7 @@ export default function ActionsPage() {
           </div>
         )}
         <ActionCalendar
-          actions={actions}
+          actions={pendingActions}
           onAddAction={() => {
             setCreateDefaultDate(null);
             setCreateDialogOpen(true);
