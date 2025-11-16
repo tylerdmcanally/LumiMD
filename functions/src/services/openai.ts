@@ -4,6 +4,8 @@ import { openAIConfig } from '../config';
 
 const BASE_URL = 'https://api.openai.com/v1';
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export interface MedicationChangeEntry {
   name: string;
   dose?: string;
@@ -586,6 +588,8 @@ const refineMedicationsWithKnownNames = (
 export class OpenAIService {
   private client: AxiosInstance;
   private model: string;
+  private static readonly MAX_RETRIES = 3;
+  private static readonly INITIAL_RETRY_DELAY_MS = 1000;
 
   constructor(apiKey: string, model: string) {
     if (!apiKey) {
@@ -602,6 +606,93 @@ export class OpenAIService {
       },
       timeout: 60000,
     });
+  }
+
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    context: string,
+  ): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < OpenAIService.MAX_RETRIES; attempt++) {
+      try {
+        return await operation();
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+
+        // Check if we should retry
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status;
+
+          // Don't retry on auth errors
+          if (status === 401) {
+            throw new Error('OpenAI authentication failed - API key may be invalid');
+          }
+
+          // Don't retry on client errors (except rate limits)
+          if (status && status >= 400 && status < 500 && status !== 429) {
+            const message = error.response?.data?.error?.message || error.message;
+            throw new Error(`OpenAI request error: ${message}`);
+          }
+
+          // Retry on rate limits and server errors
+          if (status === 429 || (status && status >= 500)) {
+            const retryAfter = error.response?.headers?.['retry-after'];
+            const delayMs = retryAfter
+              ? parseInt(retryAfter, 10) * 1000
+              : OpenAIService.INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
+
+            if (attempt < OpenAIService.MAX_RETRIES - 1) {
+              const errorType = status === 429 ? 'Rate limit' : 'Server error';
+              functions.logger.warn(
+                `[OpenAI] ${errorType} (${status}) during ${context}, retrying in ${delayMs}ms... (attempt ${attempt + 1}/${OpenAIService.MAX_RETRIES})`,
+              );
+              await sleep(delayMs);
+              continue;
+            }
+
+            // Last retry failed
+            if (status === 429) {
+              throw new Error(
+                'OpenAI rate limit exceeded - please try again later',
+              );
+            }
+            throw new Error(
+              'OpenAI service temporarily unavailable - please try again later',
+            );
+          }
+        }
+
+        // Retry on network errors
+        if (
+          error instanceof Error &&
+          (error.message.includes('ECONNREFUSED') ||
+            error.message.includes('ETIMEDOUT') ||
+            error.message.includes('ENOTFOUND'))
+        ) {
+          if (attempt < OpenAIService.MAX_RETRIES - 1) {
+            const delayMs =
+              OpenAIService.INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
+            functions.logger.warn(
+              `[OpenAI] Network error during ${context}, retrying in ${delayMs}ms... (attempt ${attempt + 1}/${OpenAIService.MAX_RETRIES})`,
+            );
+            await sleep(delayMs);
+            continue;
+          }
+
+          throw new Error(
+            'Network error communicating with OpenAI - please check your connection',
+          );
+        }
+
+        // Unknown error - don't retry
+        break;
+      }
+    }
+
+    throw new Error(
+      `Failed to ${context} after ${OpenAIService.MAX_RETRIES} attempts: ${lastError?.message || 'Unknown error'}`,
+    );
   }
 
   async summarizeTranscript(
@@ -621,11 +712,13 @@ export class OpenAIService {
     const knownMedicationText =
       knownMedicationList.length > 0 ? knownMedicationList.join(', ') : 'None provided';
 
-    const response = await this.client.post('/chat/completions', {
-      model: this.model,
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
-      messages: [
+    const response = await this.retryWithBackoff(
+      async () =>
+        await this.client.post('/chat/completions', {
+          model: this.model,
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          messages: [
         {
           role: 'system',
           content:
@@ -760,7 +853,9 @@ export class OpenAIService {
           ].join('\n'),
         },
       ],
-    });
+        }),
+      'transcript summarization',
+    );
 
     const content =
       response.data?.choices?.[0]?.message?.content?.trim() ?? '';

@@ -26,9 +26,10 @@ export async function requireAuth(
     }
     
     const idToken = authHeader.split('Bearer ')[1];
-    
-    // Verify the ID token
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+
+    // Verify the ID token and check if it has been revoked
+    // checkRevoked: true ensures revoked tokens are rejected (critical for HIPAA compliance)
+    const decodedToken = await admin.auth().verifyIdToken(idToken, true);
     req.user = decodedToken;
     
     next();

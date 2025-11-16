@@ -43,43 +43,124 @@ export class AssemblyAIService {
   }
 
   async submitTranscription(audioUrl: string): Promise<string> {
-    const response = await this.client.post<AssemblyAITranscript>('/transcript', {
-      audio_url: audioUrl,
-      speaker_labels: true,
-      punctuate: true,
-      format_text: true,
-      language_code: 'en_us',
-      disfluencies: true,
-      auto_chapters: false,
-    });
+    try {
+      const response = await this.client.post<AssemblyAITranscript>('/transcript', {
+        audio_url: audioUrl,
+        speaker_labels: true,
+        punctuate: true,
+        format_text: true,
+        language_code: 'en_us',
+        disfluencies: true,
+        auto_chapters: false,
+      });
 
-    return response.data.id;
+      return response.data.id;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const message = error.response?.data?.error || error.message;
+
+        if (status === 401) {
+          throw new Error('AssemblyAI authentication failed - API key may be invalid');
+        }
+        if (status === 400) {
+          throw new Error(`AssemblyAI request error: ${message}`);
+        }
+        if (status === 429) {
+          throw new Error('AssemblyAI rate limit exceeded - please try again later');
+        }
+        if (status && status >= 500) {
+          throw new Error('AssemblyAI service temporarily unavailable - please try again later');
+        }
+
+        throw new Error(`Failed to submit transcription: ${message}`);
+      }
+
+      throw new Error(`Unexpected error submitting transcription: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async getTranscript(transcriptId: string): Promise<AssemblyAITranscript> {
-    const response = await this.client.get<AssemblyAITranscript>(`/transcript/${transcriptId}`);
-    return response.data;
+    try {
+      const response = await this.client.get<AssemblyAITranscript>(`/transcript/${transcriptId}`);
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const message = error.response?.data?.error || error.message;
+
+        if (status === 401) {
+          throw new Error('AssemblyAI authentication failed - API key may be invalid');
+        }
+        if (status === 404) {
+          throw new Error(`Transcript not found: ${transcriptId}`);
+        }
+        if (status && status >= 500) {
+          throw new Error('AssemblyAI service temporarily unavailable - please try again later');
+        }
+
+        throw new Error(`Failed to get transcript: ${message}`);
+      }
+
+      throw new Error(`Unexpected error getting transcript: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async pollUntilComplete(transcriptId: string): Promise<AssemblyAITranscript> {
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < MAX_POLL_DURATION_MS) {
-      const response = await this.client.get<AssemblyAITranscript>(`/transcript/${transcriptId}`);
-      const data = response.data;
+      try {
+        const response = await this.client.get<AssemblyAITranscript>(`/transcript/${transcriptId}`);
+        const data = response.data;
 
-      if (data.status === 'completed') {
-        return data;
+        if (data.status === 'completed') {
+          return data;
+        }
+
+        if (data.status === 'error') {
+          throw new Error(data.error || 'AssemblyAI transcription failed');
+        }
+
+        await sleep(POLL_INTERVAL_MS);
+      } catch (error: unknown) {
+        // If this is an expected transcription error (status === 'error'), re-throw it
+        if (error instanceof Error && error.message.includes('transcription failed')) {
+          throw error;
+        }
+
+        // For network/API errors, retry with exponential backoff
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status;
+
+          // Auth errors should fail immediately
+          if (status === 401) {
+            throw new Error('AssemblyAI authentication failed - API key may be invalid');
+          }
+
+          // Server errors should retry
+          if (status && status >= 500) {
+            console.warn(`AssemblyAI polling error (${status}), retrying in ${POLL_INTERVAL_MS}ms...`);
+            await sleep(POLL_INTERVAL_MS);
+            continue;
+          }
+
+          // Other errors should retry once, then fail
+          if (status === 404) {
+            throw new Error(`Transcript not found: ${transcriptId}`);
+          }
+
+          console.warn('AssemblyAI polling error, retrying...', error.message);
+          await sleep(POLL_INTERVAL_MS);
+          continue;
+        }
+
+        // Unknown errors should fail
+        throw new Error(`Unexpected error polling transcript: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-
-      if (data.status === 'error') {
-        throw new Error(data.error || 'AssemblyAI transcription failed');
-      }
-
-      await sleep(POLL_INTERVAL_MS);
     }
 
-    throw new Error('AssemblyAI transcription timed out');
+    throw new Error('AssemblyAI transcription timed out after 12 minutes');
   }
 
   formatTranscript(utterances?: AssemblyAIUtterance[], fallbackText?: string): string {

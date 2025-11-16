@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 
 import {
   DocumentData,
@@ -196,11 +197,17 @@ function useCollectionSubscription<T extends { id: string }>(
       },
       (error) => {
         console.error('[Firestore] Snapshot error', error);
+
+        // Show user-friendly error toast
+        toast.error('Connection error', {
+          description: 'Unable to sync data. Please check your connection and try again.',
+          duration: 5000,
+        });
       },
     );
 
     return () => unsubscribe();
-  }, [queryClient, key, mapDoc, queryRef]);
+  }, [queryClient, key, mapDoc, queryRef, transform]);
 }
 
 function useDocumentSubscription<T extends { id: string }>(
@@ -224,6 +231,12 @@ function useDocumentSubscription<T extends { id: string }>(
       },
       (error) => {
         console.error('[Firestore] Snapshot error', error);
+
+        // Show user-friendly error toast
+        toast.error('Connection error', {
+          description: 'Unable to sync data. Please check your connection and try again.',
+          duration: 5000,
+        });
       },
     );
 
