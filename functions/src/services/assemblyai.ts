@@ -163,6 +163,38 @@ export class AssemblyAIService {
     throw new Error('AssemblyAI transcription timed out after 12 minutes');
   }
 
+  async deleteTranscript(transcriptId: string): Promise<void> {
+    if (!transcriptId) {
+      return;
+    }
+
+    try {
+      await this.client.delete(`/transcript/${transcriptId}`);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+
+        if (status === 404) {
+          // Already gone
+          return;
+        }
+
+        if (status === 401) {
+          throw new Error('AssemblyAI authentication failed - cannot delete transcript');
+        }
+
+        const message = error.response?.data?.error || error.message;
+        throw new Error(`Failed to delete transcript ${transcriptId}: ${message}`);
+      }
+
+      throw new Error(
+        `Unexpected error deleting transcript ${transcriptId}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    }
+  }
+
   formatTranscript(utterances?: AssemblyAIUtterance[], fallbackText?: string): string {
     if (!utterances || utterances.length === 0) {
       return fallbackText || '';

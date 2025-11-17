@@ -452,6 +452,24 @@ visitsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
       }
     }
 
+    const transcriptionId =
+      typeof visit.transcriptionId === 'string' ? visit.transcriptionId : null;
+
+    if (transcriptionId) {
+      try {
+        const assemblyAI = getAssemblyAIService();
+        await assemblyAI.deleteTranscript(transcriptionId);
+        functions.logger.info(
+          `[visits] Deleted AssemblyAI transcript for visit ${visitId}: ${transcriptionId}`,
+        );
+      } catch (error) {
+        functions.logger.warn(
+          `[visits] Unable to delete AssemblyAI transcript for visit ${visitId}`,
+          error,
+        );
+      }
+    }
+
     // Remove action items tied to this visit
     const actionsSnapshot = await getDb()
       .collection('actions')
