@@ -331,5 +331,15 @@ export const api = {
       method: 'DELETE',
     }),
   },
+
+  // User Profile
+  user: {
+    getProfile: () => apiRequest<any>('/v1/users/me'),
+    updateProfile: (data: Record<string, unknown>) =>
+      apiRequest<any>('/v1/users/me', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+  },
 };
 

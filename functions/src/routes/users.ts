@@ -10,10 +10,41 @@ export const usersRouter = Router();
 const getDb = () => admin.firestore();
 
 const updateProfileSchema = z.object({
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+  dateOfBirth: z.string().max(32).optional(),
   allergies: z.array(z.string()).optional(),
+  medicalHistory: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   folders: z.array(z.string()).optional(),
 });
+
+const sanitizeString = (value?: string | null) => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const sanitizeStringArray = (values?: string[]) => {
+  if (!Array.isArray(values)) return undefined;
+  return Array.from(
+    new Set(
+      values
+        .map((item) => sanitizeString(item) ?? '')
+        .filter((item): item is string => item.length > 0),
+    ),
+  );
+};
+
+const isProfileComplete = (data: Record<string, unknown>): boolean => {
+  const hasName =
+    typeof data.firstName === 'string' &&
+    data.firstName.trim().length > 0 &&
+    typeof data.lastName === 'string' &&
+    data.lastName.trim().length > 0;
+  const hasDob = typeof data.dateOfBirth === 'string' && data.dateOfBirth.trim().length > 0;
+  return hasName && hasDob;
+};
 
 usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -23,14 +54,21 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
 
     const data = userDoc.exists ? userDoc.data() ?? {} : {};
 
-    res.json({
+    const response = {
       id: userId,
+      firstName: typeof data.firstName === 'string' ? data.firstName : '',
+      lastName: typeof data.lastName === 'string' ? data.lastName : '',
+      dateOfBirth: typeof data.dateOfBirth === 'string' ? data.dateOfBirth : '',
       allergies: Array.isArray(data.allergies) ? data.allergies : [],
+      medicalHistory: Array.isArray(data.medicalHistory) ? data.medicalHistory : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       folders: Array.isArray(data.folders) ? data.folders : [],
       createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
       updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
-    });
+      complete: isProfileComplete(data),
+    };
+
+    res.json(response);
   } catch (error) {
     functions.logger.error('[users] Error fetching profile:', error);
     res.status(500).json({
@@ -52,34 +90,32 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       updatedAt: now,
     };
 
+    if (payload.firstName !== undefined) {
+      updateData.firstName = sanitizeString(payload.firstName) ?? '';
+    }
+
+    if (payload.lastName !== undefined) {
+      updateData.lastName = sanitizeString(payload.lastName) ?? '';
+    }
+
+    if (payload.dateOfBirth !== undefined) {
+      updateData.dateOfBirth = sanitizeString(payload.dateOfBirth) ?? '';
+    }
+
     if (payload.allergies !== undefined) {
-      updateData.allergies = Array.from(
-        new Set(
-          (payload.allergies || [])
-            .map((item) => item?.trim())
-            .filter(Boolean) as string[],
-        ),
-      );
+      updateData.allergies = sanitizeStringArray(payload.allergies) ?? [];
+    }
+
+    if (payload.medicalHistory !== undefined) {
+      updateData.medicalHistory = sanitizeStringArray(payload.medicalHistory) ?? [];
     }
 
     if (payload.tags !== undefined) {
-      updateData.tags = Array.from(
-        new Set(
-          (payload.tags || [])
-            .map((item) => item?.trim())
-            .filter(Boolean) as string[],
-        ),
-      );
+      updateData.tags = sanitizeStringArray(payload.tags) ?? [];
     }
 
     if (payload.folders !== undefined) {
-      updateData.folders = Array.from(
-        new Set(
-          (payload.folders || [])
-            .map((item) => item?.trim())
-            .filter(Boolean) as string[],
-        ),
-      );
+      updateData.folders = sanitizeStringArray(payload.folders) ?? [];
     }
 
     const userDoc = await userRef.get();
@@ -92,14 +128,21 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
     const updatedDoc = await userRef.get();
     const data = updatedDoc.data() ?? {};
 
-    res.json({
+    const response = {
       id: userId,
+      firstName: typeof data.firstName === 'string' ? data.firstName : '',
+      lastName: typeof data.lastName === 'string' ? data.lastName : '',
+      dateOfBirth: typeof data.dateOfBirth === 'string' ? data.dateOfBirth : '',
       allergies: Array.isArray(data.allergies) ? data.allergies : [],
+      medicalHistory: Array.isArray(data.medicalHistory) ? data.medicalHistory : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       folders: Array.isArray(data.folders) ? data.folders : [],
       createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
       updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
-    });
+      complete: isProfileComplete(data),
+    };
+
+    res.json(response);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({

@@ -59,5 +59,26 @@ export function useCompleteAction() {
   });
 }
 
+interface UpdateProfileInput {
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  allergies?: string[];
+  medicalHistory?: string[];
+}
+
+export function useUpdateUserProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: UpdateProfileInput) => {
+      return api.user.updateProfile(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+    },
+  });
+}
+
 
 

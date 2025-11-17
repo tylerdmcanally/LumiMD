@@ -25,7 +25,6 @@ import { useAuth } from '../contexts/AuthContext';
 export default function SignUpScreen() {
   const router = useRouter();
   const { signUp } = useAuth();
-  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -38,18 +37,14 @@ export default function SignUpScreen() {
       setError('Please fill in all fields');
       return;
     }
-
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
-
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
     }
-
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
       setError('Please enter a valid email address');
@@ -61,16 +56,13 @@ export default function SignUpScreen() {
 
     try {
       const { error: signUpError } = await signUp(email.trim(), password);
-      
       if (signUpError) {
         setError(signUpError);
         setLoading(false);
         return;
       }
 
-      // Success - navigate to home
-      console.log('[SignUp] Success');
-      router.replace('/');
+      router.replace('/onboarding');
     } catch (err: any) {
       console.error('[SignUp] Error:', err);
       setError('An unexpected error occurred');

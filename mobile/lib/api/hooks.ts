@@ -16,6 +16,7 @@ export const queryKeys = {
   action: (id: string) => ['actions', id] as const,
   medications: ['medications'] as const,
   medication: (id: string) => ['medications', id] as const,
+  profile: ['profile'] as const,
 };
 
 /**
@@ -129,6 +130,20 @@ export function useActiveMedications(
       return meds.filter(med => med.active !== false);
     },
     staleTime: 10 * 60 * 1000,
+    ...options,
+  });
+}
+
+/**
+ * Fetch user profile
+ */
+export function useUserProfile(
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey' | 'queryFn'>
+) {
+  return useQuery({
+    queryKey: queryKeys.profile,
+    queryFn: () => api.user.getProfile(),
+    staleTime: 5 * 60 * 1000,
     ...options,
   });
 }

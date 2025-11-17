@@ -10,7 +10,7 @@ import { HeroBanner } from '../components/HeroBanner';
 import { StartVisitCTA } from '../components/StartVisitCTA';
 import { GlanceableCard } from '../components/GlanceableCard';
 import { useAuth } from '../contexts/AuthContext';
-import { usePendingActions, useActiveMedications, useVisits } from '../lib/api/hooks';
+import { usePendingActions, useActiveMedications, useVisits, useUserProfile } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { openWebDashboard } from '../lib/linking';
 
@@ -19,6 +19,14 @@ const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
 export default function HomeScreen() {
   const router = useRouter();
   const { isAuthenticated, loading: authLoading, user } = useAuth();
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    error: profileError,
+  } = useUserProfile({
+    enabled: isAuthenticated,
+    staleTime: 60 * 1000,
+  });
 
   // Fetch data
   const {
@@ -137,6 +145,22 @@ export default function HomeScreen() {
     }
   }, [isAuthenticated, authLoading]);
 
+  useEffect(() => {
+    if (
+      authLoading ||
+      profileLoading ||
+      !isAuthenticated ||
+      !profile ||
+      profileError
+    ) {
+      return;
+    }
+
+    if (profile.complete === false) {
+      router.replace('/onboarding');
+    }
+  }, [authLoading, profileLoading, profile, profileError, isAuthenticated, router]);
+
   // Show loading state while checking auth
   if (authLoading) {
     return (
@@ -184,8 +208,8 @@ export default function HomeScreen() {
     medications: Array.isArray(medications) ? medications.length : 0,
   };
 
-  const isLoadingData = actionsLoading || visitsLoading || medsLoading;
-  const hasErrors = actionsError || visitsError || medsError;
+  const isLoadingData = actionsLoading || visitsLoading || medsLoading || profileLoading;
+  const hasErrors = actionsError || visitsError || medsError || profileError;
   const latestVisitBadge = useMemo(() => {
     if (!latestVisit) return undefined;
 
