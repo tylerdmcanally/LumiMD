@@ -151,6 +151,24 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     // Determine if medication needs confirmation based on warning severity
     const hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
 
+    // Remove undefined fields from warnings (Firestore doesn't accept undefined)
+    const cleanedWarnings = warnings.map(w => {
+      const cleaned: any = {
+        type: w.type,
+        severity: w.severity,
+        message: w.message,
+        details: w.details,
+        recommendation: w.recommendation,
+      };
+      if (w.conflictingMedication !== undefined) {
+        cleaned.conflictingMedication = w.conflictingMedication;
+      }
+      if (w.allergen !== undefined) {
+        cleaned.allergen = w.allergen;
+      }
+      return cleaned;
+    });
+
     const now = admin.firestore.Timestamp.now();
 
     // Create medication document with safety warnings
@@ -165,7 +183,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       createdAt: now,
       updatedAt: now,
       // Add safety warning fields
-      medicationWarning: warnings.length > 0 ? warnings : null,
+      medicationWarning: cleanedWarnings.length > 0 ? cleanedWarnings : null,
       needsConfirmation: hasCriticalWarnings,
       medicationStatus: hasCriticalWarnings ? 'pending_review' : null,
     });
@@ -274,7 +292,25 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     // Update safety warning fields if medication details changed
     if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
-      updates.medicationWarning = warnings.length > 0 ? warnings : null;
+      // Remove undefined fields from warnings (Firestore doesn't accept undefined)
+      const cleanedWarnings = warnings.map((w: MedicationSafetyWarning) => {
+        const cleaned: any = {
+          type: w.type,
+          severity: w.severity,
+          message: w.message,
+          details: w.details,
+          recommendation: w.recommendation,
+        };
+        if (w.conflictingMedication !== undefined) {
+          cleaned.conflictingMedication = w.conflictingMedication;
+        }
+        if (w.allergen !== undefined) {
+          cleaned.allergen = w.allergen;
+        }
+        return cleaned;
+      });
+
+      updates.medicationWarning = cleanedWarnings.length > 0 ? cleanedWarnings : null;
       updates.needsConfirmation = hasCriticalWarnings;
       updates.medicationStatus = hasCriticalWarnings ? 'pending_review' : null;
     }

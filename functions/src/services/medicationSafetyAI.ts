@@ -163,17 +163,26 @@ function generateCacheKey(
 
 /**
  * Convert AI warning to our standard format
+ * Note: Only include optional fields if they are defined (Firestore doesn't accept undefined)
  */
 function convertAIWarning(aiWarning: AIWarningResponse['warnings'][0]): MedicationSafetyWarning {
-  return {
+  const warning: MedicationSafetyWarning = {
     type: aiWarning.type,
     severity: aiWarning.severity,
     message: aiWarning.message,
     details: aiWarning.details,
-    conflictingMedication: aiWarning.conflictingMedication,
-    allergen: aiWarning.allergen,
     recommendation: aiWarning.recommendation,
   };
+
+  // Only add optional fields if they exist
+  if (aiWarning.conflictingMedication) {
+    warning.conflictingMedication = aiWarning.conflictingMedication;
+  }
+  if (aiWarning.allergen) {
+    warning.allergen = aiWarning.allergen;
+  }
+
+  return warning;
 }
 
 /**
