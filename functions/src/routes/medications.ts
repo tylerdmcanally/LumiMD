@@ -3,6 +3,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
+import { runMedicationSafetyChecks } from '../services/medicationSafety';
 
 export const medicationsRouter = Router();
 
@@ -24,6 +25,12 @@ const updateMedicationSchema = z.object({
   frequency: z.string().optional(),
   notes: z.string().optional(),
   active: z.boolean().optional(),
+});
+
+const safetyCheckSchema = z.object({
+  name: z.string().min(1),
+  dose: z.string().optional(),
+  frequency: z.string().optional(),
 });
 
 /**
@@ -52,6 +59,11 @@ medicationsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
         startedAt: data.startedAt?.toDate()?.toISOString() || null,
         stoppedAt: data.stoppedAt?.toDate()?.toISOString() || null,
         changedAt: data.changedAt?.toDate()?.toISOString() || null,
+        lastSyncedAt: data.lastSyncedAt?.toDate()?.toISOString() || null,
+        // Include safety warnings
+        medicationWarning: data.medicationWarning || null,
+        needsConfirmation: data.needsConfirmation || false,
+        medicationStatus: data.medicationStatus || null,
       };
     });
     
@@ -104,6 +116,10 @@ medicationsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       startedAt: medication.startedAt?.toDate()?.toISOString() || null,
       stoppedAt: medication.stoppedAt?.toDate()?.toISOString() || null,
       changedAt: medication.changedAt?.toDate()?.toISOString() || null,
+      lastSyncedAt: medication.lastSyncedAt?.toDate()?.toISOString() || null,
+      medicationWarning: medication.medicationWarning || null,
+      needsConfirmation: medication.needsConfirmation || false,
+      medicationStatus: medication.medicationStatus || null,
     });
   } catch (error) {
     functions.logger.error('[medications] Error getting medication:', error);
@@ -153,6 +169,10 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       startedAt: medication.startedAt?.toDate()?.toISOString() || null,
       stoppedAt: medication.stoppedAt?.toDate()?.toISOString() || null,
       changedAt: medication.changedAt?.toDate()?.toISOString() || null,
+      lastSyncedAt: medication.lastSyncedAt?.toDate()?.toISOString() || null,
+      medicationWarning: medication.medicationWarning || null,
+      needsConfirmation: medication.needsConfirmation || false,
+      medicationStatus: medication.medicationStatus || null,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -235,6 +255,10 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       startedAt: updatedMed.startedAt?.toDate()?.toISOString() || null,
       stoppedAt: updatedMed.stoppedAt?.toDate()?.toISOString() || null,
       changedAt: updatedMed.changedAt?.toDate()?.toISOString() || null,
+      lastSyncedAt: updatedMed.lastSyncedAt?.toDate()?.toISOString() || null,
+      medicationWarning: updatedMed.medicationWarning || null,
+      needsConfirmation: updatedMed.needsConfirmation || false,
+      medicationStatus: updatedMed.medicationStatus || null,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -250,6 +274,51 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to update medication',
+    });
+  }
+});
+
+/**
+ * POST /v1/meds/safety-check
+ * Check medication safety for a proposed medication
+ */
+medicationsRouter.post('/safety-check', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    // Validate request body
+    const data = safetyCheckSchema.parse(req.body);
+
+    // Run safety checks
+    const warnings = await runMedicationSafetyChecks(userId, {
+      name: data.name,
+      dose: data.dose,
+      frequency: data.frequency,
+    });
+
+    functions.logger.info(
+      `[medications] Safety check for user ${userId}, medication ${data.name}: ${warnings.length} warnings`,
+    );
+
+    res.json({
+      medication: data,
+      warnings,
+      safe: warnings.filter(w => w.severity === 'critical' || w.severity === 'high').length === 0,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[medications] Error running safety check:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to run safety check',
     });
   }
 });

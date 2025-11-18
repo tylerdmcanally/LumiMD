@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import { MedicationChangeEntry } from './openai';
+import { runMedicationSafetyChecks, addSafetyWarningsToEntry } from './medicationSafety';
 
 const db = () => admin.firestore();
 const getMedicationsCollection = () => db().collection('medications');
@@ -440,17 +441,24 @@ export const syncMedicationsFromSummary = async ({
 
   const tasks: Array<Promise<void>> = [];
 
-  normalized.started.forEach((entry) => {
-    tasks.push(upsertMedication({ userId, visitId, entry, status: 'started', processedAt }));
-  });
+  // Run safety checks and add warnings to started medications
+  for (const entry of normalized.started) {
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry);
+    const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+    tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'started', processedAt }));
+  }
 
+  // No safety checks needed for stopped medications
   normalized.stopped.forEach((entry) => {
     tasks.push(upsertMedication({ userId, visitId, entry, status: 'stopped', processedAt }));
   });
 
-  normalized.changed.forEach((entry) => {
-    tasks.push(upsertMedication({ userId, visitId, entry, status: 'changed', processedAt }));
-  });
+  // Run safety checks for changed medications
+  for (const entry of normalized.changed) {
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry);
+    const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+    tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'changed', processedAt }));
+  }
 
   await Promise.all(tasks);
 };
