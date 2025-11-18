@@ -38,6 +38,8 @@ export default function OnboardingScreen() {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [allergiesInput, setAllergiesInput] = useState('');
   const [medicalHistoryInput, setMedicalHistoryInput] = useState('');
+  const [noMedicalHistory, setNoMedicalHistory] = useState(false);
+  const [noAllergies, setNoAllergies] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,8 +48,14 @@ export default function OnboardingScreen() {
     setFirstName(profile.firstName ?? '');
     setLastName(profile.lastName ?? '');
     setDateOfBirth(profile.dateOfBirth ?? '');
-    setAllergiesInput((profile.allergies ?? []).join(', '));
-    setMedicalHistoryInput((profile.medicalHistory ?? []).join(', '));
+
+    const allergies = profile.allergies ?? [];
+    const medicalHistory = profile.medicalHistory ?? [];
+
+    setAllergiesInput(allergies.join(', '));
+    setMedicalHistoryInput(medicalHistory.join(', '));
+    setNoAllergies(allergies.length === 0 && profile.allergies !== undefined);
+    setNoMedicalHistory(medicalHistory.length === 0 && profile.medicalHistory !== undefined);
   }, [profile]);
 
   const isSaving = submitting || updateProfile.isPending;
@@ -67,8 +75,8 @@ export default function OnboardingScreen() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         dateOfBirth: dateOfBirth.trim(),
-        allergies: sanitizeListInput(allergiesInput),
-        medicalHistory: sanitizeListInput(medicalHistoryInput),
+        allergies: noAllergies ? [] : sanitizeListInput(allergiesInput),
+        medicalHistory: noMedicalHistory ? [] : sanitizeListInput(medicalHistoryInput),
       });
       router.replace('/');
     } catch (err: any) {
@@ -84,6 +92,8 @@ export default function OnboardingScreen() {
     dateOfBirth,
     allergiesInput,
     medicalHistoryInput,
+    noAllergies,
+    noMedicalHistory,
     router,
   ]);
 
@@ -155,30 +165,71 @@ export default function OnboardingScreen() {
             <TextInput
               style={[styles.input, styles.multilineInput]}
               value={medicalHistoryInput}
-              onChangeText={setMedicalHistoryInput}
+              onChangeText={(text) => {
+                setMedicalHistoryInput(text);
+                if (text.trim() && noMedicalHistory) {
+                  setNoMedicalHistory(false);
+                }
+              }}
               placeholder="Hypertension, Type 2 diabetes..."
-              editable={!disabled}
-              multiline
+              editable={!disabled && !noMedicalHistory}
             />
             <Text style={styles.helper}>
-              Separate conditions with commas. We’ll turn each one into its own entry.
+              Separate conditions with commas. We'll turn each one into its own entry.
             </Text>
           </View>
+
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => {
+              setNoMedicalHistory(!noMedicalHistory);
+              if (!noMedicalHistory) {
+                setMedicalHistoryInput('');
+              }
+            }}
+            disabled={disabled}
+          >
+            <View style={[styles.checkbox, noMedicalHistory && styles.checkboxChecked]}>
+              {noMedicalHistory && <View style={styles.checkboxInner} />}
+            </View>
+            <Text style={styles.checkboxLabel}>No past medical history</Text>
+          </TouchableOpacity>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Allergies</Text>
             <TextInput
               style={[styles.input, styles.multilineInput]}
               value={allergiesInput}
-              onChangeText={setAllergiesInput}
+              onChangeText={(text) => {
+                setAllergiesInput(text);
+                if (text.trim() && noAllergies) {
+                  setNoAllergies(false);
+                }
+              }}
               placeholder="Penicillin, Shellfish..."
-              editable={!disabled}
+              editable={!disabled && !noAllergies}
               multiline
             />
             <Text style={styles.helper}>
               Include medication and food allergies. Separate each with a comma.
             </Text>
           </View>
+
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => {
+              setNoAllergies(!noAllergies);
+              if (!noAllergies) {
+                setAllergiesInput('');
+              }
+            }}
+            disabled={disabled}
+          >
+            <View style={[styles.checkbox, noAllergies && styles.checkboxChecked]}>
+              {noAllergies && <View style={styles.checkboxInner} />}
+            </View>
+            <Text style={styles.checkboxLabel}>No known allergies</Text>
+          </TouchableOpacity>
         </Card>
 
         {error ? (
@@ -312,6 +363,37 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    paddingVertical: spacing(2),
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: Colors.stroke,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  checkboxInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: '#fff',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: Colors.text,
+    fontWeight: '500',
   },
 });
 
