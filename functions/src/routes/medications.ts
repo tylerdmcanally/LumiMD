@@ -142,11 +142,17 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     const data = createMedicationSchema.parse(req.body);
 
     // Run medication safety checks BEFORE creating
-    const warnings = await runMedicationSafetyChecks(userId, {
-      name: data.name,
-      dose: data.dose,
-      frequency: data.frequency,
-    });
+    // For manual additions, use hardcoded checks only for fast response (<50ms)
+    // AI checks would add 5-8 seconds, which is too slow for interactive use
+    const warnings = await runMedicationSafetyChecks(
+      userId,
+      {
+        name: data.name,
+        dose: data.dose,
+        frequency: data.frequency,
+      },
+      { useAI: false } // Disable AI for manual additions - use fast hardcoded checks only
+    );
 
     // Determine if medication needs confirmation based on warning severity
     const hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
@@ -272,7 +278,8 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
         frequency: data.frequency ?? medication.frequency,
       };
 
-      warnings = await runMedicationSafetyChecks(userId, updatedMedData);
+      // Use hardcoded checks only for fast response (AI would add 5-8 seconds)
+      warnings = await runMedicationSafetyChecks(userId, updatedMedData, { useAI: false });
       hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
     }
 
