@@ -137,13 +137,23 @@ medicationsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
 medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    
+
     // Validate request body
     const data = createMedicationSchema.parse(req.body);
-    
+
+    // Run medication safety checks BEFORE creating
+    const warnings = await runMedicationSafetyChecks(userId, {
+      name: data.name,
+      dose: data.dose,
+      frequency: data.frequency,
+    });
+
+    // Determine if medication needs confirmation based on warning severity
+    const hasCriticalWarnings = warnings.some(w => w.severity === 'critical' || w.severity === 'high');
+
     const now = admin.firestore.Timestamp.now();
-    
-    // Create medication document
+
+    // Create medication document with safety warnings
     const medRef = await getDb().collection('medications').add({
       userId,
       name: data.name,
@@ -154,13 +164,19 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       active: data.active,
       createdAt: now,
       updatedAt: now,
+      // Add safety warning fields
+      medicationWarning: warnings.length > 0 ? warnings : null,
+      needsConfirmation: hasCriticalWarnings,
+      medicationStatus: hasCriticalWarnings ? 'pending_review' : null,
     });
-    
+
     const medDoc = await medRef.get();
     const medication = medDoc.data()!;
-    
-    functions.logger.info(`[medications] Created medication ${medRef.id} for user ${userId}`);
-    
+
+    functions.logger.info(
+      `[medications] Created medication ${medRef.id} for user ${userId} with ${warnings.length} warnings (critical/high: ${hasCriticalWarnings})`
+    );
+
     res.status(201).json({
       id: medRef.id,
       ...medication,
@@ -183,7 +199,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     functions.logger.error('[medications] Error creating medication:', error);
     res.status(500).json({
       code: 'server_error',
@@ -200,13 +216,13 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const medId = req.params.id;
-    
+
     // Validate request body
     const data = updateMedicationSchema.parse(req.body);
-    
+
     const medRef = getDb().collection('medications').doc(medId);
     const medDoc = await medRef.get();
-    
+
     if (!medDoc.exists) {
       res.status(404).json({
         code: 'not_found',
@@ -214,9 +230,9 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     const medication = medDoc.data()!;
-    
+
     // Verify ownership
     if (medication.userId !== userId) {
       res.status(403).json({
@@ -225,7 +241,23 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
+    // If name, dose, or frequency are being updated, re-run safety checks
+    let warnings = medication.medicationWarning || [];
+    let hasCriticalWarnings = medication.needsConfirmation || false;
+
+    if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
+      // Build the updated medication data for safety check
+      const updatedMedData = {
+        name: data.name ?? medication.name,
+        dose: data.dose ?? medication.dose,
+        frequency: data.frequency ?? medication.frequency,
+      };
+
+      warnings = await runMedicationSafetyChecks(userId, updatedMedData);
+      hasCriticalWarnings = warnings.some(w => w.severity === 'critical' || w.severity === 'high');
+    }
+
     // Update medication - only update fields that are explicitly provided
     const updates: Record<string, any> = {
       updatedAt: admin.firestore.Timestamp.now(),
@@ -240,13 +272,22 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (data.notes !== undefined) updates.notes = data.notes;
     if (data.active !== undefined) updates.active = data.active;
 
+    // Update safety warning fields if medication details changed
+    if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
+      updates.medicationWarning = warnings.length > 0 ? warnings : null;
+      updates.needsConfirmation = hasCriticalWarnings;
+      updates.medicationStatus = hasCriticalWarnings ? 'pending_review' : null;
+    }
+
     await medRef.update(updates);
-    
+
     const updatedDoc = await medRef.get();
     const updatedMed = updatedDoc.data()!;
-    
-    functions.logger.info(`[medications] Updated medication ${medId} for user ${userId}`);
-    
+
+    functions.logger.info(
+      `[medications] Updated medication ${medId} for user ${userId} with ${warnings.length} warnings (critical/high: ${hasCriticalWarnings})`
+    );
+
     res.json({
       id: medId,
       ...updatedMed,
@@ -269,7 +310,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     functions.logger.error('[medications] Error updating medication:', error);
     res.status(500).json({
       code: 'server_error',
