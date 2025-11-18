@@ -3,7 +3,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
-import { runMedicationSafetyChecks } from '../services/medicationSafety';
+import { runMedicationSafetyChecks, MedicationSafetyWarning } from '../services/medicationSafety';
 
 export const medicationsRouter = Router();
 
@@ -149,7 +149,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     });
 
     // Determine if medication needs confirmation based on warning severity
-    const hasCriticalWarnings = warnings.some(w => w.severity === 'critical' || w.severity === 'high');
+    const hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
 
     const now = admin.firestore.Timestamp.now();
 
@@ -255,7 +255,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       };
 
       warnings = await runMedicationSafetyChecks(userId, updatedMedData);
-      hasCriticalWarnings = warnings.some(w => w.severity === 'critical' || w.severity === 'high');
+      hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
     }
 
     // Update medication - only update fields that are explicitly provided
