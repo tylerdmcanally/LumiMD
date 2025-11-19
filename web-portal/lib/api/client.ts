@@ -225,8 +225,10 @@ async function apiRequest<T>(
     try {
       console.log(`[API] ${method} ${url} (attempt ${attempt + 1})`);
       const response = await fetchWithTimeout(url, requestInit, timeoutMs);
+      console.log('[API] Got response, status:', response.status, 'ok:', response.ok);
 
       if (!response.ok) {
+        console.error('[API] Response not OK:', response.status, response.statusText);
         const error = await buildApiError(response);
         if (attempt < maxRetries && isRetryable(error, method)) {
           lastError = error;
@@ -238,27 +240,34 @@ async function apiRequest<T>(
       }
 
       if (response.status === 204) {
+        console.log('[API] 204 No Content response');
         return undefined as unknown as T;
       }
 
       const rawBody = await response.text();
+      console.log('[API] Raw response body length:', rawBody?.length || 0);
+
       if (!rawBody) {
+        console.log('[API] Empty response body');
         return undefined as unknown as T;
       }
 
-      if (
-        !(response.headers.get('content-type') || '').includes(
-          'application/json',
-        )
-      ) {
+      const contentType = response.headers.get('content-type') || '';
+      console.log('[API] Content-Type:', contentType);
+
+      if (!contentType.includes('application/json')) {
+        console.log('[API] Non-JSON response, returning raw body');
         return rawBody as unknown as T;
       }
 
       try {
+        console.log('[API] Parsing JSON response...');
         const parsed = JSON.parse(rawBody) as T;
         console.log('[API] Response received:', { url, method, data: parsed });
         return parsed;
       } catch (parseError) {
+        console.error('[API] JSON parse error:', parseError);
+        console.error('[API] Raw body that failed to parse:', rawBody.substring(0, 500));
         const error = buildParseError(parseError);
         if (attempt < maxRetries && isRetryable(error, method)) {
           lastError = error;
@@ -269,6 +278,8 @@ async function apiRequest<T>(
         throw error;
       }
     } catch (err) {
+      console.error('[API] Request exception:', err);
+
       const error =
         (err as ApiError)?.userMessage ||
         (err as ApiError)?.status !== undefined
