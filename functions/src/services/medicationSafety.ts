@@ -250,11 +250,59 @@ const BRAND_TO_GENERIC: Record<string, string> = {
 };
 
 /**
+ * Common medication salts/formulations to strip
+ */
+const SALT_SUFFIXES = [
+  'succinate',
+  'tartrate',
+  'hydrochloride',
+  'hcl',
+  'sulfate',
+  'sodium',
+  'potassium',
+  'calcium',
+  'maleate',
+  'fumarate',
+  'acetate',
+  'phosphate',
+  'citrate',
+  'er',
+  'xl',
+  'xr',
+  'sr',
+  'cr',
+  'la',
+  'cd',
+];
+
+/**
  * Normalize medication name to generic (lowercase)
+ * Strips salt names and formulations for better matching
  */
 function normalizeMedicationName(name: string): string {
-  const lower = name.toLowerCase().trim();
-  return BRAND_TO_GENERIC[lower] || lower;
+  let lower = name.toLowerCase().trim();
+
+  // Check brand to generic mapping first
+  if (BRAND_TO_GENERIC[lower]) {
+    return BRAND_TO_GENERIC[lower];
+  }
+
+  // Strip salt/formulation suffixes
+  // e.g., "metoprolol succinate" -> "metoprolol"
+  for (const suffix of SALT_SUFFIXES) {
+    const pattern = new RegExp(`\\s+${suffix}$`, 'i');
+    if (pattern.test(lower)) {
+      lower = lower.replace(pattern, '').trim();
+      functions.logger.info('[normalizeMedicationName] Stripped salt suffix', {
+        original: name,
+        stripped: lower,
+        suffix,
+      });
+      break;
+    }
+  }
+
+  return lower;
 }
 
 /**
@@ -263,23 +311,6 @@ function normalizeMedicationName(name: string): string {
 function getMedicationClasses(medicationName: string): string[] {
   const normalized = normalizeMedicationName(medicationName);
   return MEDICATION_CLASSES[normalized] || [];
-}
-
-/**
- * Check if medication name contains a specific word/class
- */
-function medicationContains(medicationName: string, searchTerm: string): boolean {
-  const normalized = normalizeMedicationName(medicationName);
-  const searchNormalized = searchTerm.toLowerCase().trim();
-
-  // Check direct name match
-  if (normalized.includes(searchNormalized)) {
-    return true;
-  }
-
-  // Check if any class matches
-  const classes = getMedicationClasses(medicationName);
-  return classes.some(c => c.includes(searchNormalized));
 }
 
 /**
@@ -295,11 +326,24 @@ export async function checkDuplicateTherapy(
   const newMedNormalized = normalizeMedicationName(newMedication.name);
   const newMedClasses = getMedicationClasses(newMedication.name);
 
+  functions.logger.info('[checkDuplicateTherapy] Checking duplicates', {
+    newMed: newMedication.name,
+    newMedNormalized,
+    newMedClasses,
+    currentMedCount: currentMedications.length,
+  });
+
   for (const currentMed of currentMedications) {
     if (!currentMed.active) continue;
 
     const currentMedNormalized = normalizeMedicationName(currentMed.name);
     const currentMedClasses = getMedicationClasses(currentMed.name);
+
+    functions.logger.info('[checkDuplicateTherapy] Comparing with current med', {
+      currentMed: currentMed.name,
+      currentMedNormalized,
+      currentMedClasses,
+    });
 
     // Check for exact duplicate (same medication)
     if (newMedNormalized === currentMedNormalized) {
@@ -318,13 +362,29 @@ export async function checkDuplicateTherapy(
     if (newMedClasses.length > 0 && currentMedClasses.length > 0) {
       const sharedClasses = newMedClasses.filter(c => currentMedClasses.includes(c));
 
+      functions.logger.info('[checkDuplicateTherapy] Checking shared classes', {
+        sharedClasses,
+        sharedClassesCount: sharedClasses.length,
+      });
+
       if (sharedClasses.length > 0) {
         // Filter out broad classes like 'cardiovascular' to reduce false positives
         const specificSharedClasses = sharedClasses.filter(
           c => !['cardiovascular', 'antibiotic'].includes(c)
         );
 
+        functions.logger.info('[checkDuplicateTherapy] After filtering broad classes', {
+          specificSharedClasses,
+          specificSharedClassesCount: specificSharedClasses.length,
+        });
+
         if (specificSharedClasses.length > 0) {
+          functions.logger.warn('[checkDuplicateTherapy] DUPLICATE THERAPY FOUND!', {
+            newMed: newMedication.name,
+            currentMed: currentMed.name,
+            sharedClass: specificSharedClasses[0],
+          });
+
           warnings.push({
             type: 'duplicate_therapy',
             severity: 'moderate',
@@ -494,6 +554,13 @@ export async function runHardcodedSafetyChecks(
       active: doc.data().active,
     }));
 
+    functions.logger.info('[medicationSafety] Running hardcoded checks', {
+      newMedication: newMedication.name,
+      currentMedicationsCount: currentMedications.length,
+      currentMedications: currentMedications.map(m => m.name),
+      newMedClasses: getMedicationClasses(newMedication.name),
+    });
+
     // Fetch patient allergies
     const userDoc = await db().collection('users').doc(userId).get();
     const patientAllergies = userDoc.exists
@@ -506,6 +573,12 @@ export async function runHardcodedSafetyChecks(
       checkDrugInteractions(userId, newMedication, currentMedications),
       checkAllergyConflicts(userId, newMedication, patientAllergies),
     ]);
+
+    functions.logger.info('[medicationSafety] Checks completed', {
+      duplicateWarnings: duplicateWarnings.length,
+      interactionWarnings: interactionWarnings.length,
+      allergyWarnings: allergyWarnings.length,
+    });
 
     const allWarnings = [
       ...allergyWarnings, // Allergy warnings first (most critical)
