@@ -56,6 +56,9 @@ export default function MedicationsPage() {
       return api.medications.create(payload);
     },
     onSuccess: (data: any) => {
+      console.log('[MED DEBUG] Create medication response:', data);
+      console.log('[MED DEBUG] medicationWarning field:', data?.medicationWarning);
+
       if (user?.uid) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.medications(user.uid),
@@ -64,11 +67,16 @@ export default function MedicationsPage() {
 
       // Check for safety warnings
       if (data?.medicationWarning && Array.isArray(data.medicationWarning) && data.medicationWarning.length > 0) {
+        console.log('[MED DEBUG] Setting warning dialog with:', {
+          medicationName: data.name,
+          warnings: data.medicationWarning,
+        });
         setMedicationWarnings({
           medicationName: data.name,
           warnings: data.medicationWarning,
         });
       } else {
+        console.log('[MED DEBUG] No warnings, showing success toast');
         toast.success('Medication added');
       }
 
@@ -1238,7 +1246,7 @@ function AddMedicationDialog({
               Cancel
             </Button>
             <Button type="submit" variant="primary" disabled={isSaving}>
-              {isSaving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Add medication'}
+              {isSaving ? 'Checking safety…' : mode === 'edit' ? 'Save changes' : 'Add medication'}
             </Button>
           </DialogFooter>
         </form>
@@ -1264,7 +1272,14 @@ interface MedicationWarningDialogProps {
 }
 
 function MedicationWarningDialog({ data, onClose }: MedicationWarningDialogProps) {
-  if (!data) return null;
+  console.log('[MED DEBUG] MedicationWarningDialog render, data:', data);
+
+  if (!data) {
+    console.log('[MED DEBUG] MedicationWarningDialog returning null, no data');
+    return null;
+  }
+
+  console.log('[MED DEBUG] MedicationWarningDialog rendering with warnings:', data.warnings);
 
   // Severity-based styling
   const severityColors = {

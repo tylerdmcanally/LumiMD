@@ -1,12 +1,16 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { useColorScheme } from 'react-native';
 import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as Notifications from 'expo-notifications';
+import { useEffect, useRef } from 'react';
 import { navTheme } from '../theme';
-import { AuthProvider } from '../contexts/AuthContext';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
+import { usePendingActions, useVisits } from '../lib/api/hooks';
+import { setBadgeCount } from '../lib/notifications';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -35,6 +39,73 @@ function RootFallback({ reset }: { reset: () => void }) {
   );
 }
 
+function NotificationHandler() {
+  const router = useRouter();
+  const segments = useSegments();
+  const { isAuthenticated } = useAuth();
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+  const { data: pendingActions } = usePendingActions();
+  const { data: visits } = useVisits();
+
+  // Update badge count when actions or visits change
+  useEffect(() => {
+    const updateBadge = async () => {
+      if (!isAuthenticated) {
+        await setBadgeCount(0);
+        return;
+      }
+
+      const pendingCount = Array.isArray(pendingActions) ? pendingActions.length : 0;
+      // Count visits that are completed but might need review
+      const visitsCount = Array.isArray(visits)
+        ? visits.filter((v: any) => v.processingStatus === 'completed').length
+        : 0;
+      // Use pending actions as primary badge indicator, fallback to visits
+      await setBadgeCount(Math.max(pendingCount, visitsCount > 0 ? 1 : 0));
+    };
+
+    updateBadge();
+  }, [isAuthenticated, pendingActions, visits]);
+
+  // Handle notification received while app is foregrounded
+  useEffect(() => {
+    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+      console.log('[Notifications] Notification received:', notification);
+      // Badge will be updated by the useEffect above when data refetches
+    });
+
+    return () => {
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+    };
+  }, []);
+
+  // Handle notification tapped (deep linking)
+  useEffect(() => {
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      console.log('[Notifications] Notification tapped:', data);
+
+      if (data?.type === 'visit-ready' && data?.visitId) {
+        // Navigate to visit detail if authenticated
+        if (isAuthenticated) {
+          router.push(`/visit-detail?id=${data.visitId}`);
+        }
+      }
+    });
+
+    return () => {
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
+    };
+  }, [isAuthenticated, router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const scheme = useColorScheme();
   return (
@@ -45,6 +116,7 @@ export default function RootLayout() {
           renderFallback={({ reset }) => <RootFallback reset={reset} />}
         >
           <ThemeProvider value={navTheme(scheme ?? 'light')}>
+            <NotificationHandler />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen

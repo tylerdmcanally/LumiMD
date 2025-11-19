@@ -5,7 +5,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0A99A4"
     },
@@ -19,12 +21,15 @@
         "NSMicrophoneUsageDescription": "LumiMD needs access to your microphone to record your medical visits.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "remote-notification"
         ]
       }
     },
     "android": {
+      "icon": "./assets/icon.png",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0A99A4"
       },
       "package": "com.lumimd.app",
@@ -41,6 +46,14 @@
         "expo-av",
         {
           "microphonePermission": "Allow LumiMD to record audio for your medical visit recordings."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0A99A4",
+          "sounds": []
         }
       ],
       "expo-font",

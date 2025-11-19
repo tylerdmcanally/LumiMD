@@ -255,7 +255,9 @@ async function apiRequest<T>(
       }
 
       try {
-        return JSON.parse(rawBody) as T;
+        const parsed = JSON.parse(rawBody) as T;
+        console.log('[API] Response received:', { url, method, data: parsed });
+        return parsed;
       } catch (parseError) {
         const error = buildParseError(parseError);
         if (attempt < maxRetries && isRetryable(error, method)) {

@@ -19,6 +19,15 @@ const updateProfileSchema = z.object({
   folders: z.array(z.string()).optional(),
 });
 
+const registerPushTokenSchema = z.object({
+  token: z.string().min(1, 'Push token is required'),
+  platform: z.enum(['ios', 'android']),
+});
+
+const unregisterPushTokenSchema = z.object({
+  token: z.string().min(1, 'Push token is required'),
+});
+
 const sanitizeString = (value?: string | null) => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
@@ -157,6 +166,114 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to update user profile',
+    });
+  }
+});
+
+/**
+ * POST /v1/users/push-tokens
+ * Register a push notification token for the authenticated user
+ */
+usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const payload = registerPushTokenSchema.parse(req.body);
+    const { token, platform } = payload;
+
+    const tokensRef = getDb().collection('users').doc(userId).collection('pushTokens');
+    
+    // Check if token already exists
+    const existingTokenQuery = await tokensRef.where('token', '==', token).limit(1).get();
+    
+    const now = admin.firestore.Timestamp.now();
+    
+    if (!existingTokenQuery.empty) {
+      // Update existing token
+      const existingDoc = existingTokenQuery.docs[0];
+      await existingDoc.ref.update({
+        platform,
+        updatedAt: now,
+        lastActive: now,
+      });
+      
+      functions.logger.info(`[users] Updated push token for user ${userId}`);
+    } else {
+      // Create new token document
+      await tokensRef.add({
+        token,
+        platform,
+        createdAt: now,
+        updatedAt: now,
+        lastActive: now,
+      });
+      
+      functions.logger.info(`[users] Registered new push token for user ${userId}`);
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error registering push token:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to register push token',
+    });
+  }
+});
+
+/**
+ * DELETE /v1/users/push-tokens
+ * Unregister a push notification token for the authenticated user
+ */
+usersRouter.delete('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const payload = unregisterPushTokenSchema.parse(req.body);
+    const { token } = payload;
+
+    const tokensRef = getDb().collection('users').doc(userId).collection('pushTokens');
+    const tokenQuery = await tokensRef.where('token', '==', token).get();
+
+    if (tokenQuery.empty) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Push token not found',
+      });
+      return;
+    }
+
+    // Delete all matching tokens (should only be one, but handle multiple just in case)
+    const batch = getDb().batch();
+    tokenQuery.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+
+    functions.logger.info(`[users] Unregistered push token for user ${userId}`);
+
+    res.status(204).send();
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error unregistering push token:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to unregister push token',
     });
   }
 });

@@ -1,15 +1,104 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  getNotificationPermissions,
+  getExpoPushToken,
+  registerPushToken,
+  unregisterPushToken,
+} from '../lib/notifications';
+
+const PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushToken, setPushToken] = useState<string | null>(null);
+  const [isLoadingPush, setIsLoadingPush] = useState(false);
+
+  // Check notification permission status on mount
+  useEffect(() => {
+    const checkPushStatus = async () => {
+      try {
+        const permissionStatus = await getNotificationPermissions();
+        const isGranted = permissionStatus === 'granted';
+        setPushEnabled(isGranted);
+
+        if (isGranted) {
+          // Try to get existing token from storage
+          const storedToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+          if (storedToken) {
+            setPushToken(storedToken);
+          } else {
+            // Get new token if we have permission but no stored token
+            const token = await getExpoPushToken();
+            if (token) {
+              setPushToken(token);
+              await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+              try {
+                await registerPushToken(token);
+              } catch (error) {
+                console.error('[Settings] Failed to register push token:', error);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[Settings] Error checking push status:', error);
+      }
+    };
+
+    if (user) {
+      checkPushStatus();
+    }
+  }, [user]);
+
+  const handlePushToggle = async (enabled: boolean) => {
+    setIsLoadingPush(true);
+    try {
+      if (enabled) {
+        // Enable push notifications
+        const token = await getExpoPushToken();
+        if (token) {
+          setPushToken(token);
+          await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+          await registerPushToken(token);
+          setPushEnabled(true);
+        } else {
+          Alert.alert(
+            'Permission Required',
+            'Please enable notifications in your device settings to receive push notifications.',
+          );
+          setPushEnabled(false);
+        }
+      } else {
+        // Disable push notifications
+        if (pushToken) {
+          try {
+            await unregisterPushToken(pushToken);
+          } catch (error) {
+            console.error('[Settings] Error unregistering push token:', error);
+          }
+          await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
+          setPushToken(null);
+        }
+        setPushEnabled(false);
+      }
+    } catch (error) {
+      console.error('[Settings] Error toggling push notifications:', error);
+      Alert.alert('Error', 'Failed to update notification settings. Please try again.');
+      // Revert toggle state on error
+      setPushEnabled(!enabled);
+    } finally {
+      setIsLoadingPush(false);
+    }
+  };
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -84,7 +173,8 @@ export default function SettingsScreen() {
                 </View>
                 <Switch
                   value={pushEnabled}
-                  onValueChange={setPushEnabled}
+                  onValueChange={handlePushToggle}
+                  disabled={isLoadingPush}
                   trackColor={{ false: '#d1d5db', true: Colors.accent }}
                   thumbColor={pushEnabled ? Colors.primary : '#f3f4f6'}
                 />

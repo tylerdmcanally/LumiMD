@@ -142,8 +142,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     const data = createMedicationSchema.parse(req.body);
 
     // Run medication safety checks BEFORE creating
-    // For manual additions, use hardcoded checks only for fast response (<50ms)
-    // AI checks would add 5-8 seconds, which is too slow for interactive use
+    // Uses AI-powered comprehensive checks (1-2 seconds)
     const warnings = await runMedicationSafetyChecks(
       userId,
       {
@@ -151,7 +150,12 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
         dose: data.dose,
         frequency: data.frequency,
       },
-      { useAI: false } // Disable AI for manual additions - use fast hardcoded checks only
+      { useAI: true } // Enable AI for comprehensive safety checks
+    );
+
+    functions.logger.info(
+      `[medications] Safety checks completed for ${data.name}: ${warnings.length} warnings found`,
+      { warnings }
     );
 
     // Determine if medication needs confirmation based on warning severity
@@ -201,7 +205,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       `[medications] Created medication ${medRef.id} for user ${userId} with ${warnings.length} warnings (critical/high: ${hasCriticalWarnings})`
     );
 
-    res.status(201).json({
+    const responseData = {
       id: medRef.id,
       ...medication,
       createdAt: medication.createdAt.toDate().toISOString(),
@@ -213,7 +217,14 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       medicationWarning: medication.medicationWarning || null,
       needsConfirmation: medication.needsConfirmation || false,
       medicationStatus: medication.medicationStatus || null,
-    });
+    };
+
+    functions.logger.info(
+      `[medications] Returning response with medicationWarning:`,
+      { medicationWarning: responseData.medicationWarning }
+    );
+
+    res.status(201).json(responseData);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({
@@ -278,8 +289,8 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
         frequency: data.frequency ?? medication.frequency,
       };
 
-      // Use hardcoded checks only for fast response (AI would add 5-8 seconds)
-      warnings = await runMedicationSafetyChecks(userId, updatedMedData, { useAI: false });
+      // Use AI-powered comprehensive checks
+      warnings = await runMedicationSafetyChecks(userId, updatedMedData, { useAI: true });
       hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
     }
 

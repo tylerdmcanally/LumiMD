@@ -340,6 +340,16 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+    registerPushToken: (data: { token: string; platform: string }) =>
+      apiRequest<void>('/v1/users/push-tokens', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    unregisterPushToken: (data: { token: string }) =>
+      apiRequest<void>('/v1/users/push-tokens', {
+        method: 'DELETE',
+        body: JSON.stringify(data),
+      }),
   },
 };
 

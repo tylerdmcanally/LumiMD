@@ -4,6 +4,7 @@ import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 import { webhookConfig } from '../config';
+import { getNotificationService } from '../services/notifications';
 
 export const webhooksRouter = Router();
 
@@ -135,6 +136,28 @@ webhooksRouter.post('/visit-processed', async (req, res) => {
     functions.logger.info(
       `[webhooks] Processed visit ${visitId} for user ${userId}. Created ${nextSteps.length} action items.`,
     );
+
+    // Send push notification if visit is completed
+    if (processingStatus === 'completed') {
+      try {
+        // Count pending actions for badge
+        const pendingActionsSnapshot = await getDb()
+          .collection('actions')
+          .where('userId', '==', userId)
+          .where('completed', '==', false)
+          .get();
+        const badgeCount = pendingActionsSnapshot.size;
+
+        const notificationService = getNotificationService();
+        await notificationService.notifyVisitReady(userId, visitId, badgeCount);
+      } catch (error) {
+        // Don't fail the webhook if notification fails
+        functions.logger.error(
+          `[webhooks] Failed to send push notification for visit ${visitId}:`,
+          error,
+        );
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {
