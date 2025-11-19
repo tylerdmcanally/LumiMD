@@ -443,7 +443,7 @@ export const syncMedicationsFromSummary = async ({
 
   // Run safety checks and add warnings to started medications
   for (const entry of normalized.started) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry);
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
     const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
     tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'started', processedAt }));
   }
@@ -455,7 +455,7 @@ export const syncMedicationsFromSummary = async ({
 
   // Run safety checks for changed medications
   for (const entry of normalized.changed) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry);
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
     const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
     tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'changed', processedAt }));
   }
