@@ -41,7 +41,7 @@ service cloud.firestore {
         && isOwner(userId)
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['firstName', 'lastName', 'preferredName', 'allergies', 'tags', 'updatedAt']);
+          .hasOnly(['firstName', 'lastName', 'preferredName', 'allergies', 'medicalHistory', 'tags', 'updatedAt']);
 
       // No deletes - use Cloud Function for cascading delete
       allow delete: if false;
