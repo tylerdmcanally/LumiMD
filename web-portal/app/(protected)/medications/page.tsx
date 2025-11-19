@@ -32,6 +32,7 @@ export default function MedicationsPage() {
   const [editingMedication, setEditingMedication] = React.useState<any | null>(null);
   const [medToDelete, setMedToDelete] = React.useState<any | null>(null);
   const [viewMedication, setViewMedication] = React.useState<any | null>(null);
+  const [medicationWarnings, setMedicationWarnings] = React.useState<any | null>(null);
 
   const { data: medications = [], isLoading } = useMedications(user?.uid);
 
@@ -54,13 +55,23 @@ export default function MedicationsPage() {
       }
       return api.medications.create(payload);
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       if (user?.uid) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.medications(user.uid),
         });
       }
-      toast.success('Medication added');
+
+      // Check for safety warnings
+      if (data?.medicationWarning && Array.isArray(data.medicationWarning) && data.medicationWarning.length > 0) {
+        setMedicationWarnings({
+          medicationName: data.name,
+          warnings: data.medicationWarning,
+        });
+      } else {
+        toast.success('Medication added');
+      }
+
       setCreateDialogOpen(false);
     },
     onError: (error: any) => {
@@ -87,13 +98,23 @@ export default function MedicationsPage() {
       }
       return api.medications.update(id, payload);
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       if (user?.uid) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.medications(user.uid),
         });
       }
-      toast.success('Medication updated');
+
+      // Check for safety warnings
+      if (data?.medicationWarning && Array.isArray(data.medicationWarning) && data.medicationWarning.length > 0) {
+        setMedicationWarnings({
+          medicationName: data.name,
+          warnings: data.medicationWarning,
+        });
+      } else {
+        toast.success('Medication updated');
+      }
+
       setEditingMedication(null);
     },
     onError: (error: any) => {
@@ -227,8 +248,13 @@ export default function MedicationsPage() {
           onOpenChange={(open) => {
             if (!open) setViewMedication(null);
           }}
-          />
-        </div>
+        />
+
+        <MedicationWarningDialog
+          data={medicationWarnings}
+          onClose={() => setMedicationWarnings(null)}
+        />
+      </div>
     </PageContainer>
   );
 }
@@ -1216,6 +1242,140 @@ function AddMedicationDialog({
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface MedicationWarningDialogProps {
+  data: {
+    medicationName: string;
+    warnings: Array<{
+      type: 'duplicate_therapy' | 'drug_interaction' | 'allergy_alert';
+      severity: 'critical' | 'high' | 'moderate' | 'low';
+      message: string;
+      details: string;
+      recommendation: string;
+      conflictingMedication?: string;
+      allergen?: string;
+    }>;
+  } | null;
+  onClose: () => void;
+}
+
+function MedicationWarningDialog({ data, onClose }: MedicationWarningDialogProps) {
+  if (!data) return null;
+
+  // Severity-based styling
+  const severityColors = {
+    critical: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900', badge: 'bg-red-100 text-red-800' },
+    high: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-900', badge: 'bg-orange-100 text-orange-800' },
+    moderate: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-900', badge: 'bg-yellow-100 text-yellow-800' },
+    low: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', badge: 'bg-blue-100 text-blue-800' },
+  };
+
+  // Icons for each severity
+  const severityIcons = {
+    critical: '🚨',
+    high: '⚠️',
+    moderate: '⚡',
+    low: 'ℹ️',
+  };
+
+  // Type labels
+  const typeLabels = {
+    duplicate_therapy: 'Duplicate Therapy',
+    drug_interaction: 'Drug Interaction',
+    allergy_alert: 'Allergy Alert',
+  };
+
+  // Sort by severity (critical first)
+  const sortedWarnings = [...data.warnings].sort((a, b) => {
+    const severityOrder = { critical: 0, high: 1, moderate: 2, low: 3 };
+    return severityOrder[a.severity] - severityOrder[b.severity];
+  });
+
+  const hasCriticalOrHigh = sortedWarnings.some(w => w.severity === 'critical' || w.severity === 'high');
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="text-2xl">{hasCriticalOrHigh ? '🚨' : '⚠️'}</span>
+            <span>Medication Safety Alert</span>
+          </DialogTitle>
+          <DialogDescription>
+            We detected {sortedWarnings.length} potential {sortedWarnings.length === 1 ? 'concern' : 'concerns'} with <strong>{data.medicationName}</strong>. Please review the information below.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {sortedWarnings.map((warning, index) => {
+            const colors = severityColors[warning.severity];
+            const icon = severityIcons[warning.severity];
+            const typeLabel = typeLabels[warning.type];
+
+            return (
+              <div
+                key={index}
+                className={`rounded-lg border-2 ${colors.border} ${colors.bg} p-4 space-y-3`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{icon}</span>
+                    <div>
+                      <div className="font-semibold text-sm text-text-primary">{typeLabel}</div>
+                      <div className={`text-xs font-medium uppercase tracking-wide ${colors.text}`}>
+                        {warning.severity} severity
+                      </div>
+                    </div>
+                  </div>
+                  <Badge className={colors.badge}>
+                    {warning.severity}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <div className="text-sm font-semibold text-text-primary mb-1">Warning:</div>
+                    <div className="text-sm text-text-secondary">{warning.message}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-semibold text-text-primary mb-1">Details:</div>
+                    <div className="text-sm text-text-secondary">{warning.details}</div>
+                  </div>
+
+                  {warning.conflictingMedication && (
+                    <div>
+                      <div className="text-sm font-semibold text-text-primary mb-1">Conflicts with:</div>
+                      <div className="text-sm text-text-secondary font-medium">{warning.conflictingMedication}</div>
+                    </div>
+                  )}
+
+                  {warning.allergen && (
+                    <div>
+                      <div className="text-sm font-semibold text-text-primary mb-1">Allergen:</div>
+                      <div className="text-sm text-text-secondary font-medium">{warning.allergen}</div>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-gray-200">
+                    <div className="text-sm font-semibold text-text-primary mb-1">Recommendation:</div>
+                    <div className="text-sm text-text-secondary font-medium">{warning.recommendation}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={onClose} variant="primary" className="w-full sm:w-auto">
+            I understand
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
