@@ -32,16 +32,13 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isOwner(userId);
 
       // Account creation - ensure userId matches auth.uid
-      allow create: if isAuthenticated()
-        && isOwner(userId)
-        && request.resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isOwner(userId);
 
-      // Update own profile - prevent userId modification, whitelist allowed fields
+      // Update own profile - whitelist allowed fields
       allow update: if isAuthenticated()
         && isOwner(userId)
-        && request.resource.data.userId == resource.data.userId
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['firstName', 'lastName', 'preferredName', 'allergies', 'medicalHistory', 'tags', 'updatedAt']);
+          .hasOnly(['firstName', 'lastName', 'preferredName', 'dateOfBirth', 'allergies', 'medicalHistory', 'tags', 'folders', 'createdAt', 'updatedAt']);
 
       // No deletes - use Cloud Function for cascading delete
       allow delete: if false;
