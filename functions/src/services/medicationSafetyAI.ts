@@ -18,6 +18,7 @@ import { MedicationChangeEntry } from './openai';
 import { MedicationSafetyWarning } from './medicationSafety';
 
 const db = () => admin.firestore();
+const cacheCollection = () => db().collection('medicationSafetyCache');
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -90,14 +91,20 @@ function formatMedication(med: { name: string; dose?: string; frequency?: string
  * Check cache for previous AI safety check results
  * Cache key: hash of (new med name + current med names + allergies)
  */
+const buildCacheDocId = (userId: string, cacheKey: string) => `${userId}_${cacheKey}`;
+
 async function getCachedResult(
+  userId: string,
   cacheKey: string
 ): Promise<MedicationSafetyWarning[] | null> {
   try {
-    const cacheDoc = await db()
-      .collection('medicationSafetyCache')
-      .doc(cacheKey)
-      .get();
+    const docId = buildCacheDocId(userId, cacheKey);
+    let cacheDoc = await cacheCollection().doc(docId).get();
+
+    // Backwards compatibility: fall back to legacy doc ID if needed
+    if (!cacheDoc.exists) {
+      cacheDoc = await cacheCollection().doc(cacheKey).get();
+    }
 
     if (!cacheDoc.exists) {
       return null;
@@ -124,16 +131,21 @@ async function getCachedResult(
  * Store AI safety check results in cache
  */
 async function cacheResult(
+  userId: string,
   cacheKey: string,
-  warnings: MedicationSafetyWarning[]
+  warnings: MedicationSafetyWarning[],
+  metadata: { newMedication: string; currentMedications: string[]; allergies: string[] }
 ): Promise<void> {
   try {
-    await db()
-      .collection('medicationSafetyCache')
-      .doc(cacheKey)
+    await cacheCollection()
+      .doc(buildCacheDocId(userId, cacheKey))
       .set({
         warnings,
         createdAt: admin.firestore.Timestamp.now(),
+        userId,
+        newMedication: metadata.newMedication,
+        currentMedications: metadata.currentMedications,
+        allergies: metadata.allergies,
       });
   } catch (error) {
     functions.logger.warn('[medicationSafetyAI] Cache write failed:', error);
@@ -188,6 +200,35 @@ function convertAIWarning(aiWarning: AIWarningResponse['warnings'][0]): Medicati
 /**
  * Run AI-based medication safety checks
  */
+export async function clearMedicationSafetyCacheForUser(userId: string): Promise<void> {
+  try {
+    const snapshot = await cacheCollection().where('userId', '==', userId).get();
+    if (snapshot.empty) {
+      return;
+    }
+
+    let batch = db().batch();
+    snapshot.docs.forEach((doc, index) => {
+      batch.delete(doc.ref);
+      if ((index + 1) % 450 === 0) {
+        batch.commit();
+        batch = db().batch();
+      }
+    });
+
+    await batch.commit();
+    functions.logger.info('[medicationSafetyAI] Cleared medication safety cache for user', {
+      userId,
+      deletedDocs: snapshot.size,
+    });
+  } catch (error) {
+    functions.logger.error('[medicationSafetyAI] Failed to clear cache for user', {
+      userId,
+      error,
+    });
+  }
+}
+
 export async function runAIBasedSafetyChecks(
   userId: string,
   newMedication: MedicationChangeEntry
@@ -199,7 +240,7 @@ export async function runAIBasedSafetyChecks(
       db().collection('users').doc(userId).get(),
     ]);
 
-    const currentMedications = medsSnapshot.docs
+    const activeMedicationDocs = medsSnapshot.docs
       .filter((doc) => {
         const data = doc.data();
         const active = data?.active === true;
@@ -210,15 +251,16 @@ export async function runAIBasedSafetyChecks(
         );
         const deleted = data?.deleted === true || data?.archived === true;
         return active && !stopped && !deleted;
-      })
-      .map((doc) => {
-        const data = doc.data();
-        return formatMedication({
-          name: data.name,
-          dose: data.dose,
-          frequency: data.frequency,
-        });
       });
+
+    const currentMedications = activeMedicationDocs.map((doc) => {
+      const data = doc.data();
+      return formatMedication({
+        name: data.name,
+        dose: data.dose,
+        frequency: data.frequency,
+      });
+    });
 
     const allergies = userDoc.exists ? (userDoc.data()?.allergies || []) : [];
 
@@ -230,7 +272,7 @@ export async function runAIBasedSafetyChecks(
     );
 
     // Check cache first
-    const cachedResult = await getCachedResult(cacheKey);
+    const cachedResult = await getCachedResult(userId, cacheKey);
     if (cachedResult) {
       return cachedResult;
     }
@@ -292,7 +334,11 @@ export async function runAIBasedSafetyChecks(
     const warnings = aiResponse.warnings.map(convertAIWarning);
 
     // Cache result
-    await cacheResult(cacheKey, warnings);
+    await cacheResult(userId, cacheKey, warnings, {
+      newMedication: formatMedication(newMedication),
+      currentMedications,
+      allergies,
+    });
 
     // Log warnings for monitoring
     if (warnings.length > 0) {

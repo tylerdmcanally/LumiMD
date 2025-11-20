@@ -1,6 +1,7 @@
 import * as admin from 'firebase-admin';
 import { MedicationChangeEntry } from './openai';
 import { runMedicationSafetyChecks, addSafetyWarningsToEntry } from './medicationSafety';
+import { clearMedicationSafetyCacheForUser } from './medicationSafetyAI';
 
 const db = () => admin.firestore();
 const getMedicationsCollection = () => db().collection('medications');
@@ -458,6 +459,7 @@ export const syncMedicationsFromSummary = async ({
   }
 
   await Promise.all(tasks);
+  await clearMedicationSafetyCacheForUser(userId);
 };
 
 export const normalizeMedicationSummary = (

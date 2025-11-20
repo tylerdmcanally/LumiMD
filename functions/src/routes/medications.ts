@@ -4,6 +4,7 @@ import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
 import { runMedicationSafetyChecks, MedicationSafetyWarning } from '../services/medicationSafety';
+import { clearMedicationSafetyCacheForUser } from '../services/medicationSafetyAI';
 
 export const medicationsRouter = Router();
 
@@ -201,6 +202,8 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     const medDoc = await medRef.get();
     const medication = medDoc.data()!;
 
+    await clearMedicationSafetyCacheForUser(userId);
+
     functions.logger.info(
       `[medications] Created medication ${medRef.id} for user ${userId} with ${warnings.length} warnings (critical/high: ${hasCriticalWarnings})`
     );
@@ -338,6 +341,8 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     const updatedDoc = await medRef.get();
     const updatedMed = updatedDoc.data()!;
 
+    await clearMedicationSafetyCacheForUser(userId);
+
     functions.logger.info(
       `[medications] Updated medication ${medId} for user ${userId} with ${warnings.length} warnings (critical/high: ${hasCriticalWarnings})`
     );
@@ -451,6 +456,8 @@ medicationsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     
     // Delete medication
     await medRef.delete();
+
+    await clearMedicationSafetyCacheForUser(userId);
     
     functions.logger.info(`[medications] Deleted medication ${medId} for user ${userId}`);
     

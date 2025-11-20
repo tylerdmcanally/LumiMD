@@ -9,7 +9,8 @@
     "shell": "npm run build && firebase functions:shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "clean:assembly": "ts-node scripts/delete-assembly-transcripts.ts"
+    "clean:assembly": "ts-node scripts/delete-assembly-transcripts.ts",
+    "clean:medication-cache": "ts-node scripts/clearMedicationSafetyCache.ts"
   },
   "engines": {
     "node": "20"
