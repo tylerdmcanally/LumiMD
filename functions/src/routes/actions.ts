@@ -10,11 +10,25 @@ export const actionsRouter = Router();
 const getDb = () => admin.firestore();
 
 // Validation schemas
+const calendarEventEntrySchema = z.object({
+  platform: z.string().optional(),
+  calendarId: z.string().nullable().optional(),
+  eventId: z.string().min(1),
+  addedAt: z.string().optional(),
+  removedAt: z.string().optional(),
+});
+
+const calendarEventsSchema = z
+  .record(calendarEventEntrySchema)
+  .nullable()
+  .optional();
+
 const createActionSchema = z.object({
   description: z.string().min(1),
   notes: z.string().optional(),
   dueAt: z.string().nullable().optional(),
   visitId: z.string().nullable().optional(),
+  calendarEvents: calendarEventsSchema,
 });
 
 const updateActionSchema = z.object({
@@ -24,6 +38,7 @@ const updateActionSchema = z.object({
   visitId: z.string().nullable().optional(),
   completed: z.boolean().optional(),
   completedAt: z.string().optional(),
+  calendarEvents: calendarEventsSchema,
 });
 
 /**
@@ -132,6 +147,7 @@ actionsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       source: data.visitId ? 'visit' : 'manual',
       visitId: data.visitId || null,
       dueAt: dueAtTimestamp,
+      calendarEvents: data.calendarEvents || null,
       createdAt: now,
       updatedAt: now,
       completedAt: null,
@@ -222,6 +238,10 @@ actionsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (data.visitId !== undefined) {
       updateData.visitId = data.visitId || null;
       updateData.source = data.visitId ? 'visit' : 'manual';
+    }
+    
+    if (data.calendarEvents !== undefined) {
+      updateData.calendarEvents = data.calendarEvents ?? null;
     }
     
     // If marking as completed, set completedAt timestamp

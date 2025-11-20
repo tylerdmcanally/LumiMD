@@ -26,12 +26,13 @@ The date parsing logic was working correctly:
 - `mobile/package.json` - Added expo-calendar dependency
 
 **Features:**
-- Calendar icon button on action items with due dates
+- Calendar icon button on action items with due dates (acts as an add/remove toggle)
 - Native calendar integration (iOS Calendar, Google Calendar on Android)
-- Events created at 9 AM on due date with 1-hour duration
-- Two reminders: 1 day before and on the day
-- Automatic permission handling
-- Creates/uses "LumiMD" calendar on Android, default calendar on iOS
+- **All-day by default:** if the action description does not contain an explicit time, we create an all-day event with a reminder 24 hours ahead.
+- **Timed events when a time is present:** descriptions like "CXR at 9:45 am" create a 60-minute event at that time with two reminders (24 hours prior and at start).
+- Stores calendar metadata (`eventId`, `calendarId`, platform, timestamps) on the action so we can stay in sync.
+- Tapping the icon again removes the event and clears the metadata.
+- Automatic permission handling and "LumiMD" calendar creation on Android (default calendar on iOS).
 
 **User Flow:**
 1. View action items in the app
@@ -50,14 +51,11 @@ The date parsing logic was working correctly:
 
 **Features:**
 - "Add to Calendar" button on action items with due dates
-- Downloads ICS (iCalendar) file format
-- Compatible with all major calendar apps:
-  - Google Calendar
-  - Apple Calendar
-  - Outlook
-  - Any app supporting ICS format
-- Same event timing as mobile (9 AM, 1-hour duration)
-- Automatic reminders in ICS file
+- Downloads ICS (iCalendar) files compatible with Google, Apple, Outlook, etc.
+- Mirrors the mobile logic:
+  - All-day events unless a time appears in the description
+  - Timed events last 60 minutes
+  - Includes a reminder 24 hours ahead (and at start for timed events)
 
 **User Flow:**
 1. View action items in web portal
@@ -101,21 +99,24 @@ export function parseActionDueDate(
 ```typescript
 // mobile/lib/calendar.ts
 export async function addActionToCalendar(
-  action: ActionItem
-): Promise<{ success: boolean; eventId?: string; error?: string }> {
-  // Request permissions
-  // Get or create calendar
-  // Create event with reminders
-  // Return result
+  action: ActionItem,
+): Promise<{ success: boolean; eventId?: string; calendarId?: string }> {
+  // Request permissions, create event, return IDs
+}
+
+export async function removeCalendarEvent(event: CalendarEventMetadata) {
+  // Deletes the native calendar event when users toggle it off
 }
 ```
 
 **Key Features:**
 - Automatic permission requests
-- Error handling with user-friendly messages
+- All-day vs. timed event detection based on description
+- Error handling with user-friendly alerts
 - Calendar creation on Android (uses default on iOS)
-- Two-level reminder system
-- Timezone-aware event creation
+- Reminder automation
+- Returns `eventId`/`calendarId` so we can sync with Firestore
+- Removal helper to keep device calendars clean
 
 ### Web ICS Generation
 
@@ -159,8 +160,8 @@ read_lints # ✓ No errors
 ## Files Changed
 
 ### Added
-1. `mobile/lib/calendar.ts` (183 lines)
-2. `web-portal/lib/calendar.ts` (231 lines)
+1. `mobile/lib/calendar.ts`
+2. `web-portal/lib/calendar.ts`
 3. `docs/guides/CALENDAR-INTEGRATION.md` (156 lines)
 
 ### Modified
@@ -212,7 +213,7 @@ read_lints # ✓ No errors
 ## Future Enhancements
 
 Potential improvements for future versions:
-1. **Two-way sync** - Update action items when calendar events change
+1. **Two-way sync / background cleanup** - Remove events when actions are deleted on other devices
 2. **Custom reminders** - Let users choose reminder timing
 3. **Calendar selection** - Choose which calendar to add to
 4. **Bulk export** - Add all pending actions at once
@@ -223,10 +224,9 @@ Potential improvements for future versions:
 ## Known Limitations
 
 1. **One-way integration** - Changes in calendar don't update action items
-2. **No conflict detection** - Won't check if you already have an event at that time
-3. **Fixed timing** - All events set to 9 AM (not customizable yet)
-4. **No timezone handling** - Uses device timezone (works but could be smarter)
-5. **Manual completion** - Completing calendar event doesn't mark action complete
+2. **No conflict detection** - Won't check for overlapping events
+3. **No cross-device cleanup (yet)** - If an action is deleted from another device or the web, the native calendar event remains until the user removes it manually.
+4. **Manual completion** - Completing calendar event doesn't mark action complete
 
 ## Support & Troubleshooting
 

@@ -2,12 +2,21 @@ import * as Calendar from 'expo-calendar';
 import { Platform, Alert } from 'react-native';
 import dayjs from 'dayjs';
 
+export interface CalendarEventMetadata {
+  platform?: string | null;
+  calendarId?: string | null;
+  eventId: string;
+  addedAt?: string | null;
+  removedAt?: string | null;
+}
+
 export interface ActionItem {
   id: string;
   description: string;
   dueAt?: string | null;
   notes?: string;
   visitId?: string | null;
+  calendarEvents?: Record<string, CalendarEventMetadata>;
 }
 
 /**
@@ -149,7 +158,7 @@ async function getOrCreateLumiMDCalendar(): Promise<string | null> {
  */
 export async function addActionToCalendar(
   action: ActionItem
-): Promise<{ success: boolean; eventId?: string; error?: string }> {
+): Promise<{ success: boolean; eventId?: string; calendarId?: string; error?: string }> {
   try {
     // Check permissions first
     const hasPermission = await requestCalendarPermissions();
@@ -210,10 +219,30 @@ export async function addActionToCalendar(
       timeZone: allDay ? undefined : timeZone,
       alarms,
     });
-    
-    return { success: true, eventId };
+
+    return { success: true, eventId, calendarId };
   } catch (error) {
     console.error('Error adding action to calendar:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: errorMessage };
+  }
+}
+
+export async function removeCalendarEvent(
+  event: CalendarEventMetadata | null | undefined,
+): Promise<{ success: boolean; error?: string }> {
+  if (!event?.eventId) {
+    return { success: false, error: 'Missing calendar event ID' };
+  }
+
+  try {
+    await Calendar.deleteEventAsync(
+      event.eventId,
+      event.calendarId ? { futureEvents: false } : undefined,
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing calendar event:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: errorMessage };
   }

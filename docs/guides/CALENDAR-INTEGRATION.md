@@ -27,13 +27,12 @@ The backend automatically:
 
 **Features:**
 - Calendar icon button appears on pending action items that have a due date
-- Tapping the calendar icon adds the action to your device calendar
-- Creates an event at 9 AM on the due date with 1-hour duration
-- Sets two reminders:
-  - 1 day before at 9 AM
-  - On the day at 9 AM
-- Supports both iOS and Android native calendars
-- Uses expo-calendar for calendar integration
+- Tapping the icon toggles calendar sync:
+  - **No explicit time in the description:** creates an all-day event (midnight–midnight) with a reminder 24 hours ahead.
+  - **Explicit time included (“at 9:45 am”, “945am”, etc.):** creates a 1-hour event at that time with two reminders (24 hours before, and at start time).
+- Calendar event metadata (event ID, calendar ID, timestamps) is stored on the action so we can keep the device calendar in sync.
+- Tapping the icon again removes the event from the device calendar and clears the stored metadata.
+- Supports both iOS and Android native calendars via `expo-calendar`.
 
 **Files:**
 - `mobile/lib/calendar.ts` - Calendar integration utilities
@@ -103,15 +102,17 @@ This ensures that "follow up in 3 months" is calculated from the visit date, not
 
 **Mobile (Native Calendar):**
 - Title: "📋 [Action Title]"
-- Start: 9:00 AM on due date
-- End: 10:00 AM on due date
-- Alarms: -24 hours, and at event time
-- Notes: Full action description
+- All-day by default; falls back to timed events only when a specific time is present in the action description.
+- Timed events are 60 minutes long and include two reminders (24 hours before, and at start).
+- Notes contain the full action description for context.
+- Stored metadata lets us later remove/update the event when the action changes.
 
 **Web (ICS File):**
 - Format: iCalendar (RFC 5545)
-- Same timing as mobile
-- Can be imported into any calendar application
+- Mirrors the same logic:
+  - All-day events when no time is present
+  - Timed events when the description includes an explicit time
+- Downloaded `.ics` files can be imported into any calendar app (Google, Apple, Outlook, etc.).
 
 ## Troubleshooting
 
@@ -124,13 +125,17 @@ This ensures that "follow up in 3 months" is calculated from the visit date, not
 ### Mobile Calendar Permission Denied
 **Solution:** Go to device Settings → LumiMD → Permissions → Enable Calendar
 
+### Calendar Events Not Removed
+**Cause:** (Mobile) Removing the action without removing the calendar link first, or deleting the action from another device.
+**Solution:** Use the in-app calendar toggle before deleting the action. The current implementation can only remove events from the device that added them. If an action is deleted elsewhere, you'll need to remove that calendar event manually (until we add background sync).
+
 ### Web Download Not Working
 **Solution:** Check that your browser allows downloads from LumiMD. The ICS file should download automatically and can be opened with your calendar app.
 
 ## Future Enhancements
 
 Potential improvements:
-- Automatic calendar sync (two-way sync)
+- Automatic two-way sync (e.g., remove events if the action is deleted elsewhere)
 - Custom reminder times
 - Calendar selection (which calendar to add to)
 - Bulk calendar export for multiple actions

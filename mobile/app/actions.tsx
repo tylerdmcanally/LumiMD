@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -13,12 +14,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import dayjs from 'dayjs';
+import { useQueryClient } from '@tanstack/react-query';
 import { Colors, spacing, Card } from '../components/ui';
-import { useActionItems } from '../lib/api/hooks';
+import { useActionItems, queryKeys } from '../lib/api/hooks';
 import { openWebActions } from '../lib/linking';
 import { useCompleteAction } from '../lib/api/mutations';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { addActionToCalendar, hasCalendarPermissions } from '../lib/calendar';
+import { addActionToCalendar, removeCalendarEvent } from '../lib/calendar';
+import { api } from '../lib/api/client';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';
@@ -40,6 +43,8 @@ const getActionTitle = (description?: string | null) => {
 export default function ActionsScreen() {
   const router = useRouter();
   const [showCompleted, setShowCompleted] = useState(false);
+  const queryClient = useQueryClient();
+  const platformKey = Platform.OS === 'ios' ? 'ios' : 'android';
 
   const {
     data: actions,
@@ -87,6 +92,18 @@ export default function ActionsScreen() {
     });
   };
 
+  const updateCachedCalendarEvents = (actionId: string, calendarEvents: Record<string, any> | null) => {
+    const updater = (list: any[] | undefined) => {
+      if (!Array.isArray(list)) return list;
+      return list.map((item) =>
+        item.id === actionId ? { ...item, calendarEvents } : item,
+      );
+    };
+
+    queryClient.setQueryData(queryKeys.actions, updater);
+    queryClient.setQueryData([...queryKeys.actions, 'pending'], updater);
+  };
+
   const handleAddToCalendar = async (action: any) => {
     if (!action.dueAt) {
       Alert.alert(
@@ -97,15 +114,26 @@ export default function ActionsScreen() {
       return;
     }
 
-    const result = await addActionToCalendar({
-      id: action.id,
-      description: action.description,
-      dueAt: action.dueAt,
-      notes: action.notes || '',
-      visitId: action.visitId,
-    });
+    const result = await addActionToCalendar(action);
 
     if (result.success) {
+      const updatedEvents = {
+        ...(action.calendarEvents || {}),
+        [platformKey]: {
+          platform: Platform.OS,
+          calendarId: result.calendarId ?? null,
+          eventId: result.eventId!,
+          addedAt: new Date().toISOString(),
+        },
+      };
+
+      try {
+        await api.actions.update(action.id, { calendarEvents: updatedEvents });
+        updateCachedCalendarEvents(action.id, updatedEvents);
+      } catch (error) {
+        console.error('Failed to sync calendar metadata:', error);
+      }
+
       Alert.alert(
         'Added to Calendar',
         'This action item has been added to your device calendar.',
@@ -120,11 +148,59 @@ export default function ActionsScreen() {
     }
   };
 
+  const handleRemoveFromCalendar = async (action: any) => {
+    const platformEvent = action.calendarEvents?.[platformKey];
+    if (!platformEvent) {
+      Alert.alert('Not in Calendar', 'This action item is not currently added to your calendar.', [
+        { text: 'OK' },
+      ]);
+      return;
+    }
+
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Remove from Calendar',
+        'This will remove the calendar reminder for this action item. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
+        ],
+      );
+    });
+
+    if (!confirmed) return;
+
+    const removalResult = await removeCalendarEvent(platformEvent);
+    if (!removalResult.success) {
+      Alert.alert(
+        'Calendar Error',
+        removalResult.error || 'Unable to remove this event from your calendar. Please try again.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+
+    const updatedEvents = { ...(action.calendarEvents || {}) };
+    delete updatedEvents[platformKey];
+    const payload = Object.keys(updatedEvents).length > 0 ? updatedEvents : null;
+
+    try {
+      await api.actions.update(action.id, { calendarEvents: payload });
+      updateCachedCalendarEvents(action.id, payload);
+    } catch (error) {
+      console.error('Failed to sync calendar metadata after removal:', error);
+    }
+
+    Alert.alert('Removed', 'The calendar event has been removed.', [{ text: 'OK' }]);
+  };
+
   const renderActionRow = (action: any, isLast: boolean = false) => {
     const dueDate = formatDate(action.dueAt);
     const visitDate = formatDate(action.createdAt);
     const displayTitle = getActionTitle(action.description);
     const hasDueDate = Boolean(action.dueAt);
+    const platformEvent = action.calendarEvents?.[platformKey];
+    const isInCalendar = Boolean(platformEvent && !platformEvent.removedAt);
 
     return (
       <View key={action.id} style={[styles.actionRow, !isLast && styles.rowDivider]}>
@@ -161,11 +237,17 @@ export default function ActionsScreen() {
         </Pressable>
         {!action.completed && hasDueDate && (
           <Pressable
-            onPress={() => handleAddToCalendar(action)}
+            onPress={() =>
+              isInCalendar ? handleRemoveFromCalendar(action) : handleAddToCalendar(action)
+            }
             style={styles.calendarButton}
             hitSlop={8}
           >
-            <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
+            <Ionicons
+              name={isInCalendar ? 'calendar' : 'calendar-outline'}
+              size={20}
+              color={isInCalendar ? Colors.success : Colors.primary}
+            />
           </Pressable>
         )}
       </View>
