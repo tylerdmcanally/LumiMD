@@ -195,22 +195,30 @@ export async function runAIBasedSafetyChecks(
   try {
     // Fetch current medications and allergies
     const [medsSnapshot, userDoc] = await Promise.all([
-      db()
-        .collection('medications')
-        .where('userId', '==', userId)
-        .where('active', '==', true)
-        .get(),
+      db().collection('medications').where('userId', '==', userId).get(),
       db().collection('users').doc(userId).get(),
     ]);
 
-    const currentMedications = medsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return formatMedication({
-        name: data.name,
-        dose: data.dose,
-        frequency: data.frequency,
+    const currentMedications = medsSnapshot.docs
+      .filter((doc) => {
+        const data = doc.data();
+        const active = data?.active === true;
+        const stopped = Boolean(
+          data?.stoppedAt &&
+            typeof data.stoppedAt === 'object' &&
+            typeof data.stoppedAt.toDate === 'function',
+        );
+        const deleted = data?.deleted === true || data?.archived === true;
+        return active && !stopped && !deleted;
+      })
+      .map((doc) => {
+        const data = doc.data();
+        return formatMedication({
+          name: data.name,
+          dose: data.dose,
+          frequency: data.frequency,
+        });
       });
-    });
 
     const allergies = userDoc.exists ? (userDoc.data()?.allergies || []) : [];
 

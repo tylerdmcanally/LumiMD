@@ -13,6 +13,22 @@ import { MedicationChangeEntry } from './openai';
 
 const db = () => admin.firestore();
 
+const isFirestoreTimestamp = (value: unknown): value is admin.firestore.Timestamp =>
+  Boolean(
+    value &&
+      typeof value === 'object' &&
+      'toDate' in (value as Record<string, unknown>) &&
+      typeof (value as admin.firestore.Timestamp).toDate === 'function',
+  );
+
+const isMedicationCurrentlyActive = (data: FirebaseFirestore.DocumentData): boolean => {
+  if (!data) return false;
+  if (data.deleted === true || data.archived === true) return false;
+  if (data.active !== true) return false;
+  if (isFirestoreTimestamp(data.stoppedAt)) return false;
+  return true;
+};
+
 export interface MedicationSafetyWarning {
   type: 'duplicate_therapy' | 'drug_interaction' | 'allergy_alert';
   severity: 'critical' | 'high' | 'moderate' | 'low';
@@ -541,18 +557,16 @@ export async function runHardcodedSafetyChecks(
   newMedication: MedicationChangeEntry
 ): Promise<MedicationSafetyWarning[]> {
   try {
-    // Fetch current active medications
-    const medsSnapshot = await db()
-      .collection('medications')
-      .where('userId', '==', userId)
-      .where('active', '==', true)
-      .get();
+    // Fetch medications once, then aggressively filter to currently active therapy
+    const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
 
-    const currentMedications = medsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().name,
-      active: doc.data().active,
-    }));
+    const currentMedications = medsSnapshot.docs
+      .filter((doc) => isMedicationCurrentlyActive(doc.data()))
+      .map((doc) => ({
+        id: doc.id,
+        name: doc.data().name,
+        active: true,
+      }));
 
     functions.logger.info('[medicationSafety] Running hardcoded checks', {
       newMedication: newMedication.name,
