@@ -3,6 +3,11 @@
  * Generates ICS (iCalendar) files that can be imported into any calendar app
  */
 
+const MERIDIEM_TIME_REGEX = /\b(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.|am|pm)\b/i;
+const COMPACT_TIME_REGEX = /\b(?:at\s*)?(\d{3,4})\s*(a\.m\.|p\.m\.|am|pm)\b/i;
+
+type ExplicitTime = { hour: number; minute: number };
+
 export interface ActionItem {
   id: string;
   description: string;
@@ -25,6 +30,13 @@ function formatICSDate(date: Date): string {
   return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
 }
 
+function formatICSSimpleDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
 /**
  * Escape special characters for ICS format
  */
@@ -44,6 +56,48 @@ function getActionTitle(description: string): string {
   return title || description;
 }
 
+function parseExplicitTime(description?: string | null): ExplicitTime | null {
+  if (!description) return null;
+  const normalized = description.replace(/\s+/g, ' ').trim();
+
+  const meridiemMatch = normalized.match(MERIDIEM_TIME_REGEX);
+  if (meridiemMatch) {
+    const hour = parseInt(meridiemMatch[1], 10);
+    const minute = meridiemMatch[2] ? parseInt(meridiemMatch[2], 10) : 0;
+    const meridiem = meridiemMatch[3].toLowerCase();
+    return convertTo24Hour(hour, minute, meridiem);
+  }
+
+  const compactMatch = normalized.match(COMPACT_TIME_REGEX);
+  if (compactMatch) {
+    const digits = compactMatch[1];
+    const meridiem = compactMatch[2].toLowerCase();
+    const hourDigits = digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2);
+    const minuteDigits = digits.slice(-2);
+    const hour = parseInt(hourDigits, 10);
+    const minute = parseInt(minuteDigits, 10);
+    return convertTo24Hour(hour, minute, meridiem);
+  }
+
+  return null;
+}
+
+function convertTo24Hour(hour: number, minute: number, meridiem: string): ExplicitTime | null {
+  if (Number.isNaN(hour) || Number.isNaN(minute)) {
+    return null;
+  }
+
+  let adjustedHour = hour % 12;
+  if (meridiem.startsWith('p')) {
+    adjustedHour += 12;
+  }
+
+  return {
+    hour: adjustedHour,
+    minute: minute % 60,
+  };
+}
+
 /**
  * Generate an ICS file content for an action item
  */
@@ -56,19 +110,29 @@ export function generateICS(action: ActionItem): string {
   if (isNaN(dueDate.getTime())) {
     throw new Error('Invalid due date');
   }
-  
-  // Set event to 9 AM on the due date
-  const startDate = new Date(dueDate);
-  startDate.setHours(9, 0, 0, 0);
-  
-  // Event duration: 1 hour
-  const endDate = new Date(startDate);
-  endDate.setHours(10, 0, 0, 0);
-  
-  // Alarm: 1 day before at 9 AM
-  const alarmDate = new Date(startDate);
-  alarmDate.setDate(alarmDate.getDate() - 1);
-  
+
+  const explicitTime = parseExplicitTime(action.description);
+  let dtStartLine = '';
+  let dtEndLine = '';
+  let startDate: Date;
+  let endDate: Date;
+
+  if (explicitTime) {
+    startDate = new Date(dueDate);
+    startDate.setHours(explicitTime.hour, explicitTime.minute, 0, 0);
+    endDate = new Date(startDate);
+    endDate.setHours(startDate.getHours() + 1);
+    dtStartLine = `DTSTART:${formatICSDate(startDate)}`;
+    dtEndLine = `DTEND:${formatICSDate(endDate)}`;
+  } else {
+    startDate = new Date(dueDate);
+    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 1);
+    dtStartLine = `DTSTART;VALUE=DATE:${formatICSSimpleDate(startDate)}`;
+    dtEndLine = `DTEND;VALUE=DATE:${formatICSSimpleDate(endDate)}`;
+  }
+
   const title = getActionTitle(action.description);
   const description = action.notes || action.description;
   
@@ -86,8 +150,8 @@ export function generateICS(action: ActionItem): string {
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${formatICSDate(now)}`,
-    `DTSTART:${formatICSDate(startDate)}`,
-    `DTEND:${formatICSDate(endDate)}`,
+    dtStartLine,
+    dtEndLine,
     `SUMMARY:📋 ${escapeICSText(title)}`,
     `DESCRIPTION:${escapeICSText(description)}`,
     'STATUS:CONFIRMED',
@@ -142,11 +206,27 @@ export function generateMultipleICS(actions: ActionItem[]): string {
         return null;
       }
       
-      const startDate = new Date(dueDate);
-      startDate.setHours(9, 0, 0, 0);
-      
-      const endDate = new Date(startDate);
-      endDate.setHours(10, 0, 0, 0);
+      const explicitTime = parseExplicitTime(action.description);
+      let dtStartLine = '';
+      let dtEndLine = '';
+      let startDate: Date;
+      let endDate: Date;
+
+      if (explicitTime) {
+        startDate = new Date(dueDate);
+        startDate.setHours(explicitTime.hour, explicitTime.minute, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setHours(startDate.getHours() + 1);
+        dtStartLine = `DTSTART:${formatICSDate(startDate)}`;
+        dtEndLine = `DTEND:${formatICSDate(endDate)}`;
+      } else {
+        startDate = new Date(dueDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 1);
+        dtStartLine = `DTSTART;VALUE=DATE:${formatICSSimpleDate(startDate)}`;
+        dtEndLine = `DTEND;VALUE=DATE:${formatICSSimpleDate(endDate)}`;
+      }
       
       const title = getActionTitle(action.description);
       const description = action.notes || action.description;
@@ -156,8 +236,8 @@ export function generateMultipleICS(actions: ActionItem[]): string {
         'BEGIN:VEVENT',
         `UID:${uid}`,
         `DTSTAMP:${formatICSDate(now)}`,
-        `DTSTART:${formatICSDate(startDate)}`,
-        `DTEND:${formatICSDate(endDate)}`,
+        dtStartLine,
+        dtEndLine,
         `SUMMARY:📋 ${escapeICSText(title)}`,
         `DESCRIPTION:${escapeICSText(description)}`,
         'STATUS:CONFIRMED',

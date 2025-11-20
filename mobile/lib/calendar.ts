@@ -13,6 +13,53 @@ export interface ActionItem {
 /**
  * Request calendar permissions from the user
  */
+const MERIDIEM_TIME_REGEX = /\b(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.|am|pm)\b/i;
+const COMPACT_TIME_REGEX = /\b(?:at\s*)?(\d{3,4})\s*(a\.m\.|p\.m\.|am|pm)\b/i;
+
+type ExplicitTime = { hour: number; minute: number };
+
+function parseExplicitTime(description?: string | null): ExplicitTime | null {
+  if (!description) return null;
+  const normalized = description.replace(/\s+/g, ' ').trim();
+
+  const meridiemMatch = normalized.match(MERIDIEM_TIME_REGEX);
+  if (meridiemMatch) {
+    const hour = parseInt(meridiemMatch[1], 10);
+    const minute = meridiemMatch[2] ? parseInt(meridiemMatch[2], 10) : 0;
+    const meridiem = meridiemMatch[3].toLowerCase();
+    return convertTo24Hour(hour, minute, meridiem);
+  }
+
+  const compactMatch = normalized.match(COMPACT_TIME_REGEX);
+  if (compactMatch) {
+    const digits = compactMatch[1];
+    const meridiem = compactMatch[2].toLowerCase();
+    const hourDigits = digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2);
+    const minuteDigits = digits.slice(-2);
+    const hour = parseInt(hourDigits, 10);
+    const minute = parseInt(minuteDigits, 10);
+    return convertTo24Hour(hour, minute, meridiem);
+  }
+
+  return null;
+}
+
+function convertTo24Hour(hour: number, minute: number, meridiem: string): ExplicitTime | null {
+  if (Number.isNaN(hour) || Number.isNaN(minute)) {
+    return null;
+  }
+
+  let adjustedHour = hour % 12;
+  if (meridiem.startsWith('p')) {
+    adjustedHour += 12;
+  }
+
+  return {
+    hour: adjustedHour,
+    minute: minute % 60,
+  };
+}
+
 export async function requestCalendarPermissions(): Promise<boolean> {
   try {
     const { status } = await Calendar.requestCalendarPermissionsAsync();
@@ -129,23 +176,39 @@ export async function addActionToCalendar(
     // Extract title from description (everything before the em dash)
     const title = action.description.split(/[-–—]/)[0].trim() || action.description;
     
-    // Create calendar event
-    // Set the event to start at 9 AM on the due date and last 1 hour
-    const startDate = dueDate.hour(9).minute(0).second(0).toDate();
-    const endDate = dueDate.hour(10).minute(0).second(0).toDate();
+    const explicitTime = parseExplicitTime(action.description);
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let startDate: Date;
+    let endDate: Date;
+    let allDay = false;
+    const alarms: Calendar.Alarm[] = [];
+
+    if (explicitTime) {
+      const start = dueDate
+        .hour(explicitTime.hour)
+        .minute(explicitTime.minute)
+        .second(0);
+      startDate = start.toDate();
+      endDate = start.add(60, 'minute').toDate();
+      // Keep two reminders: 24 hours before & at event start
+      alarms.push({ relativeOffset: -24 * 60 });
+      alarms.push({ relativeOffset: 0 });
+    } else {
+      allDay = true;
+      startDate = dueDate.startOf('day').toDate();
+      endDate = dueDate.add(1, 'day').startOf('day').toDate();
+      // Reminder 1 day before
+      alarms.push({ relativeOffset: -24 * 60 });
+    }
     
     const eventId = await Calendar.createEventAsync(calendarId, {
       title: `📋 ${title}`,
       startDate,
       endDate,
+      allDay,
       notes: action.notes || action.description,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      alarms: [
-        // Reminder 1 day before at 9 AM
-        { relativeOffset: -24 * 60 },
-        // Reminder on the day at 9 AM
-        { relativeOffset: 0 },
-      ],
+      timeZone: allDay ? undefined : timeZone,
+      alarms,
     });
     
     return { success: true, eventId };
