@@ -184,13 +184,7 @@ export default function ActionsPage() {
         updatedAt: serverTimestamp(),
         source: 'manual',
       };
-      // Temporarily use ISO string instead of Timestamp for testing
-      if (dueDate) {
-        const date = new Date(`${dueDate}T12:00:00`);
-        payload.dueAt = date.toISOString();
-      } else {
-        payload.dueAt = null;
-      }
+      payload.dueAt = toDueAtTimestamp(dueDate) ?? null;
       
       console.log('[CREATE ACTION] Payload:', payload);
       
@@ -258,14 +252,7 @@ export default function ActionsPage() {
         updatedAt: serverTimestamp(),
       };
       if (dueDate !== undefined) {
-        if (dueDate) {
-          const date = new Date(`${dueDate}T12:00:00`);
-          payload.dueAt = date.toISOString();
-        } else {
-          payload.dueAt = null;
-        }
-      } else {
-        payload.dueAt = null;
+        payload.dueAt = toDueAtTimestamp(dueDate) ?? null;
       }
       return api.actions.update(id, payload);
     },
