@@ -23,14 +23,19 @@ export const onMedicationWritten = functions.firestore
         // A simple way is to check if the relevant fields changed.
 
         const isNew = !oldData;
-        const nameChanged = oldData && newData.name !== oldData.name;
-        const activeChanged = oldData && newData.active !== oldData.active;
+        const doseChanged = Boolean(oldData && newData.dose !== oldData.dose);
+        const freqChanged = Boolean(oldData && newData.frequency !== oldData.frequency);
+        const nameChanged = Boolean(oldData && newData.name !== oldData.name);
+        const activeChanged = Boolean(oldData && newData.active !== oldData.active);
+        const notesChanged = Boolean(oldData && newData.notes !== oldData.notes);
 
-        // If it's just a warning update, ignore to prevent loops
-        if (oldData &&
-            newData.medicationWarning === oldData.medicationWarning &&
-            newData.needsConfirmation === oldData.needsConfirmation &&
-            !nameChanged && !activeChanged && !isNew) {
+        const hasRelevantChange =
+            isNew || nameChanged || doseChanged || freqChanged || activeChanged || notesChanged;
+
+        if (!hasRelevantChange) {
+            functions.logger.debug(
+                `[medicationSafetyTrigger] Skipping ${context.params.medicationId} — no relevant changes.`,
+            );
             return;
         }
 
