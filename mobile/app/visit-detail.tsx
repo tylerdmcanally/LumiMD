@@ -357,7 +357,7 @@ export default function VisitDetailScreen() {
                       <Text style={styles.failureText}>
                         {visit.processingStatus === 'failed'
                           ? visit.processingError ||
-                            'The transcription request failed. Please retry in a moment.'
+                          'The transcription request failed. Please retry in a moment.'
                           : 'Tap the button to kick off AI processing now.'}
                       </Text>
                     </View>
@@ -442,8 +442,8 @@ export default function VisitDetailScreen() {
 
                   <SummarySection title="Medications">
                     {medications.started.length === 0 &&
-                    medications.stopped.length === 0 &&
-                    medications.changed.length === 0 ? (
+                      medications.stopped.length === 0 &&
+                      medications.changed.length === 0 ? (
                       <Text style={styles.placeholderText}>No medication changes noted.</Text>
                     ) : (
                       <View style={{ gap: spacing(3) }}>

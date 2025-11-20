@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -17,6 +18,7 @@ import { useActionItems } from '../lib/api/hooks';
 import { openWebActions } from '../lib/linking';
 import { useCompleteAction } from '../lib/api/mutations';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { addActionToCalendar, hasCalendarPermissions } from '../lib/calendar';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';
@@ -85,44 +87,88 @@ export default function ActionsScreen() {
     });
   };
 
+  const handleAddToCalendar = async (action: any) => {
+    if (!action.dueAt) {
+      Alert.alert(
+        'No Due Date',
+        'This action item does not have a due date set. Please add a due date first.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const result = await addActionToCalendar({
+      id: action.id,
+      description: action.description,
+      dueAt: action.dueAt,
+      notes: action.notes || '',
+      visitId: action.visitId,
+    });
+
+    if (result.success) {
+      Alert.alert(
+        'Added to Calendar',
+        'This action item has been added to your device calendar.',
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert(
+        'Calendar Error',
+        result.error || 'Failed to add action item to calendar. Please check your calendar permissions.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   const renderActionRow = (action: any, isLast: boolean = false) => {
     const dueDate = formatDate(action.dueAt);
     const visitDate = formatDate(action.createdAt);
     const displayTitle = getActionTitle(action.description);
+    const hasDueDate = Boolean(action.dueAt);
 
     return (
-      <Pressable
-        key={action.id}
-        onPress={() => handleToggle(action)}
-        style={[styles.actionRow, !isLast && styles.rowDivider]}
-      >
-        <View style={styles.actionIcon}>
+      <View key={action.id} style={[styles.actionRow, !isLast && styles.rowDivider]}>
+        <Pressable
+          onPress={() => handleToggle(action)}
+          style={styles.actionMainContent}
+        >
+          <View style={styles.actionIcon}>
+            <Ionicons
+              name={action.completed ? 'checkmark-circle' : 'ellipse-outline'}
+              size={24}
+              color={action.completed ? Colors.success : Colors.primary}
+            />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={[styles.actionTitle, action.completed && styles.actionTitleCompleted]}>
+              {displayTitle}
+            </Text>
+            <Text style={styles.actionMeta}>
+              {action.completed
+                ? `Completed ${formatDate(action.completedAt)}`
+                : dueDate
+                ? `Due on ${dueDate}`
+                : visitDate
+                ? `From visit on ${visitDate}`
+                : 'Tap to mark complete'}
+            </Text>
+          </View>
           <Ionicons
-            name={action.completed ? 'checkmark-circle' : 'ellipse-outline'}
-            size={24}
-            color={action.completed ? Colors.success : Colors.primary}
+            name={action.completed ? 'arrow-undo' : 'checkmark'}
+            size={20}
+            color={Colors.textMuted}
           />
-        </View>
-        <View style={styles.actionContent}>
-          <Text style={[styles.actionTitle, action.completed && styles.actionTitleCompleted]}>
-            {displayTitle}
-          </Text>
-          <Text style={styles.actionMeta}>
-            {action.completed
-              ? `Completed ${formatDate(action.completedAt)}`
-              : dueDate
-              ? `Due on ${dueDate}`
-              : visitDate
-              ? `From visit on ${visitDate}`
-              : 'Tap to mark complete'}
-          </Text>
-        </View>
-        <Ionicons
-          name={action.completed ? 'arrow-undo' : 'checkmark'}
-          size={20}
-          color={Colors.textMuted}
-        />
-      </Pressable>
+        </Pressable>
+        {!action.completed && hasDueDate && (
+          <Pressable
+            onPress={() => handleAddToCalendar(action)}
+            style={styles.calendarButton}
+            hitSlop={8}
+          >
+            <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
+          </Pressable>
+        )}
+      </View>
     );
   };
 
@@ -356,11 +402,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing(3),
-    gap: spacing(3),
+    gap: spacing(2),
   },
   rowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.stroke,
+  },
+  actionMainContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(3),
   },
   actionIcon: {
     width: 28,
@@ -369,6 +421,11 @@ const styles = StyleSheet.create({
   actionContent: {
     flex: 1,
     gap: spacing(1),
+  },
+  calendarButton: {
+    padding: spacing(2),
+    borderRadius: 8,
+    backgroundColor: 'rgba(10, 153, 164, 0.1)',
   },
   actionTitle: {
     fontSize: 15,

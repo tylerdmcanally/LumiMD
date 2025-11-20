@@ -56,11 +56,10 @@ function NavLink({ item }: { item: NavItem }) {
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-        isActive
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${isActive
           ? 'bg-primary text-primary-foreground'
           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-      }`}
+        }`}
     >
       <Icon className="h-5 w-5" />
       <span className="font-medium">{item.label}</span>

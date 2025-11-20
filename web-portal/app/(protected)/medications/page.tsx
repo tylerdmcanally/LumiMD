@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pill as PillIcon, Trash2, Info, Loader2 } from 'lucide-react';
+import { Plus, Pill as PillIcon, Trash2, Info, Loader2, AlertTriangle, AlertCircle, ShieldAlert } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
@@ -137,9 +137,9 @@ export default function MedicationsPage() {
         const isActive = med.active !== false && !med.stoppedAt;
         if (isActive) {
           acc.active.push(med);
-    } else {
+        } else {
           acc.stopped.push(med);
-    }
+        }
         return acc;
       },
       { active: [], stopped: [] },
@@ -174,12 +174,12 @@ export default function MedicationsPage() {
         {/* Add Medication */}
         <Card variant="elevated" padding="lg">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+            <div>
               <h3 className="text-lg font-semibold text-text-primary">Add a medication</h3>
               <p className="text-sm text-text-secondary">
                 Keep your list current by adding new prescriptions as you receive them.
-            </p>
-          </div>
+              </p>
+            </div>
             <Button
               variant="primary"
               size="lg"
@@ -187,9 +187,9 @@ export default function MedicationsPage() {
               onClick={() => setCreateDialogOpen(true)}
               className="w-full justify-center sm:w-auto sm:justify-start sm:px-6 sm:whitespace-nowrap"
             >
-            Add medication
-          </Button>
-        </div>
+              Add medication
+            </Button>
+          </div>
         </Card>
 
         {/* Active Medications */}
@@ -202,6 +202,7 @@ export default function MedicationsPage() {
           onView={(med) => setViewMedication(med)}
           onEdit={(med) => setEditingMedication(med)}
           onDelete={setMedToDelete}
+          onShowWarnings={(med) => setMedicationWarnings({ medicationName: med.name, warnings: med.medicationWarning })}
         />
 
         {/* Stopped Medications */}
@@ -214,6 +215,7 @@ export default function MedicationsPage() {
           onView={(med) => setViewMedication(med)}
           onEdit={(med) => setEditingMedication(med)}
           onDelete={setMedToDelete}
+          onShowWarnings={(med) => setMedicationWarnings({ medicationName: med.name, warnings: med.medicationWarning })}
         />
 
         <DeleteMedicationDialog
@@ -236,11 +238,11 @@ export default function MedicationsPage() {
           initialValues={
             editingMedication
               ? {
-                  name: editingMedication.name || '',
-                  dose: editingMedication.dose || '',
-                  frequency: editingMedication.frequency || '',
-                  notes: editingMedication.notes || '',
-                }
+                name: editingMedication.name || '',
+                dose: editingMedication.dose || '',
+                frequency: editingMedication.frequency || '',
+                notes: editingMedication.notes || '',
+              }
               : undefined
           }
           onSubmit={(values) => {
@@ -249,7 +251,7 @@ export default function MedicationsPage() {
           }}
           isSaving={updateMedication.isPending}
           mode="edit"
-          />
+        />
 
         <MedicationInsightDialog
           medication={viewMedication}
@@ -274,7 +276,7 @@ export default function MedicationsPage() {
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <Card variant="flat" padding="md" className="border-l-4 border-l-brand-primary">
-        <div>
+      <div>
         <p className="text-sm font-medium text-text-secondary">{label}</p>
         <p className="mt-2 text-3xl font-bold text-text-primary">{value}</p>
       </div>
@@ -291,6 +293,7 @@ type MedicationGroupProps = {
   onView: (medication: any) => void;
   onEdit: (med: any) => void;
   onDelete: (med: any) => void;
+  onShowWarnings: (med: any) => void;
 };
 
 function MedicationGroup({
@@ -302,6 +305,7 @@ function MedicationGroup({
   onView,
   onEdit,
   onDelete,
+  onShowWarnings,
 }: MedicationGroupProps) {
   return (
     <Card variant="elevated" padding="none">
@@ -337,6 +341,7 @@ function MedicationGroup({
                   onView={() => onView(medication)}
                   onEdit={() => onEdit(medication)}
                   onDelete={() => onDelete(medication)}
+                  onShowWarnings={() => onShowWarnings(medication)}
                 />
               ))}
             </div>
@@ -349,6 +354,7 @@ function MedicationGroup({
                 onView={() => onView(medication)}
                 onEdit={() => onEdit(medication)}
                 onDelete={() => onDelete(medication)}
+                onShowWarnings={() => onShowWarnings(medication)}
               />
             ))}
           </div>
@@ -471,11 +477,13 @@ function MedicationRow({
   onView,
   onEdit,
   onDelete,
+  onShowWarnings,
 }: {
   medication: any;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onShowWarnings: () => void;
 }) {
   const isActive = medication.active !== false && !medication.stoppedAt;
   const { shortIndication, drugClass, showInfoCta, isFetchingInfo, handleNeedInfoClick } =
@@ -501,6 +509,22 @@ function MedicationRow({
   const showDoseTooltip = doseLabel.length > 18;
   const showFrequencyTooltip = frequencyLabel.length > 18;
 
+  // Check for warnings
+  const hasWarnings = medication.medicationWarning && Array.isArray(medication.medicationWarning) && medication.medicationWarning.length > 0;
+  const highestSeverity = hasWarnings ? medication.medicationWarning.reduce((highest: string, w: any) => {
+    const severityOrder = { critical: 0, high: 1, moderate: 2, low: 3 };
+    const currentOrder = severityOrder[w.severity as keyof typeof severityOrder] ?? 99;
+    const highestOrder = severityOrder[highest as keyof typeof severityOrder] ?? 99;
+    return currentOrder < highestOrder ? w.severity : highest;
+  }, 'low') : null;
+
+  const warningConfig = highestSeverity ? ({
+    critical: { icon: ShieldAlert, label: 'Critical', className: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100', iconClassName: 'text-red-600' },
+    high: { icon: AlertTriangle, label: 'High', className: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100', iconClassName: 'text-orange-600' },
+    moderate: { icon: AlertCircle, label: 'Moderate', className: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100', iconClassName: 'text-yellow-600' },
+    low: { icon: Info, label: 'Low', className: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100', iconClassName: 'text-blue-600' },
+  } as const)[highestSeverity as 'critical' | 'high' | 'moderate' | 'low'] : null;
+
   return (
     <TooltipProvider delayDuration={150}>
       <div
@@ -519,147 +543,167 @@ function MedicationRow({
           }
         }}
       >
-      <div className="flex items-center gap-3">
-        <div
-          className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-lg',
-            isActive ? 'bg-success-light text-success-dark' : 'bg-error-light text-error-dark',
-          )}
-        >
-          <PillIcon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 space-y-1">
-          <div className="flex items-start gap-2">
-            {showNameTooltip ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <p className="font-semibold text-text-primary truncate" title={medicationName}>
-                    {medicationName}
-                  </p>
-                </TooltipTrigger>
-                <TooltipContent className={tooltipClassName}>{medicationName}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <p className="font-semibold text-text-primary truncate" title={medicationName}>
-                {medicationName}
-              </p>
+        <div className="flex items-center gap-3">
+          <div
+            className={cn(
+              'flex h-10 w-10 items-center justify-center rounded-lg',
+              isActive ? 'bg-success-light text-success-dark' : 'bg-error-light text-error-dark',
             )}
-            {showInfoCta ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleNeedInfoClick(event);
-                    }}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    className={cn(
-                      'flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
-                      isFetchingInfo
-                        ? 'border-brand-primary bg-brand-primary/10 text-brand-primary animate-pulse'
-                        : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary hover:scale-110'
-                    )}
-                    aria-label="Fetch more medication info"
-                    disabled={isFetchingInfo}
-                    aria-busy={isFetchingInfo}
-                  >
-                    {isFetchingInfo ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Info className="h-4 w-4" />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
-                  {isFetchingInfo ? 'Fetching medication info...' : 'Need a quick summary? Click for medication type and common uses.'}
-                </TooltipContent>
-              </Tooltip>
+          >
+            <PillIcon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-start gap-2">
+              {showNameTooltip ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p className="font-semibold text-text-primary truncate" title={medicationName}>
+                      {medicationName}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent className={tooltipClassName}>{medicationName}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <p className="font-semibold text-text-primary truncate" title={medicationName}>
+                  {medicationName}
+                </p>
+              )}
+              {hasWarnings && warningConfig && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onShowWarnings();
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${warningConfig.className}`}
+                    >
+                      <warningConfig.icon className={`h-3.5 w-3.5 ${warningConfig.iconClassName}`} />
+                      <span>{warningConfig.label}</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className={tooltipClassName}>
+                    {medication.medicationWarning.length} safety {medication.medicationWarning.length === 1 ? 'warning' : 'warnings'} detected. Click to view details.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {showInfoCta ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleNeedInfoClick(event);
+                      }}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      className={cn(
+                        'flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50',
+                        isFetchingInfo
+                          ? 'border-brand-primary bg-brand-primary/10 text-brand-primary animate-pulse'
+                          : 'border-border-light bg-background-subtle text-text-secondary hover:border-brand-primary hover:text-brand-primary hover:scale-110'
+                      )}
+                      aria-label="Fetch more medication info"
+                      disabled={isFetchingInfo}
+                      aria-busy={isFetchingInfo}
+                    >
+                      {isFetchingInfo ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Info className="h-4 w-4" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[240px] text-xs font-medium text-text-primary bg-background-subtle shadow-lg border border-border-light/80 rounded-xl px-3 py-2">
+                    {isFetchingInfo ? 'Fetching medication info...' : 'Need a quick summary? Click for medication type and common uses.'}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
+            {shortIndication ? (
+              showIndicationTooltip ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p
+                      className="text-sm text-text-secondary truncate capitalize"
+                      title={shortIndication}
+                    >
+                      {shortIndication}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent className={tooltipClassName}>{shortIndication}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <p className="text-sm text-text-secondary truncate capitalize" title={shortIndication}>
+                  {shortIndication}
+                </p>
+              )
             ) : null}
           </div>
-          {shortIndication ? (
-            showIndicationTooltip ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <p
-                    className="text-sm text-text-secondary truncate capitalize"
-                    title={shortIndication}
-                  >
-                    {shortIndication}
-                  </p>
-                </TooltipTrigger>
-                <TooltipContent className={tooltipClassName}>{shortIndication}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <p className="text-sm text-text-secondary truncate capitalize" title={shortIndication}>
-                {shortIndication}
-              </p>
-            )
-          ) : null}
+          <div className="mt-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-secondary lg:hidden">
+            <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
+              {isActive ? 'Active' : 'Stopped'}
+            </Badge>
+            {drugClass ? (
+              <Badge tone="neutral" variant="outline" size="sm" className="truncate max-w-[140px] md:hidden" title={drugClass}>
+                {drugClass}
+              </Badge>
+            ) : null}
+          </div>
         </div>
-        <div className="mt-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-secondary lg:hidden">
+        <div className="text-sm text-text-secondary truncate" title={doseLabel}>
+          {showDoseTooltip ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{doseLabel}</span>
+              </TooltipTrigger>
+              <TooltipContent className={tooltipClassName}>{doseLabel}</TooltipContent>
+            </Tooltip>
+          ) : (
+            doseLabel
+          )}
+        </div>
+        <div className="text-sm text-text-secondary truncate" title={frequencyLabel}>
+          {showFrequencyTooltip ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{frequencyLabel}</span>
+              </TooltipTrigger>
+              <TooltipContent className={tooltipClassName}>{frequencyLabel}</TooltipContent>
+            </Tooltip>
+          ) : (
+            frequencyLabel
+          )}
+        </div>
+        <div className="hidden lg:flex items-center gap-2">
           <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
             {isActive ? 'Active' : 'Stopped'}
           </Badge>
-          {drugClass ? (
-            <Badge tone="neutral" variant="outline" size="sm" className="truncate max-w-[140px] md:hidden" title={drugClass}>
-              {drugClass}
-            </Badge>
-          ) : null}
         </div>
-      </div>
-      <div className="text-sm text-text-secondary truncate" title={doseLabel}>
-        {showDoseTooltip ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>{doseLabel}</span>
-            </TooltipTrigger>
-            <TooltipContent className={tooltipClassName}>{doseLabel}</TooltipContent>
-          </Tooltip>
-        ) : (
-          doseLabel
-        )}
-      </div>
-      <div className="text-sm text-text-secondary truncate" title={frequencyLabel}>
-        {showFrequencyTooltip ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>{frequencyLabel}</span>
-            </TooltipTrigger>
-            <TooltipContent className={tooltipClassName}>{frequencyLabel}</TooltipContent>
-          </Tooltip>
-        ) : (
-          frequencyLabel
-        )}
-      </div>
-      <div className="hidden lg:flex items-center gap-2">
-        <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
-          {isActive ? 'Active' : 'Stopped'}
-        </Badge>
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onEdit();
-          }}
-        >
-          Edit
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-error hover:text-error"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-error hover:text-error"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </TooltipProvider>
   );
@@ -670,11 +714,13 @@ function MedicationCard({
   onView,
   onEdit,
   onDelete,
+  onShowWarnings,
 }: {
   medication: any;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onShowWarnings: () => void;
 }) {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const isActive = medication.active !== false && !medication.stoppedAt;
@@ -710,6 +756,22 @@ function MedicationCard({
       : null;
 
   const hasExpandableContent = detailedIndication || notesLabel;
+
+  // Check for warnings
+  const hasWarnings = medication.medicationWarning && Array.isArray(medication.medicationWarning) && medication.medicationWarning.length > 0;
+  const highestSeverity = hasWarnings ? medication.medicationWarning.reduce((highest: string, w: any) => {
+    const severityOrder = { critical: 0, high: 1, moderate: 2, low: 3 };
+    const currentOrder = severityOrder[w.severity as keyof typeof severityOrder] ?? 99;
+    const highestOrder = severityOrder[highest as keyof typeof severityOrder] ?? 99;
+    return currentOrder < highestOrder ? w.severity : highest;
+  }, 'low') : null;
+
+  const warningConfig = highestSeverity ? ({
+    critical: { icon: ShieldAlert, label: 'Critical', className: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100', iconClassName: 'text-red-600' },
+    high: { icon: AlertTriangle, label: 'High', className: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100', iconClassName: 'text-orange-600' },
+    moderate: { icon: AlertCircle, label: 'Moderate', className: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100', iconClassName: 'text-yellow-600' },
+    low: { icon: Info, label: 'Low', className: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100', iconClassName: 'text-blue-600' },
+  } as const)[highestSeverity as 'critical' | 'high' | 'moderate' | 'low'] : null;
 
   const handleCardClick = () => {
     if (hasExpandableContent) {
@@ -770,6 +832,28 @@ function MedicationCard({
               >
                 {medicationName}
               </h3>
+            )}
+            {hasWarnings && warningConfig && (
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onShowWarnings();
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${warningConfig.className}`}
+                    >
+                      <warningConfig.icon className={`h-3.5 w-3.5 ${warningConfig.iconClassName}`} />
+                      <span>{warningConfig.label}</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className={tooltipClassName}>
+                    {medication.medicationWarning.length} safety {medication.medicationWarning.length === 1 ? 'warning' : 'warnings'} detected. Click to view details.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
             {showInfoCta ? (
               <TooltipProvider delayDuration={150}>
@@ -918,7 +1002,7 @@ function toTitleCase(value: string): string {
     .map((word) => (word.length ? word[0].toUpperCase() + word.slice(1) : ''))
     .join(' ')
     .replace(/\b(of|and|for|to|in|on|the)\b/gi, (match) => match.toLowerCase());
-  }
+}
 
 function sanitizeOptionalString(value?: string | null): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -940,7 +1024,7 @@ function formatInsightTimestamp(value: unknown): string | null {
           hour: 'numeric',
           minute: '2-digit',
         });
-}
+      }
     }
 
     if (typeof value === 'object' && value !== null) {

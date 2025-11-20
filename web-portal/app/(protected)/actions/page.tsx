@@ -41,8 +41,9 @@ import { useActions, queryKeys } from '@/lib/api/hooks';
 import { api } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
+import { downloadActionAsICS } from '@/lib/calendar';
 
 export default function ActionsPage() {
   const user = useCurrentUser();
@@ -166,7 +167,9 @@ export default function ActionsPage() {
       notes?: string;
       dueDate?: string;
     }) => {
+      console.log('[MUTATION] Starting mutation function', { description, notes, dueDate, userId: user?.uid });
       if (!user?.uid) {
+        console.error('[MUTATION] No user ID!');
         throw new Error('You need to be signed in to add an action item.');
       }
       const sanitizedNotes = sanitizeOptionalString(notes);
@@ -175,15 +178,30 @@ export default function ActionsPage() {
         description: description.trim(),
         completed: false,
         completedAt: null,
+        notes: sanitizedNotes || '',
+        visitId: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         source: 'manual',
       };
-      if (sanitizedNotes !== undefined) {
-        payload.notes = sanitizedNotes;
+      // Temporarily use ISO string instead of Timestamp for testing
+      if (dueDate) {
+        const date = new Date(`${dueDate}T12:00:00`);
+        payload.dueAt = date.toISOString();
+      } else {
+        payload.dueAt = null;
       }
-      payload.dueAt = toDueAtISO(dueDate) ?? null;
-      await addDoc(collection(db, 'actions'), payload);
+      
+      console.log('[CREATE ACTION] Payload:', payload);
+      
+      try {
+        const docRef = await addDoc(collection(db, 'actions'), payload);
+        console.log('[CREATE ACTION] Success! Document ID:', docRef.id);
+        return docRef;
+      } catch (error) {
+        console.error('[CREATE ACTION] Error:', error);
+        throw error;
+      }
     },
     onMutate: async (variables) => {
       if (!user?.uid) return;
@@ -193,7 +211,7 @@ export default function ActionsPage() {
         id: `temp-${Date.now()}`,
         description: variables.description.trim(),
         notes: sanitizeOptionalString(variables.notes) ?? '',
-        dueAt: toDueAtISO(variables.dueDate) ?? null,
+        dueAt: variables.dueDate ? new Date(`${variables.dueDate}T12:00:00`).toISOString() : null,
         userId: user.uid,
         completed: false,
         createdAt: new Date().toISOString(),
@@ -237,10 +255,15 @@ export default function ActionsPage() {
       const payload: Record<string, any> = {
         description: description.trim(),
         notes: sanitizeOptionalString(notes) ?? '',
-        updatedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp(),
       };
-      if (dueDate) {
-        payload.dueAt = toDueAtISO(dueDate) ?? null;
+      if (dueDate !== undefined) {
+        if (dueDate) {
+          const date = new Date(`${dueDate}T12:00:00`);
+          payload.dueAt = date.toISOString();
+        } else {
+          payload.dueAt = null;
+        }
       } else {
         payload.dueAt = null;
       }
@@ -256,7 +279,7 @@ export default function ActionsPage() {
               ...action,
               description: variables.description.trim(),
               notes: sanitizeOptionalString(variables.notes) ?? '',
-              dueAt: toDueAtISO(variables.dueDate) ?? null,
+              dueAt: variables.dueDate ? new Date(`${variables.dueDate}T12:00:00`).toISOString() : null,
               updatedAt: new Date().toISOString(),
             }
           : action,
@@ -404,7 +427,11 @@ export default function ActionsPage() {
             }
           }}
           defaultDate={createDefaultDate}
-          onSubmit={(values) => createActionMutation.mutate(values)}
+          onSubmit={(values) => {
+            console.log('[ON_SUBMIT] Received values:', values);
+            console.log('[ON_SUBMIT] Calling mutation.mutate...');
+            createActionMutation.mutate(values);
+          }}
           isSaving={createActionMutation.isPending}
         />
         <EditActionDialog
@@ -655,10 +682,12 @@ function CreateActionDialog({
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    console.log('[FORM SUBMIT] Starting...', { description, notes, dueDate });
     if (!description.trim()) {
       toast.error('Description is required.');
       return;
     }
+    console.log('[FORM SUBMIT] Calling onSubmit...');
     onSubmit({
       description,
       notes,
@@ -815,6 +844,25 @@ function ActionCard({
   const showDescriptionTooltip = descriptionText.length > 96;
   const showNotesTooltip = notesText.length > 180;
 
+  const handleDownloadCalendar = () => {
+    try {
+      downloadActionAsICS({
+        id: action.id,
+        description: action.description,
+        dueAt: action.dueAt,
+        notes: action.notes || '',
+        visitId: action.visitId,
+      });
+      toast.success('Calendar event downloaded', {
+        description: 'The action item has been saved as a calendar file. Open it to add to your calendar.',
+      });
+    } catch (error) {
+      toast.error('Failed to download calendar event', {
+        description: error instanceof Error ? error.message : 'Please check that the action has a due date.',
+      });
+    }
+  };
+
   return (
     <Card
       variant="elevated"
@@ -954,6 +1002,20 @@ function ActionCard({
             >
               Edit
             </Button>
+            {dueDate && !isCompleted && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleDownloadCalendar();
+                }}
+                className="flex-1 justify-center sm:w-auto sm:flex-none"
+                leftIcon={<Calendar className="h-4 w-4" />}
+              >
+                Add to Calendar
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -1132,9 +1194,9 @@ function formatDateInput(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
-function toDueAtISO(dateString?: string): string | null {
+function toDueAtTimestamp(dateString?: string): Timestamp | null {
   if (!dateString) return null;
   const date = new Date(`${dateString}T12:00:00`);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
+  return Timestamp.fromDate(date);
 }

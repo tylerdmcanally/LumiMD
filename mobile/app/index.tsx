@@ -38,6 +38,7 @@ export default function HomeScreen() {
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnReconnect: true,
+    refetchInterval: 10000, // Poll every 10 seconds
   });
   const {
     data: visits,
@@ -69,6 +70,7 @@ export default function HomeScreen() {
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
+    refetchInterval: 15000, // Poll every 15 seconds
   });
   useFocusEffect(
     useCallback(() => {
@@ -247,16 +249,16 @@ export default function HomeScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <HeroBanner />
-          
+
           {/* Primary CTA */}
           <View style={styles.ctaSection}>
             <StartVisitCTA onPress={() => router.push('/record-visit')} />
           </View>
-          
+
           {/* Glanceable Stats Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Quick Overview</Text>
-            
+
             {isLoadingData ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={Colors.primary} />
@@ -275,7 +277,7 @@ export default function HomeScreen() {
                   icon="checkmark-circle-outline"
                   onPress={() => router.push('/actions')}
                 />
-                
+
                 <GlanceableCard
                   title="Recent Visits"
                   count={stats.recentVisits}
@@ -284,7 +286,7 @@ export default function HomeScreen() {
                   icon="document-text-outline"
                   onPress={handleRecentVisitsPress}
                 />
-                
+
                 <GlanceableCard
                   title="Medications"
                   count={stats.medications}
@@ -295,7 +297,7 @@ export default function HomeScreen() {
               </>
             )}
           </View>
-          
+
           {/* Helper text */}
           {!isLoadingData && (
             <Text style={styles.helperText}>
@@ -314,8 +316,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    paddingHorizontal: spacing(5), 
+  container: {
+    paddingHorizontal: spacing(5),
     paddingVertical: spacing(3),
   },
   ctaSection: {

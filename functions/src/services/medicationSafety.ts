@@ -146,84 +146,84 @@ const DRUG_INTERACTIONS: Array<{
   severity: 'critical' | 'high' | 'moderate' | 'low';
   description: string;
 }> = [
-  // Critical interactions
-  {
-    drug1: 'warfarin',
-    drug2: 'nsaid',
-    severity: 'critical',
-    description: 'Increased bleeding risk. NSAIDs can potentiate anticoagulant effects.',
-  },
-  {
-    drug1: 'anticoagulant',
-    drug2: 'antiplatelet',
-    severity: 'critical',
-    description: 'Significantly increased bleeding risk when combining blood thinners.',
-  },
-  {
-    drug1: 'ace-inhibitor',
-    drug2: 'arb',
-    severity: 'high',
-    description: 'Dual RAAS blockade can cause kidney problems and high potassium levels.',
-  },
-  {
-    drug1: 'beta-blocker',
-    drug2: 'beta-blocker',
-    severity: 'high',
-    description: 'Duplicate beta-blocker therapy. May cause excessive heart rate slowing.',
-  },
-  {
-    drug1: 'statin',
-    drug2: 'statin',
-    severity: 'high',
-    description: 'Duplicate statin therapy increases risk of muscle problems.',
-  },
+    // Critical interactions
+    {
+      drug1: 'warfarin',
+      drug2: 'nsaid',
+      severity: 'critical',
+      description: 'Increased bleeding risk. NSAIDs can potentiate anticoagulant effects.',
+    },
+    {
+      drug1: 'anticoagulant',
+      drug2: 'antiplatelet',
+      severity: 'critical',
+      description: 'Significantly increased bleeding risk when combining blood thinners.',
+    },
+    {
+      drug1: 'ace-inhibitor',
+      drug2: 'arb',
+      severity: 'high',
+      description: 'Dual RAAS blockade can cause kidney problems and high potassium levels.',
+    },
+    {
+      drug1: 'beta-blocker',
+      drug2: 'beta-blocker',
+      severity: 'high',
+      description: 'Duplicate beta-blocker therapy. May cause excessive heart rate slowing.',
+    },
+    {
+      drug1: 'statin',
+      drug2: 'statin',
+      severity: 'high',
+      description: 'Duplicate statin therapy increases risk of muscle problems.',
+    },
 
-  // Moderate interactions
-  {
-    drug1: 'nsaid',
-    drug2: 'ace-inhibitor',
-    severity: 'moderate',
-    description: 'NSAIDs may reduce effectiveness of blood pressure medications and affect kidney function.',
-  },
-  {
-    drug1: 'nsaid',
-    drug2: 'arb',
-    severity: 'moderate',
-    description: 'NSAIDs may reduce effectiveness of blood pressure medications and affect kidney function.',
-  },
-  {
-    drug1: 'nsaid',
-    drug2: 'diuretic',
-    severity: 'moderate',
-    description: 'NSAIDs may reduce effectiveness of diuretics and affect kidney function.',
-  },
-  {
-    drug1: 'ssri',
-    drug2: 'nsaid',
-    severity: 'moderate',
-    description: 'Increased bleeding risk, especially gastrointestinal bleeding.',
-  },
-  {
-    drug1: 'aspirin',
-    drug2: 'nsaid',
-    severity: 'moderate',
-    description: 'Increased risk of stomach ulcers and bleeding.',
-  },
+    // Moderate interactions
+    {
+      drug1: 'nsaid',
+      drug2: 'ace-inhibitor',
+      severity: 'moderate',
+      description: 'NSAIDs may reduce effectiveness of blood pressure medications and affect kidney function.',
+    },
+    {
+      drug1: 'nsaid',
+      drug2: 'arb',
+      severity: 'moderate',
+      description: 'NSAIDs may reduce effectiveness of blood pressure medications and affect kidney function.',
+    },
+    {
+      drug1: 'nsaid',
+      drug2: 'diuretic',
+      severity: 'moderate',
+      description: 'NSAIDs may reduce effectiveness of diuretics and affect kidney function.',
+    },
+    {
+      drug1: 'ssri',
+      drug2: 'nsaid',
+      severity: 'moderate',
+      description: 'Increased bleeding risk, especially gastrointestinal bleeding.',
+    },
+    {
+      drug1: 'aspirin',
+      drug2: 'nsaid',
+      severity: 'moderate',
+      description: 'Increased risk of stomach ulcers and bleeding.',
+    },
 
-  // Low severity interactions
-  {
-    drug1: 'ppi',
-    drug2: 'ppi',
-    severity: 'low',
-    description: 'Duplicate acid-reducing therapy.',
-  },
-  {
-    drug1: 'ppi',
-    drug2: 'h2-blocker',
-    severity: 'low',
-    description: 'Duplicate acid-reducing therapy with different mechanisms.',
-  },
-];
+    // Low severity interactions
+    {
+      drug1: 'ppi',
+      drug2: 'ppi',
+      severity: 'low',
+      description: 'Duplicate acid-reducing therapy.',
+    },
+    {
+      drug1: 'ppi',
+      drug2: 'h2-blocker',
+      severity: 'low',
+      description: 'Duplicate acid-reducing therapy with different mechanisms.',
+    },
+  ];
 
 /**
  * Brand to Generic Name Mapping
@@ -700,15 +700,12 @@ export function addSafetyWarningsToEntry(
     (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
   );
 
-  // Build warning message from all warnings
-  const warningMessages = sortedWarnings.map(w => w.message).join(' | ');
-
   // Mark as needing confirmation if any high or critical warnings
   const hasCriticalWarning = sortedWarnings.some(w => w.severity === 'critical' || w.severity === 'high');
 
   return {
     ...entry,
-    warning: warningMessages,
+    warning: sortedWarnings, // Save the full array of warning objects
     needsConfirmation: hasCriticalWarning || entry.needsConfirmation || false,
     status: hasCriticalWarning ? 'unverified' : (entry.status || 'matched'),
   };

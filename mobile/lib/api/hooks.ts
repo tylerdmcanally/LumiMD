@@ -61,7 +61,7 @@ export function useLatestVisit(
       const visits = await api.visits.list();
       if (!visits || visits.length === 0) return null;
       // Sort by date and return most recent
-      return visits.sort((a, b) => 
+      return visits.sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       )[0];
     },
@@ -97,7 +97,7 @@ export function usePendingActions(
       // Filter for pending/incomplete actions
       return actions.filter(action => !action.completed);
     },
-    staleTime: 3 * 60 * 1000,
+    staleTime: 30 * 1000, // 30 seconds
     ...options,
   });
 }
@@ -111,7 +111,7 @@ export function useMedications(
   return useQuery({
     queryKey: queryKeys.medications,
     queryFn: () => api.medications.list(),
-    staleTime: 10 * 60 * 1000, // 10 minutes (meds change less frequently)
+    staleTime: 60 * 1000, // 1 minute
     ...options,
   });
 }
@@ -129,7 +129,7 @@ export function useActiveMedications(
       // Filter for active medications
       return meds.filter(med => med.active !== false);
     },
-    staleTime: 10 * 60 * 1000,
+    staleTime: 60 * 1000, // 1 minute
     ...options,
   });
 }

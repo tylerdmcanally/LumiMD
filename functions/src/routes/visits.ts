@@ -98,14 +98,14 @@ const updateVisitSchema = z.object({
 visitsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    
+
     // Query visits collection for this user
     const visitsSnapshot = await getDb()
       .collection('visits')
       .where('userId', '==', userId)
       .orderBy('createdAt', 'desc')
       .get();
-    
+
     const visits = visitsSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
@@ -117,7 +117,7 @@ visitsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
         ? doc.data().visitDate.toDate().toISOString()
         : doc.data().visitDate ?? null,
     }));
-    
+
     functions.logger.info(`[visits] Listed ${visits.length} visits for user ${userId}`);
     res.json(visits);
   } catch (error) {
@@ -137,9 +137,9 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const visitId = req.params.id;
-    
+
     const visitDoc = await getDb().collection('visits').doc(visitId).get();
-    
+
     if (!visitDoc.exists) {
       res.status(404).json({
         code: 'not_found',
@@ -147,9 +147,9 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     const visit = visitDoc.data()!;
-    
+
     // Verify ownership
     if (visit.userId !== userId) {
       res.status(403).json({
@@ -158,7 +158,7 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     res.json({
       id: visitDoc.id,
       ...visit,
@@ -185,12 +185,12 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
 visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    
+
     // Validate request body
     const data = createVisitSchema.parse(req.body);
-    
+
     const now = admin.firestore.Timestamp.now();
-    
+
     // Create visit document
     const visitRef = await getDb().collection('visits').add({
       userId,
@@ -214,12 +214,12 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       createdAt: now,
       updatedAt: now,
     });
-    
+
     const visitDoc = await visitRef.get();
     const visit = visitDoc.data()!;
-    
+
     functions.logger.info(`[visits] Created visit ${visitRef.id} for user ${userId}`);
-    
+
     res.status(201).json({
       id: visitRef.id,
       ...visit,
@@ -235,7 +235,7 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     functions.logger.error('[visits] Error creating visit:', error);
     res.status(500).json({
       code: 'server_error',
@@ -252,13 +252,13 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const visitId = req.params.id;
-    
+
     // Validate request body
     const data = updateVisitSchema.parse(req.body);
-    
+
     const visitRef = getDb().collection('visits').doc(visitId);
     const visitDoc = await visitRef.get();
-    
+
     if (!visitDoc.exists) {
       res.status(404).json({
         code: 'not_found',
@@ -266,9 +266,9 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     const visit = visitDoc.data()!;
-    
+
     // Verify ownership
     if (visit.userId !== userId) {
       res.status(403).json({
@@ -277,7 +277,7 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     const updatePayload: Record<string, unknown> = {
       updatedAt: admin.firestore.Timestamp.now(),
     };
@@ -363,12 +363,12 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     }
 
     await visitRef.update(updatePayload);
-    
+
     const updatedDoc = await visitRef.get();
     const updatedVisit = updatedDoc.data()!;
-    
+
     functions.logger.info(`[visits] Updated visit ${visitId} for user ${userId}`);
-    
+
     res.json({
       id: visitId,
       ...updatedVisit,
@@ -388,7 +388,7 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     functions.logger.error('[visits] Error updating visit:', error);
     res.status(500).json({
       code: 'server_error',
@@ -571,31 +571,19 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
     const bucketName =
       parseBucketFromAudioUrl(visit.audioUrl) || storageConfig.bucket || visit.bucketName;
 
-    try {
-      const bucket = admin.storage().bucket(bucketName);
-      const file = bucket.file(storagePath);
+    // Check if we already have a transcript to save costs/time
+    const hasTranscript =
+      (typeof visit.transcript === 'string' && visit.transcript.trim().length > 0) ||
+      (typeof visit.transcriptText === 'string' && visit.transcriptText.trim().length > 0);
 
-      const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 60 * 60 * 1000,
-      });
-
-      if (!signedUrl) {
-        throw new Error('Unable to generate signed URL for transcription');
-      }
-
-      const assemblyAI = getAssemblyAIService();
-      const transcriptionId = await assemblyAI.submitTranscription(signedUrl);
-
+    if (hasTranscript) {
+      // Skip transcription and go straight to summarization
       await visitRef.update({
-        transcriptionId,
-        transcriptionStatus: 'submitted',
-        transcriptionSubmittedAt: now,
-        transcriptionCompletedAt: null,
+        processingStatus: 'summarizing',
+        status: 'processing',
+        processingError: admin.firestore.FieldValue.delete(),
         summarizationStartedAt: admin.firestore.FieldValue.delete(),
         summarizationCompletedAt: admin.firestore.FieldValue.delete(),
-        transcript: admin.firestore.FieldValue.delete(),
-        transcriptText: admin.firestore.FieldValue.delete(),
         summary: admin.firestore.FieldValue.delete(),
         diagnoses: [],
         medications: {
@@ -606,21 +594,67 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
         imaging: [],
         nextSteps: [],
         processedAt: null,
-        processingStatus: 'transcribing',
-        status: 'processing',
-        processingError: admin.firestore.FieldValue.delete(),
         lastRetryAt: now,
         retryCount: admin.firestore.FieldValue.increment(1),
-        storagePath,
         updatedAt: now,
       });
-    } catch (error) {
-      functions.logger.error(`[visits] Error submitting visit ${visitId} for retry:`, error);
-      res.status(500).json({
-        code: 'retry_failed',
-        message: 'Failed to requeue visit for processing',
-      });
-      return;
+
+      functions.logger.info(`[visits] Retrying visit ${visitId} starting from summarization (transcript found)`);
+    } else {
+      // No transcript, full re-process
+      try {
+        const bucket = admin.storage().bucket(bucketName);
+        const file = bucket.file(storagePath);
+
+        const [signedUrl] = await file.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 60 * 60 * 1000,
+        });
+
+        if (!signedUrl) {
+          throw new Error('Unable to generate signed URL for transcription');
+        }
+
+        const assemblyAI = getAssemblyAIService();
+        const transcriptionId = await assemblyAI.submitTranscription(signedUrl);
+
+        await visitRef.update({
+          transcriptionId,
+          transcriptionStatus: 'submitted',
+          transcriptionSubmittedAt: now,
+          transcriptionCompletedAt: null,
+          summarizationStartedAt: admin.firestore.FieldValue.delete(),
+          summarizationCompletedAt: admin.firestore.FieldValue.delete(),
+          transcript: admin.firestore.FieldValue.delete(),
+          transcriptText: admin.firestore.FieldValue.delete(),
+          summary: admin.firestore.FieldValue.delete(),
+          diagnoses: [],
+          medications: {
+            started: [],
+            stopped: [],
+            changed: [],
+          },
+          imaging: [],
+          nextSteps: [],
+          processedAt: null,
+          processingStatus: 'transcribing',
+          status: 'processing',
+          processingError: admin.firestore.FieldValue.delete(),
+          lastRetryAt: now,
+          retryCount: admin.firestore.FieldValue.increment(1),
+          storagePath,
+          updatedAt: now,
+        });
+
+        functions.logger.info(`[visits] Retrying visit ${visitId} with full re-transcription`);
+      } catch (error) {
+        functions.logger.error(`[visits] Error submitting visit ${visitId} for retry:`, error);
+        res.status(500).json({
+          code: 'retry_failed',
+          message: 'Failed to requeue visit for processing',
+        });
+        return;
+      }
     }
 
     const updatedDoc = await visitRef.get();

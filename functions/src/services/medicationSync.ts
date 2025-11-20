@@ -204,10 +204,7 @@ const normalizeMedicationEntry = (
       result.needsConfirmation = entry.needsConfirmation;
     }
 
-    const warningValue = typeof entry.warning === 'string' ? entry.warning.trim() : '';
-    if (warningValue) {
-      result.warning = warningValue;
-    }
+
 
     const statusValue =
       typeof entry.status === 'string' ? entry.status.trim().toLowerCase() : undefined;
@@ -441,21 +438,21 @@ export const syncMedicationsFromSummary = async ({
 
   const tasks: Array<Promise<void>> = [];
 
-  // Run safety checks and add warnings to started medications
+  // Started medications - run fast hardcoded checks only
   for (const entry of normalized.started) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
     const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
     tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'started', processedAt }));
   }
 
-  // No safety checks needed for stopped medications
+  // Stopped medications - no checks needed
   normalized.stopped.forEach((entry) => {
     tasks.push(upsertMedication({ userId, visitId, entry, status: 'stopped', processedAt }));
   });
 
-  // Run safety checks for changed medications
+  // Changed medications - run fast hardcoded checks only
   for (const entry of normalized.changed) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
     const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
     tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'changed', processedAt }));
   }

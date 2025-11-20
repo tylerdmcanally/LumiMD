@@ -19,6 +19,7 @@
       ],
       "infoPlist": {
         "NSMicrophoneUsageDescription": "LumiMD needs access to your microphone to record your medical visits.",
+        "NSCalendarsUsageDescription": "LumiMD needs access to your calendar to add action items as reminders for follow-up appointments and medical tasks.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "audio",
@@ -35,7 +36,9 @@
       "package": "com.lumimd.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
       ]
     },
     "scheme": "lumimd",
@@ -54,6 +57,12 @@
           "icon": "./assets/icon.png",
           "color": "#0A99A4",
           "sounds": []
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Allow LumiMD to add action items to your calendar as reminders."
         }
       ],
       "expo-font",

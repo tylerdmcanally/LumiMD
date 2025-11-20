@@ -1,10 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
 import * as functions from 'firebase-functions';
 import { openAIConfig } from '../config';
+import { withRetry } from '../utils/retryUtils';
 
 const BASE_URL = 'https://api.openai.com/v1';
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 
 export interface MedicationChangeEntry {
   name: string;
@@ -15,7 +16,15 @@ export interface MedicationChangeEntry {
   original?: string;
   needsConfirmation?: boolean;
   status?: 'matched' | 'fuzzy' | 'unverified';
-  warning?: string;
+  warning?: Array<{
+    type: 'duplicate_therapy' | 'drug_interaction' | 'allergy_alert';
+    severity: 'critical' | 'high' | 'moderate' | 'low';
+    message: string;
+    details: string;
+    recommendation: string;
+    conflictingMedication?: string;
+    allergen?: string;
+  }>;
 }
 
 export interface VisitSummaryResult {
@@ -280,11 +289,6 @@ const normalizeMedicationEntry = (value: unknown): MedicationChangeEntry | null 
       result.frequency = frequency;
     }
 
-    const noteValue = note ?? (display && display !== name ? display : undefined);
-    if (noteValue) {
-      result.note = noteValue;
-    }
-
     if (computedDisplay) {
       result.display = computedDisplay;
     }
@@ -305,10 +309,7 @@ const normalizeMedicationEntry = (value: unknown): MedicationChangeEntry | null 
       result.status = statusValue;
     }
 
-    const warningValue = sanitizeText(record.warning);
-    if (warningValue) {
-      result.warning = warningValue;
-    }
+
 
     return result;
   }
@@ -389,8 +390,6 @@ const refineMedicationListWithKnownNames = (
   list: MedicationChangeEntry[],
   knownNames: string[],
 ): MedicationChangeEntry[] => {
-  const FUZZY_WARNING =
-    'Medication name auto-corrected from the transcript. Please confirm with the prescribing provider before taking or adjusting this medication.';
   const UNVERIFIED_WARNING =
     'Unable to confidently identify this medication from the transcript. Confirm the exact name with the prescribing provider before use.';
   const COMBO_SPLIT_PATTERN =
@@ -435,7 +434,7 @@ const refineMedicationListWithKnownNames = (
       result.needsConfirmation = true;
       result.status = result.status ?? 'unverified';
       if (!result.warning) {
-        result.warning = UNVERIFIED_WARNING;
+
       }
       if (!result.note) {
         result.note = UNVERIFIED_WARNING;
@@ -484,7 +483,7 @@ const refineMedicationListWithKnownNames = (
           result.original = entry.original ?? entry.display ?? entry.name;
         }
         if (!result.needsConfirmation) {
-          result.warning = undefined;
+
         }
         return result;
       }
@@ -492,7 +491,7 @@ const refineMedicationListWithKnownNames = (
       result.needsConfirmation = true;
       result.status = 'unverified';
       if (!result.warning) {
-        result.warning = UNVERIFIED_WARNING;
+
       }
       if (!result.note) {
         result.note = result.original ?? entry.display ?? entry.name;
@@ -512,7 +511,7 @@ const refineMedicationListWithKnownNames = (
       result.needsConfirmation = entry.needsConfirmation ?? false;
       result.status = 'matched';
       if (!result.needsConfirmation) {
-        result.warning = undefined;
+
       }
       return result;
     }
@@ -536,10 +535,10 @@ const refineMedicationListWithKnownNames = (
         result.needsConfirmation = true;
         result.status = 'fuzzy';
         if (!result.warning) {
-          result.warning = FUZZY_WARNING;
+
         }
         if (!result.note) {
-          result.note = result.warning;
+          result.note = 'Medication name auto-corrected from the transcript. Please review.';
         }
         return result;
       }
@@ -548,10 +547,10 @@ const refineMedicationListWithKnownNames = (
     result.needsConfirmation = true;
     result.status = 'unverified';
     if (!result.warning) {
-      result.warning = UNVERIFIED_WARNING;
+
     }
     if (!result.note) {
-      result.note = result.warning;
+      result.note = UNVERIFIED_WARNING;
     }
     return result;
   });
@@ -588,9 +587,6 @@ const refineMedicationsWithKnownNames = (
 export class OpenAIService {
   private client: AxiosInstance;
   private model: string;
-  private static readonly MAX_RETRIES = 3;
-  private static readonly INITIAL_RETRY_DELAY_MS = 1000;
-
   constructor(apiKey: string, model: string) {
     if (!apiKey) {
       throw new Error('OpenAI API key is not configured');
@@ -608,93 +604,6 @@ export class OpenAIService {
     });
   }
 
-  private async retryWithBackoff<T>(
-    operation: () => Promise<T>,
-    context: string,
-  ): Promise<T> {
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt < OpenAIService.MAX_RETRIES; attempt++) {
-      try {
-        return await operation();
-      } catch (error: unknown) {
-        lastError = error instanceof Error ? error : new Error('Unknown error');
-
-        // Check if we should retry
-        if (axios.isAxiosError(error)) {
-          const status = error.response?.status;
-
-          // Don't retry on auth errors
-          if (status === 401) {
-            throw new Error('OpenAI authentication failed - API key may be invalid');
-          }
-
-          // Don't retry on client errors (except rate limits)
-          if (status && status >= 400 && status < 500 && status !== 429) {
-            const message = error.response?.data?.error?.message || error.message;
-            throw new Error(`OpenAI request error: ${message}`);
-          }
-
-          // Retry on rate limits and server errors
-          if (status === 429 || (status && status >= 500)) {
-            const retryAfter = error.response?.headers?.['retry-after'];
-            const delayMs = retryAfter
-              ? parseInt(retryAfter, 10) * 1000
-              : OpenAIService.INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
-
-            if (attempt < OpenAIService.MAX_RETRIES - 1) {
-              const errorType = status === 429 ? 'Rate limit' : 'Server error';
-              functions.logger.warn(
-                `[OpenAI] ${errorType} (${status}) during ${context}, retrying in ${delayMs}ms... (attempt ${attempt + 1}/${OpenAIService.MAX_RETRIES})`,
-              );
-              await sleep(delayMs);
-              continue;
-            }
-
-            // Last retry failed
-            if (status === 429) {
-              throw new Error(
-                'OpenAI rate limit exceeded - please try again later',
-              );
-            }
-            throw new Error(
-              'OpenAI service temporarily unavailable - please try again later',
-            );
-          }
-        }
-
-        // Retry on network errors
-        if (
-          error instanceof Error &&
-          (error.message.includes('ECONNREFUSED') ||
-            error.message.includes('ETIMEDOUT') ||
-            error.message.includes('ENOTFOUND'))
-        ) {
-          if (attempt < OpenAIService.MAX_RETRIES - 1) {
-            const delayMs =
-              OpenAIService.INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
-            functions.logger.warn(
-              `[OpenAI] Network error during ${context}, retrying in ${delayMs}ms... (attempt ${attempt + 1}/${OpenAIService.MAX_RETRIES})`,
-            );
-            await sleep(delayMs);
-            continue;
-          }
-
-          throw new Error(
-            'Network error communicating with OpenAI - please check your connection',
-          );
-        }
-
-        // Unknown error - don't retry
-        break;
-      }
-    }
-
-    throw new Error(
-      `Failed to ${context} after ${OpenAIService.MAX_RETRIES} attempts: ${lastError?.message || 'Unknown error'}`,
-    );
-  }
-
   async summarizeTranscript(
     transcript: string,
     options?: { knownMedications?: string[] },
@@ -705,156 +614,173 @@ export class OpenAIService {
 
     const knownMedicationList = Array.isArray(options?.knownMedications)
       ? options!.knownMedications.filter(
-          (name) => typeof name === 'string' && name.trim().length > 0,
-        )
+        (name) => typeof name === 'string' && name.trim().length > 0,
+      )
       : [];
 
     const knownMedicationText =
       knownMedicationList.length > 0 ? knownMedicationList.join(', ') : 'None provided';
 
-    const response = await this.retryWithBackoff(
+    const response = await withRetry(
       async () =>
         await this.client.post('/chat/completions', {
           model: this.model,
           temperature: 0.2,
           response_format: { type: 'json_object' },
           messages: [
-        {
-          role: 'system',
-          content:
-            [
-              'You are a meticulous medical assistant. Always respond with STRICT JSON (no markdown code fences).',
-              'Keys required:',
-              '  - summary (string)',
-              '  - diagnoses (array of strings)',
-              '  - medications (object with started/stopped/changed arrays of medication objects)',
-              '  - imaging (array of strings)',
-              '  - nextSteps (array of strings)',
-              '  - education (object with diagnoses and medications arrays; see details below)',
-              '',
-              'Medication object shape:',
-              '  {',
-              '    "name": string (required, canonical drug name),',
-              '    "dose": string (optional, e.g. "100 mg"),',
-              '    "frequency": string (optional, e.g. "daily"),',
-              '    "note": string (optional, extra context such as taper instructions),',
-              '    "display": string (optional, one-line human friendly summary),',
-              '    "original": string (optional, exact quote or directive from transcript)',
-              '  }',
-              '',
-              'Medication requirements:',
-              '  • Scan the ENTIRE transcript for every medication discussed (started, stopped, changed, continued).',
-              '  • Populate started/stopped/changed arrays with rich objects as defined above.',
-              '  • ALWAYS include the name field. Include dose/frequency when spoken.',
-              '  • Set display to a concise sentence the app can show. If unsure, reuse the original instruction.',
-              '  • Set note to any additional explanation (e.g., reason for change).',
-              '  • Set original to the exact transcript text or closest paraphrase.',
-              '  • If no medications are covered, return empty arrays.',
-              '',
-              'CRITICAL: Combination Medications and Multiple Drug Handling:',
-              '  • IMPORTANT: Fixed-dose combination medications should match how they appear on the pill bottle (patient-facing).',
-              '',
-              '  KEEP AS SINGLE MEDICATION (one pill bottle) when:',
-              '    1. Slash notation combinations - these are fixed-dose combo pills (one physical tablet):',
-              '       - Example: "HCTZ/Lisinopril 12.5/20 mg daily" stays as ONE medication:',
-              '         {name: "HCTZ/Lisinopril", dose: "12.5/20 mg", frequency: "daily"}',
-              '       - Example: "Aspirin/Dipyridamole 25/200 mg" stays as ONE medication:',
-              '         {name: "Aspirin/Dipyridamole", dose: "25/200 mg"}',
-              '       - Keep the slash notation intact - this matches the patient\'s pill bottle label',
-              '',
-              '    2. Brand name fixed-dose combinations:',
-              '       - Example: "Zestoretic 12.5/20 mg" stays as ONE: {name: "Zestoretic", dose: "12.5/20 mg"}',
-              '       - Example: "Janumet 50/1000 mg" stays as ONE: {name: "Janumet", dose: "50/1000 mg"}',
-              '       - Common brands: Zestoretic, Janumet, Symbicort, Advair, Vytorin, Aggrenox, Duexis',
-              '',
-              '    3. Single products with descriptive qualifiers:',
-              '       - Example: "Vitamin D with K2" stays as ONE medication',
-              '       - Example: "Calcium with Vitamin D" stays as ONE medication',
-              '       - Example: "Multivitamin with iron" stays as ONE medication',
-              '',
-              '    4. Extended-release or modified formulations:',
-              '       - Example: "Metformin XR" stays as ONE medication',
-              '',
-              '  SPLIT INTO SEPARATE MEDICATIONS (different pill bottles) when:',
-              '    1. Multiple medications listed with "and", "&", "+", commas, or in a series:',
-              '       - Example: "Started Aspirin and Plavix" becomes TWO separate medications',
-              '       - Example: "Continue Metformin, Lisinopril, and Atorvastatin" becomes THREE medications',
-              '       - Example: "Aspirin & Ibuprofen" becomes TWO medications (these are separate pills)',
-              '       - Example: "Stopped Aspirin, started Plavix" becomes one stopped entry and one started entry',
-              '',
-              '  • The key distinction: Slash notation (/) = ONE physical pill. "and"/"&"/comma = MULTIPLE physical pills.',
-              '  • Each medication entry should preserve the full context in its "original" field for reference.',
-              '',
-              'Uncertainty and Confirmation:',
-              '  • If unsure about the exact medication name, set `needsConfirmation: true`, keep your best-guess `name`, and include the verbatim text in `original`.',
-              '  • Whenever `needsConfirmation` is true, also include a short `warning` message telling the patient to confirm with their prescribing provider, and set `status` to `"fuzzy"` (best guess) or `"unverified"` (unable to process).',
-              '  • If you truly cannot identify the medication, set `status: "unverified"`, keep the transcript excerpt in `original`, provide a concise `warning`, and leave the `name` as your safest description (e.g., "Unknown medication from transcript").',
-              '  • Use the provided known medication list to correct obvious transcription errors whenever possible.',
-              '',
-              'Imaging/labs:',
-              '  • ONLY include diagnostic tests that were ordered, scheduled, or explicitly recommended during this visit.',
-              '  • If prior imaging or lab results were reviewed, mention them in the summary instead but do not add them to the imaging array.',
-              '  • If no new orders were made, return an empty array.',
-              '',
-              'Diagnoses:',
-              '  • Include any conditions explicitly stated OR clearly implied (e.g., “blood pressure is still high” ⇒ add “Hypertension”; “cholesterol remains elevated” ⇒ add “Hyperlipidemia”).',
-              '  • Use standardized medical terms when possible.',
-              '',
-              'Next steps:',
-              '  • Provide concise, patient-facing tasks.',
-              '  • Format each item as "Short title — follow up in timeframe".',
-              '    - Keep the title to 2-4 words using standardized phrases when possible:',
-              '        • "Clinic follow up"',
-              '        • "Return to clinic"',
-              '        • "Nurse visit"',
-              '        • "Blood pressure check"',
-              '        • "Lab draw"',
-              '        • "Imaging appointment"',
-              '        • "Medication review"',
-              '        • Use "Other task" sparingly when nothing else fits.',
-              '    - The phrase before the em dash identifies the task category; the phrase after the dash must contain the natural-language timing when a specific date or timeframe is provided (e.g., "Return to clinic — follow up in about three months").',
-              '    - If the clinician only orders something (e.g., "We will order a 7-day cardiac monitor" or "Order coronary CT angiogram") and no due date is specified, omit the em dash and timing so the item becomes a single label like "Imaging appointment". Do NOT invent or infer a timeframe.',
-              '    - Only include temporal phrases ("in 3 months", "within 2 weeks") when the clinician explicitly provided them. If no timing was stated, leave the item without a timeframe.',
-              '  • ALWAYS create an action item when the clinician orders a diagnostic test, imaging study, monitoring device, referral, or nurse visit—even if no date was given. Use the appropriate short label (e.g., "Imaging appointment", "Nurse visit") without a timeframe.',
-              '  • Each task should cover a single actionable next step. Split combined instructions into separate tasks if they require different actions or timelines.',
-              '  • If the visit explicitly defers to patient discretion (e.g., "call us if symptoms worsen"), create a "Contact clinic" task with the conditional phrasing after the em dash.',
-              '',
-              'Education object:',
-              '  {',
-              '    "diagnoses": [',
-              '      {',
-              '        "name": string (diagnosis name, matching the diagnoses list when possible),',
-              '        "summary": string (plain-language explanation for patients),',
-              '        "watchFor": string (optional, symptoms or warnings to monitor)',
-              '      }',
-              '    ],',
-              '    "medications": [',
-              '      {',
-              '        "name": string (medication name, matching the medications list when possible),',
-              '        "purpose": string (why the medication is used),',
-              '        "usage": string (optional, key instructions or timing),',
-              '        "sideEffects": string (optional, common side effects to watch for),',
-              '        "whenToCallDoctor": string (optional, red flags requiring medical attention)',
-              '      }',
-              '    ]',
-              '  }',
-              '  • Keep explanations concise, empathetic, and actionable.',
-              '  • If no information is available, return empty arrays.',
-            ].join('\n'),
-        },
-        {
-          role: 'user',
-          content: [
-            `Known patient medications (use exact spelling when applicable): ${knownMedicationText}`,
-            '',
-            `Transcript:\n${transcript}`,
-            '',
-            'Respond with JSON only.',
-          ].join('\n'),
-        },
-      ],
+            {
+              role: 'system',
+              content:
+                [
+                  'You are a meticulous medical assistant. Always respond with STRICT JSON (no markdown code fences).',
+                  'Keys required:',
+                  '  - summary (string)',
+                  '  - diagnoses (array of strings)',
+                  '  - medications (object with started/stopped/changed arrays of medication objects)',
+                  '  - imaging (array of strings)',
+                  '  - nextSteps (array of strings)',
+                  '  - education (object with diagnoses and medications arrays; see details below)',
+                  '',
+                  'Medication object shape:',
+                  '  {',
+                  '    "name": string (required, canonical drug name),',
+                  '    "dose": string (optional, e.g. "100 mg"),',
+                  '    "frequency": string (optional, e.g. "daily"),',
+                  '    "note": string (optional, extra context such as taper instructions),',
+                  '    "display": string (optional, one-line human friendly summary),',
+                  '    "original": string (optional, exact quote or directive from transcript)',
+                  '  }',
+                  '',
+                  'Medication requirements:',
+                  '  • Scan the ENTIRE transcript for every medication discussed (started, stopped, changed, continued).',
+                  '  • Populate started/stopped/changed arrays with rich objects as defined above.',
+                  '  • ALWAYS include the name field. Include dose/frequency when spoken.',
+                  '  • Set display to a concise sentence the app can show. If unsure, reuse the original instruction.',
+                  '  • Set note to any additional explanation (e.g., reason for change).',
+                  '  • Set original to the exact transcript text or closest paraphrase.',
+                  '  • If no medications are covered, return empty arrays.',
+                  '',
+                  'CRITICAL: Combination Medications and Multiple Drug Handling:',
+                  '  • IMPORTANT: Fixed-dose combination medications should match how they appear on the pill bottle (patient-facing).',
+                  '',
+                  '  KEEP AS SINGLE MEDICATION (one pill bottle) when:',
+                  '    1. Slash notation combinations - these are fixed-dose combo pills (one physical tablet):',
+                  '       - Example: "HCTZ/Lisinopril 12.5/20 mg daily" stays as ONE medication:',
+                  '         {name: "HCTZ/Lisinopril", dose: "12.5/20 mg", frequency: "daily"}',
+                  '       - Example: "Aspirin/Dipyridamole 25/200 mg" stays as ONE medication:',
+                  '         {name: "Aspirin/Dipyridamole", dose: "25/200 mg"}',
+                  '       - Keep the slash notation intact - this matches the patient\'s pill bottle label',
+                  '',
+                  '    2. Brand name fixed-dose combinations:',
+                  '       - Example: "Zestoretic 12.5/20 mg" stays as ONE: {name: "Zestoretic", dose: "12.5/20 mg"}',
+                  '       - Example: "Janumet 50/1000 mg" stays as ONE: {name: "Janumet", dose: "50/1000 mg"}',
+                  '       - Common brands: Zestoretic, Janumet, Symbicort, Advair, Vytorin, Aggrenox, Duexis',
+                  '',
+                  '    3. Single products with descriptive qualifiers:',
+                  '       - Example: "Vitamin D with K2" stays as ONE medication',
+                  '       - Example: "Calcium with Vitamin D" stays as ONE medication',
+                  '       - Example: "Multivitamin with iron" stays as ONE medication',
+                  '',
+                  '    4. Extended-release or modified formulations:',
+                  '       - Example: "Metformin XR" stays as ONE medication',
+                  '',
+                  '  SPLIT INTO SEPARATE MEDICATIONS (different pill bottles) when:',
+                  '    1. Multiple medications listed with "and", "&", "+", commas, or in a series:',
+                  '       - Example: "Started Aspirin and Plavix" becomes TWO separate medications',
+                  '       - Example: "Continue Metformin, Lisinopril, and Atorvastatin" becomes THREE medications',
+                  '       - Example: "Aspirin & Ibuprofen" becomes TWO medications (these are separate pills)',
+                  '       - Example: "Stopped Aspirin, started Plavix" becomes one stopped entry and one started entry',
+                  '',
+                  '  • The key distinction: Slash notation (/) = ONE physical pill. "and"/"&"/comma = MULTIPLE physical pills.',
+                  '  • Each medication entry should preserve the full context in its "original" field for reference.',
+                  '',
+                  'Uncertainty and Confirmation:',
+                  '  • If unsure about the exact medication name, set `needsConfirmation: true`, keep your best-guess `name`, and include the verbatim text in `original`.',
+                  '  • Whenever `needsConfirmation` is true, also include a short `warning` message telling the patient to confirm with their prescribing provider, and set `status` to `"fuzzy"` (best guess) or `"unverified"` (unable to process).',
+                  '  • If you truly cannot identify the medication, set `status: "unverified"`, keep the transcript excerpt in `original`, provide a concise `warning`, and leave the `name` as your safest description (e.g., "Unknown medication from transcript").',
+                  '  • Use the provided known medication list to correct obvious transcription errors whenever possible.',
+                  '',
+                  'Imaging/labs:',
+                  '  • ONLY include diagnostic tests that were ordered, scheduled, or explicitly recommended during this visit.',
+                  '  • If prior imaging or lab results were reviewed, mention them in the summary instead but do not add them to the imaging array.',
+                  '  • If no new orders were made, return an empty array.',
+                  '',
+                  'Diagnoses:',
+                  '  • Include any conditions explicitly stated OR clearly implied (e.g., “blood pressure is still high” ⇒ add “Hypertension”; “cholesterol remains elevated” ⇒ add “Hyperlipidemia”).',
+                  '  • Use standardized medical terms when possible.',
+                  '',
+                  'Next steps:',
+                  '  • Provide concise, patient-facing tasks.',
+                  '  • Format each item as "Short title — follow up in timeframe".',
+                  '    - Keep the title to 2-4 words using standardized phrases when possible:',
+                  '        • "Clinic follow up"',
+                  '        • "Return to clinic"',
+                  '        • "Nurse visit"',
+                  '        • "Blood pressure check"',
+                  '        • "Lab draw"',
+                  '        • "Imaging appointment"',
+                  '        • "Medication review"',
+                  '        • Use "Other task" sparingly when nothing else fits.',
+                  '    - The phrase before the em dash identifies the task category; the phrase after the dash must contain the natural-language timing when a specific date or timeframe is provided (e.g., "Return to clinic — follow up in about three months").',
+                  '    - If the clinician only orders something (e.g., "We will order a 7-day cardiac monitor" or "Order coronary CT angiogram") and no due date is specified, omit the em dash and timing so the item becomes a single label like "Imaging appointment". Do NOT invent or infer a timeframe.',
+                  '    - Only include temporal phrases ("in 3 months", "within 2 weeks") when the clinician explicitly provided them. If no timing was stated, leave the item without a timeframe.',
+                  '  • ALWAYS create an action item when the clinician orders a diagnostic test, imaging study, monitoring device, referral, or nurse visit—even if no date was given. Use the appropriate short label (e.g., "Imaging appointment", "Nurse visit") without a timeframe.',
+                  '  • Each task should cover a single actionable next step. Split combined instructions into separate tasks if they require different actions or timelines.',
+                  '  • If the visit explicitly defers to patient discretion (e.g., "call us if symptoms worsen"), create a "Contact clinic" task with the conditional phrasing after the em dash.',
+                  '',
+                  'Education object:',
+                  '  {',
+                  '    "diagnoses": [',
+                  '      {',
+                  '        "name": string (diagnosis name, matching the diagnoses list when possible),',
+                  '        "summary": string (plain-language explanation for patients),',
+                  '        "watchFor": string (optional, symptoms or warnings to monitor)',
+                  '      }',
+                  '    ],',
+                  '    "medications": [',
+                  '      {',
+                  '        "name": string (medication name, matching the medications list when possible),',
+                  '        "purpose": string (why the medication is used),',
+                  '        "usage": string (optional, key instructions or timing),',
+                  '        "sideEffects": string (optional, common side effects to watch for),',
+                  '        "whenToCallDoctor": string (optional, red flags requiring medical attention)',
+                  '      }',
+                  '    ]',
+                  '  }',
+                  '  • Keep explanations concise, empathetic, and actionable.',
+                  '  • If no information is available, return empty arrays.',
+                ].join('\n'),
+            },
+            {
+              role: 'user',
+              content: [
+                `Known patient medications (use exact spelling when applicable): ${knownMedicationText}`,
+                '',
+                `Transcript:\n${transcript}`,
+                '',
+                'Respond with JSON only.',
+              ].join('\n'),
+            },
+          ],
         }),
-      'transcript summarization',
+      {
+        shouldRetry: (error: any) => {
+          if (axios.isAxiosError(error)) {
+            const status = error.response?.status;
+            // Retry on rate limits (429) and server errors (5xx)
+            return status === 429 || (!!status && status >= 500);
+          }
+          // Retry on network errors
+          if (error instanceof Error) {
+            return (
+              error.message.includes('ECONNREFUSED') ||
+              error.message.includes('ETIMEDOUT') ||
+              error.message.includes('ENOTFOUND')
+            );
+          }
+          return false;
+        },
+      }
     );
 
     const content =

@@ -17,6 +17,7 @@ import { openWebMeds, openWebVisit } from '../lib/linking';
 import { useAuth } from '../contexts/AuthContext';
 import { useMedications } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
 
 const formatDate = (value?: string | null) => {
   if (!value) return null;
@@ -151,6 +152,12 @@ export default function MedicationsScreen() {
               </Text>
             </View>
           </View>
+
+          {med.medicationWarning && med.medicationWarning.length > 0 && (
+            <View style={{ marginBottom: spacing(3) }}>
+              <MedicationWarningBanner warnings={med.medicationWarning} />
+            </View>
+          )}
 
           <View style={styles.medMeta}>
             <View style={[styles.sourceBadge, { backgroundColor: badge.background }]}>
