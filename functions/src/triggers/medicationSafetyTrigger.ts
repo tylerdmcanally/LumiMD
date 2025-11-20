@@ -40,6 +40,15 @@ export const onMedicationWritten = functions.firestore
 
         const medicationId = context.params.medicationId;
         const userId = newData.userId;
+        const source = (newData.source || '').toLowerCase();
+
+        // API layer already runs safety checks for manual meds, so avoid double-checking here
+        if (source === 'manual') {
+            functions.logger.info(
+                `[medicationSafetyTrigger] Skipping manual medication ${medicationId} (${newData.name})`,
+            );
+            return;
+        }
 
         functions.logger.info(`[medicationSafetyTrigger] Running safety checks for ${medicationId} (${newData.name})`);
 
