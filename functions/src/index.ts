@@ -13,7 +13,6 @@ import { apiLimiter } from './middlewares/rateLimit';
 export { processVisitAudio } from './triggers/processVisitAudio';
 export { checkPendingTranscriptions } from './triggers/checkPendingTranscriptions';
 export { summarizeVisitTrigger } from './triggers/summarizeVisit';
-export { onMedicationWritten } from './triggers/medicationSafetyTrigger';
 export { analyzeMedicationSafety } from './callables/medicationSafety';
 
 // Initialize Firebase Admin

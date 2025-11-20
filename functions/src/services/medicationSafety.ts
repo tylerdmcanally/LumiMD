@@ -295,7 +295,7 @@ const SALT_SUFFIXES = [
  * Normalize medication name to generic (lowercase)
  * Strips salt names and formulations for better matching
  */
-function normalizeMedicationName(name: string): string {
+export function normalizeMedicationName(name: string): string {
   let lower = name.toLowerCase().trim();
 
   // Check brand to generic mapping first
@@ -554,14 +554,31 @@ export async function checkAllergyConflicts(
  */
 export async function runHardcodedSafetyChecks(
   userId: string,
-  newMedication: MedicationChangeEntry
+  newMedication: MedicationChangeEntry,
+  excludeMedicationId?: string
 ): Promise<MedicationSafetyWarning[]> {
   try {
     // Fetch medications once, then aggressively filter to currently active therapy
     const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
 
+    const newMedNormalized = normalizeMedicationName(newMedication.name);
+
     const currentMedications = medsSnapshot.docs
-      .filter((doc) => isMedicationCurrentlyActive(doc.data()))
+      .filter((doc) => {
+        if (excludeMedicationId && doc.id === excludeMedicationId) {
+          return false;
+        }
+
+        const data = doc.data();
+        const medName = typeof data?.name === 'string' ? data.name : '';
+        const medNormalized = medName ? normalizeMedicationName(medName) : '';
+
+        if (medNormalized && medNormalized === newMedNormalized) {
+          return false;
+        }
+
+        return isMedicationCurrentlyActive(data);
+      })
       .map((doc) => ({
         id: doc.id,
         name: doc.data().name,
@@ -619,11 +636,17 @@ export async function runHardcodedSafetyChecks(
 export async function runMedicationSafetyChecks(
   userId: string,
   newMedication: MedicationChangeEntry,
-  options: { useAI?: boolean } = {}
+  options: { useAI?: boolean; excludeMedicationId?: string } = {}
 ): Promise<MedicationSafetyWarning[]> {
   try {
+    const { useAI: useAIOption, excludeMedicationId } = options;
+
     // Layer 1: Fast hardcoded checks (critical interactions only)
-    const hardcodedWarnings = await runHardcodedSafetyChecks(userId, newMedication);
+    const hardcodedWarnings = await runHardcodedSafetyChecks(
+      userId,
+      newMedication,
+      excludeMedicationId
+    );
 
     // If critical warnings found, return immediately (don't wait for AI)
     const hasCritical = hardcodedWarnings.some(w => w.severity === 'critical');
@@ -640,7 +663,7 @@ export async function runMedicationSafetyChecks(
     }
 
     // Layer 2: AI-based comprehensive check (optional, enabled via options or env var)
-    const useAI = options.useAI ?? (process.env.ENABLE_AI_SAFETY_CHECKS === 'true');
+    const useAI = useAIOption ?? (process.env.ENABLE_AI_SAFETY_CHECKS === 'true');
 
     if (!useAI) {
       // AI checks disabled, return hardcoded results
@@ -662,7 +685,11 @@ export async function runMedicationSafetyChecks(
 
     try {
       // Run AI checks
-      const aiWarnings = await runAIBasedSafetyChecks(userId, newMedication);
+      const aiWarnings = await runAIBasedSafetyChecks(
+        userId,
+        newMedication,
+        excludeMedicationId
+      );
 
       // Merge and deduplicate warnings
       const allWarnings = deduplicateWarnings([

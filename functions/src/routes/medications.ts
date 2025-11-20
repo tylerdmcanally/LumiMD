@@ -301,7 +301,10 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       };
 
       // Use AI-powered comprehensive checks
-      warnings = await runMedicationSafetyChecks(userId, updatedMedData, { useAI: true });
+      warnings = await runMedicationSafetyChecks(userId, updatedMedData, {
+        useAI: true,
+        excludeMedicationId: medId,
+      });
       hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
     }
 

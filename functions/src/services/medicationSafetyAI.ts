@@ -15,7 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import OpenAI from 'openai';
 import { MedicationChangeEntry } from './openai';
-import { MedicationSafetyWarning } from './medicationSafety';
+import { MedicationSafetyWarning, normalizeMedicationName } from './medicationSafety';
 
 const db = () => admin.firestore();
 const cacheCollection = () => db().collection('medicationSafetyCache');
@@ -231,7 +231,8 @@ export async function clearMedicationSafetyCacheForUser(userId: string): Promise
 
 export async function runAIBasedSafetyChecks(
   userId: string,
-  newMedication: MedicationChangeEntry
+  newMedication: MedicationChangeEntry,
+  excludeMedicationId?: string
 ): Promise<MedicationSafetyWarning[]> {
   try {
     // Fetch current medications and allergies
@@ -240,8 +241,14 @@ export async function runAIBasedSafetyChecks(
       db().collection('users').doc(userId).get(),
     ]);
 
+    const newMedNormalized = normalizeMedicationName(newMedication.name);
+
     const activeMedicationDocs = medsSnapshot.docs
       .filter((doc) => {
+        if (excludeMedicationId && doc.id === excludeMedicationId) {
+          return false;
+        }
+
         const data = doc.data();
         const active = data?.active === true;
         const stopped = Boolean(
@@ -250,7 +257,18 @@ export async function runAIBasedSafetyChecks(
             typeof data.stoppedAt.toDate === 'function',
         );
         const deleted = data?.deleted === true || data?.archived === true;
-        return active && !stopped && !deleted;
+        if (!active || stopped || deleted) {
+          return false;
+        }
+
+        const medName = typeof data?.name === 'string' ? data.name : '';
+        const medNormalized = medName ? normalizeMedicationName(medName) : '';
+
+        if (medNormalized && medNormalized === newMedNormalized) {
+          return false;
+        }
+
+        return true;
       });
 
     const currentMedications = activeMedicationDocs.map((doc) => {
