@@ -18,6 +18,8 @@ const createMedicationSchema = z.object({
   frequency: z.string().optional(),
   notes: z.string().optional(),
   active: z.boolean().default(true),
+  source: z.enum(['manual', 'visit']).default('manual'),
+  sourceVisitId: z.string().nullable().optional(),
 });
 
 const updateMedicationSchema = z.object({
@@ -26,6 +28,8 @@ const updateMedicationSchema = z.object({
   frequency: z.string().optional(),
   notes: z.string().optional(),
   active: z.boolean().optional(),
+  source: z.enum(['manual', 'visit']).optional(),
+  sourceVisitId: z.string().nullable().optional(),
 });
 
 const safetyCheckSchema = z.object({
@@ -191,6 +195,8 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       frequency: data.frequency || '',
       notes: data.notes || '',
       active: data.active,
+      source: data.source || 'manual',
+      sourceVisitId: data.source === 'visit' ? (data.sourceVisitId || null) : null,
       createdAt: now,
       updatedAt: now,
       // Add safety warning fields
@@ -211,6 +217,8 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     const responseData = {
       id: medRef.id,
       ...medication,
+      source: medication.source || data.source || 'manual',
+      sourceVisitId: medication.sourceVisitId || null,
       createdAt: medication.createdAt.toDate().toISOString(),
       updatedAt: medication.updatedAt.toDate().toISOString(),
       startedAt: medication.startedAt?.toDate()?.toISOString() || null,
@@ -310,6 +318,11 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (data.frequency !== undefined) updates.frequency = data.frequency;
     if (data.notes !== undefined) updates.notes = data.notes;
     if (data.active !== undefined) updates.active = data.active;
+    if (data.source !== undefined) updates.source = data.source;
+      if (data.sourceVisitId !== undefined) {
+        updates.sourceVisitId =
+          (data.source ?? medication.source) === 'visit' ? data.sourceVisitId ?? null : null;
+      }
 
     // Update safety warning fields if medication details changed
     if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
