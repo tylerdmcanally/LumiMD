@@ -3,10 +3,16 @@
  *
  * Displays medication safety warnings with appropriate severity styling
  * Used to alert patients about duplicate therapy, drug interactions, and allergies
+ * 
+ * Features:
+ * - Collapsible warnings with visual indicators
+ * - Shows warning count and highest severity when collapsed
+ * - Tap to expand/collapse individual warnings
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from './ui';
 
 export interface MedicationWarning {
@@ -83,6 +89,8 @@ export const MedicationWarningBanner: React.FC<MedicationWarningBannerProps> = (
   onDismiss,
   style,
 }) => {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
   if (!warnings || warnings.length === 0) {
     return null;
   }
@@ -93,13 +101,21 @@ export const MedicationWarningBanner: React.FC<MedicationWarningBannerProps> = (
     (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
   );
 
+  const toggleWarning = (index: number) => {
+    setExpandedIndex(expandedIndex === index ? null : index);
+  };
+
   return (
     <View style={[styles.container, style]}>
       {sortedWarnings.map((warning, index) => {
         const colors = getSeverityColor(warning.severity);
+        const isExpanded = expandedIndex === index;
+
         return (
-          <View
+          <TouchableOpacity
             key={index}
+            activeOpacity={0.7}
+            onPress={() => toggleWarning(index)}
             style={[
               styles.warningCard,
               {
@@ -108,67 +124,91 @@ export const MedicationWarningBanner: React.FC<MedicationWarningBannerProps> = (
               },
             ]}
           >
-            <View style={styles.warningHeader}>
-              <Text style={styles.warningIcon}>{colors.icon}</Text>
-              <View style={styles.warningHeaderText}>
-                <Text style={[styles.warningType, { color: colors.text }]}>
-                  {getWarningTypeLabel(warning.type)}
-                </Text>
-                <Text style={[styles.severityBadge, { color: colors.text }]}>
-                  {warning.severity.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            <Text style={[styles.warningMessage, { color: colors.text }]}>
-              {warning.message}
-            </Text>
-
-            <Text style={[styles.warningDetails, { color: colors.text }]}>
-              {warning.details}
-            </Text>
-
-            {warning.conflictingMedication && (
-              <View style={styles.conflictBox}>
-                <Text style={[styles.conflictLabel, { color: colors.text }]}>
-                  Conflicting medication:
-                </Text>
-                <Text style={[styles.conflictValue, { color: colors.text }]}>
-                  {warning.conflictingMedication}
-                </Text>
+            {/* Collapsed View - Shows compact warning indicator */}
+            {!isExpanded && (
+              <View style={styles.collapsedView}>
+                <View style={styles.collapsedLeft}>
+                  <Text style={styles.warningIcon}>{colors.icon}</Text>
+                  <View style={styles.collapsedTextContainer}>
+                    <Text style={[styles.collapsedType, { color: colors.text }]}>
+                      {getWarningTypeLabel(warning.type)}
+                    </Text>
+                    <Text style={[styles.collapsedMessage, { color: colors.text }]} numberOfLines={1}>
+                      {warning.message}
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-down" size={20} color={colors.text} />
               </View>
             )}
 
-            {warning.allergen && (
-              <View style={styles.conflictBox}>
-                <Text style={[styles.conflictLabel, { color: colors.text }]}>
-                  Known allergy:
-                </Text>
-                <Text style={[styles.conflictValue, { color: colors.text }]}>
-                  {warning.allergen}
-                </Text>
-              </View>
-            )}
+            {/* Expanded View - Shows full warning details */}
+            {isExpanded && (
+              <>
+                <View style={styles.warningHeader}>
+                  <Text style={styles.warningIcon}>{colors.icon}</Text>
+                  <View style={styles.warningHeaderText}>
+                    <Text style={[styles.warningType, { color: colors.text }]}>
+                      {getWarningTypeLabel(warning.type)}
+                    </Text>
+                    <Text style={[styles.severityBadge, { color: colors.text }]}>
+                      {warning.severity.toUpperCase()}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-up" size={20} color={colors.text} />
+                </View>
 
-            <View
-              style={[
-                styles.recommendationBox,
-                {
-                  backgroundColor:
-                    warning.severity === 'critical' || warning.severity === 'high'
-                      ? colors.border
-                      : 'transparent',
-                },
-              ]}
-            >
-              <Text style={[styles.recommendationLabel, { color: colors.text }]}>
-                What to do:
-              </Text>
-              <Text style={[styles.recommendationText, { color: colors.text }]}>
-                {warning.recommendation}
-              </Text>
-            </View>
-          </View>
+                <Text style={[styles.warningMessage, { color: colors.text }]}>
+                  {warning.message}
+                </Text>
+
+                <Text style={[styles.warningDetails, { color: colors.text }]}>
+                  {warning.details}
+                </Text>
+
+                {warning.conflictingMedication && (
+                  <View style={styles.conflictBox}>
+                    <Text style={[styles.conflictLabel, { color: colors.text }]}>
+                      Conflicting medication:
+                    </Text>
+                    <Text style={[styles.conflictValue, { color: colors.text }]}>
+                      {warning.conflictingMedication}
+                    </Text>
+                  </View>
+                )}
+
+                {warning.allergen && (
+                  <View style={styles.conflictBox}>
+                    <Text style={[styles.conflictLabel, { color: colors.text }]}>
+                      Known allergy:
+                    </Text>
+                    <Text style={[styles.conflictValue, { color: colors.text }]}>
+                      {warning.allergen}
+                    </Text>
+                  </View>
+                )}
+
+                <View
+                  style={[
+                    styles.recommendationBox,
+                    {
+                      backgroundColor:
+                        warning.severity === 'critical' || warning.severity === 'high'
+                          ? colors.border
+                          : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.recommendationLabel, { color: colors.text }]}>
+                    What to do:
+                  </Text>
+                  <Text style={[styles.recommendationText, { color: colors.text }]}>
+                    {warning.recommendation}
+                  </Text>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
         );
       })}
 
@@ -191,6 +231,34 @@ const styles = StyleSheet.create({
     padding: spacing(4),
     gap: spacing(3),
   },
+  // Collapsed view styles
+  collapsedView: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing(2),
+  },
+  collapsedLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    flex: 1,
+  },
+  collapsedTextContainer: {
+    flex: 1,
+    gap: spacing(1),
+  },
+  collapsedType: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  collapsedMessage: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  // Expanded view styles
   warningHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',

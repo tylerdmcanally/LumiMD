@@ -39,117 +39,571 @@ export interface MedicationSafetyWarning {
   recommendation: string;
 }
 
+type CanonicalMedicationEntry = {
+  classes: string[];
+  aliases: string[];
+};
+
 /**
- * Medication Class Database
- * Maps common medications to their therapeutic classes
+ * Canonical medication data covering common brand & generic variants
+ * across major therapeutic classes.
  */
-const MEDICATION_CLASSES: Record<string, string[]> = {
-  // Beta Blockers
-  'metoprolol': ['beta-blocker', 'antihypertensive', 'cardiovascular'],
-  'atenolol': ['beta-blocker', 'antihypertensive', 'cardiovascular'],
-  'carvedilol': ['beta-blocker', 'antihypertensive', 'cardiovascular'],
-  'propranolol': ['beta-blocker', 'antihypertensive', 'cardiovascular'],
-  'bisoprolol': ['beta-blocker', 'antihypertensive', 'cardiovascular'],
-
-  // ACE Inhibitors
-  'lisinopril': ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
-  'enalapril': ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
-  'ramipril': ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
-  'benazepril': ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
-
-  // ARBs (Angiotensin Receptor Blockers)
-  'losartan': ['arb', 'antihypertensive', 'cardiovascular'],
-  'valsartan': ['arb', 'antihypertensive', 'cardiovascular'],
-  'irbesartan': ['arb', 'antihypertensive', 'cardiovascular'],
-  'telmisartan': ['arb', 'antihypertensive', 'cardiovascular'],
-
+const CANONICAL_MEDICATIONS: Record<string, CanonicalMedicationEntry> = {
   // Statins
-  'atorvastatin': ['statin', 'cholesterol-lowering', 'cardiovascular'],
-  'simvastatin': ['statin', 'cholesterol-lowering', 'cardiovascular'],
-  'rosuvastatin': ['statin', 'cholesterol-lowering', 'cardiovascular'],
-  'pravastatin': ['statin', 'cholesterol-lowering', 'cardiovascular'],
-  'lovastatin': ['statin', 'cholesterol-lowering', 'cardiovascular'],
+  atorvastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['lipitor'],
+  },
+  rosuvastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['crestor'],
+  },
+  simvastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['zocor'],
+  },
+  pravastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['pravachol'],
+  },
+  lovastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['mevacor', 'altoprev'],
+  },
+  pitavastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['livalo'],
+  },
+  fluvastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['lescol'],
+  },
+  cerivastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['baycol'],
+  },
 
-  // NSAIDs
-  'ibuprofen': ['nsaid', 'pain-reliever', 'anti-inflammatory'],
-  'naproxen': ['nsaid', 'pain-reliever', 'anti-inflammatory'],
-  'meloxicam': ['nsaid', 'pain-reliever', 'anti-inflammatory'],
-  'celecoxib': ['nsaid', 'pain-reliever', 'anti-inflammatory'],
-  'advil': ['nsaid', 'pain-reliever', 'anti-inflammatory'],
-  'motrin': ['nsaid', 'pain-reliever', 'anti-inflammatory'],
-  'aleve': ['nsaid', 'pain-reliever', 'anti-inflammatory'],
+  // NSAIDs & analgesics
+  ibuprofen: {
+    classes: ['nsaid', 'pain-reliever', 'anti-inflammatory'],
+    aliases: ['advil', 'motrin', 'nurofen'],
+  },
+  naproxen: {
+    classes: ['nsaid', 'pain-reliever', 'anti-inflammatory'],
+    aliases: ['aleve', 'naprosyn', 'anaprox'],
+  },
+  meloxicam: {
+    classes: ['nsaid', 'pain-reliever', 'anti-inflammatory'],
+    aliases: ['mobic'],
+  },
+  celecoxib: {
+    classes: ['nsaid', 'pain-reliever', 'anti-inflammatory'],
+    aliases: ['celebrex'],
+  },
+  diclofenac: {
+    classes: ['nsaid', 'pain-reliever', 'anti-inflammatory'],
+    aliases: ['voltaren', 'cataflam', 'zorvolex'],
+  },
+  ketorolac: {
+    classes: ['nsaid', 'pain-reliever', 'anti-inflammatory'],
+    aliases: ['toradol'],
+  },
+  acetaminophen: {
+    classes: ['analgesic'],
+    aliases: ['tylenol', 'paracetamol'],
+  },
 
-  // Penicillins
-  'amoxicillin': ['penicillin', 'antibiotic', 'beta-lactam'],
-  'penicillin': ['penicillin', 'antibiotic', 'beta-lactam'],
-  'ampicillin': ['penicillin', 'antibiotic', 'beta-lactam'],
-  'augmentin': ['penicillin', 'antibiotic', 'beta-lactam'],
+  // Beta blockers
+  metoprolol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['toprol', 'toprol xl', 'lopressor'],
+  },
+  atenolol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['tenormin'],
+  },
+  propranolol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['inderal'],
+  },
+  bisoprolol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['zebeta'],
+  },
+  carvedilol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['coreg'],
+  },
+  labetalol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['trandate', 'normodyne'],
+  },
+  nebivolol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['bystolic'],
+  },
+  nadolol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['corgard'],
+  },
+  sotalol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['betapace'],
+  },
+  acebutolol: {
+    classes: ['beta-blocker', 'antihypertensive', 'cardiovascular'],
+    aliases: ['sectral'],
+  },
 
-  // Cephalosporins
-  'cephalexin': ['cephalosporin', 'antibiotic', 'beta-lactam'],
-  'cefuroxime': ['cephalosporin', 'antibiotic', 'beta-lactam'],
-  'ceftriaxone': ['cephalosporin', 'antibiotic', 'beta-lactam'],
+  // ACE inhibitors
+  lisinopril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['prinivil', 'zestril'],
+  },
+  enalapril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['vasotec'],
+  },
+  ramipril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['altace'],
+  },
+  benazepril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['lotensin'],
+  },
+  captopril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['capoten'],
+  },
+  quinapril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['accupril'],
+  },
+  perindopril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['aceon'],
+  },
+  fosinopril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['monopril'],
+  },
+  moexipril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['univasc'],
+  },
+  trandolapril: {
+    classes: ['ace-inhibitor', 'antihypertensive', 'cardiovascular'],
+    aliases: ['mavik'],
+  },
 
-  // Sulfonamides
-  'sulfamethoxazole': ['sulfonamide', 'antibiotic'],
-  'trimethoprim': ['sulfonamide', 'antibiotic'],
-  'bactrim': ['sulfonamide', 'antibiotic'],
-
-  // Blood Thinners
-  'warfarin': ['anticoagulant', 'blood-thinner', 'cardiovascular'],
-  'apixaban': ['anticoagulant', 'blood-thinner', 'cardiovascular'],
-  'rivaroxaban': ['anticoagulant', 'blood-thinner', 'cardiovascular'],
-  'eliquis': ['anticoagulant', 'blood-thinner', 'cardiovascular'],
-  'xarelto': ['anticoagulant', 'blood-thinner', 'cardiovascular'],
-
-  // Antiplatelets
-  'aspirin': ['antiplatelet', 'blood-thinner', 'cardiovascular'],
-  'clopidogrel': ['antiplatelet', 'blood-thinner', 'cardiovascular'],
-  'plavix': ['antiplatelet', 'blood-thinner', 'cardiovascular'],
-  'asa': ['antiplatelet', 'blood-thinner', 'cardiovascular'],
-
-  // Diabetes Medications
-  'metformin': ['antidiabetic', 'biguanide'],
-  'glipizide': ['antidiabetic', 'sulfonylurea'],
-  'glyburide': ['antidiabetic', 'sulfonylurea'],
-  'insulin': ['antidiabetic', 'insulin'],
-
-  // Proton Pump Inhibitors
-  'omeprazole': ['ppi', 'acid-reducer'],
-  'pantoprazole': ['ppi', 'acid-reducer'],
-  'lansoprazole': ['ppi', 'acid-reducer'],
-  'esomeprazole': ['ppi', 'acid-reducer'],
-
-  // H2 Blockers
-  'ranitidine': ['h2-blocker', 'acid-reducer'],
-  'famotidine': ['h2-blocker', 'acid-reducer'],
+  // ARBs
+  losartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['cozaar'],
+  },
+  valsartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['diovan'],
+  },
+  irbesartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['avapro'],
+  },
+  candesartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['atacand'],
+  },
+  telmisartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['micardis'],
+  },
+  olmesartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['benicar'],
+  },
+  eprosartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['teveten'],
+  },
+  azilsartan: {
+    classes: ['arb', 'antihypertensive', 'cardiovascular'],
+    aliases: ['edarbi'],
+  },
 
   // Diuretics
-  'furosemide': ['diuretic', 'loop-diuretic', 'antihypertensive'],
-  'hydrochlorothiazide': ['diuretic', 'thiazide-diuretic', 'antihypertensive'],
-  'hctz': ['diuretic', 'thiazide-diuretic', 'antihypertensive'],
-  'spironolactone': ['diuretic', 'potassium-sparing-diuretic'],
+  hydrochlorothiazide: {
+    classes: ['diuretic', 'thiazide-diuretic', 'antihypertensive'],
+    aliases: ['hctz', 'microzide', 'hydrodiuril'],
+  },
+  chlorthalidone: {
+    classes: ['diuretic', 'thiazide-diuretic', 'antihypertensive'],
+    aliases: ['hygroton', 'thalitone'],
+  },
+  furosemide: {
+    classes: ['diuretic', 'loop-diuretic', 'antihypertensive'],
+    aliases: ['lasix'],
+  },
+  torsemide: {
+    classes: ['diuretic', 'loop-diuretic', 'antihypertensive'],
+    aliases: ['demadex'],
+  },
+  bumetanide: {
+    classes: ['diuretic', 'loop-diuretic', 'antihypertensive'],
+    aliases: ['bumex'],
+  },
+  indapamide: {
+    classes: ['diuretic', 'thiazide-like-diuretic', 'antihypertensive'],
+    aliases: ['lozol'],
+  },
+  metolazone: {
+    classes: ['diuretic', 'thiazide-like-diuretic', 'antihypertensive'],
+    aliases: ['zaroxolyn'],
+  },
+  spironolactone: {
+    classes: ['diuretic', 'potassium-sparing-diuretic', 'antihypertensive'],
+    aliases: ['aldactone'],
+  },
+  eplerenone: {
+    classes: ['diuretic', 'potassium-sparing-diuretic', 'antihypertensive'],
+    aliases: ['inspra'],
+  },
+  triamterene: {
+    classes: ['diuretic', 'potassium-sparing-diuretic'],
+    aliases: ['dyrenium'],
+  },
+  amiloride: {
+    classes: ['diuretic', 'potassium-sparing-diuretic'],
+    aliases: ['midamor'],
+  },
 
-  // Thyroid Medications
-  'levothyroxine': ['thyroid-hormone'],
-  'synthroid': ['thyroid-hormone'],
+  // Diabetes agents
+  metformin: {
+    classes: ['antidiabetic', 'biguanide'],
+    aliases: ['glucophage', 'glumetza', 'riomet', 'fortamet'],
+  },
+  glipizide: {
+    classes: ['antidiabetic', 'sulfonylurea'],
+    aliases: ['glucotrol'],
+  },
+  glyburide: {
+    classes: ['antidiabetic', 'sulfonylurea'],
+    aliases: ['diabeta', 'micronase', 'glynase'],
+  },
+  glimepiride: {
+    classes: ['antidiabetic', 'sulfonylurea'],
+    aliases: ['amaryl'],
+  },
+  pioglitazone: {
+    classes: ['antidiabetic', 'thiazolidinedione'],
+    aliases: ['actos'],
+  },
+  rosiglitazone: {
+    classes: ['antidiabetic', 'thiazolidinedione'],
+    aliases: ['avandia'],
+  },
+  sitagliptin: {
+    classes: ['antidiabetic', 'dpp-4-inhibitor'],
+    aliases: ['januvia'],
+  },
+  saxagliptin: {
+    classes: ['antidiabetic', 'dpp-4-inhibitor'],
+    aliases: ['onglyza'],
+  },
+  linagliptin: {
+    classes: ['antidiabetic', 'dpp-4-inhibitor'],
+    aliases: ['tradjenta'],
+  },
+  alogliptin: {
+    classes: ['antidiabetic', 'dpp-4-inhibitor'],
+    aliases: ['nesina'],
+  },
+  canagliflozin: {
+    classes: ['antidiabetic', 'sglt2-inhibitor'],
+    aliases: ['invokana'],
+  },
+  dapagliflozin: {
+    classes: ['antidiabetic', 'sglt2-inhibitor'],
+    aliases: ['farxiga'],
+  },
+  empagliflozin: {
+    classes: ['antidiabetic', 'sglt2-inhibitor'],
+    aliases: ['jardiance'],
+  },
+  ertugliflozin: {
+    classes: ['antidiabetic', 'sglt2-inhibitor'],
+    aliases: ['steglatro'],
+  },
+  semaglutide: {
+    classes: ['antidiabetic', 'glp-1-agonist'],
+    aliases: ['ozempic', 'rybelsus', 'wegovy'],
+  },
+  liraglutide: {
+    classes: ['antidiabetic', 'glp-1-agonist'],
+    aliases: ['victoza', 'saxenda'],
+  },
+  dulaglutide: {
+    classes: ['antidiabetic', 'glp-1-agonist'],
+    aliases: ['trulicity'],
+  },
+  'insulin glargine': {
+    classes: ['antidiabetic', 'insulin'],
+    aliases: ['lantus', 'basaglar', 'toujeo'],
+  },
+  'insulin detemir': {
+    classes: ['antidiabetic', 'insulin'],
+    aliases: ['levemir'],
+  },
+  'insulin degludec': {
+    classes: ['antidiabetic', 'insulin'],
+    aliases: ['tresiba'],
+  },
+  'insulin lispro': {
+    classes: ['antidiabetic', 'insulin'],
+    aliases: ['humalog', 'admelog'],
+  },
+  'insulin aspart': {
+    classes: ['antidiabetic', 'insulin'],
+    aliases: ['novolog', 'fiasp'],
+  },
 
-  // Antidepressants - SSRIs
-  'sertraline': ['ssri', 'antidepressant'],
-  'fluoxetine': ['ssri', 'antidepressant'],
-  'escitalopram': ['ssri', 'antidepressant'],
-  'citalopram': ['ssri', 'antidepressant'],
-  'zoloft': ['ssri', 'antidepressant'],
-  'prozac': ['ssri', 'antidepressant'],
-  'lexapro': ['ssri', 'antidepressant'],
+  // Antibiotics & antimicrobials
+  amoxicillin: {
+    classes: ['penicillin', 'antibiotic', 'beta-lactam'],
+    aliases: ['amoxil'],
+  },
+  ampicillin: {
+    classes: ['penicillin', 'antibiotic', 'beta-lactam'],
+    aliases: ['principen'],
+  },
+  penicillin: {
+    classes: ['penicillin', 'antibiotic', 'beta-lactam'],
+    aliases: ['pen vk', 'penicillin v'],
+  },
+  'amoxicillin clavulanate': {
+    classes: ['penicillin', 'antibiotic', 'beta-lactam'],
+    aliases: ['augmentin'],
+  },
+  cephalexin: {
+    classes: ['cephalosporin', 'antibiotic', 'beta-lactam'],
+    aliases: ['keflex'],
+  },
+  cefuroxime: {
+    classes: ['cephalosporin', 'antibiotic', 'beta-lactam'],
+    aliases: ['ceftin'],
+  },
+  ceftriaxone: {
+    classes: ['cephalosporin', 'antibiotic', 'beta-lactam'],
+    aliases: ['rocephin'],
+  },
+  'sulfamethoxazole trimethoprim': {
+    classes: ['sulfonamide', 'antibiotic'],
+    aliases: ['bactrim', 'septra', 'co-trimoxazole'],
+  },
+  trimethoprim: {
+    classes: ['sulfonamide', 'antibiotic'],
+    aliases: [],
+  },
+
+  // Thyroid hormones
+  levothyroxine: {
+    classes: ['thyroid-hormone'],
+    aliases: ['synthroid', 'levoxyl', 'tirosint'],
+  },
+  liothyronine: {
+    classes: ['thyroid-hormone'],
+    aliases: ['cytomel'],
+  },
+  'desiccated thyroid': {
+    classes: ['thyroid-hormone'],
+    aliases: ['armour thyroid', 'np thyroid'],
+  },
+
+  // Proton pump inhibitors
+  omeprazole: {
+    classes: ['ppi', 'acid-reducer'],
+    aliases: ['prilosec'],
+  },
+  esomeprazole: {
+    classes: ['ppi', 'acid-reducer'],
+    aliases: ['nexium'],
+  },
+  lansoprazole: {
+    classes: ['ppi', 'acid-reducer'],
+    aliases: ['prevacid'],
+  },
+  dexlansoprazole: {
+    classes: ['ppi', 'acid-reducer'],
+    aliases: ['dexilant'],
+  },
+  pantoprazole: {
+    classes: ['ppi', 'acid-reducer'],
+    aliases: ['protonix'],
+  },
+  rabeprazole: {
+    classes: ['ppi', 'acid-reducer'],
+    aliases: ['aciphex'],
+  },
+
+  // SSRIs
+  sertraline: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['zoloft'],
+  },
+  fluoxetine: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['prozac', 'sarafem'],
+  },
+  citalopram: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['celexa'],
+  },
+  escitalopram: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['lexapro'],
+  },
+  paroxetine: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['paxil', 'pexeva', 'brisdelle'],
+  },
+  fluvoxamine: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['luvox'],
+  },
+  vilazodone: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['viibryd'],
+  },
+  vortioxetine: {
+    classes: ['ssri', 'antidepressant'],
+    aliases: ['trintellix', 'brintellix'],
+  },
 
   // Benzodiazepines
-  'alprazolam': ['benzodiazepine', 'anxiolytic'],
-  'lorazepam': ['benzodiazepine', 'anxiolytic'],
-  'diazepam': ['benzodiazepine', 'anxiolytic'],
-  'xanax': ['benzodiazepine', 'anxiolytic'],
-  'ativan': ['benzodiazepine', 'anxiolytic'],
-  'valium': ['benzodiazepine', 'anxiolytic'],
+  alprazolam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['xanax', 'niravam'],
+  },
+  lorazepam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['ativan'],
+  },
+  diazepam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['valium', 'diastat'],
+  },
+  clonazepam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['klonopin'],
+  },
+  temazepam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['restoril'],
+  },
+  chlordiazepoxide: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['librium'],
+  },
+  oxazepam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['serax'],
+  },
+  clorazepate: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['tranxene'],
+  },
+  midazolam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['versed'],
+  },
+  triazolam: {
+    classes: ['benzodiazepine', 'anxiolytic'],
+    aliases: ['halcion'],
+  },
+
+  // Anticoagulants
+  warfarin: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['coumadin', 'jantoven'],
+  },
+  apixaban: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['eliquis'],
+  },
+  rivaroxaban: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['xarelto'],
+  },
+  dabigatran: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['pradaxa'],
+  },
+  edoxaban: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['savaysa', 'lixiana'],
+  },
+  betrixaban: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['bevyxxa'],
+  },
+  heparin: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['unfractionated heparin'],
+  },
+  enoxaparin: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['lovenox'],
+  },
+  dalteparin: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['fragmin'],
+  },
+  fondaparinux: {
+    classes: ['anticoagulant', 'blood-thinner', 'cardiovascular'],
+    aliases: ['arixtra'],
+  },
+
+  // Antiplatelets
+  aspirin: {
+    classes: ['antiplatelet', 'blood-thinner', 'cardiovascular'],
+    aliases: ['asa', 'bayer aspirin'],
+  },
+  clopidogrel: {
+    classes: ['antiplatelet', 'blood-thinner', 'cardiovascular'],
+    aliases: ['plavix'],
+  },
+  ticagrelor: {
+    classes: ['antiplatelet', 'blood-thinner', 'cardiovascular'],
+    aliases: ['brilinta'],
+  },
+  prasugrel: {
+    classes: ['antiplatelet', 'blood-thinner', 'cardiovascular'],
+    aliases: ['effient'],
+  },
+};
+
+const ALIAS_TO_CANONICAL: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  Object.entries(CANONICAL_MEDICATIONS).forEach(([canonical, data]) => {
+    map[canonical] = canonical;
+    data.aliases.forEach((alias) => {
+      map[alias] = canonical;
+    });
+  });
+  return map;
+})();
+
+const getCanonicalNameFromDocument = (data: FirebaseFirestore.DocumentData): string => {
+  if (!data) {
+    return '';
+  }
+
+  if (typeof data.canonicalName === 'string' && data.canonicalName) {
+    return data.canonicalName;
+  }
+
+  const medName = typeof data.name === 'string' ? data.name : '';
+  return medName ? normalizeMedicationName(medName) : '';
 };
 
 /**
@@ -242,30 +696,6 @@ const DRUG_INTERACTIONS: Array<{
   ];
 
 /**
- * Brand to Generic Name Mapping
- */
-const BRAND_TO_GENERIC: Record<string, string> = {
-  'advil': 'ibuprofen',
-  'motrin': 'ibuprofen',
-  'tylenol': 'acetaminophen',
-  'aleve': 'naproxen',
-  'aspirin': 'aspirin',
-  'asa': 'aspirin',
-  'eliquis': 'apixaban',
-  'xarelto': 'rivaroxaban',
-  'plavix': 'clopidogrel',
-  'zoloft': 'sertraline',
-  'prozac': 'fluoxetine',
-  'lexapro': 'escitalopram',
-  'synthroid': 'levothyroxine',
-  'xanax': 'alprazolam',
-  'ativan': 'lorazepam',
-  'valium': 'diazepam',
-  'augmentin': 'amoxicillin',
-  'bactrim': 'sulfamethoxazole',
-};
-
-/**
  * Common medication salts/formulations to strip
  */
 const SALT_SUFFIXES = [
@@ -291,31 +721,42 @@ const SALT_SUFFIXES = [
   'cd',
 ];
 
+const stripSaltSuffixes = (value: string): string => {
+  let current = value;
+  let previous = '';
+
+  while (current !== previous) {
+    previous = current;
+    for (const suffix of SALT_SUFFIXES) {
+      const pattern = new RegExp(`\\s+${suffix}$`, 'i');
+      if (pattern.test(current)) {
+        current = current.replace(pattern, '').trim();
+        break;
+      }
+    }
+  }
+
+  return current;
+};
+
 /**
  * Normalize medication name to generic (lowercase)
  * Strips salt names and formulations for better matching
  */
 export function normalizeMedicationName(name: string): string {
   let lower = name.toLowerCase().trim();
-
-  // Check brand to generic mapping first
-  if (BRAND_TO_GENERIC[lower]) {
-    return BRAND_TO_GENERIC[lower];
+  if (!lower) {
+    return lower;
   }
 
-  // Strip salt/formulation suffixes
-  // e.g., "metoprolol succinate" -> "metoprolol"
-  for (const suffix of SALT_SUFFIXES) {
-    const pattern = new RegExp(`\\s+${suffix}$`, 'i');
-    if (pattern.test(lower)) {
-      lower = lower.replace(pattern, '').trim();
-      functions.logger.info('[normalizeMedicationName] Stripped salt suffix', {
-        original: name,
-        stripped: lower,
-        suffix,
-      });
-      break;
-    }
+  if (ALIAS_TO_CANONICAL[lower]) {
+    return ALIAS_TO_CANONICAL[lower];
+  }
+
+  lower = stripSaltSuffixes(lower);
+
+  if (ALIAS_TO_CANONICAL[lower]) {
+    return ALIAS_TO_CANONICAL[lower];
   }
 
   return lower;
@@ -326,7 +767,7 @@ export function normalizeMedicationName(name: string): string {
  */
 function getMedicationClasses(medicationName: string): string[] {
   const normalized = normalizeMedicationName(medicationName);
-  return MEDICATION_CLASSES[normalized] || [];
+  return CANONICAL_MEDICATIONS[normalized]?.classes || [];
 }
 
 /**
@@ -561,7 +1002,7 @@ export async function runHardcodedSafetyChecks(
     // Fetch medications once, then aggressively filter to currently active therapy
     const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
 
-    const newMedNormalized = normalizeMedicationName(newMedication.name);
+    const newMedCanonical = normalizeMedicationName(newMedication.name);
 
     const currentMedications = medsSnapshot.docs
       .filter((doc) => {
@@ -570,14 +1011,17 @@ export async function runHardcodedSafetyChecks(
         }
 
         const data = doc.data();
-        const medName = typeof data?.name === 'string' ? data.name : '';
-        const medNormalized = medName ? normalizeMedicationName(medName) : '';
-
-        if (medNormalized && medNormalized === newMedNormalized) {
+        if (!isMedicationCurrentlyActive(data)) {
           return false;
         }
 
-        return isMedicationCurrentlyActive(data);
+        const medCanonical = getCanonicalNameFromDocument(data);
+
+        if (medCanonical && medCanonical === newMedCanonical) {
+          return false;
+        }
+
+        return true;
       })
       .map((doc) => ({
         id: doc.id,

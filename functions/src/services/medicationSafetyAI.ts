@@ -14,16 +14,36 @@ import * as admin from 'firebase-admin';
 import * as fs from 'fs';
 import * as path from 'path';
 import OpenAI from 'openai';
+import { openAIConfig } from '../config';
 import { MedicationChangeEntry } from './openai';
 import { MedicationSafetyWarning, normalizeMedicationName } from './medicationSafety';
 
 const db = () => admin.firestore();
 const cacheCollection = () => db().collection('medicationSafetyCache');
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openAIClient: OpenAI | null = null;
+let openAIWarningLogged = false;
+
+const getOpenAIClient = (): OpenAI | null => {
+  if (openAIClient) {
+    return openAIClient;
+  }
+
+  const apiKey = openAIConfig.apiKey?.trim();
+
+  if (!apiKey) {
+    if (!openAIWarningLogged) {
+      functions.logger.warn(
+        '[medicationSafetyAI] OPENAI_API_KEY not configured; AI safety checks will be skipped'
+      );
+      openAIWarningLogged = true;
+    }
+    return null;
+  }
+
+  openAIClient = new OpenAI({ apiKey });
+  return openAIClient;
+};
 
 interface AIWarningResponse {
   warnings: Array<{
@@ -159,10 +179,16 @@ async function cacheResult(
 function generateCacheKey(
   newMed: string,
   currentMeds: string[],
-  allergies: string[]
+  allergies: string[],
+  canonicalSignature?: { newMedication: string; currentMedications: string[] }
 ): string {
   // Simple hash: join all data and hash it
+  const canonicalParts = canonicalSignature
+    ? [canonicalSignature.newMedication.toLowerCase().trim(), ...canonicalSignature.currentMedications.slice().sort()]
+    : [];
+
   const data = [
+    ...canonicalParts,
     newMed.toLowerCase().trim(),
     ...currentMeds.map(m => m.toLowerCase().trim()).sort(),
     ...allergies.map(a => a.toLowerCase().trim()).sort(),
@@ -261,10 +287,11 @@ export async function runAIBasedSafetyChecks(
           return false;
         }
 
-        const medName = typeof data?.name === 'string' ? data.name : '';
-        const medNormalized = medName ? normalizeMedicationName(medName) : '';
+        const medCanonical =
+          (typeof data?.canonicalName === 'string' && data.canonicalName) ||
+          (typeof data?.name === 'string' ? normalizeMedicationName(data.name) : '');
 
-        if (medNormalized && medNormalized === newMedNormalized) {
+        if (medCanonical && medCanonical === newMedNormalized) {
           return false;
         }
 
@@ -279,6 +306,16 @@ export async function runAIBasedSafetyChecks(
         frequency: data.frequency,
       });
     });
+    const currentMedCanonicalNames = activeMedicationDocs
+      .map((doc) => {
+        const data = doc.data();
+        if (typeof data?.canonicalName === 'string' && data.canonicalName) {
+          return data.canonicalName;
+        }
+        const medName = typeof data?.name === 'string' ? data.name : '';
+        return medName ? normalizeMedicationName(medName) : null;
+      })
+      .filter((value): value is string => Boolean(value));
 
     const allergies = userDoc.exists ? (userDoc.data()?.allergies || []) : [];
 
@@ -286,13 +323,25 @@ export async function runAIBasedSafetyChecks(
     const cacheKey = generateCacheKey(
       formatMedication(newMedication),
       currentMedications,
-      allergies
+      allergies,
+      {
+        newMedication: newMedNormalized,
+        currentMedications: currentMedCanonicalNames,
+      }
     );
 
     // Check cache first
     const cachedResult = await getCachedResult(userId, cacheKey);
     if (cachedResult) {
       return cachedResult;
+    }
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      functions.logger.warn('[medicationSafetyAI] OpenAI client unavailable, skipping AI safety checks', {
+        userId,
+      });
+      return [];
     }
 
     // Build prompt

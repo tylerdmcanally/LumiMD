@@ -1,0 +1,157 @@
+/**
+ * Shared React Query Hooks
+ * Platform-agnostic data fetching hooks with caching and optimistic updates
+ */
+
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import type { ApiClient } from '../api-client';
+import type { Visit, Medication, ActionItem, UserProfile } from '../models';
+
+/**
+ * Query Keys for cache management
+ */
+export const queryKeys = {
+  visits: ['visits'] as const,
+  visit: (id: string) => ['visits', id] as const,
+  actions: ['actions'] as const,
+  action: (id: string) => ['actions', id] as const,
+  medications: ['medications'] as const,
+  medication: (id: string) => ['medications', id] as const,
+  profile: ['profile'] as const,
+};
+
+export function createApiHooks(api: ApiClient) {
+  /**
+   * Fetch all visits
+   */
+  function useVisits(
+    options?: Omit<UseQueryOptions<Visit[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.visits,
+      queryFn: () => api.visits.list(),
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch single visit
+   */
+  function useVisit(
+    id: string,
+    options?: Omit<UseQueryOptions<Visit, Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.visit(id),
+      queryFn: () => api.visits.get(id),
+      enabled: !!id,
+      staleTime: 5 * 60 * 1000,
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch latest visit (most recent)
+   * Uses backend query parameter for efficiency
+   */
+  function useLatestVisit(
+    options?: Omit<UseQueryOptions<Visit | null, Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: [...queryKeys.visits, 'latest'],
+      queryFn: async () => {
+        const visits = await api.visits.list({ limit: 1, sort: 'desc' });
+        return visits.length > 0 ? visits[0] : null;
+      },
+      staleTime: 2 * 60 * 1000, // 2 minutes
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch all action items
+   */
+  function useActionItems(
+    options?: Omit<UseQueryOptions<ActionItem[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.actions,
+      queryFn: () => api.actions.list(),
+      staleTime: 5 * 60 * 1000,
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch pending action items only
+   * Uses select to derive from cached data
+   */
+  function usePendingActions(
+    options?: Omit<UseQueryOptions<ActionItem[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.actions,
+      queryFn: () => api.actions.list(),
+      select: (actions) => actions.filter((action) => !action.completed),
+      staleTime: 30 * 1000, // 30 seconds
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch all medications
+   */
+  function useMedications(
+    options?: Omit<UseQueryOptions<Medication[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.medications,
+      queryFn: () => api.medications.list(),
+      staleTime: 60 * 1000, // 1 minute
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch active medications only
+   * Uses select to derive from cached data
+   */
+  function useActiveMedications(
+    options?: Omit<UseQueryOptions<Medication[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.medications,
+      queryFn: () => api.medications.list(),
+      select: (meds) => meds.filter((med) => med.active !== false),
+      staleTime: 60 * 1000, // 1 minute
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch user profile
+   */
+  function useUserProfile(
+    options?: Omit<UseQueryOptions<UserProfile, Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.profile,
+      queryFn: () => api.user.getProfile(),
+      staleTime: 5 * 60 * 1000,
+      ...options,
+    });
+  }
+
+  return {
+    useVisits,
+    useVisit,
+    useLatestVisit,
+    useActionItems,
+    usePendingActions,
+    useMedications,
+    useActiveMedications,
+    useUserProfile,
+  };
+}
+

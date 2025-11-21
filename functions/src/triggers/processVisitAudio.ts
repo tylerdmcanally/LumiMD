@@ -1,28 +1,28 @@
-import * as functions from 'firebase-functions';
+import { onObjectFinalized } from 'firebase-functions/v2/storage';
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { storageConfig } from '../config';
 import { getAssemblyAIService } from '../services/assemblyai';
 
 const db = () => admin.firestore();
 
-export const processVisitAudio = functions
-  .runWith({
+export const processVisitAudio = onObjectFinalized(
+  {
     timeoutSeconds: 60,
-    memory: '512MB',
-    failurePolicy: true,
-  })
-  .storage.object()
-  .onFinalize(async (object) => {
+    memory: '512MiB',
+  },
+  async (event) => {
+    const object = event.data;
     const filePath = object.name;
     const bucketName = object.bucket || storageConfig.bucket;
 
     if (!filePath) {
-      functions.logger.warn('[processVisitAudio] No file path provided.');
+      logger.warn('[processVisitAudio] No file path provided.');
       return;
     }
 
     if (!filePath.startsWith('visits/')) {
-      functions.logger.info(`[processVisitAudio] Ignoring non-visit file: ${filePath}`);
+      logger.info(`[processVisitAudio] Ignoring non-visit file: ${filePath}`);
       return;
     }
 
@@ -78,7 +78,7 @@ export const processVisitAudio = functions
       visitData.transcriptionId &&
       ['transcribing', 'summarizing', 'completed'].includes(visitData.processingStatus)
     ) {
-      functions.logger.info(
+      logger.info(
         `[processVisitAudio] Visit ${visitDoc.id} already submitted for processing. Skipping.`,
       );
       return;
@@ -125,11 +125,11 @@ export const processVisitAudio = functions
 
       await visitRef.update(updatePayload);
 
-      functions.logger.info(
+      logger.info(
         `[processVisitAudio] Visit ${visitRef.id} submitted to AssemblyAI. transcriptionId=${transcriptionId}`,
       );
     } catch (error) {
-      functions.logger.error(
+      logger.error(
         `[processVisitAudio] Failed to submit visit ${visitDoc.id} for transcription:`,
         error,
       );
@@ -142,4 +142,5 @@ export const processVisitAudio = functions
         updatedAt: admin.firestore.Timestamp.now(),
       });
     }
-  });
+  }
+);

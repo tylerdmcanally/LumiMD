@@ -14,8 +14,7 @@
   },
   "compileOnSave": true,
   "include": [
-    "src",
-    "scripts"
+    "src"
   ]
 }
 

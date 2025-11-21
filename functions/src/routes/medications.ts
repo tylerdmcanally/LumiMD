@@ -3,7 +3,11 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
-import { runMedicationSafetyChecks, MedicationSafetyWarning } from '../services/medicationSafety';
+import {
+  runMedicationSafetyChecks,
+  MedicationSafetyWarning,
+  normalizeMedicationName,
+} from '../services/medicationSafety';
 import { clearMedicationSafetyCacheForUser } from '../services/medicationSafetyAI';
 
 export const medicationsRouter = Router();
@@ -185,12 +189,14 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     });
 
     const now = admin.firestore.Timestamp.now();
+    const canonicalName = normalizeMedicationName(data.name);
 
     // Create medication document with safety warnings
     const medRef = await getDb().collection('medications').add({
       userId,
       name: data.name,
       nameLower: data.name.toLowerCase(),
+      canonicalName,
       dose: data.dose || '',
       frequency: data.frequency || '',
       notes: data.notes || '',
@@ -219,6 +225,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       ...medication,
       source: medication.source || data.source || 'manual',
       sourceVisitId: medication.sourceVisitId || null,
+      canonicalName: medication.canonicalName || canonicalName,
       createdAt: medication.createdAt.toDate().toISOString(),
       updatedAt: medication.updatedAt.toDate().toISOString(),
       startedAt: medication.startedAt?.toDate()?.toISOString() || null,
@@ -316,6 +323,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (data.name !== undefined) {
       updates.name = data.name;
       updates.nameLower = data.name.toLowerCase();
+      updates.canonicalName = normalizeMedicationName(data.name);
     }
     if (data.dose !== undefined) updates.dose = data.dose;
     if (data.frequency !== undefined) updates.frequency = data.frequency;
@@ -366,6 +374,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     res.json({
       id: medId,
       ...updatedMed,
+      canonicalName: updatedMed.canonicalName ?? normalizeMedicationName(updatedMed.name),
       createdAt: updatedMed.createdAt.toDate().toISOString(),
       updatedAt: updatedMed.updatedAt.toDate().toISOString(),
       startedAt: updatedMed.startedAt?.toDate()?.toISOString() || null,

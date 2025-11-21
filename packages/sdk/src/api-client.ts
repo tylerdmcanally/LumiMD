@@ -1,0 +1,376 @@
+/**
+ * Shared API Client
+ * Unified HTTP client with retry logic, timeout handling, and error mapping
+ */
+
+import type { Visit, Medication, ActionItem, UserProfile, ApiError } from './models';
+
+const DEFAULT_TIMEOUT_MS = 20_000;
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const NETWORK_ERROR_MESSAGE =
+  "We couldn't reach LumiMD right now. Please check your connection and try again.";
+const SERVER_ERROR_MESSAGE =
+  'We ran into an issue on our end. Please try again in a moment.';
+const UNAUTHORIZED_MESSAGE = 'Your session expired. Please sign in again.';
+
+export interface ApiClientConfig {
+  baseUrl: string;
+  getAuthToken: () => Promise<string | null>;
+  enableLogging?: boolean;
+}
+
+interface RequestOptions extends RequestInit {
+  requireAuth?: boolean;
+  timeoutMs?: number;
+  retry?: number;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function normalizeHeaders(headersInit?: HeadersInit): Record<string, string> {
+  if (!headersInit) return {};
+  if (headersInit instanceof Headers) {
+    const result: Record<string, string> = {};
+    headersInit.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
+  }
+  if (Array.isArray(headersInit)) {
+    return headersInit.reduce<Record<string, string>>((acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    }, {});
+  }
+  return { ...headersInit };
+}
+
+function mapUserMessage(status: number, fallbackMessage: string): string {
+  if (status === 401 || status === 403) return UNAUTHORIZED_MESSAGE;
+  if (status === 404) return "We couldn't find what you were looking for.";
+  if (status === 429) {
+    return "You're doing that a little too quickly. Please wait a moment and try again.";
+  }
+  if (status >= 500) return SERVER_ERROR_MESSAGE;
+  return fallbackMessage;
+}
+
+async function buildApiError(response: Response): Promise<ApiError> {
+  let parsedBody: any = null;
+  let rawBody: string | null = null;
+  try {
+    rawBody = await response.text();
+    if (rawBody) {
+      parsedBody = JSON.parse(rawBody);
+    }
+  } catch {
+    parsedBody = null;
+  }
+
+  const code =
+    parsedBody?.code ??
+    parsedBody?.error?.code ??
+    parsedBody?.error_code ??
+    undefined;
+  const message =
+    parsedBody?.message ??
+    parsedBody?.error?.message ??
+    response.statusText ??
+    'Request failed';
+
+  const error = new Error(message) as ApiError;
+  error.status = response.status;
+  error.code = code;
+  error.details = parsedBody?.details ?? parsedBody?.error?.details;
+  error.body = parsedBody ?? rawBody ?? null;
+  error.userMessage = mapUserMessage(response.status, message);
+  error.retriable =
+    RETRYABLE_STATUS_CODES.has(response.status) ||
+    (response.status >= 500 && response.status < 600);
+
+  console.error('[API] HTTP Error', {
+    status: response.status,
+    code,
+    message,
+    body: error.body,
+  });
+
+  return error;
+}
+
+function buildNetworkError(original: unknown): ApiError {
+  if (original instanceof Error && (original as Error).name === 'AbortError') {
+    const error = new Error('Request timed out') as ApiError;
+    error.code = 'timeout';
+    error.userMessage = NETWORK_ERROR_MESSAGE;
+    error.retriable = true;
+    return error;
+  }
+
+  const message =
+    original instanceof Error ? original.message : 'Network request failed';
+  const error = new Error(message) as ApiError;
+  error.code = 'network_error';
+  error.userMessage = NETWORK_ERROR_MESSAGE;
+  error.retriable = true;
+  return error;
+}
+
+function buildParseError(original: unknown): ApiError {
+  const error = new Error(
+    'Failed to process the server response. Please try again.',
+  ) as ApiError;
+  error.code = 'parse_error';
+  error.userMessage =
+    'We received an unexpected response from the server. Please try again.';
+  error.details = original;
+  error.retriable = true;
+  return error;
+}
+
+function isRetryable(error: ApiError, method: string): boolean {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    return Boolean(error.retriable && error.code !== 'timeout');
+  }
+  if (error.retriable) return true;
+  if (typeof error.status === 'number') {
+    return (
+      RETRYABLE_STATUS_CODES.has(error.status) ||
+      (error.status >= 500 && error.status < 600)
+    );
+  }
+  return error.code === 'network_error' || error.code === 'timeout';
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  if (options.signal) {
+    return fetch(url, options);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export function createApiClient(config: ApiClientConfig) {
+  const { baseUrl, getAuthToken, enableLogging = false } = config;
+
+  async function apiRequest<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    const {
+      requireAuth = true,
+      timeoutMs = DEFAULT_TIMEOUT_MS,
+      retry: retryOption,
+      headers: providedHeaders,
+      ...restOptions
+    } = options;
+
+    const method = (restOptions.method ?? 'GET').toString().toUpperCase();
+    const headers = normalizeHeaders(providedHeaders);
+
+    if (!headers['Content-Type'] && restOptions.body) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    if (requireAuth) {
+      const token = await getAuthToken();
+      if (!token) {
+        const error = new Error('Authentication required') as ApiError;
+        error.code = 'auth_required';
+        error.userMessage = UNAUTHORIZED_MESSAGE;
+        error.status = 401;
+        throw error;
+      }
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${baseUrl}${endpoint}`;
+    const maxRetries =
+      retryOption ?? (['GET', 'HEAD', 'OPTIONS'].includes(method) ? 2 : 0);
+
+    let attempt = 0;
+    let lastError: ApiError | undefined;
+
+    while (attempt <= maxRetries) {
+      const requestInit: RequestInit = {
+        ...restOptions,
+        method,
+        headers,
+      };
+
+      try {
+        if (enableLogging) {
+          console.log(`[API] ${method} ${url} (attempt ${attempt + 1})`);
+        }
+        const response = await fetchWithTimeout(url, requestInit, timeoutMs);
+
+        if (!response.ok) {
+          const error = await buildApiError(response);
+          if (attempt < maxRetries && isRetryable(error, method)) {
+            lastError = error;
+            attempt += 1;
+            await sleep(250 * attempt);
+            continue;
+          }
+          throw error;
+        }
+
+        if (response.status === 204) {
+          return undefined as unknown as T;
+        }
+
+        const rawBody = await response.text();
+        if (!rawBody) {
+          return undefined as unknown as T;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          return rawBody as unknown as T;
+        }
+
+        try {
+          return JSON.parse(rawBody) as T;
+        } catch (parseError) {
+          const error = buildParseError(parseError);
+          if (attempt < maxRetries && isRetryable(error, method)) {
+            lastError = error;
+            attempt += 1;
+            await sleep(250 * attempt);
+            continue;
+          }
+          throw error;
+        }
+      } catch (err) {
+        const error =
+          (err as ApiError)?.userMessage || (err as ApiError)?.status !== undefined
+            ? (err as ApiError)
+            : buildNetworkError(err);
+
+        if (attempt < maxRetries && isRetryable(error, method)) {
+          lastError = error;
+          attempt += 1;
+          await sleep(250 * attempt);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw lastError ?? new Error('Request failed unexpectedly');
+  }
+
+  return {
+    // Health check
+    health: () =>
+      apiRequest<{ status: string }>('/health', { requireAuth: false }),
+
+    // Visits
+      visits: {
+      list: (params?: { limit?: number; sort?: 'asc' | 'desc' }) => {
+        if (params) {
+          const searchParams = new URLSearchParams();
+          Object.entries(params).forEach(([k, v]) => {
+            searchParams.append(k, String(v));
+          });
+          return apiRequest<Visit[]>(`/v1/visits?${searchParams.toString()}`);
+        }
+        return apiRequest<Visit[]>('/v1/visits');
+      },
+      get: (id: string) => apiRequest<Visit>(`/v1/visits/${id}`),
+      create: (data: Partial<Visit>) =>
+        apiRequest<Visit>('/v1/visits', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: Partial<Visit>) =>
+        apiRequest<Visit>(`/v1/visits/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      delete: (id: string) =>
+        apiRequest<void>(`/v1/visits/${id}`, {
+          method: 'DELETE',
+        }),
+      retry: (id: string) =>
+        apiRequest<Visit>(`/v1/visits/${id}/retry`, {
+          method: 'POST',
+        }),
+    },
+
+    // Action Items
+    actions: {
+      list: () => apiRequest<ActionItem[]>('/v1/actions'),
+      get: (id: string) => apiRequest<ActionItem>(`/v1/actions/${id}`),
+      create: (data: Partial<ActionItem>) =>
+        apiRequest<ActionItem>('/v1/actions', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: Partial<ActionItem>) =>
+        apiRequest<ActionItem>(`/v1/actions/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      delete: (id: string) =>
+        apiRequest<void>(`/v1/actions/${id}`, {
+          method: 'DELETE',
+        }),
+    },
+
+    // Medications
+    medications: {
+      list: () => apiRequest<Medication[]>('/v1/meds'),
+      get: (id: string) => apiRequest<Medication>(`/v1/meds/${id}`),
+      create: (data: Partial<Medication>) =>
+        apiRequest<Medication>('/v1/meds', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: Partial<Medication>) =>
+        apiRequest<Medication>(`/v1/meds/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      delete: (id: string) =>
+        apiRequest<void>(`/v1/meds/${id}`, {
+          method: 'DELETE',
+        }),
+    },
+
+    // User Profile
+    user: {
+      getProfile: () => apiRequest<UserProfile>('/v1/users/me'),
+      updateProfile: (data: Partial<UserProfile>) =>
+        apiRequest<UserProfile>('/v1/users/me', {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      registerPushToken: (data: { token: string; platform: string }) =>
+        apiRequest<void>('/v1/users/push-tokens', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      unregisterPushToken: (data: { token: string }) =>
+        apiRequest<void>('/v1/users/push-tokens', {
+          method: 'DELETE',
+          body: JSON.stringify(data),
+        }),
+    },
+  };
+}
+
+export type ApiClient = ReturnType<typeof createApiClient>;
+

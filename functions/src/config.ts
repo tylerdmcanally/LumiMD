@@ -1,28 +1,22 @@
-import * as functions from 'firebase-functions';
-
-const getFunctionsConfigValue = <T = unknown>(path: string[], fallback: T): T => {
-  try {
-    return path.reduce((acc: any, key) => {
-      if (acc && typeof acc === 'object' && key in acc) {
-        return acc[key];
-      }
-      throw new Error('Missing key');
-    }, functions.config() as unknown) as T;
-  } catch {
-    return fallback;
-  }
-};
+/**
+ * Configuration for Firebase Functions
+ * Reads from environment variables (process.env)
+ * 
+ * For local development, create a .env file in the functions directory with:
+ * - OPENAI_API_KEY
+ * - ASSEMBLYAI_API_KEY
+ * - VISIT_PROCESSING_WEBHOOK_SECRET
+ * - STORAGE_BUCKET
+ * 
+ * For production, set these via Firebase Functions secrets or environment config
+ */
 
 export const assemblyAIConfig = {
-  apiKey:
-    process.env.ASSEMBLYAI_API_KEY ||
-    getFunctionsConfigValue<string>(['assemblyai', 'api_key'], ''),
+  apiKey: process.env.ASSEMBLYAI_API_KEY || '',
 };
 
 export const openAIConfig = {
-  apiKey:
-    process.env.OPENAI_API_KEY ||
-    getFunctionsConfigValue<string>(['openai', 'api_key'], ''),
+  apiKey: process.env.OPENAI_API_KEY || '',
   model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
 };
 
@@ -31,10 +25,5 @@ export const storageConfig = {
 };
 
 export const webhookConfig = {
-  visitProcessingSecret:
-    process.env.VISIT_PROCESSING_WEBHOOK_SECRET ||
-    getFunctionsConfigValue<string>(['webhook', 'visit_processing_secret'], ''),
+  visitProcessingSecret: process.env.VISIT_PROCESSING_WEBHOOK_SECRET || '',
 };
-
-
-

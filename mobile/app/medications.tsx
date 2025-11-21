@@ -137,6 +137,11 @@ export default function MedicationsScreen() {
           <View style={styles.medHeader}>
             <View style={styles.medIcon}>
               <Ionicons name={isActive ? 'medkit' : 'medkit-outline'} size={20} color={Colors.primary} />
+              {med.medicationWarning && med.medicationWarning.length > 0 && (
+                <View style={styles.warningIndicator}>
+                  <Ionicons name="warning" size={12} color="#fff" />
+                </View>
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.medName}>{med.name || 'Medication'}</Text>
@@ -146,10 +151,18 @@ export default function MedicationsScreen() {
                 <Text style={styles.medDose}>No additional details</Text>
               )}
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(52,211,153,0.15)' : 'rgba(255,107,107,0.12)' }]}>
-              <Text style={[styles.statusLabel, { color: isActive ? Colors.success : Colors.error }]}>
-                {isActive ? 'Active' : 'Stopped'}
-              </Text>
+            <View style={styles.badgeContainer}>
+              {med.medicationWarning && med.medicationWarning.length > 0 && (
+                <View style={styles.warningBadge}>
+                  <Ionicons name="warning-outline" size={14} color={Colors.error} />
+                  <Text style={styles.warningBadgeText}>{med.medicationWarning.length}</Text>
+                </View>
+              )}
+              <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(52,211,153,0.15)' : 'rgba(255,107,107,0.12)' }]}>
+                <Text style={[styles.statusLabel, { color: isActive ? Colors.success : Colors.error }]}>
+                  {isActive ? 'Active' : 'Stopped'}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -365,6 +378,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  warningIndicator: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   medName: {
     fontSize: 18,
@@ -376,6 +403,25 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '500',
     marginTop: spacing(1),
+  },
+  badgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+  },
+  warningBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+    paddingHorizontal: spacing(2),
+    paddingVertical: spacing(1),
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,107,107,0.12)',
+  },
+  warningBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.error,
   },
   statusBadge: {
     paddingHorizontal: spacing(3),

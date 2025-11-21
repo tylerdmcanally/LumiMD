@@ -1,4 +1,5 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { logger } from 'firebase-functions/v2';
 import { runMedicationSafetyChecks } from '../services/medicationSafety';
 
 interface AnalyzeMedicationSafetyRequest {
@@ -13,24 +14,21 @@ interface AnalyzeMedicationSafetyResponse {
     updatedVisit: boolean;
 }
 
-export const analyzeMedicationSafety = functions.https.onCall(
-    async (
-        data: AnalyzeMedicationSafetyRequest,
-        context
-    ): Promise<AnalyzeMedicationSafetyResponse> => {
+export const analyzeMedicationSafety = onCall(
+    async (request): Promise<AnalyzeMedicationSafetyResponse> => {
         // Ensure user is authenticated
-        if (!context.auth) {
-            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        if (!request.auth) {
+            throw new HttpsError('unauthenticated', 'User must be authenticated');
         }
 
-        const { visitId } = data;
-        const userId = context.auth.uid;
+        const { visitId } = request.data as AnalyzeMedicationSafetyRequest;
+        const userId = request.auth.uid;
 
         if (!visitId) {
-            throw new functions.https.HttpsError('invalid-argument', 'visitId is required');
+            throw new HttpsError('invalid-argument', 'visitId is required');
         }
 
-        functions.logger.info(`[analyzeMedicationSafety] Analyzing visit ${visitId} for user ${userId}`);
+        logger.info(`[analyzeMedicationSafety] Analyzing visit ${visitId} for user ${userId}`);
 
         try {
             const admin = await import('firebase-admin');
@@ -41,19 +39,19 @@ export const analyzeMedicationSafety = functions.https.onCall(
             const visitDoc = await visitRef.get();
 
             if (!visitDoc.exists) {
-                throw new functions.https.HttpsError('not-found', 'Visit not found');
+                throw new HttpsError('not-found', 'Visit not found');
             }
 
             const visitData = visitDoc.data();
 
             // Verify ownership
             if (visitData?.userId !== userId) {
-                throw new functions.https.HttpsError('permission-denied', 'You do not have access to this visit');
+                throw new HttpsError('permission-denied', 'You do not have access to this visit');
             }
 
             const medications = visitData?.medications;
             if (!medications) {
-                functions.logger.info(`[analyzeMedicationSafety] No medications in visit ${visitId}`);
+                logger.info(`[analyzeMedicationSafety] No medications in visit ${visitId}`);
                 return { warnings: [], updatedVisit: false };
             }
 
@@ -126,7 +124,7 @@ export const analyzeMedicationSafety = functions.https.onCall(
                     medications,
                     lastSafetyCheckAt: admin.firestore.Timestamp.now(),
                 });
-                functions.logger.info(`[analyzeMedicationSafety] Updated visit ${visitId} with ${allWarnings.length} warnings`);
+                logger.info(`[analyzeMedicationSafety] Updated visit ${visitId} with ${allWarnings.length} warnings`);
             }
 
             return {
@@ -134,8 +132,8 @@ export const analyzeMedicationSafety = functions.https.onCall(
                 updatedVisit: visitUpdated,
             };
         } catch (error) {
-            functions.logger.error(`[analyzeMedicationSafety] Error analyzing visit ${visitId}:`, error);
-            throw new functions.https.HttpsError('internal', 'Failed to analyze medication safety');
+            logger.error(`[analyzeMedicationSafety] Error analyzing visit ${visitId}:`, error);
+            throw new HttpsError('internal', 'Failed to analyze medication safety');
         }
     }
 );

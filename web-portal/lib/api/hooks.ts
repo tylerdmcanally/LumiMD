@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -178,16 +178,27 @@ function sortByTimestampDescending<T extends { updatedAt?: string | null; create
   });
 }
 
-function useCollectionSubscription<T extends { id: string }>(
+/**
+ * Generic hook for Firestore collection subscriptions
+ */
+function useFirestoreCollection<T extends { id: string }>(
   queryRef: Query<DocumentData> | null,
   key: QueryKey,
-  mapDoc: (snapshot: QueryDocumentSnapshot<DocumentData>) => T,
-  transform?: (items: T[]) => T[],
+  options?: {
+    transform?: (items: T[]) => T[];
+    enabled?: boolean;
+  }
 ) {
   const queryClient = useQueryClient();
+  const { transform, enabled = true } = options ?? {};
+
+  const mapDoc = useCallback((snapshot: QueryDocumentSnapshot<DocumentData>) => {
+    return serializeDoc<T>(snapshot);
+  }, []);
 
   useEffect(() => {
-    if (!queryRef) return;
+    if (!queryRef || !enabled) return;
+    
     const unsubscribe = onSnapshot(
       queryRef,
       (snapshot) => {
@@ -197,8 +208,6 @@ function useCollectionSubscription<T extends { id: string }>(
       },
       (error) => {
         console.error('[Firestore] Snapshot error', error);
-
-        // Show user-friendly error toast
         toast.error('Connection error', {
           description: 'Unable to sync data. Please check your connection and try again.',
           duration: 5000,
@@ -207,18 +216,41 @@ function useCollectionSubscription<T extends { id: string }>(
     );
 
     return () => unsubscribe();
-  }, [queryClient, key, mapDoc, queryRef, transform]);
+  }, [queryClient, key, mapDoc, queryRef, transform, enabled]);
+
+  return useQuery({
+    queryKey: key,
+    enabled,
+    queryFn: async () => {
+      if (!queryRef) return [] as T[];
+      const snapshot = await getDocs(queryRef);
+      const docs = snapshot.docs.map(mapDoc);
+      return transform ? transform(docs) : docs;
+    },
+    staleTime: 1000 * 30,
+  });
 }
 
-function useDocumentSubscription<T extends { id: string }>(
+/**
+ * Generic hook for Firestore document subscriptions
+ */
+function useFirestoreDocument<T extends { id: string }>(
   docRef: DocumentReference<DocumentData> | null,
   key: QueryKey,
-  mapDoc: (snapshot: QueryDocumentSnapshot<DocumentData>) => T,
+  options?: {
+    enabled?: boolean;
+  }
 ) {
   const queryClient = useQueryClient();
+  const { enabled = true } = options ?? {};
+
+  const mapDoc = useCallback((snapshot: QueryDocumentSnapshot<DocumentData>) => {
+    return serializeDoc<T>(snapshot);
+  }, []);
 
   useEffect(() => {
-    if (!docRef) return;
+    if (!docRef || !enabled) return;
+    
     const unsubscribe = onSnapshot(
       docRef,
       (snapshot) => {
@@ -231,8 +263,6 @@ function useDocumentSubscription<T extends { id: string }>(
       },
       (error) => {
         console.error('[Firestore] Snapshot error', error);
-
-        // Show user-friendly error toast
         toast.error('Connection error', {
           description: 'Unable to sync data. Please check your connection and try again.',
           duration: 5000,
@@ -241,7 +271,20 @@ function useDocumentSubscription<T extends { id: string }>(
     );
 
     return () => unsubscribe();
-  }, [docRef, key, mapDoc, queryClient]);
+  }, [docRef, key, mapDoc, queryClient, enabled]);
+
+  return useQuery({
+    queryKey: key,
+    enabled,
+    queryFn: async () => {
+      if (!docRef) return null;
+      const snapshot = await getDoc(docRef);
+      if (!snapshot.exists()) return null;
+      return mapDoc(snapshot as QueryDocumentSnapshot<DocumentData>);
+    },
+    staleTime: 1000 * 15,
+    refetchOnReconnect: 'always',
+  });
 }
 
 export function useVisits(
@@ -256,27 +299,9 @@ export function useVisits(
     return query(collection(db, 'visits'), where('userId', '==', userId));
   }, [userId]);
 
-  useCollectionSubscription(
-    visitsQueryRef,
-    key,
-    (snapshot) => serializeDoc<Visit>(snapshot),
-    (items) => sortByTimestampDescending(items),
-  );
-
-  return useQuery({
-    queryKey: key,
+  return useFirestoreCollection<Visit>(visitsQueryRef, key, {
+    transform: sortByTimestampDescending,
     enabled,
-    queryFn: async () => {
-      if (!visitsQueryRef) return [];
-      const snapshot = await getDocs(
-        visitsQueryRef,
-      );
-      const visits = snapshot.docs.map((docSnapshot) =>
-        serializeDoc<Visit>(docSnapshot),
-      );
-      return sortByTimestampDescending(visits);
-    },
-    staleTime: 1000 * 30,
     ...options,
   });
 }
@@ -297,27 +322,8 @@ export function useVisit(
     return doc(db, 'visits', visitId);
   }, [userId, visitId]);
 
-  useDocumentSubscription(
-    visitDocRef,
-    key,
-    (snapshot) => serializeDoc<Visit>(snapshot),
-  );
-
-  return useQuery({
-    queryKey: key,
+  return useFirestoreDocument<Visit>(visitDocRef, key, {
     enabled,
-    queryFn: async () => {
-      if (!visitDocRef) return null;
-      const snapshot = await getDoc(visitDocRef);
-      if (!snapshot.exists()) return null;
-      const data = serializeDoc<Visit>(snapshot as QueryDocumentSnapshot);
-      if (data.userId && userId && data.userId !== userId) {
-        return null;
-      }
-      return data;
-    },
-    staleTime: 1000 * 15,
-    refetchOnReconnect: 'always',
     ...options,
   });
 }
@@ -334,25 +340,9 @@ export function useMedications(
     return query(collection(db, 'medications'), where('userId', '==', userId));
   }, [userId]);
 
-  useCollectionSubscription(
-    medicationsQueryRef,
-    key,
-    (snapshot) => serializeDoc<Medication>(snapshot),
-    (items) => sortByTimestampDescending(items),
-  );
-
-  return useQuery({
-    queryKey: key,
+  return useFirestoreCollection<Medication>(medicationsQueryRef, key, {
+    transform: sortByTimestampDescending,
     enabled,
-    queryFn: async () => {
-      if (!medicationsQueryRef) return [];
-      const snapshot = await getDocs(medicationsQueryRef);
-      const medications = snapshot.docs.map((docSnapshot) =>
-        serializeDoc<Medication>(docSnapshot),
-      );
-      return sortByTimestampDescending(medications);
-    },
-    staleTime: 1000 * 60,
     ...options,
   });
 }
@@ -373,26 +363,8 @@ export function useMedication(
     return doc(db, 'medications', medicationId);
   }, [userId, medicationId]);
 
-  useDocumentSubscription(
-    medicationDocRef,
-    key,
-    (snapshot) => serializeDoc<Medication>(snapshot),
-  );
-
-  return useQuery({
-    queryKey: key,
+  return useFirestoreDocument<Medication>(medicationDocRef, key, {
     enabled,
-    queryFn: async () => {
-      if (!medicationDocRef) return null;
-      const snapshot = await getDoc(medicationDocRef);
-      if (!snapshot.exists()) return null;
-      const data = serializeDoc<Medication>(snapshot as QueryDocumentSnapshot);
-      if (data.userId && userId && data.userId !== userId) {
-        return null;
-      }
-      return data;
-    },
-    staleTime: 1000 * 60,
     ...options,
   });
 }
@@ -409,55 +381,26 @@ export function useActions(
     return query(collection(db, 'actions'), where('userId', '==', userId));
   }, [userId]);
 
-  useCollectionSubscription(
-    actionsQueryRef,
-    key,
-    (snapshot) => serializeDoc<ActionItem>(snapshot),
-    (actions) => {
-      const sorted = [...actions].sort((a, b) => {
-        if (a.completed === b.completed) {
-          const aTime =
-            (a.dueAt && Date.parse(a.dueAt)) ||
-            (a.createdAt && Date.parse(a.createdAt)) ||
-            0;
-          const bTime =
-            (b.dueAt && Date.parse(b.dueAt)) ||
-            (b.createdAt && Date.parse(b.createdAt)) ||
-            0;
-          return aTime - bTime;
-        }
-        return Number(a.completed) - Number(b.completed);
-      });
-      return sorted;
-    },
-  );
+  const sortActions = useCallback((actions: ActionItem[]) => {
+    return [...actions].sort((a, b) => {
+      if (a.completed === b.completed) {
+        const aTime =
+          (a.dueAt && Date.parse(a.dueAt)) ||
+          (a.createdAt && Date.parse(a.createdAt)) ||
+          0;
+        const bTime =
+          (b.dueAt && Date.parse(b.dueAt)) ||
+          (b.createdAt && Date.parse(b.createdAt)) ||
+          0;
+        return aTime - bTime;
+      }
+      return Number(a.completed) - Number(b.completed);
+    });
+  }, []);
 
-  return useQuery({
-    queryKey: key,
+  return useFirestoreCollection<ActionItem>(actionsQueryRef, key, {
+    transform: sortActions,
     enabled,
-    queryFn: async () => {
-      if (!actionsQueryRef) return [];
-      const snapshot = await getDocs(actionsQueryRef);
-      const actions = snapshot.docs.map((docSnapshot) =>
-        serializeDoc<ActionItem>(docSnapshot),
-      );
-      const sorted = [...actions].sort((a, b) => {
-        if (a.completed === b.completed) {
-          const aTime =
-            (a.dueAt && Date.parse(a.dueAt)) ||
-            (a.createdAt && Date.parse(a.createdAt)) ||
-            0;
-          const bTime =
-            (b.dueAt && Date.parse(b.dueAt)) ||
-            (b.createdAt && Date.parse(b.createdAt)) ||
-            0;
-          return aTime - bTime;
-        }
-        return Number(a.completed) - Number(b.completed);
-      });
-      return sorted;
-    },
-    staleTime: 1000 * 30,
     ...options,
   });
 }
@@ -474,24 +417,8 @@ export function useUserProfile(
     return doc(db, 'users', userId);
   }, [userId]);
 
-  useDocumentSubscription(
-    profileDocRef,
-    key,
-    (snapshot) => serializeDoc<UserProfile>(snapshot),
-  );
-
-  return useQuery({
-    queryKey: key,
+  return useFirestoreDocument<UserProfile>(profileDocRef, key, {
     enabled,
-    queryFn: async () => {
-      if (!profileDocRef) return null;
-      const snapshot = await getDoc(profileDocRef);
-      if (!snapshot.exists()) return null;
-      return serializeDoc<UserProfile>(snapshot as QueryDocumentSnapshot);
-    },
-    staleTime: 1000 * 60 * 5,
     ...options,
   });
 }
-
-

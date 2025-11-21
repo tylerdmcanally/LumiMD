@@ -1,6 +1,10 @@
 import * as admin from 'firebase-admin';
 import { MedicationChangeEntry } from './openai';
-import { runMedicationSafetyChecks, addSafetyWarningsToEntry } from './medicationSafety';
+import {
+  runMedicationSafetyChecks,
+  addSafetyWarningsToEntry,
+  normalizeMedicationName,
+} from './medicationSafety';
 import { clearMedicationSafetyCacheForUser } from './medicationSafetyAI';
 
 const db = () => admin.firestore();
@@ -293,12 +297,91 @@ const splitComboMedication = (entry: MedicationChangeEntry): MedicationChangeEnt
   }));
 };
 
+// Simple LRU cache for medication lookups
+interface CacheEntry {
+  doc: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null;
+  timestamp: number;
+}
+
+const medicationCache = new Map<string, CacheEntry>();
+const MAX_CACHE_SIZE = 1000;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCacheKey(userId: string, key: string): string {
+  return `${userId}:${key}`;
+}
+
+function getCachedDoc(
+  userId: string,
+  key: string
+): FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null | undefined {
+  const cacheKey = getCacheKey(userId, key);
+  const entry = medicationCache.get(cacheKey);
+  
+  if (!entry) return undefined;
+  
+  const age = Date.now() - entry.timestamp;
+  if (age > CACHE_TTL) {
+    medicationCache.delete(cacheKey);
+    return undefined;
+  }
+  
+  return entry.doc;
+}
+
+function setCachedDoc(
+  userId: string,
+  key: string,
+  doc: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null
+): void {
+  const cacheKey = getCacheKey(userId, key);
+  
+  // Simple LRU: if cache is full, remove oldest entry
+  if (medicationCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = medicationCache.keys().next().value;
+    if (firstKey) medicationCache.delete(firstKey);
+  }
+  
+  medicationCache.set(cacheKey, {
+    doc,
+    timestamp: Date.now(),
+  });
+}
+
 const getMedicationDoc = async (
   userId: string,
+  canonicalName: string,
   nameLower: string,
 ): Promise<FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null> => {
   const medsCollection = getMedicationsCollection();
 
+  // Check cache first for canonical name
+  const cachedByCanonical = getCachedDoc(userId, `canonical:${canonicalName}`);
+  if (cachedByCanonical !== undefined) {
+    return cachedByCanonical;
+  }
+
+  // Check cache for name lower
+  const cachedByNameLower = getCachedDoc(userId, `nameLower:${nameLower}`);
+  if (cachedByNameLower !== undefined) {
+    return cachedByNameLower;
+  }
+
+  // Query by canonical name (indexed)
+  const canonicalSnapshot = await medsCollection
+    .where('userId', '==', userId)
+    .where('canonicalName', '==', canonicalName)
+    .limit(1)
+    .get();
+
+  if (!canonicalSnapshot.empty) {
+    const doc = canonicalSnapshot.docs[0];
+    setCachedDoc(userId, `canonical:${canonicalName}`, doc);
+    setCachedDoc(userId, `nameLower:${nameLower}`, doc);
+    return doc;
+  }
+
+  // Query by nameLower (indexed)
   const exactSnapshot = await medsCollection
     .where('userId', '==', userId)
     .where('nameLower', '==', nameLower)
@@ -306,25 +389,15 @@ const getMedicationDoc = async (
     .get();
 
   if (!exactSnapshot.empty) {
-    return exactSnapshot.docs[0];
+    const doc = exactSnapshot.docs[0];
+    setCachedDoc(userId, `canonical:${canonicalName}`, doc);
+    setCachedDoc(userId, `nameLower:${nameLower}`, doc);
+    return doc;
   }
 
-  const userSnapshot = await medsCollection.where('userId', '==', userId).get();
-  const firstToken = nameLower.split(' ')[0];
-
-  for (const doc of userSnapshot.docs) {
-    const docNameLower = (doc.get('nameLower') as string | undefined)?.toLowerCase() ?? '';
-    if (!docNameLower) continue;
-
-    if (docNameLower === nameLower) {
-      return doc;
-    }
-
-    if (docNameLower.startsWith(`${firstToken} `) || docNameLower === firstToken) {
-      return doc;
-    }
-  }
-
+  // No match found - cache the null result
+  setCachedDoc(userId, `canonical:${canonicalName}`, null);
+  setCachedDoc(userId, `nameLower:${nameLower}`, null);
   return null;
 };
 
@@ -342,8 +415,9 @@ const upsertMedication = async ({
   processedAt: admin.firestore.Timestamp;
 }) => {
   const nameLower = entry.name.toLowerCase();
+  const canonicalName = normalizeMedicationName(entry.name);
   const medsCollection = getMedicationsCollection();
-  const existingDoc = await getMedicationDoc(userId, nameLower);
+  const existingDoc = await getMedicationDoc(userId, canonicalName, nameLower);
 
   const note = entry.note ?? entry.display ?? entry.original ?? null;
   const display = entry.display ?? (note && note !== entry.note ? note : null);
@@ -353,6 +427,7 @@ const upsertMedication = async ({
     userId,
     name: entry.name,
     nameLower,
+    canonicalName,
     dose: entry.dose ?? null,
     frequency: entry.frequency ?? null,
     notes: note,
@@ -436,6 +511,24 @@ export const syncMedicationsFromSummary = async ({
   }
 
   const normalized = normalizeMedicationSummary(medications);
+
+  // Batch fetch all user medications once to warm the cache
+  const medsCollection = getMedicationsCollection();
+  const userMedsSnapshot = await medsCollection.where('userId', '==', userId).get();
+  
+  // Warm the cache with all user medications
+  userMedsSnapshot.docs.forEach((doc) => {
+    const data = doc.data();
+    const canonical = data?.canonicalName;
+    const nameLower = data?.nameLower;
+    
+    if (canonical) {
+      setCachedDoc(userId, `canonical:${canonical}`, doc);
+    }
+    if (nameLower) {
+      setCachedDoc(userId, `nameLower:${nameLower}`, doc);
+    }
+  });
 
   const tasks: Array<Promise<void>> = [];
 

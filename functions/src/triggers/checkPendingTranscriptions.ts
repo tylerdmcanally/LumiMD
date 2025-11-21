@@ -1,4 +1,5 @@
-import * as functions from 'firebase-functions';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import {
   AssemblyAITranscript,
@@ -23,15 +24,14 @@ const formatTranscriptAndText = (
   };
 };
 
-export const checkPendingTranscriptions = functions
-  .runWith({
+export const checkPendingTranscriptions = onSchedule(
+  {
+    schedule: 'every minute',
+    timeZone: 'Etc/UTC',
     timeoutSeconds: 300,
-    memory: '512MB',
-    failurePolicy: true,
-  })
-  .pubsub.schedule('every minute')
-  .timeZone('Etc/UTC')
-  .onRun(async () => {
+    memory: '512MiB',
+  },
+  async () => {
     const snapshot = await db()
       .collection('visits')
       .where('processingStatus', '==', 'transcribing')
@@ -39,8 +39,8 @@ export const checkPendingTranscriptions = functions
       .get();
 
     if (snapshot.empty) {
-      functions.logger.info('[checkPendingTranscriptions] No pending transcriptions found.');
-      return null;
+      logger.info('[checkPendingTranscriptions] No pending transcriptions found.');
+      return;
     }
 
     const assemblyAI = getAssemblyAIService();
@@ -52,7 +52,7 @@ export const checkPendingTranscriptions = functions
       const transcriptionId = visitData.transcriptionId as string | undefined;
 
       if (!transcriptionId) {
-        functions.logger.warn(
+        logger.warn(
           `[checkPendingTranscriptions] Visit ${visitRef.id} missing transcriptionId while transcribing.`,
         );
         continue;
@@ -78,7 +78,7 @@ export const checkPendingTranscriptions = functions
             updatedAt: now,
           });
 
-          functions.logger.info(
+          logger.info(
             `[checkPendingTranscriptions] Visit ${visitRef.id} transcription completed and transcript stored.`,
           );
           continue;
@@ -94,7 +94,7 @@ export const checkPendingTranscriptions = functions
             updatedAt: now,
           });
 
-          functions.logger.error(
+          logger.error(
             `[checkPendingTranscriptions] Visit ${visitRef.id} transcription failed: ${transcript.error}`,
           );
           continue;
@@ -115,7 +115,7 @@ export const checkPendingTranscriptions = functions
               updatedAt: now,
             });
 
-            functions.logger.error(
+            logger.error(
               `[checkPendingTranscriptions] Visit ${visitRef.id} transcription timed out after 60 minutes.`,
             );
             continue;
@@ -129,13 +129,12 @@ export const checkPendingTranscriptions = functions
           });
         }
       } catch (error) {
-        functions.logger.error(
+        logger.error(
           `[checkPendingTranscriptions] Failed to check transcription for visit ${visitRef.id}:`,
           error,
         );
       }
     }
-
-    return null;
-  });
+  }
+);
 

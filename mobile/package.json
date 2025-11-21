@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@lumimd/sdk": "file:../packages/sdk",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^7.0.14",
     "@tanstack/react-query": "^5.90.7",

@@ -94,17 +94,27 @@ const updateVisitSchema = z.object({
 /**
  * GET /v1/visits
  * List all visits for the authenticated user
+ * Query params:
+ * - limit: number (optional) - limit results
+ * - sort: 'asc' | 'desc' (optional) - sort by createdAt
  */
 visitsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const sort = req.query.sort as 'asc' | 'desc' | undefined;
 
     // Query visits collection for this user
-    const visitsSnapshot = await getDb()
+    let query = getDb()
       .collection('visits')
       .where('userId', '==', userId)
-      .orderBy('createdAt', 'desc')
-      .get();
+      .orderBy('createdAt', sort === 'asc' ? 'asc' : 'desc');
+    
+    if (limit && limit > 0) {
+      query = query.limit(limit);
+    }
+    
+    const visitsSnapshot = await query.get();
 
     const visits = visitsSnapshot.docs.map(doc => ({
       id: doc.id,

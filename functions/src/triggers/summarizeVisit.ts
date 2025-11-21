@@ -1,4 +1,5 @@
-import * as functions from 'firebase-functions';
+import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { summarizeVisit } from '../services/visitProcessor';
 
@@ -10,14 +11,18 @@ const hasTranscript = (visitData: FirebaseFirestore.DocumentData): boolean => {
   return Boolean(transcript?.trim() || transcriptText?.trim());
 };
 
-export const summarizeVisitTrigger = functions
-  .runWith({
+export const summarizeVisitTrigger = onDocumentUpdated(
+  {
+    document: 'visits/{visitId}',
     timeoutSeconds: 300,
-    memory: '512MB',
-    failurePolicy: true,
-  })
-  .firestore.document('visits/{visitId}')
-  .onUpdate(async (change) => {
+    memory: '512MiB',
+  },
+  async (event) => {
+    const change = event.data;
+    if (!change) {
+      logger.warn('[summarizeVisitTrigger] No data in event');
+      return;
+    }
     const after = change.after.data();
 
     if (!after) {
@@ -33,7 +38,7 @@ export const summarizeVisitTrigger = functions
     }
 
     if (!hasTranscript(after)) {
-      functions.logger.warn(
+      logger.warn(
         `[summarizeVisitTrigger] Visit ${change.after.ref.id} is in summarizing state without transcript.`,
       );
       return;
@@ -56,7 +61,7 @@ export const summarizeVisitTrigger = functions
       const updatedData = updatedSnapshot.data();
 
       if (!updatedData) {
-        functions.logger.warn(
+        logger.warn(
           `[summarizeVisitTrigger] Visit ${change.after.ref.id} data unavailable after setting start timestamp.`,
         );
         return;
@@ -67,7 +72,7 @@ export const summarizeVisitTrigger = functions
         visitData: updatedData,
       });
     } catch (error) {
-      functions.logger.error(
+      logger.error(
         `[summarizeVisitTrigger] Failed to run summarization for visit ${change.after.ref.id}:`,
         error,
       );

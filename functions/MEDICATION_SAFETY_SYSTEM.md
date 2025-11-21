@@ -14,9 +14,9 @@ The LumiMD medication safety system provides automatic detection and patient war
 
 1. **Medication Safety Service** (`functions/src/services/medicationSafety.ts`)
    - Core safety checking logic
-   - Medication classification database
+   - Canonical medication/alias database (generic → classes + brand synonyms)
    - Drug interaction database
-   - Brand-to-generic name mapping
+   - Shared utilities for name normalization and canonical filtering
 
 2. **Medication Sync Integration** (`functions/src/services/medicationSync.ts`)
    - Automatic safety checks during visit processing
@@ -115,6 +115,7 @@ Warnings are stored in the Firestore `medications` collection:
 {
   userId: string,
   name: string,
+  canonicalName: string,
   dose?: string,
   frequency?: string,
   active: boolean,
@@ -143,14 +144,35 @@ The system includes a comprehensive medication classification database with 100+
 - **Mental Health**: SSRIs, Benzodiazepines
 - **Thyroid**: Levothyroxine
 
-### Brand-to-Generic Mapping
+### Canonical Alias Map
 
-Automatically normalizes brand names to generic equivalents:
-- Advil → Ibuprofen
-- Tylenol → Acetaminophen
-- Eliquis → Apixaban
-- Plavix → Clopidogrel
-- And 20+ more...
+All brand names, common misspellings, and salt formulations are normalized through the canonical alias map (`CANONICAL_MEDICATIONS`). Each entry defines the generic key once and provides both the therapeutic classes and every alias that should collapse into it. During ingestion and safety checks we:
+
+1. Strip common salt/formulation suffixes (ER, tartrate, succinate, etc.)
+2. Look up the cleaned string in the alias map
+3. Persist the resulting `canonicalName` on the Firestore document so every comparison uses the same key
+
+Example snippet:
+
+```ts
+const CANONICAL_MEDICATIONS: Record<string, { classes: string[]; aliases: string[] }> = {
+  atorvastatin: {
+    classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],
+    aliases: ['lipitor'],
+  },
+  hydrochlorothiazide: {
+    classes: ['diuretic', 'thiazide-diuretic', 'antihypertensive'],
+    aliases: ['hctz', 'microzide', 'hydrodiuril'],
+  },
+  'sulfamethoxazole trimethoprim': {
+    classes: ['sulfonamide', 'antibiotic'],
+    aliases: ['bactrim', 'septra'],
+  },
+  // ... expanded across statins, ACE/ARBs, beta blockers, diuretics, diabetes agents, PPIs, SSRIs, benzos, and anticoagulants
+};
+```
+
+Because every medication document now has a `canonicalName`, both the hardcoded safety checks and the AI layer can quickly exclude the medication under review, deduplicate cache entries, and reason over therapeutic classes without repeatedly re-normalizing brand strings.
 
 ## Drug Interaction Database
 
@@ -263,15 +285,17 @@ import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
 
 ## Extending the System
 
-### Adding New Medications
+### Adding New Medications or Brand Aliases
 
-Edit `functions/src/services/medicationSafety.ts`:
+Edit `functions/src/services/medicationSafety.ts` and extend `CANONICAL_MEDICATIONS`:
 
 ```typescript
-const MEDICATION_CLASSES: Record<string, string[]> = {
-  // Add new medication with its classes
-  'newmedication': ['class1', 'class2', 'therapeutic-category'],
-  ...
+const CANONICAL_MEDICATIONS: Record<string, { classes: string[]; aliases: string[] }> = {
+  ...,
+  'new generic name': {
+    classes: ['therapeutic-class', 'subclass'],
+    aliases: ['brand name', 'common misspelling', 'salt form'],
+  },
 };
 ```
 
@@ -287,15 +311,17 @@ const DRUG_INTERACTIONS: Array<{...}> = [
   },
   ...
 ];
+
+### Backfilling Canonical Names
+
+When new aliases are introduced, run the helper script to recompute `canonicalName` for existing records and clear stale cache entries:
+
+```bash
+npm --prefix functions run backfill:canonical-meds
+npm --prefix functions run clean:medication-cache
 ```
 
-### Adding Brand Names
-
-```typescript
-const BRAND_TO_GENERIC: Record<string, string> = {
-  'brandname': 'genericname',
-  ...
-};
+The first command rewrites every medication document with the latest canonical value; the second ensures AI cache entries don’t reference outdated names.
 ```
 
 ## Testing the System
