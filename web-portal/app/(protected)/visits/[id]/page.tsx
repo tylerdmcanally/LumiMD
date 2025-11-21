@@ -228,11 +228,9 @@ export default function VisitDetailPage() {
     });
 
     if (mergedMap.size > beforeSize) {
-      const mergedFolders = Array.from(mergedMap.values()).sort((a, b) =>
-        a.localeCompare(b),
-      );
+      const mergedFolders = Array.from(mergedMap.values()).sort((a, b) => a.localeCompare(b));
       try {
-        await api.users.updateCurrent({ folders: mergedFolders });
+        await api.user.updateProfile({ folders: mergedFolders });
         queryClient.invalidateQueries({
           queryKey: queryKeys.userProfile(user.uid),
         });

@@ -116,8 +116,10 @@ export const queryKeys = {
 
 type QueryEnabledOptions<TData> = Omit<
   UseQueryOptions<TData, Error, TData, QueryKey>,
-  'queryKey' | 'queryFn'
->;
+  'queryKey' | 'queryFn' | 'enabled'
+> & {
+  enabled?: boolean;
+};
 
 function convertValue(value: unknown): unknown {
   if (value === null || value === undefined) return value;

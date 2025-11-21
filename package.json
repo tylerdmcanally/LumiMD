@@ -1,6 +1,16 @@
 {
   "name": "lumimd",
   "version": "1.0.3",
+  "private": true,
+  "workspaces": [
+    "functions",
+    "mobile",
+    "web-portal",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "npm run build -w packages/sdk --if-present"
+  },
   "dependencies": {
     "firebase-admin": "^13.6.0"
   }
