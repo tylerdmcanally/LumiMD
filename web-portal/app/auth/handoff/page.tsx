@@ -29,7 +29,9 @@ export default function AuthHandoffPage() {
       
       // Exchange code for custom token
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      console.log('[handoff] Code received:', code?.substring(0, 10) + '...');
       console.log('[handoff] Using API URL:', apiBaseUrl);
+      
       const response = await fetch(`${apiBaseUrl}/v1/auth/exchange-handoff`, {
         method: 'POST',
         headers: {
@@ -38,12 +40,22 @@ export default function AuthHandoffPage() {
         body: JSON.stringify({ code }),
       });
       
+      console.log('[handoff] Response status:', response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorText = await response.text();
+        console.error('[handoff] Error response:', errorText);
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText };
+        }
         throw new Error(errorData.message || 'Failed to authenticate');
       }
       
       const { token } = await response.json();
+      console.log('[handoff] Got token, signing in...');
       
       // Sign in with custom token
       await signInWithCustomToken(auth, token);
