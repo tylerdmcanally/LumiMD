@@ -23,6 +23,17 @@ Key documents are grouped inside `docs/`:
 
 Refer to `docs/status/PROJECT-STATUS.md` for the latest end-to-end status update.
 
+## Installing Dependencies
+
+Because the repo mixes Expo (React Native 18) and Next.js (React 19), always install from the workspace root with legacy peer resolution:
+
+```bash
+cd /Users/tylermcanally/Desktop/LumiMD
+npm install --legacy-peer-deps
+```
+
+This keeps Expo on the SDK 54 toolchain while allowing the web app to use React 19 in its own workspace.
+
 ## Common Commands
 
 ```bash

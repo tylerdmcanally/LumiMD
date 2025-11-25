@@ -392,8 +392,8 @@ const getMedicationDoc = async (
     const doc = exactSnapshot.docs[0];
     setCachedDoc(userId, `canonical:${canonicalName}`, doc);
     setCachedDoc(userId, `nameLower:${nameLower}`, doc);
-    return doc;
-  }
+      return doc;
+    }
 
   // No match found - cache the null result
   setCachedDoc(userId, `canonical:${canonicalName}`, null);

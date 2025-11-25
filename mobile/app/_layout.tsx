@@ -77,7 +77,7 @@ function NotificationHandler() {
 
     return () => {
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
       }
     };
   }, []);
@@ -98,7 +98,7 @@ function NotificationHandler() {
 
     return () => {
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        responseListener.current.remove();
       }
     };
   }, [isAuthenticated, router]);

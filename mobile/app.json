@@ -44,7 +44,6 @@
     "scheme": "lumimd",
     "plugins": [
       "expo-router",
-      "expo-dev-client",
       [
         "expo-av",
         {
@@ -73,6 +72,7 @@
       "eas": {
         "projectId": "e496534e-6396-4109-9051-6569d134e1f7"
       }
-    }
+    },
+    "newArchEnabled": true
   }
 }

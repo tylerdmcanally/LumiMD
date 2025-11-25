@@ -37,6 +37,18 @@ Or press `a` in the terminal after `npm start`
 1. Install Expo Go app from App Store / Play Store
 2. Scan the QR code shown in terminal or Expo Dev Tools
 
+## 📲 Development Workflow (Expo Go)
+
+1. Copy `.env.example` to `.env` and populate the required `EXPO_PUBLIC_*` values.
+2. Run `npm start` from `mobile/` to launch Metro and Expo Dev Tools.
+3. When the QR code appears:
+   - iOS: open the Camera app, scan the QR code, and open with Expo Go.
+   - Android: open Expo Go and use the built-in scanner.
+4. Leave the server running for hot reload; press `r` in the terminal to reload or `m` for the dev menu.
+5. If the server misbehaves, run `npm run reset` or the manual cache clearing steps in the Troubleshooting section.
+
+> Because we’re fully managed, no local Xcode/Android Studio build is required for day-to-day development.
+
 ## 📱 Current Features
 
 ### ✅ Home Screen (Glanceable Dashboard)
@@ -120,16 +132,53 @@ All visual tokens are defined in `components/ui.tsx`:
 
 ## 🔧 Configuration
 
-Environment variables are loaded from `.env`:
+Environment variables are loaded from `.env`.
+
+1. Duplicate `.env.example` and rename it to `.env`.
+2. Fill in each `EXPO_PUBLIC_*` value (Firebase keys, API base URL, etc.).
+3. Restart Expo after making changes so the bundle picks up the new values.
+
+**Note:** Expo requires `EXPO_PUBLIC_` prefix for any variable accessed in the client bundle.
+
+Example:
 
 ```bash
-EXPO_PUBLIC_API_BASE_URL=http://localhost:5001/...
-EXPO_PUBLIC_WEB_PORTAL_URL=http://localhost:3000
 EXPO_PUBLIC_FIREBASE_API_KEY=...
-# ... (see .env.template)
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=...
+EXPO_PUBLIC_API_BASE_URL=https://api.lumimd.app
 ```
 
-**Note:** Expo requires `EXPO_PUBLIC_` prefix for client-side env vars.
+## 🚢 Build & Release Pipeline (EAS)
+
+All native binaries are produced with [EAS Build](https://docs.expo.dev/eas/), and profiles live in `eas.json`.
+
+### Preview / Internal Builds
+
+```bash
+npx eas-cli build --profile preview --platform ios
+```
+
+- Uses `EXPO_PUBLIC_ENV=preview`.
+- Distributes through TestFlight without bumping store metadata.
+
+### Production / App Store
+
+1. Update `expo.version` in `app.json` if needed.
+2. Trigger the build:
+
+```bash
+npx eas-cli build --profile production --platform ios
+```
+
+3. Monitor progress on expo.dev (the profile auto-increments the build number).
+
+### Submit to TestFlight
+
+```bash
+npx eas-cli submit --platform ios --profile production
+```
+
+Submission uses the Apple credentials configured under `submit.production` in `eas.json`.
 
 ## 🐛 Troubleshooting
 

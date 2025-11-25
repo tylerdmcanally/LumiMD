@@ -6,7 +6,7 @@
 import type { Visit, Medication, ActionItem, UserProfile, ApiError } from './models';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 500, 502, 503, 504]); // Note: 429 removed - don't retry rate limits
 const NETWORK_ERROR_MESSAGE =
   "We couldn't reach LumiMD right now. Please check your connection and try again.";
 const SERVER_ERROR_MESSAGE =

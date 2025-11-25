@@ -28,7 +28,8 @@ export default function AuthHandoffPage() {
       setError(null);
       
       // Exchange code for custom token
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      console.log('[handoff] Using API URL:', apiBaseUrl);
       const response = await fetch(`${apiBaseUrl}/v1/auth/exchange-handoff`, {
         method: 'POST',
         headers: {

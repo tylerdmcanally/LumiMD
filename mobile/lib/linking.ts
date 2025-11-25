@@ -2,7 +2,8 @@
  * Deep linking and web portal navigation with seamless auth
  */
 
-import { Linking, Alert } from 'react-native';
+import { Alert } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { cfg } from './config';
 import { auth } from './auth';
 
@@ -14,12 +15,14 @@ async function createHandoffCode(): Promise<string | null> {
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      console.warn('[linking] No auth token available');
+      console.warn('[linking] No auth token available - user not signed in');
       return null;
     }
 
+    console.log('[linking] Getting ID token for user:', currentUser.uid);
     const idToken = await currentUser.getIdToken();
     
+    console.log('[linking] Calling create-handoff API...');
     const response = await fetch(`${cfg.apiBaseUrl}/v1/auth/create-handoff`, {
       method: 'POST',
       headers: {
@@ -29,10 +32,13 @@ async function createHandoffCode(): Promise<string | null> {
     });
     
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      const errorText = await response.text();
+      console.error('[linking] create-handoff failed:', response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
     
     const data = await response.json();
+    console.log('[linking] Got handoff code successfully');
     return data.code;
   } catch (error) {
     console.error('[linking] Failed to create handoff code:', error);
@@ -68,13 +74,7 @@ async function openWebUrl(
       throw new Error('Authentication required but handoff failed');
     }
     
-    const canOpen = await Linking.canOpenURL(url);
-    
-    if (!canOpen) {
-      throw new Error('Cannot open URL');
-    }
-    
-    await Linking.openURL(url);
+    await WebBrowser.openBrowserAsync(url);
   } catch (error) {
     console.error('[linking] Failed to open web URL:', error);
     

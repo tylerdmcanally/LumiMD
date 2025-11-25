@@ -34,7 +34,7 @@ function isApiError(error) {
 
 // src/api-client.ts
 var DEFAULT_TIMEOUT_MS = 2e4;
-var RETRYABLE_STATUS_CODES = /* @__PURE__ */ new Set([408, 425, 429, 500, 502, 503, 504]);
+var RETRYABLE_STATUS_CODES = /* @__PURE__ */ new Set([408, 425, 500, 502, 503, 504]);
 var NETWORK_ERROR_MESSAGE = "We couldn't reach LumiMD right now. Please check your connection and try again.";
 var SERVER_ERROR_MESSAGE = "We ran into an issue on our end. Please try again in a moment.";
 var UNAUTHORIZED_MESSAGE = "Your session expired. Please sign in again.";
