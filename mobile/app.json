@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
-      "backgroundColor": "#40C9D0"
+      "backgroundColor": "#5CCFCF"
     },
     "ios": {
       "supportsTablet": true,
@@ -31,7 +31,7 @@
       "icon": "./assets/icon.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#0A99A4"
+        "backgroundColor": "#5CCFCF"
       },
       "package": "com.lumimd.app",
       "permissions": [
@@ -54,7 +54,7 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#0A99A4",
+          "color": "#5CCFCF",
           "sounds": []
         }
       ],

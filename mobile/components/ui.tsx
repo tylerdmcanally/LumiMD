@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, Pressable, ViewStyle, TextStyle, StyleProp } fr
 import { LinearGradient } from 'expo-linear-gradient';
 
 export const Colors = {
-  primary: '#0A99A4',
-  primaryDark: '#064E6D',
-  accent: '#A3D8D0',
+  primary: '#5CCFCF',
+  primaryDark: '#88C9B5',
+  accent: '#A3E0D8',
   warning: '#FFD166',
   error: '#FF6B6B',
   success: '#34D399',
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(10,153,164,0.12)'
+    backgroundColor: 'rgba(92,207,207,0.15)'
   },
   pillText: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
   hero: {

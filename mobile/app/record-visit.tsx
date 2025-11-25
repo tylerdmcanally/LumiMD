@@ -248,19 +248,15 @@ export default function RecordVisitScreen() {
 
   // Prevent auto-sleep while recording
   useEffect(() => {
-    const manageKeepAwake = () => {
-      try {
-        if (isRecording) {
-          activateKeepAwake('visit-recording');
-        } else {
-          deactivateKeepAwake('visit-recording');
-        }
-      } catch (error) {
-        console.warn('[RecordVisit] Failed to toggle keep-awake state:', error);
+    try {
+      if (isRecording) {
+        activateKeepAwake('visit-recording');
+      } else {
+        deactivateKeepAwake('visit-recording');
       }
-    };
-
-    manageKeepAwake();
+    } catch (error) {
+      console.warn('[RecordVisit] Failed to toggle keep-awake state:', error);
+    }
 
     return () => {
       try {
