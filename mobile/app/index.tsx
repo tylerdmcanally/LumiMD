@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from '../components/ui';
 import { HeroBanner } from '../components/HeroBanner';
+import { WebPortalBanner } from '../components/WebPortalBanner';
 import { StartVisitCTA } from '../components/StartVisitCTA';
 import { GlanceableCard } from '../components/GlanceableCard';
 import { useAuth } from '../contexts/AuthContext';
@@ -249,6 +250,11 @@ export default function HomeScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <HeroBanner />
+
+          {/* Web Portal Introduction */}
+          <View style={styles.section}>
+            <WebPortalBanner />
+          </View>
 
           {/* Primary CTA */}
           <View style={styles.ctaSection}>

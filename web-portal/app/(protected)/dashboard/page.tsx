@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { Stethoscope, Pill, ClipboardCheck, ArrowRight } from 'lucide-react';
 
+import { HelpBanner } from '@/components/HelpBanner';
 import { Card } from '@/components/ui/card';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
@@ -106,6 +107,8 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
+
+        <HelpBanner />
 
         {/* Quick Stats */}
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">

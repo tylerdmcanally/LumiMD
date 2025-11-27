@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: Colors.primary,
-    backgroundColor: 'rgba(10,153,164,0.1)',
+    backgroundColor: 'rgba(64,201,208,0.12)',
     paddingHorizontal: spacing(2),
     paddingVertical: spacing(1),
     borderRadius: 8,

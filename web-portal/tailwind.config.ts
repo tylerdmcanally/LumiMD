@@ -16,12 +16,13 @@ const config: Config = {
       colors: {
         // Brand Colors
         brand: {
-          primary: '#0A99A4',
-          'primary-dark': '#064E6D',
-          accent: '#A3D8D0',
-          'primary-light': '#1FB5C1',
-          'primary-pale': '#E6F7F8',
-          'accent-light': '#C5E8E4',
+          primary: '#40C9D0',
+          'primary-dark': '#078A94',
+          accent: '#0A99A4',
+          secondary: '#89D8C6',
+          'primary-light': '#5DD3D9',
+          'primary-pale': '#E1F9FA',
+          'accent-light': '#BEE7DF',
         },
 
         // Background
@@ -71,9 +72,9 @@ const config: Config = {
         },
         divider: 'rgba(26, 35, 50, 0.06)',
         overlay: 'rgba(26, 35, 50, 0.40)',
-        hover: 'rgba(10, 153, 164, 0.08)',
-        pressed: 'rgba(10, 153, 164, 0.12)',
-        focus: 'rgba(10, 153, 164, 0.20)',
+        hover: 'rgba(64, 201, 208, 0.10)',
+        pressed: 'rgba(64, 201, 208, 0.18)',
+        focus: 'rgba(64, 201, 208, 0.26)',
       },
 
       // Border Radius - Soft, Approachable
@@ -88,15 +89,15 @@ const config: Config = {
 
       // Box Shadow - Elevated, Premium
       boxShadow: {
-        sm: '0 2px 8px rgba(10, 153, 164, 0.04)',
-        base: '0 4px 16px rgba(10, 153, 164, 0.06)',
-        md: '0 4px 20px rgba(10, 153, 164, 0.08)',
-        lg: '0 8px 32px rgba(10, 153, 164, 0.12)',
-        xl: '0 12px 40px rgba(10, 153, 164, 0.16)',
-        '2xl': '0 20px 60px rgba(10, 153, 164, 0.20)',
-        elevated: '0 4px 20px rgba(10, 153, 164, 0.08)',
-        floating: '0 12px 40px rgba(10, 153, 164, 0.12)',
-        hover: '0 8px 32px rgba(10, 153, 164, 0.16)',
+        sm: '0 2px 8px rgba(64, 201, 208, 0.05)',
+        base: '0 4px 16px rgba(64, 201, 208, 0.07)',
+        md: '0 4px 20px rgba(64, 201, 208, 0.09)',
+        lg: '0 8px 32px rgba(64, 201, 208, 0.13)',
+        xl: '0 12px 40px rgba(64, 201, 208, 0.17)',
+        '2xl': '0 20px 60px rgba(64, 201, 208, 0.21)',
+        elevated: '0 4px 20px rgba(64, 201, 208, 0.09)',
+        floating: '0 12px 40px rgba(64, 201, 208, 0.13)',
+        hover: '0 8px 32px rgba(64, 201, 208, 0.17)',
         inner: 'inset 0 2px 4px rgba(26, 35, 50, 0.06)',
       },
 

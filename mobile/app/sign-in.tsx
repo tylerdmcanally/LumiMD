@@ -66,7 +66,7 @@ export default function SignInScreen() {
 
   return (
     <LinearGradient
-      colors={[Colors.background, 'rgba(10,153,164,0.08)']}
+      colors={[Colors.background, 'rgba(64,201,208,0.15)']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.gradient}

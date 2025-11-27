@@ -65,16 +65,12 @@ authRouter.post('/create-handoff', requireAuth, async (req: AuthRequest, res) =>
  */
 authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
   try {
-    functions.logger.info('[auth] exchange-handoff called with body:', JSON.stringify(req.body));
-    
     // Validate request body
     const { code } = exchangeHandoffSchema.parse(req.body);
-    functions.logger.info('[auth] Code parsed, length:', code?.length);
     
     // Get handoff document
     const handoffRef = getDb().collection('auth_handoffs').doc(code);
     const handoffDoc = await handoffRef.get();
-    functions.logger.info('[auth] Handoff doc exists:', handoffDoc.exists);
     
     if (!handoffDoc.exists) {
       res.status(401).json({
@@ -85,11 +81,6 @@ authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
     }
     
     const handoff = handoffDoc.data()!;
-    functions.logger.info('[auth] Handoff data:', JSON.stringify({
-      userId: handoff.userId,
-      used: handoff.used,
-      hasExpiresAt: !!handoff.expiresAt,
-    }));
     
     // Check if already used
     if (handoff.used) {
@@ -102,8 +93,7 @@ authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
     
     // Check if expired
     const now = Date.now();
-    const expiresAt = handoff.expiresAt?.toMillis?.() || handoff.expiresAt;
-    functions.logger.info('[auth] Expiry check - now:', now, 'expiresAt:', expiresAt);
+    const expiresAt = handoff.expiresAt.toMillis();
     
     if (now > expiresAt) {
       // Clean up expired code
@@ -117,12 +107,9 @@ authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
     
     // Mark as used (prevent replay attacks)
     await handoffRef.update({ used: true });
-    functions.logger.info('[auth] Marked as used');
     
     // Create Firebase custom token
-    functions.logger.info('[auth] Creating custom token for user:', handoff.userId);
     const customToken = await admin.auth().createCustomToken(handoff.userId);
-    functions.logger.info('[auth] Custom token created successfully');
     
     functions.logger.info(`[auth] Exchanged handoff code for user ${handoff.userId}`);
     
@@ -138,7 +125,6 @@ authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
     }
     
     functions.logger.error('[auth] Error exchanging handoff:', error);
-    functions.logger.error('[auth] Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to exchange authentication handoff',

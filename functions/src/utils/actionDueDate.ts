@@ -1,5 +1,4 @@
-import * as chrono from 'chrono-node';
-import { logger } from 'firebase-functions/v2';
+import { parseDate } from 'chrono-node';
 
 function toDate(value: unknown): Date | null {
   if (!value) return null;
@@ -36,22 +35,6 @@ function normalizeToNoon(date: Date): Date {
 }
 
 /**
- * Extracts the timeframe portion from an action description.
- * Handles formats like "Lab draw — in three months" by extracting "in three months"
- */
-function extractTimeframePortion(description: string): string {
-  // Split on em-dash, en-dash, or double hyphen
-  const dashMatch = description.match(/[—–]|--/);
-  if (dashMatch && dashMatch.index !== undefined) {
-    const afterDash = description.slice(dashMatch.index + dashMatch[0].length).trim();
-    if (afterDash.length > 0) {
-      return afterDash;
-    }
-  }
-  return description;
-}
-
-/**
  * Attempts to extract a concrete due date from an action description.
  * Returns a Date normalized to noon local time to avoid timezone shifts.
  */
@@ -63,40 +46,17 @@ export function parseActionDueDate(
     return null;
   }
 
-  // First try to extract just the timeframe portion (after the dash)
-  const timeframePortion = extractTimeframePortion(description);
-  
-  // Try parsing the timeframe portion first
-  let parsed = chrono.parseDate(timeframePortion, referenceDate, {
+  const parsed = parseDate(description, referenceDate, {
     forwardDate: true,
   });
 
-  // If that fails, try the full description
-  if (!parsed && timeframePortion !== description) {
-    parsed = chrono.parseDate(description, referenceDate, {
-      forwardDate: true,
-    });
-  }
-
   if (!parsed) {
-    logger.debug('[actionDueDate] No date parsed from description', {
-      description,
-      timeframePortion,
-      referenceDate: referenceDate.toISOString(),
-    });
     return null;
   }
 
-  const due = normalizeToNoon(parsed);
-  
-  logger.debug('[actionDueDate] Parsed date from description', {
-    description,
-    timeframePortion,
-    referenceDate: referenceDate.toISOString(),
-    parsedDate: due.toISOString(),
-  });
-
-  return due;
+  const due = new Date(parsed);
+  // Normalize to noon to reduce timezone-induced date shifts
+  return normalizeToNoon(due);
 }
 
 /**

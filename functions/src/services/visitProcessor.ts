@@ -76,21 +76,9 @@ export async function summarizeVisit({
 
     const referenceDate = resolveVisitReferenceDate(visitData, processedAt.toDate());
 
-    functions.logger.info(`[visitProcessor] Processing ${summary.nextSteps.length} next steps`, {
-      visitId: visitRef.id,
-      nextSteps: summary.nextSteps,
-      referenceDate: referenceDate.toISOString(),
-    });
-
     summary.nextSteps.forEach((step) => {
       const actionRef = actionsCollection.doc();
       const parsedDueDate = parseActionDueDate(step, referenceDate);
-
-      functions.logger.info(`[visitProcessor] Action item created`, {
-        visitId: visitRef.id,
-        description: step,
-        parsedDueDate: parsedDueDate ? parsedDueDate.toISOString() : null,
-      });
 
       batch.set(actionRef, {
         userId: visitData.userId,

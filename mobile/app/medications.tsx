@@ -30,12 +30,12 @@ const formatDate = (value?: string | null) => {
 
 const getSourceBadge = (source?: string) => {
   if (source === 'visit') {
-    return { label: 'From Visit', background: 'rgba(10,153,164,0.12)', color: Colors.primary };
+    return { label: 'From Visit', background: 'rgba(64,201,208,0.15)', color: Colors.primary };
   }
   if (source === 'manual') {
     return { label: 'Added Manually', background: 'rgba(100,116,139,0.12)', color: Colors.textMuted };
   }
-  return { label: 'Synced', background: 'rgba(10,153,164,0.08)', color: Colors.textMuted };
+  return { label: 'Synced', background: 'rgba(64,201,208,0.1)', color: Colors.textMuted };
 };
 
 const buildDetails = (med: any) => {
@@ -505,7 +505,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing(2),
     paddingVertical: spacing(1),
     borderRadius: 8,
-    backgroundColor: 'rgba(10,153,164,0.12)',
+    backgroundColor: 'rgba(64,201,208,0.15)',
   },
   sectionCountText: {
     fontSize: 12,

@@ -12,12 +12,13 @@
   /* Fallback for SSR, updated on client mount */
 
   /* Colors - Brand */
-  --color-brand-primary: #0a99a4;
-  --color-brand-primary-dark: #064e6d;
-  --color-brand-accent: #a3d8d0;
-  --color-brand-primary-light: #1fb5c1;
-  --color-brand-primary-pale: #e6f7f8;
-  --color-brand-accent-light: #c5e8e4;
+  --color-brand-primary: #40c9d0;
+  --color-brand-secondary: #89d8c6;
+  --color-brand-primary-dark: #078a94;
+  --color-brand-accent: #0a99a4;
+  --color-brand-primary-light: #5dd3d9;
+  --color-brand-primary-pale: #e1f9fa;
+  --color-brand-accent-light: #bee7df;
 
   /* Colors - Background */
   --color-background: #f8fafb;
@@ -50,20 +51,20 @@
   --color-border-light: rgba(26, 35, 50, 0.04);
   --color-divider: rgba(26, 35, 50, 0.06);
   --color-overlay: rgba(26, 35, 50, 0.4);
-  --color-hover: rgba(10, 153, 164, 0.08);
-  --color-pressed: rgba(10, 153, 164, 0.12);
-  --color-focus: rgba(10, 153, 164, 0.2);
+  --color-hover: rgba(64, 201, 208, 0.1);
+  --color-pressed: rgba(64, 201, 208, 0.18);
+  --color-focus: rgba(64, 201, 208, 0.26);
 
   /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(10, 153, 164, 0.04);
-  --shadow-base: 0 4px 16px rgba(10, 153, 164, 0.06);
-  --shadow-md: 0 4px 20px rgba(10, 153, 164, 0.08);
-  --shadow-lg: 0 8px 32px rgba(10, 153, 164, 0.12);
-  --shadow-xl: 0 12px 40px rgba(10, 153, 164, 0.16);
-  --shadow-2xl: 0 20px 60px rgba(10, 153, 164, 0.2);
-  --shadow-elevated: 0 4px 20px rgba(10, 153, 164, 0.08);
-  --shadow-floating: 0 12px 40px rgba(10, 153, 164, 0.12);
-  --shadow-hover: 0 8px 32px rgba(10, 153, 164, 0.16);
+  --shadow-sm: 0 2px 8px rgba(64, 201, 208, 0.05);
+  --shadow-base: 0 4px 16px rgba(64, 201, 208, 0.07);
+  --shadow-md: 0 4px 20px rgba(64, 201, 208, 0.09);
+  --shadow-lg: 0 8px 32px rgba(64, 201, 208, 0.13);
+  --shadow-xl: 0 12px 40px rgba(64, 201, 208, 0.17);
+  --shadow-2xl: 0 20px 60px rgba(64, 201, 208, 0.21);
+  --shadow-elevated: 0 4px 20px rgba(64, 201, 208, 0.09);
+  --shadow-floating: 0 12px 40px rgba(64, 201, 208, 0.13);
+  --shadow-hover: 0 8px 32px rgba(64, 201, 208, 0.17);
   --shadow-inner: inset 0 2px 4px rgba(26, 35, 50, 0.06);
 
   /* Border Radius */
@@ -258,15 +259,15 @@
 
   /* Gradients */
   .bg-gradient-primary {
-    background-image: linear-gradient(135deg, #0a99a4 0%, #064e6d 100%);
+    background-image: linear-gradient(135deg, #40c9d0 0%, #89d8c6 100%);
   }
 
   .bg-gradient-primary-soft {
-    background-image: linear-gradient(135deg, #1fb5c1 0%, #0a99a4 100%);
+    background-image: linear-gradient(135deg, #5dd3d9 0%, #89d8c6 100%);
   }
 
   .bg-gradient-accent {
-    background-image: linear-gradient(135deg, #c5e8e4 0%, #a3d8d0 100%);
+    background-image: linear-gradient(135deg, #0a99a4 0%, #078a94 100%);
   }
 
   .bg-gradient-warm {
@@ -279,7 +280,7 @@
 
   /* Text Gradients */
   .text-gradient-primary {
-    background-image: linear-gradient(135deg, #0a99a4 0%, #064e6d 100%);
+    background-image: linear-gradient(135deg, #40c9d0 0%, #89d8c6 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -477,7 +478,7 @@
   .input-base:focus {
     border-color: var(--color-brand-primary);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(10, 153, 164, 0.2);
+    box-shadow: 0 0 0 2px var(--color-focus);
   }
 
   .input-base:disabled {

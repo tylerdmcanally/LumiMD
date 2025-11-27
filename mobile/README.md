@@ -115,9 +115,9 @@ mobile/
 All visual tokens are defined in `components/ui.tsx`:
 
 **Colors:**
-- Primary: `#0A99A4` (teal)
-- Primary Dark: `#064E6D`
-- Accent: `#A3D8D0`
+- Primary: `#40C9D0` (cyan)
+- Secondary: `#89D8C6` (mint)
+- Accent: `#0A99A4` (deep teal CTAs)
 - Background: `#F9FAFB`
 - Text: `#1E293B`
 

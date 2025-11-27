@@ -3,18 +3,20 @@ import { View, Text, StyleSheet, Pressable, ViewStyle, TextStyle, StyleProp } fr
 import { LinearGradient } from 'expo-linear-gradient';
 
 export const Colors = {
-  primary: '#5CCFCF',
-  primaryDark: '#88C9B5',
-  accent: '#A3E0D8',
-  warning: '#FFD166',
-  error: '#FF6B6B',
+  primary: '#40C9D0', // cyan
+  primaryLight: '#5DD3D9',
+  secondary: '#89D8C6', // mint
+  accent: '#0A99A4', // deep teal for CTA
+  accentDark: '#078A94',
+  warning: '#FBBF24',
+  error: '#F87171',
   success: '#34D399',
   surface: '#FFFFFF',
-  background: '#F9FAFB',
-  text: '#1E293B',
-  textMuted: '#64748B',
-  stroke: 'rgba(0,0,0,0.06)',
-  border: 'rgba(0,0,0,0.06)',
+  background: '#F8FAFB',
+  text: '#1A2332',
+  textMuted: '#4A5568',
+  stroke: 'rgba(26,35,50,0.08)',
+  border: 'rgba(26,35,50,0.08)',
 } as const;
 
 export const Radius = { sm: 10, md: 14, lg: 20 } as const;
@@ -32,7 +34,7 @@ export const PillLabel = ({ text, leftIcon }: { text: string; leftIcon?: React.R
 );
 
 export const GradientHero: React.FC<React.PropsWithChildren<{ style?: ViewStyle }>> = ({ children, style }) => (
-  <LinearGradient colors={[Colors.primary, Colors.primaryDark]} style={[styles.hero, style]}>
+  <LinearGradient colors={[Colors.primary, Colors.secondary]} style={[styles.hero, style]}>
     {children}
   </LinearGradient>
 );
@@ -55,13 +57,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(92,207,207,0.15)'
+    backgroundColor: 'rgba(64,201,208,0.15)'
   },
   pillText: { color: Colors.primary, fontSize: 12, fontWeight: '600' },
   hero: {
     borderRadius: Radius.lg,
     padding: spacing(5),
-    shadowColor: Colors.primaryDark,
+    shadowColor: Colors.accentDark,
     shadowOpacity: 0.3,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 }
