@@ -21,7 +21,4 @@ config.resolver.nodeModulesPaths = [
 // If Watchman ever complains about \"recrawl\", run:
 //   watchman watch-del '/Users/tylermcanally/Desktop/LumiMD'
 //   watchman watch-project '/Users/tylermcanally/Desktop/LumiMD'
-config.resolver.disableHierarchicalLookup = true;
-config.resolver.unstable_enableSymlinks = true;
-
 module.exports = config;
