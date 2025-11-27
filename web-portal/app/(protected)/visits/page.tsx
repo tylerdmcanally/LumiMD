@@ -409,24 +409,30 @@ export default function VisitsPage() {
             subtitle="View and manage your medical visit history"
           />
 
-        {/* Stats Cards */}
+        {/* Stats Cards - show only Total on mobile, full breakdown on desktop */}
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           <StatCard label="Total Visits" value={stats.total} />
-          <StatCard
-            label="Completed"
-            value={stats.completed || 0}
-            variant="success"
-          />
-          <StatCard
-            label="Processing"
-            value={stats.processing || 0}
-            variant="warning"
-          />
-          <StatCard
-            label="Pending"
-            value={stats.pending || 0}
-            variant="neutral"
-          />
+          <div className="hidden md:block">
+            <StatCard
+              label="Completed"
+              value={stats.completed || 0}
+              variant="success"
+            />
+          </div>
+          <div className="hidden md:block">
+            <StatCard
+              label="Processing"
+              value={stats.processing || 0}
+              variant="warning"
+            />
+          </div>
+          <div className="hidden md:block">
+            <StatCard
+              label="Pending"
+              value={stats.pending || 0}
+              variant="neutral"
+            />
+          </div>
         </div>
 
         {/* Filters - Desktop only, mobile gets simple search */}
