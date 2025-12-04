@@ -278,3 +278,155 @@ usersRouter.delete('/push-tokens', requireAuth, async (req: AuthRequest, res) =>
   }
 });
 
+/**
+ * GET /v1/users/me/export
+ * Export all user data in JSON format
+ */
+usersRouter.get('/me/export', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    // Fetch all user data
+    const [userDoc, visitsSnapshot, actionsSnapshot, medicationsSnapshot, sharesSnapshot] = await Promise.all([
+      getDb().collection('users').doc(userId).get(),
+      getDb().collection('visits').where('userId', '==', userId).get(),
+      getDb().collection('actions').where('userId', '==', userId).get(),
+      getDb().collection('medications').where('userId', '==', userId).get(),
+      getDb().collection('shares').where('ownerId', '==', userId).get(),
+    ]);
+
+    const userData = userDoc.exists ? userDoc.data() : {};
+
+    const exportData = {
+      user: {
+        id: userId,
+        ...userData,
+        createdAt: userData?.createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: userData?.updatedAt?.toDate?.().toISOString() ?? null,
+      },
+      visits: visitsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
+        visitDate: doc.data().visitDate?.toDate?.().toISOString() ?? null,
+        processedAt: doc.data().processedAt?.toDate?.().toISOString() ?? null,
+      })),
+      actions: actionsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
+        dueAt: doc.data().dueAt?.toDate?.().toISOString() ?? null,
+        completedAt: doc.data().completedAt?.toDate?.().toISOString() ?? null,
+      })),
+      medications: medicationsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
+        startedAt: doc.data().startedAt?.toDate?.().toISOString() ?? null,
+        stoppedAt: doc.data().stoppedAt?.toDate?.().toISOString() ?? null,
+      })),
+      shares: sharesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
+        acceptedAt: doc.data().acceptedAt?.toDate?.().toISOString() ?? null,
+      })),
+      exportedAt: new Date().toISOString(),
+    };
+
+    functions.logger.info(`[users] User ${userId} exported their data`);
+
+    res.json(exportData);
+  } catch (error) {
+    functions.logger.error('[users] Error exporting user data:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to export user data',
+    });
+  }
+});
+
+/**
+ * DELETE /v1/users/me
+ * Delete user account and all associated data
+ * This is a destructive operation that cannot be undone
+ */
+usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    functions.logger.info(`[users] Starting account deletion for user ${userId}`);
+
+    // Delete user data in batches (Firestore has 500 doc limit per batch)
+    const batch = getDb().batch();
+    let deleteCount = 0;
+
+    // Delete visits
+    const visitsSnapshot = await getDb().collection('visits').where('userId', '==', userId).get();
+    visitsSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      deleteCount++;
+    });
+
+    // Delete actions
+    const actionsSnapshot = await getDb().collection('actions').where('userId', '==', userId).get();
+    actionsSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      deleteCount++;
+    });
+
+    // Delete medications
+    const medicationsSnapshot = await getDb().collection('medications').where('userId', '==', userId).get();
+    medicationsSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      deleteCount++;
+    });
+
+    // Delete shares where user is owner
+    const sharesSnapshot = await getDb().collection('shares').where('ownerId', '==', userId).get();
+    sharesSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      deleteCount++;
+    });
+
+    // Delete push tokens subcollection
+    const pushTokensSnapshot = await getDb()
+      .collection('users')
+      .doc(userId)
+      .collection('pushTokens')
+      .get();
+    pushTokensSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      deleteCount++;
+    });
+
+    // Delete user profile
+    batch.delete(getDb().collection('users').doc(userId));
+    deleteCount++;
+
+    // Commit batch deletion
+    await batch.commit();
+
+    // Delete Firebase Auth user
+    await admin.auth().deleteUser(userId);
+
+    functions.logger.info(`[users] Successfully deleted account for user ${userId}. Deleted ${deleteCount} documents.`);
+
+    res.json({
+      success: true,
+      message: 'Account and all associated data have been permanently deleted',
+      deletedDocuments: deleteCount,
+    });
+  } catch (error) {
+    functions.logger.error('[users] Error deleting user account:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to delete account. Please contact support.',
+    });
+  }
+});
+

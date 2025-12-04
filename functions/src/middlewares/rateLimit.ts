@@ -1,13 +1,17 @@
 import rateLimit from 'express-rate-limit';
 import * as functions from 'firebase-functions';
 
+// Determine if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
+
 /**
  * General API rate limiter
- * 100 requests per 15 minutes per IP
+ * Production: 100 requests per 15 minutes per IP
+ * Development: 500 requests per 15 minutes per IP (relaxed for testing)
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Limit each IP to 500 requests per windowMs (increased for dev)
+  max: isProduction ? 100 : 500,
   message: {
     code: 'rate_limit_exceeded',
     message: 'Too many requests from this IP, please try again later.',
@@ -47,11 +51,12 @@ export const strictLimiter = rateLimit({
 
 /**
  * Auth rate limiter - prevent brute force attacks
- * 5 attempts per 15 minutes per IP
+ * Production: 5 attempts per 15 minutes per IP (strict security)
+ * Development: 50 attempts per 15 minutes per IP (relaxed for testing)
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each IP to 50 auth attempts per windowMs (increased for dev)
+  max: isProduction ? 5 : 50,
   skipSuccessfulRequests: true, // Don't count successful requests
   message: {
     code: 'auth_rate_limit_exceeded',

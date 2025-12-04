@@ -1,7 +1,7 @@
 /**
  * AI-Powered Medication Safety Service
  *
- * Uses OpenAI GPT-4o-mini with PharmD-level prompting to detect:
+ * Uses OpenAI GPT-4.1-mini with PharmD-level prompting to detect:
  * - Duplicate therapy
  * - Drug interactions
  * - Allergy conflicts
@@ -364,7 +364,8 @@ export async function runAIBasedSafetyChecks(
     // Call OpenAI
     const startTime = Date.now();
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
+      store: false, // HIPAA COMPLIANCE: Zero data retention - data deleted immediately after response
       messages: [
         {
           role: 'user',

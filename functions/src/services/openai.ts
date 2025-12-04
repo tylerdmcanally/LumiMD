@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import * as functions from 'firebase-functions';
 import { openAIConfig } from '../config';
+import { CANONICAL_MEDICATIONS } from './medicationSafety';
 import { withRetry } from '../utils/retryUtils';
 
 const BASE_URL = 'https://api.openai.com/v1';
@@ -25,6 +26,35 @@ export interface MedicationChangeEntry {
     conflictingMedication?: string;
     allergen?: string;
   }>;
+}
+
+const MAX_CANONICAL_GLOSSARY_ITEMS = 80;
+const CANONICAL_GLOSSARY_TEXT = buildCanonicalGlossaryText(MAX_CANONICAL_GLOSSARY_ITEMS);
+
+function buildCanonicalGlossaryText(limit: number): string {
+  const entries = Object.entries(CANONICAL_MEDICATIONS).map(([name, data]) => {
+    const classLabel =
+      Array.isArray(data.classes) && data.classes.length > 0 ? ` [${data.classes[0]}]` : '';
+    const aliasPreview =
+      Array.isArray(data.aliases) && data.aliases.length > 0
+        ? ` aka ${data.aliases.slice(0, 2).join(', ')}`
+        : '';
+    return `${name}${classLabel}${aliasPreview}`;
+  });
+
+  return entries
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, limit)
+    .map((line, index) => `${index + 1}. ${line}`)
+    .join('\n');
+}
+
+function formatMedicationReferenceList(list: string[]): string {
+  if (!list || list.length === 0) {
+    return 'None provided';
+  }
+
+  return list.map((item, index) => `${index + 1}. ${item}`).join('\n');
 }
 
 export interface VisitSummaryResult {
@@ -309,8 +339,6 @@ const normalizeMedicationEntry = (value: unknown): MedicationChangeEntry | null 
       result.status = statusValue;
     }
 
-
-
     return result;
   }
 
@@ -592,7 +620,7 @@ export class OpenAIService {
       throw new Error('OpenAI API key is not configured');
     }
 
-    this.model = model || 'gpt-4o-mini';
+    this.model = model || 'gpt-4.1-mini';
 
     this.client = axios.create({
       baseURL: BASE_URL,
@@ -618,13 +646,13 @@ export class OpenAIService {
       )
       : [];
 
-    const knownMedicationText =
-      knownMedicationList.length > 0 ? knownMedicationList.join(', ') : 'None provided';
+    const knownMedicationText = formatMedicationReferenceList(knownMedicationList);
 
     const response = await withRetry(
       async () =>
         await this.client.post('/chat/completions', {
           model: this.model,
+          store: false, // HIPAA COMPLIANCE: Zero data retention - data deleted immediately after response
           temperature: 0.2,
           response_format: { type: 'json_object' },
           messages: [
@@ -641,6 +669,14 @@ export class OpenAIService {
                   '  - nextSteps (array of strings)',
                   '  - education (object with diagnoses and medications arrays; see details below)',
                   '',
+                  'Medication extraction checklist (perform internally; do NOT include the checklist in your output):',
+                  '  1. Scan the entire transcript and jot down EVERY medication mention with its raw quote (include OTC meds, supplements, vitamins, herbals, eye drops, creams, inhalers—anything the patient takes or is prescribed).',
+                  '  2. For each mention decide if the clinician started, stopped, changed, or simply referenced it, citing the supporting phrase.',
+                  '  3. Cross-check spelling against the known patient list and the canonical glossary; correct obvious misspellings before emitting JSON.',
+                  '  4. Only after completing steps 1-3 should you populate the JSON arrays.',
+                  '  5. CRITICAL: When in doubt, INCLUDE the medication with needsConfirmation: true rather than omitting it. Missing a medication is worse than flagging one for review.',
+                  '  6. Be aggressive: If something sounds like it could be a medication name (even if misspoken or partially heard), include it with status: "unverified".',
+                  '',
                   'Medication object shape:',
                   '  {',
                   '    "name": string (required, canonical drug name),',
@@ -649,10 +685,13 @@ export class OpenAIService {
                   '    "note": string (optional, extra context such as taper instructions),',
                   '    "display": string (optional, one-line human friendly summary),',
                   '    "original": string (optional, exact quote or directive from transcript)',
+                  '    "needsConfirmation": boolean (required; true when any part of the name/dose/context is uncertain)',
+                  '    "status": "matched" | "fuzzy" | "unverified" (required; matched for explicit names, fuzzy for corrected spellings, unverified when still unclear)',
                   '  }',
                   '',
                   'Medication requirements:',
                   '  • Scan the ENTIRE transcript for every medication discussed (started, stopped, changed, continued).',
+                  '  • Compare each candidate to the known patient list and the glossary before finalizing the canonical name.',
                   '  • Populate started/stopped/changed arrays with rich objects as defined above.',
                   '  • ALWAYS include the name field. Include dose/frequency when spoken.',
                   '  • Set display to a concise sentence the app can show. If unsure, reuse the original instruction.',
@@ -695,13 +734,24 @@ export class OpenAIService {
                   '  • Each medication entry should preserve the full context in its "original" field for reference.',
                   '',
                   'Uncertainty and Confirmation:',
+                  '  • IMPORTANT: Err on the side of INCLUSION. It is better to include a medication with needsConfirmation: true than to miss it entirely.',
                   '  • If unsure about the exact medication name, set `needsConfirmation: true`, keep your best-guess `name`, and include the verbatim text in `original`.',
-                  '  • Whenever `needsConfirmation` is true, also include a short `warning` message telling the patient to confirm with their prescribing provider, and set `status` to `"fuzzy"` (best guess) or `"unverified"` (unable to process).',
-                  '  • If you truly cannot identify the medication, set `status: "unverified"`, keep the transcript excerpt in `original`, provide a concise `warning`, and leave the `name` as your safest description (e.g., "Unknown medication from transcript").',
+                  '  • Whenever `needsConfirmation` is true, append a short reminder in the `note` field telling the patient to confirm with their prescribing provider, and set `status` to `"fuzzy"` (best guess) or `"unverified"` (unable to process).',
+                  '  • If you truly cannot identify the medication, set `status: "unverified"`, keep the transcript excerpt in `original`, include a reminder in `note`, and leave the `name` as your safest description (e.g., "Unknown medication from transcript").',
                   '  • Use the provided known medication list to correct obvious transcription errors whenever possible.',
+                  '  • Common transcription errors to watch for: medication names that sound similar (e.g., Celebrex vs. Celexa, Zyrtec vs. Zantac, Metformin vs. Metoprolol), phonetic misspellings, and brand/generic confusion.',
+                  '  • Example (uncertain spelling): transcript says "Lisnopril 10 mg daily" but you infer "Lisinopril". Output:',
+                  '    {"name":"Lisinopril","dose":"10 mg","frequency":"daily","original":"Continue lisnopril 10 milligrams daily","needsConfirmation":true,"status":"fuzzy","note":"Transcript spelling was unclear—confirm lisinopril 10 mg daily with your provider."}',
                   '',
-                  'Imaging/labs:',
-                  '  • ONLY include diagnostic tests that were ordered, scheduled, or explicitly recommended during this visit.',
+                  'Imaging/labs (renamed "Ordered Tests" conceptually—includes ALL diagnostic testing, not just imaging):',
+                  '  • Include ALL diagnostic tests that were ordered, scheduled, or explicitly recommended during this visit, including:',
+                  '    - Imaging: X-ray, CT, MRI, ultrasound, echocardiogram, DEXA scan, mammogram, etc.',
+                  '    - Cardiac testing: stress test, treadmill stress test, nuclear stress test, cardiac catheterization, Holter monitor, event monitor, cardiac CT, coronary CTA, etc.',
+                  '    - Lab work: blood tests, CBC, metabolic panel, lipid panel, A1C, thyroid function, urinalysis, etc.',
+                  '    - Pulmonary testing: pulmonary function tests (PFTs), spirometry, chest X-ray, sleep study, overnight oximetry, etc.',
+                  '    - GI testing: colonoscopy, endoscopy, stool tests, H. pylori breath test, etc.',
+                  '    - Other procedures: biopsy, EMG, nerve conduction study, EEG, etc.',
+                  '  • Listen for phrases like: "we will order", "I want to get", "let\'s schedule", "we\'re going to order", "I\'ll put in for", "we need to do", "we should check", "let\'s do", etc.',
                   '  • If prior imaging or lab results were reviewed, mention them in the summary instead but do not add them to the imaging array.',
                   '  • If no new orders were made, return an empty array.',
                   '',
@@ -719,12 +769,26 @@ export class OpenAIService {
                   '        • "Blood pressure check"',
                   '        • "Lab draw"',
                   '        • "Imaging appointment"',
+                  '        • "Stress test" (for treadmill, nuclear, or other cardiac stress testing)',
+                  '        • "Cardiac testing" (for Holter, event monitor, echo, etc.)',
+                  '        • "Sleep study"',
+                  '        • "Pulmonary function test"',
+                  '        • "Colonoscopy" or "Endoscopy"',
+                  '        • "Specialist referral"',
                   '        • "Medication review"',
                   '        • Use "Other task" sparingly when nothing else fits.',
                   '    - The phrase before the em dash identifies the task category; the phrase after the dash must contain the natural-language timing when a specific date or timeframe is provided (e.g., "Return to clinic — follow up in about three months").',
-                  '    - If the clinician only orders something (e.g., "We will order a 7-day cardiac monitor" or "Order coronary CT angiogram") and no due date is specified, omit the em dash and timing so the item becomes a single label like "Imaging appointment". Do NOT invent or infer a timeframe.',
+                  '    - If the clinician only orders something (e.g., "We will order a 7-day cardiac monitor", "We are going to order a treadmill stress test", or "Order coronary CT angiogram") and no due date is specified, omit the em dash and timing so the item becomes a single label like "Stress test" or "Cardiac testing". Do NOT invent or infer a timeframe.',
                   '    - Only include temporal phrases ("in 3 months", "within 2 weeks") when the clinician explicitly provided them. If no timing was stated, leave the item without a timeframe.',
-                  '  • ALWAYS create an action item when the clinician orders a diagnostic test, imaging study, monitoring device, referral, or nurse visit—even if no date was given. Use the appropriate short label (e.g., "Imaging appointment", "Nurse visit") without a timeframe.',
+                  '  • CRITICAL: ALWAYS create an action item when the clinician orders or mentions ordering ANY diagnostic test, procedure, imaging study, monitoring device, referral, or nurse visit—even if no date was given. This includes:',
+                  '    - Any stress test (treadmill, nuclear, pharmacologic, exercise)',
+                  '    - Any cardiac monitoring (Holter, event monitor, loop recorder)',
+                  '    - Any imaging (CT, MRI, X-ray, ultrasound, echo, DEXA)',
+                  '    - Any lab work (blood tests, urine tests)',
+                  '    - Any procedures (colonoscopy, endoscopy, biopsy)',
+                  '    - Any referrals to specialists',
+                  '    - Any follow-up visits',
+                  '  • Listen for ordering language like: "we are going to order", "we will order", "I want to schedule", "let\'s get", "I\'ll order", "we need to do", "I\'m ordering", "we should get", etc.',
                   '  • Each task should cover a single actionable next step. Split combined instructions into separate tasks if they require different actions or timelines.',
                   '  • If the visit explicitly defers to patient discretion (e.g., "call us if symptoms worsen"), create a "Contact clinic" task with the conditional phrasing after the em dash.',
                   '',
@@ -754,7 +818,11 @@ export class OpenAIService {
             {
               role: 'user',
               content: [
-                `Known patient medications (use exact spelling when applicable): ${knownMedicationText}`,
+                'Known patient medications (use these spellings whenever possible):',
+                knownMedicationText,
+                '',
+                'Common medication glossary (brand ↔ generic hints; use for spell-checking and spelling corrections):',
+                CANONICAL_GLOSSARY_TEXT,
                 '',
                 `Transcript:\n${transcript}`,
                 '',

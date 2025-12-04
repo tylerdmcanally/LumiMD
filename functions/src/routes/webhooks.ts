@@ -2,11 +2,35 @@ import { Router } from 'express';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 import { webhookConfig } from '../config';
 import { getNotificationService } from '../services/notifications';
 
 export const webhooksRouter = Router();
+
+/**
+ * Timing-safe string comparison to prevent timing attacks
+ * Uses constant-time comparison to avoid leaking information about the secret
+ */
+function timingSafeEqual(a: string | string[] | undefined, b: string): boolean {
+  if (!a || typeof a !== 'string') {
+    return false;
+  }
+
+  // If lengths differ, still compare to prevent timing leaks
+  // Use a dummy comparison if lengths don't match
+  if (a.length !== b.length) {
+    // Compare against dummy value to maintain constant time
+    const dummy = Buffer.alloc(b.length);
+    crypto.timingSafeEqual(Buffer.from(a.padEnd(b.length, '\0')), dummy);
+    return false;
+  }
+
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 const getDb = () => admin.firestore();
 
@@ -54,7 +78,9 @@ webhooksRouter.post('/visit-processed', async (req, res) => {
     }
 
     const providedSecret = req.headers['x-webhook-secret'] || req.headers['x-webhook-signature'];
-    if (providedSecret !== WEBHOOK_SECRET) {
+
+    // Use timing-safe comparison to prevent timing attacks
+    if (!timingSafeEqual(providedSecret, WEBHOOK_SECRET)) {
       res.status(401).json({
         code: 'unauthorized',
         message: 'Invalid webhook secret',
