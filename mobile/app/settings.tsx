@@ -200,9 +200,9 @@ export default function SettingsScreen() {
 
               <View style={styles.divider} />
 
-              <Pressable 
+              <Pressable
                 style={styles.linkRow}
-                onPress={() => openLink('https://lumimd.com/privacy')}
+                onPress={() => openLink('https://lumimd.app/privacy')}
               >
                 <View style={styles.settingIcon}>
                   <Ionicons name="shield-checkmark-outline" size={22} color={Colors.textMuted} />
