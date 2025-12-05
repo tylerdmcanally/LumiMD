@@ -96,7 +96,10 @@ function NavLink({ item }: { item: NavItem }) {
 export function Sidebar() {
   const user = useCurrentUser();
   const userId = user?.uid ?? null;
-  const { userType, incomingShares, hasPatientData } = useViewing();
+  const { userType, incomingShares, hasPatientData, isViewingShared, viewingUserId } = useViewing();
+  const { data: viewingProfile } = useUserProfile(viewingUserId ?? undefined, {
+    enabled: Boolean(viewingUserId),
+  });
 
   const { data: profile } = useUserProfile(userId, {
     enabled: Boolean(userId),
@@ -172,6 +175,11 @@ export function Sidebar() {
               <p className="truncate text-xs text-text-muted">
                 {user.email}
               </p>
+              {isViewingShared && (
+                <p className="truncate text-[11px] font-semibold text-brand-primary mt-1">
+                  Viewing: {(viewingProfile?.preferredName || viewingProfile?.firstName || 'Shared Health')}
+                </p>
+              )}
             </div>
           </div>
         )}

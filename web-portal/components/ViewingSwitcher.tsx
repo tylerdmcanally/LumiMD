@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Eye, User } from 'lucide-react';
+import { User } from 'lucide-react';
 
 import { useViewing } from '@/lib/contexts/ViewingContext';
 import { useUserProfile } from '@/lib/api/hooks';
@@ -11,7 +11,7 @@ type SwitcherOption = {
   id: string;
   label: string;
   description: string;
-  icon: 'self' | 'shared';
+  icon?: 'self';
 };
 
 export function ViewingSwitcher() {
@@ -51,7 +51,7 @@ export function ViewingSwitcher() {
         id: share.ownerId,
         label: 'Shared Health',
         description: `Shared access ${incomingShares.length > 1 ? `#${idx + 1}` : ''}`.trim(),
-        icon: 'shared',
+        icon: undefined,
       });
     });
 
@@ -79,7 +79,6 @@ export function ViewingSwitcher() {
       <div className="space-y-2">
         {options.map((option) => {
           const isActive = option.id === activeId;
-          const Icon = option.icon === 'self' ? User : Eye;
 
           return (
             <button
@@ -94,14 +93,6 @@ export function ViewingSwitcher() {
                   : 'border-border-light hover:border-brand-primary/60 hover:bg-background-subtle',
               )}
             >
-              <span
-                className={cn(
-                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-                  isActive ? 'bg-white text-brand-primary' : 'bg-background-subtle text-text-secondary',
-                )}
-              >
-                <Icon className="h-5 w-5" />
-              </span>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{option.label}</p>
                 <p className="text-xs text-text-secondary truncate">

@@ -16,10 +16,8 @@ export default function DashboardPage() {
   const user = useCurrentUser();
   const { viewingUserId, isViewingShared } = useViewing();
 
-  // For current user's name in the greeting (always show the logged-in user)
+  // For current user's name (logged-in account) and viewed user's name (data owner)
   const { data: currentUserProfile, isLoading: profileLoading } = useUserProfile(user?.uid ?? null);
-  
-  // For viewed user's data (respects ViewingContext - could be self or shared)
   const { data: viewedProfile } = useUserProfile();
   const { data: visits = [], isLoading: visitsLoading } = useVisits();
   const { data: actions = [], isLoading: actionsLoading } = useActions();
@@ -55,26 +53,36 @@ export default function DashboardPage() {
     return 'Good evening';
   }, []);
 
-  // Display name for greeting (always the logged-in user, not the viewed user)
-  const displayName = React.useMemo(() => {
+  // Name of the data being viewed (self or shared)
+  const viewedName = React.useMemo(() => {
     const profileName =
+      (typeof viewedProfile?.preferredName === 'string' && viewedProfile.preferredName.trim()) ||
+      (typeof viewedProfile?.firstName === 'string' && viewedProfile.firstName.trim());
+    if (profileName && profileName.length > 0) return profileName;
+    if (viewingUserId && viewingUserId !== user?.uid) return 'Shared Health';
+
+    const selfName =
       (typeof currentUserProfile?.preferredName === 'string' && currentUserProfile.preferredName.trim()) ||
       (typeof currentUserProfile?.firstName === 'string' && currentUserProfile.firstName.trim());
-    if (profileName && profileName.length > 0) {
-      return profileName;
-    }
-
+    if (selfName && selfName.length > 0) return selfName;
     if (typeof user?.displayName === 'string' && user.displayName.trim().length > 0) {
       return user.displayName.trim().split(' ')[0];
     }
-
-    // Don't show email while profile is loading - go straight to fallback
     if (!profileLoading && typeof user?.email === 'string' && user.email.length > 0) {
       return user.email.split('@')[0];
     }
-
     return 'there';
-  }, [currentUserProfile?.preferredName, currentUserProfile?.firstName, user?.displayName, user?.email, profileLoading]);
+  }, [
+    viewedProfile?.preferredName,
+    viewedProfile?.firstName,
+    currentUserProfile?.preferredName,
+    currentUserProfile?.firstName,
+    viewingUserId,
+    user?.uid,
+    user?.displayName,
+    user?.email,
+    profileLoading,
+  ]);
 
   return (
     <PageContainer maxWidth="2xl">
@@ -92,12 +100,30 @@ export default function DashboardPage() {
                 {greeting}
               </span>
               <h1 className="text-3xl font-bold lg:text-4xl text-text-primary">
-                Welcome back, {displayName}
+                {isViewingShared ? `${viewedName}'s Health` : `Welcome back, ${viewedName}`}
               </h1>
-              <p className="max-w-2xl text-base text-text-secondary">
-                Pick up right where you left off—review recent visits, keep medications up to
-                date, and move action items forward with confidence.
-              </p>
+              <div className="flex flex-col gap-2">
+                {isViewingShared ? (
+                  <>
+                    <p className="text-sm font-semibold text-brand-primary">
+                      Viewing shared data (read-only)
+                    </p>
+                    <p className="max-w-2xl text-base text-text-secondary">
+                      You can browse visits, medications, and action items for this shared account.
+                    </p>
+                  </>
+                ) : (
+                  <p className="max-w-2xl text-base text-text-secondary">
+                    Pick up right where you left off—review recent visits, keep medications up to
+                    date, and move action items forward with confidence.
+                  </p>
+                )}
+                {user?.email && (
+                  <p className="text-xs text-text-tertiary">
+                    Logged in as {user.email}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </Card>
