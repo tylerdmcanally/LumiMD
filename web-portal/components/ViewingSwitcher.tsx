@@ -13,7 +13,7 @@ import type { Share } from '@lumimd/sdk';
 
 export function ViewingSwitcher() {
   const currentUser = useCurrentUser();
-  const { viewingUserId, setViewingUserId, isViewingSelf, isViewingShared } = useViewing();
+  const { viewingUserId, setViewingUserId, isViewingSelf } = useViewing();
 
   const { data: shares = [] } = useQuery({
     queryKey: ['shares'],
@@ -21,19 +21,17 @@ export function ViewingSwitcher() {
     enabled: !!currentUser,
   });
 
-  // Get profile for current viewing user (must be before any early returns)
+  // Get profile for current viewing user
   const { data: viewingProfile } = useUserProfile(viewingUserId);
 
   // Get incoming accepted shares (people who shared with current user)
-  const incomingShares = shares.filter(
-    (s: Share) => s.type === 'incoming' && s.status === 'accepted',
-  ) as Share[];
+  const incomingShares = React.useMemo(() => {
+    return shares.filter(
+      (s: Share) => s.type === 'incoming' && s.status === 'accepted',
+    ) as Share[];
+  }, [shares]);
 
-  // If no shared access, don't show switcher
-  if (incomingShares.length === 0) {
-    return null;
-  }
-
+  // ALL useMemo hooks must be before any early returns
   const displayName = React.useMemo(() => {
     if (isViewingSelf) {
       return 'My Health';
@@ -52,8 +50,6 @@ export function ViewingSwitcher() {
   const options = React.useMemo(() => {
     const result = [{ value: 'self', label: 'My Health', userId: currentUser?.uid || null }];
     for (const share of incomingShares) {
-      // For incoming shares, we don't have owner email in the share doc
-      // We'll show a generic label and the profile will load separately
       result.push({
         value: share.ownerId,
         label: 'Shared Health',
@@ -62,6 +58,11 @@ export function ViewingSwitcher() {
     }
     return result;
   }, [currentUser?.uid, incomingShares]);
+
+  // If no shared access, don't show switcher (AFTER all hooks)
+  if (incomingShares.length === 0) {
+    return null;
+  }
 
   const handleChange = (value: string) => {
     if (value === 'self') {
