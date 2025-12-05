@@ -177,7 +177,13 @@ export function Sidebar() {
               </p>
               {isViewingShared && (
                 <p className="truncate text-[11px] font-semibold text-brand-primary mt-1">
-                  Viewing: {(viewingProfile?.preferredName || viewingProfile?.firstName || 'Shared Health')}
+                  {`Viewing: ${
+                    typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()
+                      ? viewingProfile.preferredName.trim()
+                      : typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()
+                        ? viewingProfile.firstName.trim()
+                        : 'Shared Health'
+                  }`}
                 </p>
               )}
             </div>
