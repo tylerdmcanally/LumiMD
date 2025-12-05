@@ -103,9 +103,9 @@ export default function InviteAcceptPage() {
             {isExpired &&
               'This invitation has expired. Please ask the person to send you a new invitation.'}
             {isEmailMismatch &&
-              'This invitation was sent to a different email address. Please sign in with the email address that received the invitation.'}
+              (error?.userMessage || 'This invitation was sent to a different email address. Please sign in with the email address that received the invitation.')}
             {isNotFound && 'This invitation could not be found. It may have already been accepted or cancelled.'}
-            {!isExpired && !isEmailMismatch && !isNotFound && error?.userMessage}
+            {!isExpired && !isEmailMismatch && !isNotFound && (error?.userMessage || error?.message || 'An error occurred while accepting the invitation.')}
           </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
             {!user && (

@@ -511,12 +511,19 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
     if (inviteDoc.exists) {
       const invite = inviteDoc.data()!;
 
-      // Verify email matches
+      // Verify email matches (normalize both to lowercase for comparison)
       const user = await admin.auth().getUser(userId);
-      if (user.email?.toLowerCase() !== invite.inviteeEmail) {
+      const userEmail = user.email?.toLowerCase().trim() || '';
+      const inviteEmail = invite.inviteeEmail?.toLowerCase().trim() || '';
+      
+      if (userEmail !== inviteEmail) {
+        functions.logger.warn(
+          `[shares] Email mismatch for invite ${token}: user email "${userEmail}" does not match invite email "${inviteEmail}"`,
+        );
         res.status(403).json({
           code: 'email_mismatch',
           message: 'This invitation was sent to a different email address',
+          userMessage: `This invitation was sent to ${invite.inviteeEmail}, but you are signed in as ${user.email}. Please sign in with the email address that received the invitation.`,
         });
         return;
       }
