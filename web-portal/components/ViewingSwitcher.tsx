@@ -21,6 +21,9 @@ export function ViewingSwitcher() {
     enabled: !!currentUser,
   });
 
+  // Get profile for current viewing user (must be before any early returns)
+  const { data: viewingProfile } = useUserProfile(viewingUserId);
+
   // Get incoming accepted shares (people who shared with current user)
   const incomingShares = shares.filter(
     (s: Share) => s.type === 'incoming' && s.status === 'accepted',
@@ -30,9 +33,6 @@ export function ViewingSwitcher() {
   if (incomingShares.length === 0) {
     return null;
   }
-
-  // Get profile for current viewing user
-  const { data: viewingProfile } = useUserProfile(viewingUserId);
 
   const displayName = React.useMemo(() => {
     if (isViewingSelf) {
