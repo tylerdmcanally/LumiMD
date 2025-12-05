@@ -7,6 +7,7 @@ import {
   query,
   where,
   type FirestoreError,
+  limit,
 } from 'firebase/firestore';
 import * as Firestore from 'firebase/firestore';
 import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -457,3 +458,31 @@ export function useUserProfile(
     queryOptions: options,
   });
 }
+
+/**
+ * Detect whether a user has any patient data (visits or medications).
+ * Used to differentiate patient-only, caregiver-only, and hybrid users.
+ */
+export function useHasPatientData(userId?: string | null) {
+  const userKey = userId ?? 'anonymous';
+
+  return useQuery({
+    queryKey: ['has-patient-data', userKey],
+    enabled: Boolean(userId),
+    staleTime: 30_000,
+    queryFn: async () => {
+      if (!userId) return false;
+
+      // Check visits quickly
+      const visitsSnap = await Firestore.getDocs(
+        query(collection(db, 'visits'), where('userId', '==', userId), limit(1)),
+      );
+      if (!visitsSnap.empty) return true;
+
+      // Check medications if no visits
+      const medsSnap = await Firestore.getDocs(
+        query(collection(db, 'medications'), where('userId', '==', userId), limit(1)),
+      );
+      return !medsSnap.empty;
+    },
+  });

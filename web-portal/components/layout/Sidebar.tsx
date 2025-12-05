@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
 import { ViewingSwitcher } from '@/components/ViewingSwitcher';
+import { useViewing } from '@/lib/contexts/ViewingContext';
 
 type NavItem = {
   label: string;
@@ -95,6 +96,7 @@ function NavLink({ item }: { item: NavItem }) {
 export function Sidebar() {
   const user = useCurrentUser();
   const userId = user?.uid ?? null;
+  const { userType, incomingShares, hasPatientData } = useViewing();
 
   const { data: profile } = useUserProfile(userId, {
     enabled: Boolean(userId),
@@ -142,9 +144,11 @@ export function Sidebar() {
       </div>
 
       {/* Viewing Switcher (Desktop) */}
-      <div className="px-5 pt-6 pb-4 border-b border-border-light/60">
-        <ViewingSwitcher />
-      </div>
+      {(userType === 'hybrid' || userType === 'caregiver' || incomingShares.length > 0) && (
+        <div className="px-5 pt-6 pb-4 border-b border-border-light/60">
+          <ViewingSwitcher />
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-5 py-8">

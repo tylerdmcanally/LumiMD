@@ -1,41 +1,28 @@
 'use client';
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { User, Eye } from 'lucide-react';
+import { Eye, User } from 'lucide-react';
 
 import { useViewing } from '@/lib/contexts/ViewingContext';
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
-import { api } from '@/lib/api/client';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUserProfile } from '@/lib/api/hooks';
-import type { Share } from '@lumimd/sdk';
+import { cn } from '@/lib/utils';
+
+type SwitcherOption = {
+  id: string;
+  label: string;
+  description: string;
+  icon: 'self' | 'shared';
+};
 
 export function ViewingSwitcher() {
-  const currentUser = useCurrentUser();
-  const { viewingUserId, setViewingUserId, isViewingSelf } = useViewing();
+  const { viewingUserId, setViewingUserId, isViewingSelf, userType, hasPatientData, incomingShares } =
+    useViewing();
 
-  const { data: shares = [] } = useQuery({
-    queryKey: ['shares'],
-    queryFn: () => api.shares.list(),
-    enabled: !!currentUser,
-  });
-
-  // Get profile for current viewing user
+  // Profile of the currently viewed user (for display label)
   const { data: viewingProfile } = useUserProfile(viewingUserId);
 
-  // Get incoming accepted shares (people who shared with current user)
-  const incomingShares = React.useMemo(() => {
-    return shares.filter(
-      (s: Share) => s.type === 'incoming' && s.status === 'accepted',
-    ) as Share[];
-  }, [shares]);
-
-  // ALL useMemo hooks must be before any early returns
-  const displayName = React.useMemo(() => {
-    if (isViewingSelf) {
-      return 'My Health';
-    }
+  const currentLabel = React.useMemo(() => {
+    if (isViewingSelf) return 'My Health';
     const preferred =
       typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()
         ? viewingProfile.preferredName.trim()
@@ -47,50 +34,89 @@ export function ViewingSwitcher() {
     return preferred || first || 'Shared Health';
   }, [isViewingSelf, viewingProfile?.preferredName, viewingProfile?.firstName]);
 
-  const options = React.useMemo(() => {
-    const result = [{ value: 'self', label: 'My Health', userId: currentUser?.uid || null }];
-    for (const share of incomingShares) {
+  const options: SwitcherOption[] = React.useMemo(() => {
+    const result: SwitcherOption[] = [];
+
+    if (hasPatientData) {
       result.push({
-        value: share.ownerId,
-        label: 'Shared Health',
-        userId: share.ownerId,
+        id: 'self',
+        label: 'My Health',
+        description: 'Your LumiMD account',
+        icon: 'self',
       });
     }
+
+    incomingShares.forEach((share, idx) => {
+      result.push({
+        id: share.ownerId,
+        label: 'Shared Health',
+        description: `Shared access ${incomingShares.length > 1 ? `#${idx + 1}` : ''}`.trim(),
+        icon: 'shared',
+      });
+    });
+
     return result;
-  }, [currentUser?.uid, incomingShares]);
+  }, [hasPatientData, incomingShares]);
 
-  // If no shared access, don't show switcher (AFTER all hooks)
-  if (incomingShares.length === 0) {
-    return null;
-  }
+  // If no options (shouldn't happen), render nothing
+  if (options.length === 0) return null;
 
-  const handleChange = (value: string) => {
-    if (value === 'self') {
+  const activeId = isViewingSelf ? 'self' : viewingUserId || options[0].id;
+
+  const handleSelect = (id: string) => {
+    if (id === 'self') {
       setViewingUserId(null);
     } else {
-      setViewingUserId(value);
+      setViewingUserId(id);
     }
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Eye className="h-4 w-4 text-text-tertiary" />
-      <Select value={isViewingSelf ? 'self' : viewingUserId || 'self'} onValueChange={handleChange}>
-        <SelectTrigger className="w-[180px] border-border-light">
-          <SelectValue>{displayName}</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="z-[100]">
-          {options.map((option) => (
-            <SelectItem 
-              key={option.value} 
-              value={option.value}
-              className="cursor-pointer"
+    <div className="space-y-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+        Viewing as
+      </div>
+      <div className="space-y-2">
+        {options.map((option) => {
+          const isActive = option.id === activeId;
+          const Icon = option.icon === 'self' ? User : Eye;
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => handleSelect(option.id)}
+              className={cn(
+                'w-full rounded-xl border px-3.5 py-3 text-left transition-smooth',
+                'flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40',
+                isActive
+                  ? 'border-brand-primary bg-brand-primary-pale/60 text-brand-primary shadow-sm'
+                  : 'border-border-light hover:border-brand-primary/60 hover:bg-background-subtle',
+              )}
             >
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+              <span
+                className={cn(
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+                  isActive ? 'bg-white text-brand-primary' : 'bg-background-subtle text-text-secondary',
+                )}
+              >
+                <Icon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{option.label}</p>
+                <p className="text-xs text-text-secondary truncate">
+                  {isActive ? `Active: ${currentLabel}` : option.description}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {userType === 'caregiver' && (
+        <p className="text-[11px] text-text-tertiary">
+          You have caregiver access only. You’re viewing shared data.
+        </p>
+      )}
     </div>
   );
 }
