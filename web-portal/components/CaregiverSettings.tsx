@@ -73,6 +73,13 @@ export function CaregiverSettings() {
   );
   const pendingInvites = invites.filter((i: ShareInvite) => i.status === 'pending');
 
+  const safeFormatDate = (value?: string | null) => {
+    if (!value) return null;
+    const parsed = Date.parse(value);
+    if (Number.isNaN(parsed)) return null;
+    return format(new Date(parsed), 'MMM d, yyyy');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -115,8 +122,8 @@ export function CaregiverSettings() {
                       <div>
                         <p className="font-medium text-text-primary">{share.caregiverEmail}</p>
                         <p className="text-sm text-text-secondary">
-                          {share.acceptedAt
-                            ? `Accepted ${format(new Date(share.acceptedAt), 'MMM d, yyyy')}`
+                          {safeFormatDate(share.acceptedAt)
+                            ? `Accepted ${safeFormatDate(share.acceptedAt)}`
                             : 'Active'}
                         </p>
                       </div>
@@ -164,8 +171,7 @@ export function CaregiverSettings() {
                         <p className="font-medium text-text-primary">{share.caregiverEmail}</p>
                         <p className="text-sm text-text-secondary">
                           Waiting for acceptance
-                          {share.createdAt &&
-                            ` • Sent ${format(new Date(share.createdAt), 'MMM d, yyyy')}`}
+                          {safeFormatDate(share.createdAt) && ` • Sent ${safeFormatDate(share.createdAt)}`}
                         </p>
                       </div>
                     </div>
@@ -198,8 +204,8 @@ export function CaregiverSettings() {
                         <p className="font-medium text-text-primary">{invite.inviteeEmail}</p>
                         <p className="text-sm text-text-secondary">
                           No account yet
-                          {invite.expiresAt &&
-                            ` • Expires ${format(new Date(invite.expiresAt), 'MMM d, yyyy')}`}
+                          {safeFormatDate(invite.expiresAt) &&
+                            ` • Expires ${safeFormatDate(invite.expiresAt)}`}
                         </p>
                       </div>
                     </div>
