@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Mail, UserPlus, X, Clock, CheckCircle2, UserX, Ban } from 'lucide-react';
+import { Mail, UserPlus, X, Clock, CheckCircle2, UserX } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { Card } from '@/components/ui/card';
@@ -170,9 +170,8 @@ export function CaregiverSettings() {
                         size="sm"
                         onClick={() => revokeMutation.mutate(share.id)}
                         disabled={revokeMutation.isPending}
-                        className="text-error hover:text-error focus-visible:ring-error"
+                        className="text-error hover:text-error focus-visible:ring-error rounded-full px-4"
                       >
-                        <Ban className="h-4 w-4" />
                         Cancel
                       </Button>
                     </div>
@@ -205,9 +204,8 @@ export function CaregiverSettings() {
                         size="sm"
                         onClick={() => cancelInviteMutation.mutate(invite.id)}
                         disabled={cancelInviteMutation.isPending}
-                        className="text-error hover:text-error focus-visible:ring-error"
+                        className="text-error hover:text-error focus-visible:ring-error rounded-full px-4"
                       >
-                        <Ban className="h-4 w-4" />
                         Cancel
                       </Button>
                     </div>
