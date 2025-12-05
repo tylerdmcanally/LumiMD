@@ -141,11 +141,16 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.status == 'pending';
 
-      // Owner can read their invites, invitee can read invites sent to their email
-      // Note: We can't check email in rules, so we allow authenticated users to read
-      // but the API will filter by email
+      // Owner can read their invites; invitee can read their pending invite by email match
       allow read: if isAuthenticated()
-        && (request.auth.uid == resource.data.ownerId);
+        && (
+          request.auth.uid == resource.data.ownerId ||
+          (
+            resource.data.status == 'pending' &&
+            request.auth.token.email != null &&
+            request.auth.token.email == resource.data.inviteeEmail
+          )
+        );
 
       // Only Cloud Functions can update (via admin SDK)
       // Client updates are handled through the API
