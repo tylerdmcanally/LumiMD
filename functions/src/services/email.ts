@@ -7,11 +7,8 @@ import axios, { AxiosInstance } from 'axios';
 import * as functions from 'firebase-functions';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
-const RESEND_API_KEY =
-  process.env.RESEND_API_KEY ||
-  // Fallback to Firebase Functions config (for environments using functions:config:set)
-  (functions.config()?.resend?.api_key as string | undefined) ||
-  '';
+// Firebase Functions v2 automatically injects secrets as environment variables
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 
 export interface InviteEmailData {
   ownerName: string;
@@ -31,9 +28,12 @@ export class EmailService {
 
   constructor() {
     if (!RESEND_API_KEY) {
-      functions.logger.warn(
-        '[Email] RESEND_API_KEY not configured. Email sending will fail.',
+      functions.logger.error(
+        '[Email] RESEND_API_KEY not configured. Email sending will fail. ' +
+        'Set RESEND_API_KEY as a Firebase secret using: firebase functions:secrets:set RESEND_API_KEY',
       );
+    } else {
+      functions.logger.info('[Email] Resend API key configured (length: ' + RESEND_API_KEY.length + ')');
     }
 
     this.client = axios.create({
@@ -67,22 +67,29 @@ export class EmailService {
         text: emailText,
       });
 
-      functions.logger.info(`[Email] Sent caregiver invite to ${data.inviteeEmail}`, {
+      functions.logger.info(`[Email] Successfully sent caregiver invite to ${data.inviteeEmail}`, {
         emailId: response.data.id,
+        inviteeEmail: data.inviteeEmail,
+        ownerEmail: data.ownerEmail,
       });
 
       return { id: response.data.id };
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        functions.logger.error('[Email] Error sending caregiver invite:', {
+        const errorDetails = {
           status: error.response?.status,
+          statusText: error.response?.statusText,
           message: error.message,
-          data: error.response?.data,
-        });
+          responseData: error.response?.data,
+          inviteeEmail: data.inviteeEmail,
+          ownerEmail: data.ownerEmail,
+        };
+        functions.logger.error('[Email] Failed to send caregiver invite:', errorDetails);
         return {
-          error: error.response?.data?.message || error.message,
+          error: error.response?.data?.message || error.message || 'Failed to send email',
         };
       }
+      functions.logger.error('[Email] Unexpected error sending caregiver invite:', error);
       throw error;
     }
   }

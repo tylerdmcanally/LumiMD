@@ -42,8 +42,16 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
       onOpenChange(false);
     },
     onError: (error: any) => {
+      console.error('[InviteCaregiverDialog] Error sending invite:', error);
       const message = error?.userMessage || error?.message || 'Failed to send invitation';
-      toast.error(message);
+      const details = error?.code ? ` (${error.code})` : '';
+      toast.error(message + details, {
+        description: error?.status === 404 
+          ? 'The API endpoint was not found. Please check your configuration.'
+          : error?.status === 401 || error?.status === 403
+          ? 'Your session may have expired. Please try signing in again.'
+          : undefined,
+      });
     },
   });
 

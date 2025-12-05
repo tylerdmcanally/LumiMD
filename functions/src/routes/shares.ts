@@ -180,13 +180,26 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
       // Send notification email
       const emailService = getEmailService();
       const inviteLink = `${APP_URL}/invite/${shareId}`;
-      await emailService.sendCaregiverInvite({
+      functions.logger.info(`[shares] Attempting to send invite email to ${data.caregiverEmail}`, {
+        ownerId,
+        caregiverUserId,
+        inviteLink,
+      });
+      const emailResult = await emailService.sendCaregiverInvite({
         ownerName,
         ownerEmail,
         inviteeEmail: data.caregiverEmail,
         inviteLink,
         message: data.message,
       });
+      if (emailResult.error) {
+        functions.logger.error(`[shares] Email sending failed for ${data.caregiverEmail}:`, emailResult.error);
+        // Continue anyway - share is created, user can resend email later
+      } else {
+        functions.logger.info(`[shares] Email sent successfully to ${data.caregiverEmail}`, {
+          emailId: emailResult.id,
+        });
+      }
 
       const shareDoc = await getDb().collection('shares').doc(shareId).get();
       const share = shareDoc.data()!;
@@ -223,13 +236,26 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
       // Send invitation email
       const emailService = getEmailService();
       const inviteLink = `${APP_URL}/invite/${inviteToken}`;
-      await emailService.sendCaregiverInvite({
+      functions.logger.info(`[shares] Attempting to send invite email to ${data.caregiverEmail} (no account)`, {
+        ownerId,
+        inviteToken,
+        inviteLink,
+      });
+      const emailResult = await emailService.sendCaregiverInvite({
         ownerName,
         ownerEmail,
         inviteeEmail: data.caregiverEmail,
         inviteLink,
         message: data.message,
       });
+      if (emailResult.error) {
+        functions.logger.error(`[shares] Email sending failed for ${data.caregiverEmail}:`, emailResult.error);
+        // Continue anyway - invite is created, user can resend email later
+      } else {
+        functions.logger.info(`[shares] Email sent successfully to ${data.caregiverEmail}`, {
+          emailId: emailResult.id,
+        });
+      }
 
       functions.logger.info(
         `[shares] Created share invite from ${ownerId} to ${data.caregiverEmail} (no account yet)`,

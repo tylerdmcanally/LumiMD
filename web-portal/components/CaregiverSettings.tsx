@@ -37,8 +37,10 @@ export function CaregiverSettings() {
       queryClient.invalidateQueries({ queryKey: ['shares'] });
     },
     onError: (error: any) => {
+      console.error('[CaregiverSettings] Error revoking share:', error);
       const message = error?.userMessage || error?.message || 'Failed to revoke access';
-      toast.error(message);
+      const details = error?.code ? ` (${error.code})` : '';
+      toast.error(message + details);
     },
   });
 
@@ -52,8 +54,14 @@ export function CaregiverSettings() {
       queryClient.invalidateQueries({ queryKey: ['shares', 'invites'] });
     },
     onError: (error: any) => {
+      console.error('[CaregiverSettings] Error cancelling invite:', error);
       const message = error?.userMessage || error?.message || 'Failed to cancel invitation';
-      toast.error(message);
+      const details = error?.code ? ` (${error.code})` : '';
+      toast.error(message + details, {
+        description: error?.status === 404 
+          ? 'The invitation was not found. It may have already been cancelled or accepted.'
+          : undefined,
+      });
     },
   });
 
