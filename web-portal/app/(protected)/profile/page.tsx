@@ -71,7 +71,7 @@ export default function ProfilePage() {
       if (!visit || !Array.isArray(visit.folders)) {
         return;
       }
-      visit.folders.forEach((folder) => {
+      (visit.folders as unknown[]).forEach((folder: unknown) => {
         if (typeof folder !== 'string') return;
         const trimmed = folder.trim();
         if (!trimmed) return;
