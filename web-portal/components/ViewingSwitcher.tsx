@@ -38,16 +38,16 @@ export function ViewingSwitcher() {
     if (isViewingSelf) {
       return 'My Health';
     }
-    if (viewingProfile) {
-      return (
-        viewingProfile.preferredName ||
-        viewingProfile.firstName ||
-        'Shared Health'
-      );
-    }
-    // Fallback - will be updated when profile loads
-    return 'Shared Health';
-  }, [isViewingSelf, viewingProfile]);
+    const preferred =
+      typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()
+        ? viewingProfile.preferredName.trim()
+        : '';
+    const first =
+      typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()
+        ? viewingProfile.firstName.trim()
+        : '';
+    return preferred || first || 'Shared Health';
+  }, [isViewingSelf, viewingProfile?.preferredName, viewingProfile?.firstName]);
 
   const options = React.useMemo(() => {
     const result = [{ value: 'self', label: 'My Health', userId: currentUser?.uid || null }];
