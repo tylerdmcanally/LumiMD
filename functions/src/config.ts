@@ -6,6 +6,8 @@
  * - OPENAI_API_KEY
  * - ASSEMBLYAI_API_KEY
  * - VISIT_PROCESSING_WEBHOOK_SECRET
+ * - RESEND_API_KEY (for sending caregiver invitation emails)
+ * - NEXT_PUBLIC_APP_URL or APP_URL (web portal URL for invite links)
  * - STORAGE_BUCKET
  * - ALLOWED_ORIGINS (comma-separated list of allowed CORS origins)
  *

@@ -19,6 +19,7 @@ import { queryKeys, useUserProfile, useVisits } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
+import { CaregiverSettings } from '@/components/CaregiverSettings';
 
 export default function ProfilePage() {
   const user = useCurrentUser();
@@ -648,6 +649,10 @@ export default function ProfilePage() {
           <p className="text-sm text-text-muted">
             This information is private to you and helps LumiMD surface safety alerts when you review visits, medications, and action items.
           </p>
+        </Card>
+
+        <Card variant="elevated" padding="lg" className="space-y-6">
+          <CaregiverSettings />
         </Card>
       </div>
     </PageContainer>

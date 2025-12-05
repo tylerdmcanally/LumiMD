@@ -1,28 +1,24 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 
 import {
-  DocumentData,
-  QueryDocumentSnapshot,
-  Timestamp,
   collection,
   doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
   query,
   where,
-  type DocumentReference,
-  type Query,
+  type FirestoreError,
 } from 'firebase/firestore';
-import {
-  QueryKey,
-  UseQueryOptions,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { QueryKey, UseQueryOptions } from '@tanstack/react-query';
 
 import { db } from '@/lib/firebase';
+import {
+  convertValue,
+  serializeDoc,
+  sortByTimestampDescending,
+  useFirestoreCollection,
+  useFirestoreDocument,
+} from '@lumimd/sdk';
+import { useViewing } from '@/lib/contexts/ViewingContext';
 
 export type Visit = {
   id: string;
@@ -121,190 +117,35 @@ type QueryEnabledOptions<TData> = Omit<
   enabled?: boolean;
 };
 
-function convertValue(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-
-  if (value instanceof Timestamp) {
-    return value.toDate().toISOString();
-  }
-
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    'toDate' in (value as Record<string, unknown>)
-  ) {
-    try {
-      return (value as Timestamp).toDate().toISOString();
-    } catch {
-      // fall through if toDate throws
-    }
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => convertValue(item));
-  }
-
-  if (typeof value === 'object' && value !== null) {
-    const entries = Object.entries(value as Record<string, unknown>).map(
-      ([key, val]) => [key, convertValue(val)],
-    );
-    return Object.fromEntries(entries);
-  }
-
-  return value;
-}
-
-function serializeDoc<T extends { id: string }>(
-  snapshot: QueryDocumentSnapshot<DocumentData>,
-): T {
-  const data = snapshot.data() ?? {};
-  return {
-    id: snapshot.id,
-    ...(convertValue(data) as Record<string, unknown>),
-  } as T;
-}
-
-function sortByTimestampDescending<T extends { updatedAt?: string | null; createdAt?: string | null }>(
-  items: T[],
-): T[] {
-  return [...items].sort((a, b) => {
-    const aTime =
-      (a.updatedAt && Date.parse(a.updatedAt)) ||
-      (a.createdAt && Date.parse(a.createdAt)) ||
-      0;
-    const bTime =
-      (b.updatedAt && Date.parse(b.updatedAt)) ||
-      (b.createdAt && Date.parse(b.createdAt)) ||
-      0;
-    return bTime - aTime;
-  });
-}
-
-/**
- * Generic hook for Firestore collection subscriptions
- */
-function useFirestoreCollection<T extends { id: string }>(
-  queryRef: Query<DocumentData> | null,
-  key: QueryKey,
-  options?: {
-    transform?: (items: T[]) => T[];
-    enabled?: boolean;
-  }
-) {
-  const queryClient = useQueryClient();
-  const { transform, enabled = true } = options ?? {};
-
-  const mapDoc = useCallback((snapshot: QueryDocumentSnapshot<DocumentData>) => {
-    return serializeDoc<T>(snapshot);
+const useRealtimeErrorHandler = () =>
+  useCallback((error: FirestoreError) => {
+    console.error('[Firestore] Snapshot error', error);
+    toast.error('Connection error', {
+      description: 'Unable to sync data. Please check your connection and try again.',
+      duration: 5000,
+    });
   }, []);
-
-  useEffect(() => {
-    if (!queryRef || !enabled) return;
-    
-    const unsubscribe = onSnapshot(
-      queryRef,
-      (snapshot) => {
-        const docs = snapshot.docs.map(mapDoc);
-        const data = transform ? transform(docs) : docs;
-        queryClient.setQueryData(key, data);
-      },
-      (error) => {
-        console.error('[Firestore] Snapshot error', error);
-        toast.error('Connection error', {
-          description: 'Unable to sync data. Please check your connection and try again.',
-          duration: 5000,
-        });
-      },
-    );
-
-    return () => unsubscribe();
-  }, [queryClient, key, mapDoc, queryRef, transform, enabled]);
-
-  return useQuery({
-    queryKey: key,
-    enabled,
-    queryFn: async () => {
-      if (!queryRef) return [] as T[];
-      const snapshot = await getDocs(queryRef);
-      const docs = snapshot.docs.map(mapDoc);
-      return transform ? transform(docs) : docs;
-    },
-    staleTime: 1000 * 30,
-  });
-}
-
-/**
- * Generic hook for Firestore document subscriptions
- */
-function useFirestoreDocument<T extends { id: string }>(
-  docRef: DocumentReference<DocumentData> | null,
-  key: QueryKey,
-  options?: {
-    enabled?: boolean;
-  }
-) {
-  const queryClient = useQueryClient();
-  const { enabled = true } = options ?? {};
-
-  const mapDoc = useCallback((snapshot: QueryDocumentSnapshot<DocumentData>) => {
-    return serializeDoc<T>(snapshot);
-  }, []);
-
-  useEffect(() => {
-    if (!docRef || !enabled) return;
-    
-    const unsubscribe = onSnapshot(
-      docRef,
-      (snapshot) => {
-        if (!snapshot.exists()) {
-          queryClient.setQueryData(key, null);
-          return;
-        }
-        const data = mapDoc(snapshot as QueryDocumentSnapshot<DocumentData>);
-        queryClient.setQueryData(key, data);
-      },
-      (error) => {
-        console.error('[Firestore] Snapshot error', error);
-        toast.error('Connection error', {
-          description: 'Unable to sync data. Please check your connection and try again.',
-          duration: 5000,
-        });
-      },
-    );
-
-    return () => unsubscribe();
-  }, [docRef, key, mapDoc, queryClient, enabled]);
-
-  return useQuery({
-    queryKey: key,
-    enabled,
-    queryFn: async () => {
-      if (!docRef) return null;
-      const snapshot = await getDoc(docRef);
-      if (!snapshot.exists()) return null;
-      return mapDoc(snapshot as QueryDocumentSnapshot<DocumentData>);
-    },
-    staleTime: 1000 * 15,
-    refetchOnReconnect: 'always',
-  });
-}
 
 export function useVisits(
   userId?: string | null,
   options?: QueryEnabledOptions<Visit[]>,
 ) {
-  const key = useMemo(() => queryKeys.visits(userId), [userId]);
-  const enabled = Boolean(userId);
+  const { viewingUserId } = useViewing();
+  const effectiveUserId = userId ?? viewingUserId;
+  const key = useMemo(() => queryKeys.visits(effectiveUserId), [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+  const handleSnapshotError = useRealtimeErrorHandler();
 
   const visitsQueryRef = useMemo(() => {
-    if (!userId) return null;
-    return query(collection(db, 'visits'), where('userId', '==', userId));
-  }, [userId]);
+    if (!effectiveUserId) return null;
+    return query(collection(db, 'visits'), where('userId', '==', effectiveUserId));
+  }, [effectiveUserId]);
 
   return useFirestoreCollection<Visit>(visitsQueryRef, key, {
     transform: sortByTimestampDescending,
     enabled,
-    ...options,
+    onError: handleSnapshotError,
+    queryOptions: options,
   });
 }
 
@@ -318,6 +159,7 @@ export function useVisit(
     [userId, visitId],
   );
   const enabled = Boolean(userId && visitId);
+  const handleSnapshotError = useRealtimeErrorHandler();
 
   const visitDocRef = useMemo(() => {
     if (!userId || !visitId) return null;
@@ -326,7 +168,8 @@ export function useVisit(
 
   return useFirestoreDocument<Visit>(visitDocRef, key, {
     enabled,
-    ...options,
+    onError: handleSnapshotError,
+    queryOptions: options,
   });
 }
 
@@ -334,18 +177,22 @@ export function useMedications(
   userId?: string | null,
   options?: QueryEnabledOptions<Medication[]>,
 ) {
-  const key = useMemo(() => queryKeys.medications(userId), [userId]);
-  const enabled = Boolean(userId);
+  const { viewingUserId } = useViewing();
+  const effectiveUserId = userId ?? viewingUserId;
+  const key = useMemo(() => queryKeys.medications(effectiveUserId), [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+  const handleSnapshotError = useRealtimeErrorHandler();
 
   const medicationsQueryRef = useMemo(() => {
-    if (!userId) return null;
-    return query(collection(db, 'medications'), where('userId', '==', userId));
-  }, [userId]);
+    if (!effectiveUserId) return null;
+    return query(collection(db, 'medications'), where('userId', '==', effectiveUserId));
+  }, [effectiveUserId]);
 
   return useFirestoreCollection<Medication>(medicationsQueryRef, key, {
     transform: sortByTimestampDescending,
     enabled,
-    ...options,
+    onError: handleSnapshotError,
+    queryOptions: options,
   });
 }
 
@@ -359,6 +206,7 @@ export function useMedication(
     [userId, medicationId],
   );
   const enabled = Boolean(userId && medicationId);
+  const handleSnapshotError = useRealtimeErrorHandler();
 
   const medicationDocRef = useMemo(() => {
     if (!userId || !medicationId) return null;
@@ -367,7 +215,8 @@ export function useMedication(
 
   return useFirestoreDocument<Medication>(medicationDocRef, key, {
     enabled,
-    ...options,
+    onError: handleSnapshotError,
+    queryOptions: options,
   });
 }
 
@@ -375,13 +224,16 @@ export function useActions(
   userId?: string | null,
   options?: QueryEnabledOptions<ActionItem[]>,
 ) {
-  const key = useMemo(() => queryKeys.actions(userId), [userId]);
-  const enabled = Boolean(userId);
+  const { viewingUserId } = useViewing();
+  const effectiveUserId = userId ?? viewingUserId;
+  const key = useMemo(() => queryKeys.actions(effectiveUserId), [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+  const handleSnapshotError = useRealtimeErrorHandler();
 
   const actionsQueryRef = useMemo(() => {
-    if (!userId) return null;
-    return query(collection(db, 'actions'), where('userId', '==', userId));
-  }, [userId]);
+    if (!effectiveUserId) return null;
+    return query(collection(db, 'actions'), where('userId', '==', effectiveUserId));
+  }, [effectiveUserId]);
 
   const sortActions = useCallback((actions: ActionItem[]) => {
     return [...actions].sort((a, b) => {
@@ -403,7 +255,8 @@ export function useActions(
   return useFirestoreCollection<ActionItem>(actionsQueryRef, key, {
     transform: sortActions,
     enabled,
-    ...options,
+    onError: handleSnapshotError,
+    queryOptions: options,
   });
 }
 
@@ -411,16 +264,20 @@ export function useUserProfile(
   userId?: string | null,
   options?: QueryEnabledOptions<UserProfile | null>,
 ) {
-  const key = useMemo(() => queryKeys.userProfile(userId), [userId]);
-  const enabled = Boolean(userId);
+  const { viewingUserId } = useViewing();
+  const effectiveUserId = userId ?? viewingUserId;
+  const key = useMemo(() => queryKeys.userProfile(effectiveUserId), [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+  const handleSnapshotError = useRealtimeErrorHandler();
 
   const profileDocRef = useMemo(() => {
-    if (!userId) return null;
-    return doc(db, 'users', userId);
-  }, [userId]);
+    if (!effectiveUserId) return null;
+    return doc(db, 'users', effectiveUserId);
+  }, [effectiveUserId]);
 
   return useFirestoreDocument<UserProfile>(profileDocRef, key, {
     enabled,
-    ...options,
+    onError: handleSnapshotError,
+    queryOptions: options,
   });
 }

@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
+import { ViewingSwitcher } from '@/components/ViewingSwitcher';
 
 type NavItem = {
   label: string;
@@ -138,6 +139,11 @@ export function Sidebar() {
             LumiMD
           </span>
         </Link>
+      </div>
+
+      {/* Viewing Switcher (Desktop) */}
+      <div className="px-5 pt-6 pb-4 border-b border-border-light/60">
+        <ViewingSwitcher />
       </div>
 
       {/* Navigation */}

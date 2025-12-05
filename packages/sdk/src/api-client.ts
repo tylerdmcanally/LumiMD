@@ -3,7 +3,7 @@
  * Unified HTTP client with retry logic, timeout handling, and error mapping
  */
 
-import type { Visit, Medication, ActionItem, UserProfile, ApiError } from './models';
+import type { Visit, Medication, ActionItem, UserProfile, Share, ShareInvite, ApiError } from './models';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 500, 502, 503, 504]); // Note: 429 removed - don't retry rate limits
@@ -368,6 +368,28 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'DELETE',
           body: JSON.stringify(data),
         }),
+    },
+
+    // Shares
+    shares: {
+      list: () => apiRequest<Share[]>('/v1/shares'),
+      get: (id: string) => apiRequest<Share>(`/v1/shares/${id}`),
+      create: (data: { caregiverEmail: string; message?: string }) =>
+        apiRequest<Share | ShareInvite>('/v1/shares', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: { status: 'accepted' | 'revoked' }) =>
+        apiRequest<Share>(`/v1/shares/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      acceptInvite: (token: string) =>
+        apiRequest<Share>('/v1/shares/accept-invite', {
+          method: 'POST',
+          body: JSON.stringify({ token }),
+        }),
+      getInvites: () => apiRequest<ShareInvite[]>('/v1/shares/invites'),
     },
   };
 }

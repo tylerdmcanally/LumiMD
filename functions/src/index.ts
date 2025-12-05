@@ -16,6 +16,7 @@ import { corsConfig } from './config';
 export { processVisitAudio } from './triggers/processVisitAudio';
 export { checkPendingTranscriptions } from './triggers/checkPendingTranscriptions';
 export { summarizeVisitTrigger } from './triggers/summarizeVisit';
+export { autoAcceptShareInvites } from './triggers/autoAcceptShareInvites';
 export { analyzeMedicationSafety } from './callables/medicationSafety';
 
 // Initialize Firebase Admin
