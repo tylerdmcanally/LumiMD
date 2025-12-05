@@ -5,7 +5,6 @@ import { Menu } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ViewingSwitcher } from '@/components/ViewingSwitcher';
 
 interface TopBarProps {
   onMenuClick?: () => void;
@@ -44,10 +43,7 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
           </span>
         </div>
 
-        {/* Viewing Switcher or Spacer */}
-        <div className="h-10 shrink-0 flex items-center">
-          <ViewingSwitcher />
-        </div>
+        <div className="h-10 shrink-0 flex items-center" />
       </div>
     </header>
   );

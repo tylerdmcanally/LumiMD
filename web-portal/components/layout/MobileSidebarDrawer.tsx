@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
+import { useViewing } from '@/lib/contexts/ViewingContext';
 
 type NavItem = {
   label: string;
@@ -66,9 +67,14 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
   const user = useCurrentUser();
   const pathname = usePathname();
   const userId = user?.uid ?? null;
+  const { isCaregiver, viewingUserId } = useViewing();
 
   const { data: profile } = useUserProfile(userId, {
     enabled: Boolean(userId),
+  });
+
+  const { data: viewingProfile } = useUserProfile(viewingUserId ?? undefined, {
+    enabled: Boolean(viewingUserId),
   });
 
   const displayName = React.useMemo(() => {
@@ -163,7 +169,7 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 px-4 py-6 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Profile')).map((item) => {
             const isActive = item.exact
               ? pathname === item.href
               : pathname?.startsWith(item.href);
@@ -201,6 +207,19 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
 
         {/* User Profile & Sign Out */}
         <div className="border-t border-border-light p-4 space-y-3">
+          {isCaregiver && (
+            <div className="rounded-lg border border-border-light bg-background-subtle px-4 py-3">
+              <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">Viewing</p>
+              <p className="text-sm font-bold text-text-primary truncate">
+                {(typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()) ||
+                  (typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()) ||
+                  (typeof (viewingProfile as any)?.email === 'string' && (viewingProfile as any).email) ||
+                  'Shared Health'}
+              </p>
+              <p className="text-[11px] text-text-tertiary mt-1">Read-only access</p>
+            </div>
+          )}
+
           {/* User Info */}
           {user && (
             <div className="flex items-center gap-3 rounded-xl bg-background-subtle px-4 py-3">

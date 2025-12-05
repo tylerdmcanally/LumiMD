@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
-import { ViewingSwitcher } from '@/components/ViewingSwitcher';
 import { useViewing } from '@/lib/contexts/ViewingContext';
 
 type NavItem = {
@@ -96,7 +95,7 @@ function NavLink({ item }: { item: NavItem }) {
 export function Sidebar() {
   const user = useCurrentUser();
   const userId = user?.uid ?? null;
-  const { userType, incomingShares, hasPatientData, isViewingShared, viewingUserId } = useViewing();
+  const { isCaregiver, incomingShares, isViewingShared, viewingUserId } = useViewing();
   const { data: viewingProfile } = useUserProfile(viewingUserId ?? undefined, {
     enabled: Boolean(viewingUserId),
   });
@@ -146,16 +145,25 @@ export function Sidebar() {
         </Link>
       </div>
 
-      {/* Viewing Switcher (Desktop) */}
-      {(userType === 'hybrid' || userType === 'caregiver' || incomingShares.length > 0) && (
-        <div className="px-5 pt-6 pb-4 border-b border-border-light/60">
-          <ViewingSwitcher />
+      {/* Caregiver indicator */}
+      {isCaregiver && (
+        <div className="px-5 pb-4">
+          <div className="rounded-xl border border-border-light bg-background-subtle px-4 py-3">
+            <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">Viewing</p>
+            <p className="text-sm font-bold text-text-primary truncate">
+              {(typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()) ||
+                (typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()) ||
+                (typeof (viewingProfile as any)?.email === 'string' && (viewingProfile as any).email) ||
+                'Shared Health'}
+            </p>
+            <p className="text-[11px] text-text-tertiary mt-1">Read-only access</p>
+          </div>
         </div>
       )}
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-5 py-8">
-        {NAV_ITEMS.map((item) => (
+        {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Profile')).map((item) => (
           <NavLink key={item.href} item={item} />
         ))}
       </nav>

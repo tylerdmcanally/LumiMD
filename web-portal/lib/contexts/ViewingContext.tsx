@@ -4,16 +4,14 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
-import { useHasPatientData } from '@/lib/api/hooks';
 import { api } from '@/lib/api/client';
 
 interface ViewingContextValue {
-  viewingUserId: string | null; // effective ID (self or selected share)
+  viewingUserId: string | null; // effective ID (self or selected share owner)
   setViewingUserId: (userId: string | null) => void;
   isViewingSelf: boolean;
   isViewingShared: boolean;
-  userType: 'patient' | 'caregiver' | 'hybrid';
-  hasPatientData: boolean;
+  isCaregiver: boolean;
   incomingShares: Array<{ ownerId: string }>;
 }
 
@@ -36,9 +34,6 @@ export function ViewingProvider({ children }: { children: React.ReactNode }) {
     [shares],
   );
 
-  // Detect whether current user has their own patient data
-  const { data: hasPatientData = false } = useHasPatientData(currentUserId);
-
   // Reset to self if current user changes
   React.useEffect(() => {
     if (currentUserId) {
@@ -52,24 +47,16 @@ export function ViewingProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUserId, selectedViewingUserId]);
 
-  // Determine user type
-  const userType: 'patient' | 'caregiver' | 'hybrid' = React.useMemo(() => {
-    const hasShares = incomingShares.length > 0;
-    if (hasPatientData && hasShares) return 'hybrid';
-    if (hasPatientData) return 'patient';
-    if (hasShares) return 'caregiver';
-    return 'patient';
-  }, [hasPatientData, incomingShares.length]);
+  const isCaregiver = incomingShares.length > 0;
 
-  // Auto-select shared view for caregiver-only users
+  // Auto-select shared view for caregiver users
   React.useEffect(() => {
-    if (userType === 'caregiver') {
-      const firstShare = incomingShares[0];
-      if (firstShare && selectedViewingUserId !== firstShare.ownerId) {
-        setSelectedViewingUserId(firstShare.ownerId);
-      }
+    if (!isCaregiver) return;
+    const firstShare = incomingShares[0];
+    if (firstShare && selectedViewingUserId !== firstShare.ownerId) {
+      setSelectedViewingUserId(firstShare.ownerId);
     }
-  }, [userType, incomingShares, selectedViewingUserId]);
+  }, [isCaregiver, incomingShares, selectedViewingUserId]);
 
   const effectiveUserId = selectedViewingUserId || currentUserId;
 
@@ -79,11 +66,10 @@ export function ViewingProvider({ children }: { children: React.ReactNode }) {
       setViewingUserId: setSelectedViewingUserId,
       isViewingSelf: !selectedViewingUserId || selectedViewingUserId === currentUserId,
       isViewingShared: !!selectedViewingUserId && selectedViewingUserId !== currentUserId,
-      userType,
-      hasPatientData,
+      isCaregiver,
       incomingShares: incomingShares.map((s: any) => ({ ownerId: s.ownerId })),
     }),
-    [effectiveUserId, selectedViewingUserId, currentUserId, userType, hasPatientData, incomingShares],
+    [effectiveUserId, selectedViewingUserId, currentUserId, isCaregiver, incomingShares],
   );
 
   return <ViewingContext.Provider value={value}>{children}</ViewingContext.Provider>;
