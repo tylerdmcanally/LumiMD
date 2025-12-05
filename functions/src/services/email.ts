@@ -59,8 +59,20 @@ export class EmailService {
       const emailHtml = this.generateInviteEmailHtml(data);
       const emailText = this.generateInviteEmailText(data);
 
+      // Use Resend's default sender or a verified domain
+      // If you have verified a domain in Resend, use: 'LumiMD <noreply@your-verified-domain.com>'
+      // For testing, Resend allows using 'onboarding@resend.dev' or your verified domain
+      const fromEmail = 'onboarding@resend.dev'; // Change to your verified domain when available
+
+      functions.logger.info('[Email] Sending email via Resend', {
+        from: fromEmail,
+        to: data.inviteeEmail,
+        hasApiKey: !!RESEND_API_KEY,
+        apiKeyLength: RESEND_API_KEY.length,
+      });
+
       const response = await this.client.post<{ id: string }>('', {
-        from: 'LumiMD <noreply@lumimd.com>',
+        from: fromEmail,
         to: [data.inviteeEmail],
         subject: `${data.ownerName} wants to share their health information with you`,
         html: emailHtml,
@@ -81,15 +93,34 @@ export class EmailService {
           statusText: error.response?.statusText,
           message: error.message,
           responseData: error.response?.data,
+          requestUrl: error.config?.url,
+          requestMethod: error.config?.method,
+          requestHeaders: error.config?.headers ? Object.keys(error.config.headers) : [],
           inviteeEmail: data.inviteeEmail,
           ownerEmail: data.ownerEmail,
         };
-        functions.logger.error('[Email] Failed to send caregiver invite:', errorDetails);
-        return {
-          error: error.response?.data?.message || error.message || 'Failed to send email',
-        };
+        functions.logger.error('[Email] Failed to send caregiver invite - Full error details:', JSON.stringify(errorDetails, null, 2));
+        
+        // Extract more specific error message
+        let errorMessage = 'Failed to send email';
+        if (error.response?.data) {
+          if (typeof error.response.data === 'string') {
+            errorMessage = error.response.data;
+          } else if (error.response.data.message) {
+            errorMessage = error.response.data.message;
+          } else if (error.response.data.error) {
+            errorMessage = error.response.data.error;
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        return { error: errorMessage };
       }
-      functions.logger.error('[Email] Unexpected error sending caregiver invite:', error);
+      functions.logger.error('[Email] Unexpected error sending caregiver invite:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       throw error;
     }
   }
