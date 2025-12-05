@@ -71,8 +71,6 @@ function sortByTimestampDescending<
     return bTime - aTime;
   });
 }
-}
-
 function useFirestoreCollection<T extends { id: string }>(
   queryRef: Firestore.Query<Firestore.DocumentData> | null,
   key: QueryKey,
