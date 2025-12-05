@@ -88,7 +88,7 @@ export default function InviteAcceptPage() {
     const isNotFound = error?.code === 'not_found';
 
     return (
-      <PageContainer maxWidth="md">
+      <PageContainer maxWidth="lg">
         <Card variant="elevated" padding="lg" className="text-center py-12">
           <XCircle className="h-12 w-12 text-error mx-auto mb-4" />
           <h1 className="text-2xl font-semibold text-text-primary mb-2">
