@@ -390,6 +390,10 @@ export function createApiClient(config: ApiClientConfig) {
           body: JSON.stringify({ token }),
         }),
       getInvites: () => apiRequest<ShareInvite[]>('/v1/shares/invites'),
+      cancelInvite: (inviteId: string) =>
+        apiRequest<ShareInvite>(`/v1/shares/invites/${inviteId}`, {
+          method: 'PATCH',
+        }),
     },
   };
 }

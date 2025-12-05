@@ -1,5 +1,8 @@
 import * as _tanstack_react_query from '@tanstack/react-query';
-import { UseQueryOptions } from '@tanstack/react-query';
+import { UseQueryOptions, QueryKey } from '@tanstack/react-query';
+import * as _tanstack_query_core from '@tanstack/query-core';
+import * as firebase_firestore from 'firebase/firestore';
+import { FirestoreError, QueryDocumentSnapshot, DocumentData, Query, DocumentReference } from 'firebase/firestore';
 
 /**
  * Visit Model
@@ -157,6 +160,36 @@ interface ApiError extends Error {
 declare function isApiError(error: unknown): error is ApiError;
 
 /**
+ * Share and ShareInvite Models
+ */
+interface Share {
+    id: string;
+    ownerId: string;
+    caregiverUserId: string;
+    caregiverEmail: string;
+    role: 'viewer';
+    status: 'pending' | 'accepted' | 'revoked';
+    message?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    acceptedAt?: string | null;
+    type?: 'outgoing' | 'incoming';
+}
+interface ShareInvite {
+    id: string;
+    ownerId: string;
+    ownerEmail: string;
+    ownerName: string;
+    inviteeEmail: string;
+    role: 'viewer';
+    status: 'pending' | 'accepted' | 'expired';
+    message?: string | null;
+    createdAt?: string | null;
+    expiresAt?: string | null;
+    acceptedAt?: string | null;
+}
+
+/**
  * Shared API Client
  * Unified HTTP client with retry logic, timeout handling, and error mapping
  */
@@ -206,6 +239,20 @@ declare function createApiClient(config: ApiClientConfig): {
             token: string;
         }) => Promise<void>;
     };
+    shares: {
+        list: () => Promise<Share[]>;
+        get: (id: string) => Promise<Share>;
+        create: (data: {
+            caregiverEmail: string;
+            message?: string;
+        }) => Promise<Share | ShareInvite>;
+        update: (id: string, data: {
+            status: "accepted" | "revoked";
+        }) => Promise<Share>;
+        acceptInvite: (token: string) => Promise<Share>;
+        getInvites: () => Promise<ShareInvite[]>;
+        cancelInvite: (inviteId: string) => Promise<ShareInvite>;
+    };
 };
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -232,4 +279,34 @@ declare function createApiHooks(api: ApiClient): {
     useUserProfile: (options?: Omit<UseQueryOptions<UserProfile, Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<UserProfile, Error>;
 };
 
-export { type ActionItem, type ApiClient, type ApiClientConfig, type ApiError, type Medication, type MedicationChanges, type MedicationEntry, type MedicationWarning, type UserProfile, type Visit, type VisitEducation, createApiClient, createApiHooks, isApiError, queryKeys };
+type FirestoreModule = typeof firebase_firestore;
+declare function configureFirestoreRealtime(module: FirestoreModule): void;
+type FirestoreCollectionOptions<T> = {
+    transform?: (items: T[]) => T[];
+    enabled?: boolean;
+    staleTimeMs?: number;
+    onError?: (error: FirestoreError) => void;
+    queryOptions?: Omit<UseQueryOptions<T[], Error, T[], QueryKey>, 'queryKey' | 'queryFn'>;
+};
+type FirestoreDocumentOptions<T> = {
+    enabled?: boolean;
+    staleTimeMs?: number;
+    onError?: (error: FirestoreError) => void;
+    queryOptions?: Omit<UseQueryOptions<T | null, Error, T | null, QueryKey>, 'queryKey' | 'queryFn'>;
+};
+declare function convertValue(value: unknown): unknown;
+declare function serializeDoc<T extends {
+    id: string;
+}>(snapshot: QueryDocumentSnapshot<DocumentData>): T;
+declare function sortByTimestampDescending<T extends {
+    updatedAt?: string | null;
+    createdAt?: string | null;
+}>(items: T[]): T[];
+declare function useFirestoreCollection<T extends {
+    id: string;
+}>(queryRef: Query<DocumentData> | null, key: QueryKey, options?: FirestoreCollectionOptions<T>): _tanstack_react_query.UseQueryResult<T[], Error>;
+declare function useFirestoreDocument<T extends {
+    id: string;
+}>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
+
+export { type ActionItem, type ApiClient, type ApiClientConfig, type ApiError, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type Medication, type MedicationChanges, type MedicationEntry, type MedicationWarning, type Share, type ShareInvite, type UserProfile, type Visit, type VisitEducation, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

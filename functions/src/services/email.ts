@@ -7,7 +7,11 @@ import axios, { AxiosInstance } from 'axios';
 import * as functions from 'firebase-functions';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_API_KEY =
+  process.env.RESEND_API_KEY ||
+  // Fallback to Firebase Functions config (for environments using functions:config:set)
+  (functions.config()?.resend?.api_key as string | undefined) ||
+  '';
 
 export interface InviteEmailData {
   ownerName: string;

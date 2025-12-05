@@ -1,31 +1,7 @@
-"use strict";
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+'use strict';
 
-// src/index.ts
-var index_exports = {};
-__export(index_exports, {
-  createApiClient: () => createApiClient,
-  createApiHooks: () => createApiHooks,
-  isApiError: () => isApiError,
-  queryKeys: () => queryKeys
-});
-module.exports = __toCommonJS(index_exports);
+var reactQuery = require('@tanstack/react-query');
+var react = require('react');
 
 // src/models/error.ts
 function isApiError(error) {
@@ -305,12 +281,30 @@ function createApiClient(config) {
         method: "DELETE",
         body: JSON.stringify(data)
       })
+    },
+    // Shares
+    shares: {
+      list: () => apiRequest("/v1/shares"),
+      get: (id) => apiRequest(`/v1/shares/${id}`),
+      create: (data) => apiRequest("/v1/shares", {
+        method: "POST",
+        body: JSON.stringify(data)
+      }),
+      update: (id, data) => apiRequest(`/v1/shares/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data)
+      }),
+      acceptInvite: (token) => apiRequest("/v1/shares/accept-invite", {
+        method: "POST",
+        body: JSON.stringify({ token })
+      }),
+      getInvites: () => apiRequest("/v1/shares/invites"),
+      cancelInvite: (inviteId) => apiRequest(`/v1/shares/invites/${inviteId}`, {
+        method: "PATCH"
+      })
     }
   };
 }
-
-// src/hooks/index.ts
-var import_react_query = require("@tanstack/react-query");
 var queryKeys = {
   visits: ["visits"],
   visit: (id) => ["visits", id],
@@ -322,7 +316,7 @@ var queryKeys = {
 };
 function createApiHooks(api) {
   function useVisits(options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: queryKeys.visits,
       queryFn: () => api.visits.list(),
       staleTime: 5 * 60 * 1e3,
@@ -331,7 +325,7 @@ function createApiHooks(api) {
     });
   }
   function useVisit(id, options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: queryKeys.visit(id),
       queryFn: () => api.visits.get(id),
       enabled: !!id,
@@ -340,7 +334,7 @@ function createApiHooks(api) {
     });
   }
   function useLatestVisit(options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: [...queryKeys.visits, "latest"],
       queryFn: async () => {
         const visits = await api.visits.list({ limit: 1, sort: "desc" });
@@ -352,7 +346,7 @@ function createApiHooks(api) {
     });
   }
   function useActionItems(options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: queryKeys.actions,
       queryFn: () => api.actions.list(),
       staleTime: 5 * 60 * 1e3,
@@ -360,7 +354,7 @@ function createApiHooks(api) {
     });
   }
   function usePendingActions(options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: queryKeys.actions,
       queryFn: () => api.actions.list(),
       select: (actions) => actions.filter((action) => !action.completed),
@@ -370,7 +364,7 @@ function createApiHooks(api) {
     });
   }
   function useMedications(options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: queryKeys.medications,
       queryFn: () => api.medications.list(),
       staleTime: 60 * 1e3,
@@ -379,7 +373,7 @@ function createApiHooks(api) {
     });
   }
   function useActiveMedications(options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: queryKeys.medications,
       queryFn: () => api.medications.list(),
       select: (meds) => meds.filter((med) => med.active !== false),
@@ -389,7 +383,7 @@ function createApiHooks(api) {
     });
   }
   function useUserProfile(options) {
-    return (0, import_react_query.useQuery)({
+    return reactQuery.useQuery({
       queryKey: queryKeys.profile,
       queryFn: () => api.user.getProfile(),
       staleTime: 5 * 60 * 1e3,
@@ -407,10 +401,147 @@ function createApiHooks(api) {
     useUserProfile
   };
 }
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  createApiClient,
-  createApiHooks,
-  isApiError,
-  queryKeys
-});
+var firestoreModule = null;
+function configureFirestoreRealtime(module) {
+  firestoreModule = module;
+}
+function requireFirestoreModule() {
+  if (!firestoreModule) {
+    throw new Error(
+      "[Realtime] Firestore module not configured. Call configureFirestoreRealtime() before using realtime helpers."
+    );
+  }
+  return firestoreModule;
+}
+function convertValue(value) {
+  if (value === null || value === void 0) return value;
+  const module = firestoreModule;
+  if (module && value instanceof module.Timestamp) {
+    return value.toDate().toISOString();
+  }
+  if (typeof value === "object" && value !== null && "toDate" in value) {
+    try {
+      return value.toDate().toISOString();
+    } catch {
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => convertValue(item));
+  }
+  if (typeof value === "object" && value !== null) {
+    const convertedEntries = Object.entries(value).map(
+      ([key, val]) => [key, convertValue(val)]
+    );
+    return Object.fromEntries(convertedEntries);
+  }
+  return value;
+}
+function serializeDoc(snapshot) {
+  const data = snapshot.data() ?? {};
+  return {
+    id: snapshot.id,
+    ...convertValue(data)
+  };
+}
+function sortByTimestampDescending(items) {
+  return [...items].sort((a, b) => {
+    const aTime = a.updatedAt && Date.parse(a.updatedAt) || a.createdAt && Date.parse(a.createdAt) || 0;
+    const bTime = b.updatedAt && Date.parse(b.updatedAt) || b.createdAt && Date.parse(b.createdAt) || 0;
+    return bTime - aTime;
+  });
+}
+function useFirestoreCollection(queryRef, key, options) {
+  const { onSnapshot, getDocs } = requireFirestoreModule();
+  const queryClient = reactQuery.useQueryClient();
+  const {
+    transform,
+    enabled = true,
+    staleTimeMs = 3e4,
+    onError,
+    queryOptions
+  } = options ?? {};
+  const combinedEnabled = typeof queryOptions?.enabled === "boolean" ? enabled && queryOptions.enabled : enabled;
+  const mapDoc = react.useCallback((snapshot) => {
+    return serializeDoc(snapshot);
+  }, []);
+  react.useEffect(() => {
+    if (!queryRef || !combinedEnabled) return;
+    const unsubscribe = onSnapshot(
+      queryRef,
+      (snapshot) => {
+        const docs = snapshot.docs.map(mapDoc);
+        const data = transform ? transform(docs) : docs;
+        queryClient.setQueryData(key, data);
+      },
+      (error) => {
+        console.error("[Firestore] Snapshot error", error);
+        onError?.(error);
+      }
+    );
+    return () => unsubscribe();
+  }, [combinedEnabled, key, mapDoc, onError, queryClient, queryRef, transform]);
+  return reactQuery.useQuery({
+    queryKey: key,
+    staleTime: staleTimeMs,
+    ...queryOptions ?? {},
+    enabled: combinedEnabled,
+    queryFn: async () => {
+      if (!queryRef) return [];
+      const snapshot = await getDocs(queryRef);
+      const docs = snapshot.docs.map(mapDoc);
+      return transform ? transform(docs) : docs;
+    }
+  });
+}
+function useFirestoreDocument(docRef, key, options) {
+  const { onSnapshot, getDoc } = requireFirestoreModule();
+  const queryClient = reactQuery.useQueryClient();
+  const { enabled = true, staleTimeMs = 15e3, onError, queryOptions } = options ?? {};
+  const combinedEnabled = typeof queryOptions?.enabled === "boolean" ? enabled && queryOptions.enabled : enabled;
+  const mapDoc = react.useCallback((snapshot) => {
+    return serializeDoc(snapshot);
+  }, []);
+  react.useEffect(() => {
+    if (!docRef || !combinedEnabled) return;
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          queryClient.setQueryData(key, null);
+          return;
+        }
+        const data = mapDoc(snapshot);
+        queryClient.setQueryData(key, data);
+      },
+      (error) => {
+        console.error("[Firestore] Snapshot error", error);
+        onError?.(error);
+      }
+    );
+    return () => unsubscribe();
+  }, [combinedEnabled, docRef, key, mapDoc, onError, queryClient]);
+  return reactQuery.useQuery({
+    queryKey: key,
+    staleTime: staleTimeMs,
+    refetchOnReconnect: true,
+    ...queryOptions ?? {},
+    enabled: combinedEnabled,
+    queryFn: async () => {
+      if (!docRef) return null;
+      const snapshot = await getDoc(docRef);
+      if (!snapshot.exists()) return null;
+      return mapDoc(snapshot);
+    }
+  });
+}
+
+exports.configureFirestoreRealtime = configureFirestoreRealtime;
+exports.convertValue = convertValue;
+exports.createApiClient = createApiClient;
+exports.createApiHooks = createApiHooks;
+exports.isApiError = isApiError;
+exports.queryKeys = queryKeys;
+exports.serializeDoc = serializeDoc;
+exports.sortByTimestampDescending = sortByTimestampDescending;
+exports.useFirestoreCollection = useFirestoreCollection;
+exports.useFirestoreDocument = useFirestoreDocument;

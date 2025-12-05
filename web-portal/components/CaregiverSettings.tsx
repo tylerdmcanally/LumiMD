@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Mail, UserPlus, X, Clock, CheckCircle2, UserX } from 'lucide-react';
+import { Mail, UserPlus, X, Clock, CheckCircle2, UserX, Ban } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { Card } from '@/components/ui/card';
@@ -38,6 +38,21 @@ export function CaregiverSettings() {
     },
     onError: (error: any) => {
       const message = error?.userMessage || error?.message || 'Failed to revoke access';
+      toast.error(message);
+    },
+  });
+
+  const cancelInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      return api.shares.cancelInvite(inviteId);
+    },
+    onSuccess: () => {
+      toast.success('Invitation cancelled');
+      queryClient.invalidateQueries({ queryKey: ['shares'] });
+      queryClient.invalidateQueries({ queryKey: ['shares', 'invites'] });
+    },
+    onError: (error: any) => {
+      const message = error?.userMessage || error?.message || 'Failed to cancel invitation';
       toast.error(message);
     },
   });
@@ -169,9 +184,21 @@ export function CaregiverSettings() {
                         </p>
                       </div>
                     </div>
-                    <Badge size="sm" tone="warning" variant="soft">
-                      Invited
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge size="sm" tone="warning" variant="soft">
+                        Invited
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => cancelInviteMutation.mutate(invite.id)}
+                        disabled={cancelInviteMutation.isPending}
+                        className="text-error hover:text-error focus-visible:ring-error"
+                      >
+                        <Ban className="h-4 w-4" />
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

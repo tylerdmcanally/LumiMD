@@ -625,6 +625,67 @@ sharesRouter.get('/invites', requireAuth, async (req: AuthRequest, res) => {
 });
 
 /**
+ * PATCH /v1/shares/invites/:id
+ * Owner can cancel a pending invite
+ */
+sharesRouter.patch('/invites/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const inviteId = req.params.id;
+
+    const inviteRef = getDb().collection('shareInvites').doc(inviteId);
+    const inviteDoc = await inviteRef.get();
+
+    if (!inviteDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Invite not found',
+      });
+      return;
+    }
+
+    const invite = inviteDoc.data()!;
+    if (invite.ownerId !== userId) {
+      res.status(403).json({
+        code: 'forbidden',
+        message: 'You are not authorized to modify this invite',
+      });
+      return;
+    }
+
+    if (invite.status !== 'pending') {
+      res.status(400).json({
+        code: 'invalid_status',
+        message: 'Only pending invites can be cancelled',
+      });
+      return;
+    }
+
+    await inviteRef.update({
+      status: 'revoked',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const updatedDoc = await inviteRef.get();
+    const updatedInvite = updatedDoc.data()!;
+
+    res.json({
+      id: inviteId,
+      ...updatedInvite,
+      createdAt: updatedInvite.createdAt?.toDate().toISOString(),
+      expiresAt: updatedInvite.expiresAt?.toDate().toISOString(),
+      updatedAt: updatedInvite.updatedAt?.toDate().toISOString(),
+    });
+  } catch (error) {
+    functions.logger.error('[shares] Error cancelling invite:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to cancel invite',
+    });
+  }
+});
+
+/**
  * DELETE /v1/shares/:id
  * Delete a share (disabled - use revoke instead)
  * Keeping revoked shares provides audit trail

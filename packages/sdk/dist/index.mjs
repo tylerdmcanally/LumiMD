@@ -1,3 +1,6 @@
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect } from 'react';
+
 // src/models/error.ts
 function isApiError(error) {
   return error instanceof Error && "status" in error;
@@ -276,12 +279,30 @@ function createApiClient(config) {
         method: "DELETE",
         body: JSON.stringify(data)
       })
+    },
+    // Shares
+    shares: {
+      list: () => apiRequest("/v1/shares"),
+      get: (id) => apiRequest(`/v1/shares/${id}`),
+      create: (data) => apiRequest("/v1/shares", {
+        method: "POST",
+        body: JSON.stringify(data)
+      }),
+      update: (id, data) => apiRequest(`/v1/shares/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data)
+      }),
+      acceptInvite: (token) => apiRequest("/v1/shares/accept-invite", {
+        method: "POST",
+        body: JSON.stringify({ token })
+      }),
+      getInvites: () => apiRequest("/v1/shares/invites"),
+      cancelInvite: (inviteId) => apiRequest(`/v1/shares/invites/${inviteId}`, {
+        method: "PATCH"
+      })
     }
   };
 }
-
-// src/hooks/index.ts
-import { useQuery } from "@tanstack/react-query";
 var queryKeys = {
   visits: ["visits"],
   visit: (id) => ["visits", id],
@@ -378,9 +399,138 @@ function createApiHooks(api) {
     useUserProfile
   };
 }
-export {
-  createApiClient,
-  createApiHooks,
-  isApiError,
-  queryKeys
-};
+var firestoreModule = null;
+function configureFirestoreRealtime(module) {
+  firestoreModule = module;
+}
+function requireFirestoreModule() {
+  if (!firestoreModule) {
+    throw new Error(
+      "[Realtime] Firestore module not configured. Call configureFirestoreRealtime() before using realtime helpers."
+    );
+  }
+  return firestoreModule;
+}
+function convertValue(value) {
+  if (value === null || value === void 0) return value;
+  const module = firestoreModule;
+  if (module && value instanceof module.Timestamp) {
+    return value.toDate().toISOString();
+  }
+  if (typeof value === "object" && value !== null && "toDate" in value) {
+    try {
+      return value.toDate().toISOString();
+    } catch {
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => convertValue(item));
+  }
+  if (typeof value === "object" && value !== null) {
+    const convertedEntries = Object.entries(value).map(
+      ([key, val]) => [key, convertValue(val)]
+    );
+    return Object.fromEntries(convertedEntries);
+  }
+  return value;
+}
+function serializeDoc(snapshot) {
+  const data = snapshot.data() ?? {};
+  return {
+    id: snapshot.id,
+    ...convertValue(data)
+  };
+}
+function sortByTimestampDescending(items) {
+  return [...items].sort((a, b) => {
+    const aTime = a.updatedAt && Date.parse(a.updatedAt) || a.createdAt && Date.parse(a.createdAt) || 0;
+    const bTime = b.updatedAt && Date.parse(b.updatedAt) || b.createdAt && Date.parse(b.createdAt) || 0;
+    return bTime - aTime;
+  });
+}
+function useFirestoreCollection(queryRef, key, options) {
+  const { onSnapshot, getDocs } = requireFirestoreModule();
+  const queryClient = useQueryClient();
+  const {
+    transform,
+    enabled = true,
+    staleTimeMs = 3e4,
+    onError,
+    queryOptions
+  } = options ?? {};
+  const combinedEnabled = typeof queryOptions?.enabled === "boolean" ? enabled && queryOptions.enabled : enabled;
+  const mapDoc = useCallback((snapshot) => {
+    return serializeDoc(snapshot);
+  }, []);
+  useEffect(() => {
+    if (!queryRef || !combinedEnabled) return;
+    const unsubscribe = onSnapshot(
+      queryRef,
+      (snapshot) => {
+        const docs = snapshot.docs.map(mapDoc);
+        const data = transform ? transform(docs) : docs;
+        queryClient.setQueryData(key, data);
+      },
+      (error) => {
+        console.error("[Firestore] Snapshot error", error);
+        onError?.(error);
+      }
+    );
+    return () => unsubscribe();
+  }, [combinedEnabled, key, mapDoc, onError, queryClient, queryRef, transform]);
+  return useQuery({
+    queryKey: key,
+    staleTime: staleTimeMs,
+    ...queryOptions ?? {},
+    enabled: combinedEnabled,
+    queryFn: async () => {
+      if (!queryRef) return [];
+      const snapshot = await getDocs(queryRef);
+      const docs = snapshot.docs.map(mapDoc);
+      return transform ? transform(docs) : docs;
+    }
+  });
+}
+function useFirestoreDocument(docRef, key, options) {
+  const { onSnapshot, getDoc } = requireFirestoreModule();
+  const queryClient = useQueryClient();
+  const { enabled = true, staleTimeMs = 15e3, onError, queryOptions } = options ?? {};
+  const combinedEnabled = typeof queryOptions?.enabled === "boolean" ? enabled && queryOptions.enabled : enabled;
+  const mapDoc = useCallback((snapshot) => {
+    return serializeDoc(snapshot);
+  }, []);
+  useEffect(() => {
+    if (!docRef || !combinedEnabled) return;
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          queryClient.setQueryData(key, null);
+          return;
+        }
+        const data = mapDoc(snapshot);
+        queryClient.setQueryData(key, data);
+      },
+      (error) => {
+        console.error("[Firestore] Snapshot error", error);
+        onError?.(error);
+      }
+    );
+    return () => unsubscribe();
+  }, [combinedEnabled, docRef, key, mapDoc, onError, queryClient]);
+  return useQuery({
+    queryKey: key,
+    staleTime: staleTimeMs,
+    refetchOnReconnect: true,
+    ...queryOptions ?? {},
+    enabled: combinedEnabled,
+    queryFn: async () => {
+      if (!docRef) return null;
+      const snapshot = await getDoc(docRef);
+      if (!snapshot.exists()) return null;
+      return mapDoc(snapshot);
+    }
+  });
+}
+
+export { configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
