@@ -100,8 +100,9 @@ export default function ProfilePage() {
 
   const computedAge = useMemo(() => {
     if (!personalInfo.dateOfBirth) return null;
-    const dob = new Date(personalInfo.dateOfBirth);
-    if (Number.isNaN(dob.getTime())) return null;
+    const parsed = Date.parse(personalInfo.dateOfBirth);
+    if (Number.isNaN(parsed)) return null;
+    const dob = new Date(parsed);
     const age = differenceInYears(new Date(), dob);
     return Number.isFinite(age) && age >= 0 ? age : null;
   }, [personalInfo.dateOfBirth]);
