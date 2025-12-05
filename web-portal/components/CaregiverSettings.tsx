@@ -161,9 +161,21 @@ export function CaregiverSettings() {
                         </p>
                       </div>
                     </div>
-                    <Badge size="sm" tone="warning" variant="soft">
-                      Pending
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge size="sm" tone="warning" variant="soft">
+                        Pending
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => revokeMutation.mutate(share.id)}
+                        disabled={revokeMutation.isPending}
+                        className="text-error hover:text-error focus-visible:ring-error"
+                      >
+                        <Ban className="h-4 w-4" />
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 ))}
                 {pendingInvites.map((invite: ShareInvite) => (
