@@ -58,10 +58,23 @@ app.use(cors({
     // Check if origin is in whitelist
     if (allAllowedOrigins.includes(origin)) {
       callback(null, true);
-    } else {
-      functions.logger.warn(`[cors] Rejected request from unauthorized origin: ${origin}`);
-      callback(new Error(`Origin ${origin} not allowed by CORS policy`));
+      return;
     }
+
+    // Allow Vercel preview deployments (ends with .vercel.app)
+    if (origin.endsWith('.vercel.app')) {
+      callback(null, true);
+      return;
+    }
+
+    // Allow production domain if configured
+    if (origin === 'https://portal.lumimd.app' || origin === 'https://lumimd.app') {
+      callback(null, true);
+      return;
+    }
+
+    functions.logger.warn(`[cors] Rejected request from unauthorized origin: ${origin}`);
+    callback(new Error(`Origin ${origin} not allowed by CORS policy`));
   },
   credentials: true, // Allow cookies and authentication headers
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
