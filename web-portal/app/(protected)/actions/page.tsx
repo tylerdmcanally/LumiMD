@@ -47,7 +47,8 @@ import { downloadActionAsICS } from '@/lib/calendar';
 
 export default function ActionsPage() {
   const user = useCurrentUser();
-  const { data: actions = [], isLoading } = useActions(user?.uid);
+  // Don't pass userId - let useActions use ViewingContext
+  const { data: actions = [], isLoading } = useActions();
   const [showCompleted, setShowCompleted] = React.useState(false);
   const queryClient = useQueryClient();
   const [updatingActionId, setUpdatingActionId] = React.useState<string | null>(null);

@@ -71,7 +71,8 @@ export default function VisitsPage() {
   const user = useCurrentUser();
   const [filters, setFilters] = React.useState<VisitFilters>(DEFAULT_FILTERS);
 
-  const { data: visits = [], isLoading } = useVisits(user?.uid);
+  // Don't pass userId - let useVisits use ViewingContext
+  const { data: visits = [], isLoading } = useVisits();
 
   // Extract unique providers and statuses for filters
   const { providers, specialties, locations, folders } = React.useMemo(() => {

@@ -8,28 +8,22 @@ import { Stethoscope, Pill, ClipboardCheck, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
+import { useViewing } from '@/lib/contexts/ViewingContext';
 import { useActions, useMedications, useUserProfile, useVisits } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
   const user = useCurrentUser();
-  const userId = user?.uid ?? null;
+  const { viewingUserId, isViewingShared } = useViewing();
 
-  const { data: profile, isLoading: profileLoading } = useUserProfile(userId, {
-    enabled: Boolean(userId),
-  });
-  const { data: visits = [], isLoading: visitsLoading } = useVisits(userId, {
-    enabled: Boolean(userId),
-  });
-  const { data: actions = [], isLoading: actionsLoading } = useActions(userId, {
-    enabled: Boolean(userId),
-  });
-  const { data: medications = [], isLoading: medicationsLoading } = useMedications(
-    userId,
-    {
-      enabled: Boolean(userId),
-    }
-  );
+  // For current user's name in the greeting (always show the logged-in user)
+  const { data: currentUserProfile, isLoading: profileLoading } = useUserProfile(user?.uid ?? null);
+  
+  // For viewed user's data (respects ViewingContext - could be self or shared)
+  const { data: viewedProfile } = useUserProfile();
+  const { data: visits = [], isLoading: visitsLoading } = useVisits();
+  const { data: actions = [], isLoading: actionsLoading } = useActions();
+  const { data: medications = [], isLoading: medicationsLoading } = useMedications();
 
   const pendingActions = React.useMemo(
     () => actions.filter((action: any) => !action.completed),
@@ -61,10 +55,11 @@ export default function DashboardPage() {
     return 'Good evening';
   }, []);
 
+  // Display name for greeting (always the logged-in user, not the viewed user)
   const displayName = React.useMemo(() => {
     const profileName =
-      (typeof profile?.preferredName === 'string' && profile.preferredName.trim()) ||
-      (typeof profile?.firstName === 'string' && profile.firstName.trim());
+      (typeof currentUserProfile?.preferredName === 'string' && currentUserProfile.preferredName.trim()) ||
+      (typeof currentUserProfile?.firstName === 'string' && currentUserProfile.firstName.trim());
     if (profileName && profileName.length > 0) {
       return profileName;
     }
@@ -79,7 +74,7 @@ export default function DashboardPage() {
     }
 
     return 'there';
-  }, [profile?.preferredName, profile?.firstName, user?.displayName, user?.email, profileLoading]);
+  }, [currentUserProfile?.preferredName, currentUserProfile?.firstName, user?.displayName, user?.email, profileLoading]);
 
   return (
     <PageContainer maxWidth="2xl">

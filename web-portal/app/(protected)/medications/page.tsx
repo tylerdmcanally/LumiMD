@@ -34,7 +34,8 @@ export default function MedicationsPage() {
   const [viewMedication, setViewMedication] = React.useState<any | null>(null);
   const [medicationWarnings, setMedicationWarnings] = React.useState<any | null>(null);
 
-  const { data: medications = [], isLoading } = useMedications(user?.uid);
+  // Don't pass userId - let useMedications use ViewingContext
+  const { data: medications = [], isLoading } = useMedications();
 
   const createMedication = useMutation({
     mutationFn: async (values: {
