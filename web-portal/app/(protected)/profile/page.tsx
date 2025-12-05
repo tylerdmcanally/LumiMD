@@ -40,14 +40,14 @@ export default function ProfilePage() {
     emergencyContactPhone: '',
   });
 
-  const allergies = useMemo(
-    () => (profile?.allergies && Array.isArray(profile.allergies) ? profile.allergies : []),
+  const allergies = useMemo<string[]>(
+    () => (profile?.allergies && Array.isArray(profile.allergies) ? profile.allergies as string[] : []),
     [profile?.allergies],
   );
-  const medicalHistory = useMemo(
+  const medicalHistory = useMemo<string[]>(
     () =>
       profile?.medicalHistory && Array.isArray(profile.medicalHistory)
-        ? profile.medicalHistory
+        ? profile.medicalHistory as string[]
         : [],
     [profile?.medicalHistory],
   );
