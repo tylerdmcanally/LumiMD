@@ -71,6 +71,7 @@ function sortByTimestampDescending<
     return bTime - aTime;
   });
 }
+}
 
 function useFirestoreCollection<T extends { id: string }>(
   queryRef: Firestore.Query<Firestore.DocumentData> | null,
@@ -486,3 +487,4 @@ export function useHasPatientData(userId?: string | null) {
       return !medsSnap.empty;
     },
   });
+}
