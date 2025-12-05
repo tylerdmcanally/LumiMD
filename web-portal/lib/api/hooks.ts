@@ -12,7 +12,7 @@ import * as Firestore from 'firebase/firestore';
 import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { db } from '@/lib/firebase';
-import { useViewing } from '@/lib/contexts/ViewingContext';
+import { useViewingSafe } from '@/lib/contexts/ViewingContext';
 
 // =============================================================================
 // Local Firestore helpers (mirrors @lumimd/sdk realtime exports)
@@ -304,8 +304,8 @@ export function useVisits(
   userId?: string | null,
   options?: QueryEnabledOptions<Visit[]>,
 ) {
-  const { viewingUserId } = useViewing();
-  const effectiveUserId = userId ?? viewingUserId;
+  const viewing = useViewingSafe();
+  const effectiveUserId = userId ?? viewing?.viewingUserId ?? null;
   const key = useMemo(() => queryKeys.visits(effectiveUserId), [effectiveUserId]);
   const enabled = Boolean(effectiveUserId);
   const handleSnapshotError = useRealtimeErrorHandler();
@@ -351,8 +351,8 @@ export function useMedications(
   userId?: string | null,
   options?: QueryEnabledOptions<Medication[]>,
 ) {
-  const { viewingUserId } = useViewing();
-  const effectiveUserId = userId ?? viewingUserId;
+  const viewing = useViewingSafe();
+  const effectiveUserId = userId ?? viewing?.viewingUserId ?? null;
   const key = useMemo(() => queryKeys.medications(effectiveUserId), [effectiveUserId]);
   const enabled = Boolean(effectiveUserId);
   const handleSnapshotError = useRealtimeErrorHandler();
@@ -398,8 +398,8 @@ export function useActions(
   userId?: string | null,
   options?: QueryEnabledOptions<ActionItem[]>,
 ) {
-  const { viewingUserId } = useViewing();
-  const effectiveUserId = userId ?? viewingUserId;
+  const viewing = useViewingSafe();
+  const effectiveUserId = userId ?? viewing?.viewingUserId ?? null;
   const key = useMemo(() => queryKeys.actions(effectiveUserId), [effectiveUserId]);
   const enabled = Boolean(effectiveUserId);
   const handleSnapshotError = useRealtimeErrorHandler();
@@ -438,8 +438,10 @@ export function useUserProfile(
   userId?: string | null,
   options?: QueryEnabledOptions<UserProfile | null>,
 ) {
-  const { viewingUserId } = useViewing();
-  const effectiveUserId = userId ?? viewingUserId;
+  // Only call useViewing if no userId is explicitly provided
+  // This prevents hook order issues in components that pass userId explicitly
+  const viewing = useViewingSafe();
+  const effectiveUserId = userId ?? viewing?.viewingUserId ?? null;
   const key = useMemo(() => queryKeys.userProfile(effectiveUserId), [effectiveUserId]);
   const enabled = Boolean(effectiveUserId);
   const handleSnapshotError = useRealtimeErrorHandler();

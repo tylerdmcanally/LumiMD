@@ -53,3 +53,12 @@ export function useViewing() {
   return context;
 }
 
+/**
+ * Safe version of useViewing that returns null instead of throwing
+ * when used outside a ViewingProvider. Useful for hooks that need
+ * to work both inside and outside the provider context.
+ */
+export function useViewingSafe() {
+  return React.useContext(ViewingContext) ?? null;
+}
+
