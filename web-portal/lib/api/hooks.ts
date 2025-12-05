@@ -11,14 +11,187 @@ import {
 import { QueryKey, UseQueryOptions } from '@tanstack/react-query';
 
 import { db } from '@/lib/firebase';
-import {
-  convertValue,
-  serializeDoc,
-  sortByTimestampDescending,
-  useFirestoreCollection,
-  useFirestoreDocument,
-} from '@lumimd/sdk';
 import { useViewing } from '@/lib/contexts/ViewingContext';
+
+// =============================================================================
+// Local Firestore helpers (mirrors @lumimd/sdk realtime exports)
+// =============================================================================
+function convertValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Firestore.Timestamp) {
+    return value.toDate().toISOString();
+  }
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toDate' in (value as Record<string, unknown>)
+  ) {
+    try {
+      return (value as Firestore.Timestamp).toDate().toISOString();
+    } catch {
+      // ignore conversion errors and fall back to original value
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => convertValue(item));
+  }
+  if (typeof value === 'object' && value !== null) {
+    const convertedEntries = Object.entries(value as Record<string, unknown>).map(
+      ([key, val]) => [key, convertValue(val)],
+    );
+    return Object.fromEntries(convertedEntries);
+  }
+  return value;
+}
+
+function serializeDoc<T extends { id: string }>(
+  snapshot: Firestore.QueryDocumentSnapshot<Firestore.DocumentData>,
+): T {
+  const data = snapshot.data() ?? {};
+  return {
+    id: snapshot.id,
+    ...(convertValue(data) as Record<string, unknown>),
+  } as T;
+}
+
+function sortByTimestampDescending<
+  T extends { updatedAt?: string | null; createdAt?: string | null },
+>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const aTime =
+      (a.updatedAt && Date.parse(a.updatedAt)) ||
+      (a.createdAt && Date.parse(a.createdAt)) ||
+      0;
+    const bTime =
+      (b.updatedAt && Date.parse(b.updatedAt)) ||
+      (b.createdAt && Date.parse(b.createdAt)) ||
+      0;
+    return bTime - aTime;
+  });
+}
+
+function useFirestoreCollection<T extends { id: string }>(
+  queryRef: Firestore.Query<Firestore.DocumentData> | null,
+  key: QueryKey,
+  options?: {
+    transform?: (items: T[]) => T[];
+    enabled?: boolean;
+    staleTimeMs?: number;
+    onError?: (error: Firestore.FirestoreError) => void;
+    queryOptions?: Omit<UseQueryOptions<T[], Error, T[], QueryKey>, 'queryKey' | 'queryFn'>;
+  },
+) {
+  const queryClient = useQueryClient();
+  const {
+    transform,
+    enabled = true,
+    staleTimeMs = 30_000,
+    onError,
+    queryOptions,
+  } = options ?? {};
+  const combinedEnabled =
+    typeof queryOptions?.enabled === 'boolean' ? enabled && queryOptions.enabled : enabled;
+
+  const mapDoc = useCallback(
+    (snapshot: Firestore.QueryDocumentSnapshot<Firestore.DocumentData>) => {
+      return serializeDoc<T>(snapshot);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!queryRef || !combinedEnabled) return;
+
+    const unsubscribe = Firestore.onSnapshot(
+      queryRef,
+      (snapshot) => {
+        const docs = snapshot.docs.map(mapDoc);
+        const data = transform ? transform(docs) : docs;
+        queryClient.setQueryData(key, data);
+      },
+      (error) => {
+        console.error('[Firestore] Snapshot error', error);
+        onError?.(error);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [combinedEnabled, key, mapDoc, onError, queryClient, queryRef, transform]);
+
+  return useQuery<T[]>({
+    queryKey: key,
+    staleTime: staleTimeMs,
+    ...(queryOptions ?? {}),
+    enabled: combinedEnabled,
+    queryFn: async () => {
+      if (!queryRef) return [] as T[];
+      const snapshot = await Firestore.getDocs(queryRef);
+      const docs = snapshot.docs.map(mapDoc);
+      return transform ? transform(docs) : docs;
+    },
+  });
+}
+
+function useFirestoreDocument<T extends { id: string }>(
+  docRef: Firestore.DocumentReference<Firestore.DocumentData> | null,
+  key: QueryKey,
+  options?: {
+    enabled?: boolean;
+    staleTimeMs?: number;
+    onError?: (error: Firestore.FirestoreError) => void;
+    queryOptions?: Omit<UseQueryOptions<T | null, Error, T | null, QueryKey>, 'queryKey' | 'queryFn'>;
+  },
+) {
+  const queryClient = useQueryClient();
+  const { enabled = true, staleTimeMs = 15_000, onError, queryOptions } = options ?? {};
+  const combinedEnabled =
+    typeof queryOptions?.enabled === 'boolean' ? enabled && queryOptions.enabled : enabled;
+
+  const mapDoc = useCallback(
+    (snapshot: Firestore.QueryDocumentSnapshot<Firestore.DocumentData>) => {
+      return serializeDoc<T>(snapshot);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!docRef || !combinedEnabled) return;
+
+    const unsubscribe = Firestore.onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          queryClient.setQueryData(key, null);
+          return;
+        }
+        const data = mapDoc(snapshot as Firestore.QueryDocumentSnapshot<Firestore.DocumentData>);
+        queryClient.setQueryData(key, data);
+      },
+      (error) => {
+        console.error('[Firestore] Snapshot error', error);
+        onError?.(error);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [combinedEnabled, docRef, key, mapDoc, onError, queryClient]);
+
+  return useQuery<T | null>({
+    queryKey: key,
+    staleTime: staleTimeMs,
+    refetchOnReconnect: true,
+    ...(queryOptions ?? {}),
+    enabled: combinedEnabled,
+    queryFn: async () => {
+      if (!docRef) return null;
+      const snapshot = await Firestore.getDoc(docRef);
+      if (!snapshot.exists()) return null;
+      return mapDoc(snapshot as Firestore.QueryDocumentSnapshot<Firestore.DocumentData>);
+    },
+  });
+}
+
+// =============================================================================
 
 export type Visit = {
   id: string;
