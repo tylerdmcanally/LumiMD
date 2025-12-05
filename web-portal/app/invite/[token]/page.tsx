@@ -39,8 +39,10 @@ export default function InviteAcceptPage() {
   });
 
   // Auto-accept if user is logged in
+  const hasAttemptedAccept = React.useRef(false);
   React.useEffect(() => {
-    if (user && token && !acceptMutation.isPending && !acceptMutation.isSuccess) {
+    if (user && token && !hasAttemptedAccept.current && !acceptMutation.isPending) {
+      hasAttemptedAccept.current = true;
       acceptMutation.mutate(token);
     }
   }, [user, token]);

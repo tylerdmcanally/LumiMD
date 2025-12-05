@@ -36,7 +36,9 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
       const share = await api.shares.create(data);
       
       // Then send the email via Vercel API route
-      const inviteLink = `${window.location.origin}/invite/${share.id}`;
+      // Use production domain for invite links to avoid confusion with preview URLs
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://portal.lumimd.app';
+      const inviteLink = `${appUrl}/invite/${share.id}`;
       
       const ownerProfile = await api.user.getProfile();
       const ownerName = ownerProfile.preferredName || ownerProfile.firstName || 'A LumiMD user';
