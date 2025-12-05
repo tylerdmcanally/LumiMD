@@ -54,9 +54,9 @@ export default function ProfilePage() {
   const folders = useMemo(
     () =>
       profile?.folders && Array.isArray(profile.folders)
-        ? profile.folders
-            .map((folder) => (typeof folder === 'string' ? folder.trim() : ''))
-            .filter((folder) => folder.length > 0)
+        ? (profile.folders as unknown[])
+            .map((folder: unknown) => (typeof folder === 'string' ? folder.trim() : ''))
+            .filter((folder: string) => folder.length > 0)
         : [],
     [profile?.folders],
   );
