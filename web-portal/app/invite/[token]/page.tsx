@@ -48,7 +48,7 @@ export default function InviteAcceptPage() {
   // If user is logged in, show accepting state
   if (user && acceptMutation.isPending) {
     return (
-      <PageContainer maxWidth="md">
+      <PageContainer maxWidth="lg">
         <Card variant="elevated" padding="lg" className="text-center py-12">
           <Loader2 className="h-12 w-12 animate-spin text-brand-primary mx-auto mb-4" />
           <h1 className="text-2xl font-semibold text-text-primary mb-2">
@@ -63,7 +63,7 @@ export default function InviteAcceptPage() {
   // If successfully accepted
   if (acceptMutation.isSuccess) {
     return (
-      <PageContainer maxWidth="md">
+      <PageContainer maxWidth="lg">
         <Card variant="elevated" padding="lg" className="text-center py-12">
           <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-4" />
           <h1 className="text-2xl font-semibold text-text-primary mb-2">
@@ -129,7 +129,7 @@ export default function InviteAcceptPage() {
 
   // User not logged in - show sign in/sign up options
   return (
-    <PageContainer maxWidth="md">
+    <PageContainer maxWidth="lg">
       <Card variant="elevated" padding="lg" className="text-center py-12">
         <h1 className="text-2xl font-semibold text-text-primary mb-2">
           You've Been Invited!
