@@ -18,10 +18,15 @@ export function ReadOnlyBanner() {
     return null;
   }
 
-  const displayName =
-    viewingProfile?.preferredName ||
-    viewingProfile?.firstName ||
-    'this person';
+  const displayName = React.useMemo(() => {
+    const preferred = typeof viewingProfile?.preferredName === 'string' 
+      ? viewingProfile.preferredName.trim() 
+      : '';
+    const first = typeof viewingProfile?.firstName === 'string' 
+      ? viewingProfile.firstName.trim() 
+      : '';
+    return preferred || first || 'this person';
+  }, [viewingProfile?.preferredName, viewingProfile?.firstName]);
 
   return (
     <div
