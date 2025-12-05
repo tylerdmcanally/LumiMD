@@ -21,7 +21,7 @@ import { uploadAudioFile, UploadProgress } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { activateKeepAwake, deactivateKeepAwake } from 'expo-keep-awake';
+import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
@@ -246,31 +246,6 @@ export default function RecordVisitScreen() {
     );
   };
 
-  // Prevent auto-sleep while recording
-  useEffect(() => {
-    const manageKeepAwake = () => {
-      try {
-        if (isRecording) {
-          activateKeepAwake('visit-recording');
-        } else {
-          deactivateKeepAwake('visit-recording');
-        }
-      } catch (error) {
-        console.warn('[RecordVisit] Failed to toggle keep-awake state:', error);
-      }
-    };
-
-    manageKeepAwake();
-
-    return () => {
-      try {
-        deactivateKeepAwake('visit-recording');
-      } catch {
-        // Swallow errors on cleanup
-      }
-    };
-  }, [isRecording]);
-
   // Warn before reaching the recording cap
   useEffect(() => {
     if (
@@ -445,6 +420,7 @@ export default function RecordVisitScreen() {
           </Pressable>
         )}
       </SafeAreaView>
+      {isRecording && <KeepDeviceAwake tag="visit-recording" />}
     </ErrorBoundary>
   );
 }

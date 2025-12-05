@@ -1,19 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollView, View, StyleSheet, Text, ActivityIndicator, Pressable } from 'react-native';
+import { ScrollView, View, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from '../components/ui';
 import { HeroBanner } from '../components/HeroBanner';
 import { WebPortalBanner } from '../components/WebPortalBanner';
 import { StartVisitCTA } from '../components/StartVisitCTA';
 import { GlanceableCard } from '../components/GlanceableCard';
 import { useAuth } from '../contexts/AuthContext';
-import { usePendingActions, useActiveMedications, useVisits, useUserProfile } from '../lib/api/hooks';
+import {
+  useRealtimePendingActions,
+  useRealtimeActiveMedications,
+  useRealtimeVisits,
+  useUserProfile,
+} from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { openWebDashboard } from '../lib/linking';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
 
@@ -34,54 +36,19 @@ export default function HomeScreen() {
     data: actions,
     isLoading: actionsLoading,
     error: actionsError,
-    refetch: refetchActions,
-  } = usePendingActions({
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnReconnect: true,
-    refetchInterval: 10000, // Poll every 10 seconds
-  });
+  } = useRealtimePendingActions(user?.uid);
+
   const {
     data: visits,
     isLoading: visitsLoading,
     error: visitsError,
-    refetch: refetchVisits,
-  } = useVisits({
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
-    refetchInterval: (data) => {
-      if (!Array.isArray(data)) return false;
-      return data.some((visit: any) =>
-        ['pending', 'processing', 'transcribing', 'summarizing'].includes(
-          visit.processingStatus,
-        ),
-      )
-        ? 5000
-        : false;
-    },
-  });
+  } = useRealtimeVisits(user?.uid);
+
   const {
     data: medications,
     isLoading: medsLoading,
     error: medsError,
-    refetch: refetchMedications,
-  } = useActiveMedications({
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-    refetchInterval: 15000, // Poll every 15 seconds
-  });
-  useFocusEffect(
-    useCallback(() => {
-      if (!authLoading && isAuthenticated) {
-        refetchActions();
-        refetchVisits();
-        refetchMedications();
-      }
-    }, [authLoading, isAuthenticated, refetchActions, refetchVisits, refetchMedications]),
-  );
+  } = useRealtimeActiveMedications(user?.uid);
 
   const [lastViewedCompletedVisitId, setLastViewedCompletedVisitIdState] = useState<string | null>(null);
   const latestCompletedVisitIdRef = useRef<string | null>(null);
@@ -311,10 +278,6 @@ export default function HomeScreen() {
             </Text>
           )}
 
-          <Pressable style={styles.portalButton} onPress={openWebDashboard}>
-            <Ionicons name="open-outline" size={18} color={Colors.primary} />
-            <Text style={styles.portalButtonText}>Go to web portal</Text>
-          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </ErrorBoundary>
@@ -329,29 +292,6 @@ const styles = StyleSheet.create({
   ctaSection: {
     marginTop: spacing(5),
     marginBottom: spacing(2),
-  },
-  portalButton: {
-    marginTop: spacing(3),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing(1.5),
-    paddingVertical: spacing(3),
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.stroke,
-    backgroundColor: Colors.surface,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  portalButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
   },
   section: {
     marginTop: spacing(5),

@@ -9,7 +9,7 @@
 
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
-import { MedicationChangeEntry } from './openai';
+import type { MedicationChangeEntry } from './openai';
 
 const db = () => admin.firestore();
 
@@ -48,7 +48,7 @@ type CanonicalMedicationEntry = {
  * Canonical medication data covering common brand & generic variants
  * across major therapeutic classes.
  */
-const CANONICAL_MEDICATIONS: Record<string, CanonicalMedicationEntry> = {
+export const CANONICAL_MEDICATIONS: Record<string, CanonicalMedicationEntry> = {
   // Statins
   atorvastatin: {
     classes: ['statin', 'cholesterol-lowering', 'cardiovascular'],

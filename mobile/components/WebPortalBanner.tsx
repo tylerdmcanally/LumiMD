@@ -46,7 +46,7 @@ export function WebPortalBanner() {
             pressed && styles.needHelpButtonPressed,
           ]}
         >
-          <Ionicons name="help-circle-outline" size={18} color={Colors.accent} />
+          <Ionicons name="help-circle-outline" size={16} color={Colors.accent} />
           <Text style={styles.needHelpText}>Need help?</Text>
         </Pressable>
       </View>
@@ -115,26 +115,28 @@ function FeatureItem({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   collapsedContainer: {
-    alignItems: 'flex-end',
-    marginBottom: spacing(3),
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: spacing(2),
   },
   needHelpButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    alignSelf: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(10, 153, 164, 0.1)',
+    backgroundColor: 'rgba(10, 153, 164, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(10, 153, 164, 0.2)',
+    borderColor: 'rgba(10, 153, 164, 0.15)',
   },
   needHelpButtonPressed: {
     opacity: 0.7,
   },
   needHelpText: {
     color: Colors.accent,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   banner: {

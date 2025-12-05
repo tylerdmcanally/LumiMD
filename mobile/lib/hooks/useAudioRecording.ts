@@ -41,35 +41,27 @@ export function useAudioRecording(): UseAudioRecordingResult {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [autoStopReason, setAutoStopReason] = useState<AutoStopReason | null>(null);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingStateRef = useRef<RecordingState>('idle');
   const activeSegmentStartRef = useRef<number | null>(null);
   const accumulatedDurationRef = useRef(0);
 
-  const getFallbackDuration = () =>
-    accumulatedDurationRef.current +
-    (activeSegmentStartRef.current ? Date.now() - activeSegmentStartRef.current : 0);
-
-  const syncDuration = (status?: Audio.RecordingStatus) => {
-    const fallbackDuration = getFallbackDuration();
-    let nextDuration = fallbackDuration;
-
-    if (status && typeof status.durationMillis === 'number') {
-      const statusMs = status.durationMillis;
-
-      if (
-        recordingStateRef.current === 'recording' &&
-        activeSegmentStartRef.current &&
-        statusMs >= accumulatedDurationRef.current
-      ) {
-        const currentSegment = statusMs - accumulatedDurationRef.current;
-        activeSegmentStartRef.current = Date.now() - currentSegment;
-      }
-
-      if (statusMs > fallbackDuration) {
-        nextDuration = statusMs;
-      }
+  const getCurrentDuration = () => {
+    if (activeSegmentStartRef.current == null) {
+      return accumulatedDurationRef.current;
     }
+    return accumulatedDurationRef.current + (Date.now() - activeSegmentStartRef.current);
+  };
 
+  const commitActiveSegment = () => {
+    if (activeSegmentStartRef.current != null) {
+      accumulatedDurationRef.current += Date.now() - activeSegmentStartRef.current;
+      activeSegmentStartRef.current = null;
+    }
+  };
+
+  const updateDisplayedDuration = () => {
+    const nextDuration = getCurrentDuration();
     setDuration(nextDuration);
     return nextDuration;
   };
@@ -87,19 +79,8 @@ export function useAudioRecording(): UseAudioRecordingResult {
   ) => {
     clearDurationTimer();
 
-    try {
-      const status = await activeRecording.getStatusAsync();
-      if (activeSegmentStartRef.current) {
-        accumulatedDurationRef.current += Date.now() - activeSegmentStartRef.current;
-        activeSegmentStartRef.current = null;
-      }
-      const fallbackDuration = accumulatedDurationRef.current;
-      const statusDuration =
-        typeof status.durationMillis === 'number' ? status.durationMillis : fallbackDuration;
-      setDuration(statusDuration);
-    } catch (statusError) {
-      console.warn('[Recording] Unable to read recording status during finalize:', statusError);
-    }
+    commitActiveSegment();
+    setDuration(accumulatedDurationRef.current);
 
     try {
       activeRecording.setOnRecordingStatusUpdate(null);
@@ -115,6 +96,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
     const recordingUri = activeRecording.getURI() ?? null;
     setUri(recordingUri);
     setRecording(null);
+    recordingRef.current = null;
     recordingStateRef.current = 'stopped';
     accumulatedDurationRef.current = 0;
     activeSegmentStartRef.current = null;
@@ -134,8 +116,6 @@ export function useAudioRecording(): UseAudioRecordingResult {
   const registerRecordingStatusUpdates = (rec: Audio.Recording) => {
     rec.setProgressUpdateInterval(500);
     rec.setOnRecordingStatusUpdate((status) => {
-      syncDuration(status);
-
       if (recordingStateRef.current !== 'recording') {
         return;
       }
@@ -162,11 +142,25 @@ export function useAudioRecording(): UseAudioRecordingResult {
     rec.setOnRecordingStatusUpdate(null);
   };
 
+  const cleanupDanglingRecording = async () => {
+    if (!recordingRef.current) return;
+
+    try {
+      recordingRef.current.setOnRecordingStatusUpdate(null);
+      await recordingRef.current.stopAndUnloadAsync();
+    } catch (cleanupError) {
+      console.warn('[Recording] Failed to cleanup dangling recording before restart:', cleanupError);
+    } finally {
+      recordingRef.current = null;
+      setRecording(null);
+    }
+  };
+
   const startDurationTimer = (activeRecording: Audio.Recording) => {
     clearDurationTimer();
 
     durationIntervalRef.current = setInterval(() => {
-      const currentDuration = syncDuration();
+      const currentDuration = updateDisplayedDuration();
 
       if (
         currentDuration >= MAX_RECORDING_MS &&
@@ -216,6 +210,15 @@ export function useAudioRecording(): UseAudioRecordingResult {
   // Start recording
   const startRecording = async () => {
     try {
+      if (recordingStateRef.current === 'recording' || recordingStateRef.current === 'paused') {
+        console.warn('[Recording] Attempted to start while a session is already active. Ignoring request.');
+        return;
+      }
+
+      if (recordingRef.current) {
+        await cleanupDanglingRecording();
+      }
+
       // Check permission
       if (!hasPermission) {
         const granted = await requestPermission();
@@ -241,6 +244,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       const { recording: newRecording } = await Audio.Recording.createAsync(recordingOptions);
 
       setRecording(newRecording);
+      recordingRef.current = newRecording;
       recordingStateRef.current = 'recording';
       setRecordingState('recording');
       setDuration(0);
@@ -270,20 +274,9 @@ export function useAudioRecording(): UseAudioRecordingResult {
       setRecordingState('paused');
       
       clearDurationTimer();
-      if (activeSegmentStartRef.current) {
-        accumulatedDurationRef.current += Date.now() - activeSegmentStartRef.current;
-        activeSegmentStartRef.current = null;
-      }
+      commitActiveSegment();
+      setDuration(accumulatedDurationRef.current);
 
-      try {
-        const status = await recording.getStatusAsync();
-        if (typeof status.durationMillis === 'number') {
-          setDuration(status.durationMillis);
-        }
-      } catch (error) {
-        console.warn('[Recording] Failed to read status on pause:', error);
-      }
-      
       console.log('[Recording] Paused');
     } catch (error) {
       console.error('[Recording] Failed to pause:', error);
@@ -305,6 +298,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       
       // Restart duration tracker
       startDurationTimer(recording);
+      updateDisplayedDuration();
       
       console.log('[Recording] Resumed');
     } catch (error) {
@@ -337,6 +331,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       unregisterRecordingStatusUpdates(recording);
     }
     setRecording(null);
+    recordingRef.current = null;
     recordingStateRef.current = 'idle';
     setRecordingState('idle');
     setDuration(0);
@@ -349,8 +344,8 @@ export function useAudioRecording(): UseAudioRecordingResult {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (recording) {
-        recording.stopAndUnloadAsync().catch((error) => {
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(() => {
           // Ignore errors if already unloaded
           console.log('[Recording] Cleanup - recording already unloaded');
         });
@@ -358,7 +353,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       clearDurationTimer();
       activeSegmentStartRef.current = null;
     };
-  }, [recording]);
+  }, []);
 
   return {
     recordingState,

@@ -35,6 +35,7 @@
 **Frontend:**
 - React Native (TypeScript), **Expo**, React Navigation (tabs/stack), **NativeWind (Tailwind RN)** for styling, `expo-linear-gradient`, `@expo/vector-icons`, **expo-av** for audio capture.
 - Data: **TanStack Query** for server-state, **Zod** for runtime validation.
+- Realtime data: shared Firestore helpers live in `packages/sdk/src/realtime/firestore.ts`. Mobile hooks in `mobile/lib/api/hooks.ts` expose `useRealtimeVisits`, `useRealtimePendingActions`, and `useRealtimeActiveMedications` so the dashboard (and any new surfaces) react instantly without manual polling.
 - Config: `.env` via expo-constants/Secrets; feature flags.
 
 **Backend:**

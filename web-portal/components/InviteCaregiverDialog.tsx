@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/client';
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 
 interface InviteCaregiverDialogProps {
   open: boolean;
@@ -27,10 +28,50 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
   const [email, setEmail] = React.useState('');
   const [message, setMessage] = React.useState('');
   const queryClient = useQueryClient();
+  const currentUser = useCurrentUser();
 
   const inviteMutation = useMutation({
     mutationFn: async (data: { caregiverEmail: string; message?: string }) => {
-      return api.shares.create(data);
+      // First create the share
+      const share = await api.shares.create(data);
+      
+      // Then send the email via Vercel API route
+      const inviteLink = `${window.location.origin}/invite/${share.id}`;
+      
+      const ownerProfile = await api.user.getProfile();
+      const ownerName = ownerProfile.preferredName || ownerProfile.firstName || 'A LumiMD user';
+      const ownerEmail = currentUser?.email || ownerProfile.email || '';
+      
+      try {
+        const emailResponse = await fetch('/api/send-invite-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ownerName,
+            ownerEmail,
+            inviteeEmail: data.caregiverEmail,
+            inviteLink,
+            message: data.message,
+          }),
+        });
+        
+        if (!emailResponse.ok) {
+          const error = await emailResponse.json();
+          console.error('[InviteCaregiverDialog] Email sending failed:', error);
+          // Share is created, but email failed - show warning but don't fail the whole operation
+          toast.warning('Invitation created, but email could not be sent', {
+            description: 'The share was created successfully, but we encountered an issue sending the email. You may need to resend it.',
+          });
+        }
+      } catch (emailError) {
+        console.error('[InviteCaregiverDialog] Error calling email API:', emailError);
+        // Share is created, but email failed - show warning but don't fail the whole operation
+        toast.warning('Invitation created, but email could not be sent', {
+          description: 'The share was created successfully, but we encountered an issue sending the email. You may need to resend it.',
+        });
+      }
+      
+      return share;
     },
     onSuccess: () => {
       toast.success('Invitation sent!', {

@@ -5,14 +5,10 @@ import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
 import { shareLimiter } from '../middlewares/rateLimit';
-import { getEmailService } from '../services/email';
 
 export const sharesRouter = Router();
 
 const getDb = () => admin.firestore();
-
-// Get app URL from environment or default
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://portal.lumimd.app';
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -177,29 +173,8 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
           updatedAt: now,
         });
 
-      // Send notification email
-      const emailService = getEmailService();
-      const inviteLink = `${APP_URL}/invite/${shareId}`;
-      functions.logger.info(`[shares] Attempting to send invite email to ${data.caregiverEmail}`, {
-        ownerId,
-        caregiverUserId,
-        inviteLink,
-      });
-      const emailResult = await emailService.sendCaregiverInvite({
-        ownerName,
-        ownerEmail,
-        inviteeEmail: data.caregiverEmail,
-        inviteLink,
-        message: data.message,
-      });
-      if (emailResult.error) {
-        functions.logger.error(`[shares] Email sending failed for ${data.caregiverEmail}:`, emailResult.error);
-        // Continue anyway - share is created, user can resend email later
-      } else {
-        functions.logger.info(`[shares] Email sent successfully to ${data.caregiverEmail}`, {
-          emailId: emailResult.id,
-        });
-      }
+      // Email will be sent by frontend via Vercel API route
+      functions.logger.info(`[shares] Created share invitation from ${ownerId} to existing user ${caregiverUserId}. Email should be sent by frontend.`);
 
       const shareDoc = await getDb().collection('shares').doc(shareId).get();
       const share = shareDoc.data()!;
@@ -233,29 +208,8 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
           expiresAt,
         });
 
-      // Send invitation email
-      const emailService = getEmailService();
-      const inviteLink = `${APP_URL}/invite/${inviteToken}`;
-      functions.logger.info(`[shares] Attempting to send invite email to ${data.caregiverEmail} (no account)`, {
-        ownerId,
-        inviteToken,
-        inviteLink,
-      });
-      const emailResult = await emailService.sendCaregiverInvite({
-        ownerName,
-        ownerEmail,
-        inviteeEmail: data.caregiverEmail,
-        inviteLink,
-        message: data.message,
-      });
-      if (emailResult.error) {
-        functions.logger.error(`[shares] Email sending failed for ${data.caregiverEmail}:`, emailResult.error);
-        // Continue anyway - invite is created, user can resend email later
-      } else {
-        functions.logger.info(`[shares] Email sent successfully to ${data.caregiverEmail}`, {
-          emailId: emailResult.id,
-        });
-      }
+      // Email will be sent by frontend via Vercel API route
+      functions.logger.info(`[shares] Created share invite from ${ownerId} to ${data.caregiverEmail} (no account yet). Email should be sent by frontend.`);
 
       functions.logger.info(
         `[shares] Created share invite from ${ownerId} to ${data.caregiverEmail} (no account yet)`,

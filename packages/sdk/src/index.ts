@@ -6,4 +6,5 @@
 export * from './models';
 export * from './api-client';
 export * from './hooks';
+export * from './realtime/firestore';
 
