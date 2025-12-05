@@ -79,17 +79,14 @@ export function ViewingSwitcher() {
         <SelectTrigger className="w-[180px] border-border-light">
           <SelectValue>{displayName}</SelectValue>
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="z-[100]">
           {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              <div className="flex items-center gap-2">
-                {option.value === 'self' ? (
-                  <User className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-                <span>{option.label}</span>
-              </div>
+            <SelectItem 
+              key={option.value} 
+              value={option.value}
+              className="cursor-pointer"
+            >
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
