@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -8,7 +8,8 @@ import {
   where,
   type FirestoreError,
 } from 'firebase/firestore';
-import { QueryKey, UseQueryOptions } from '@tanstack/react-query';
+import * as Firestore from 'firebase/firestore';
+import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { db } from '@/lib/firebase';
 import { useViewing } from '@/lib/contexts/ViewingContext';
