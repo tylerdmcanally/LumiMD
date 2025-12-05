@@ -29,7 +29,8 @@ service cloud.firestore {
 
     match /users/{userId} {
       // Users can only read/update their own profile
-      allow read: if isAuthenticated() && isOwner(userId);
+      // Allow owner OR caregiver with accepted share to read the profile
+      allow read: if isAuthenticated() && canRead(userId);
 
       // Account creation - ensure userId matches auth.uid
       allow create: if isAuthenticated() && isOwner(userId);

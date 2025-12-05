@@ -31,8 +31,12 @@ export function ViewingSwitcher() {
       typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()
         ? viewingProfile.firstName.trim()
         : '';
-    return preferred || first || 'Shared Health';
-  }, [isViewingSelf, viewingProfile?.preferredName, viewingProfile?.firstName]);
+    const email =
+      typeof (viewingProfile as any)?.email === 'string' && (viewingProfile as any).email
+        ? (viewingProfile as any).email
+        : '';
+    return preferred || first || email || 'Shared Health';
+  }, [isViewingSelf, viewingProfile?.preferredName, viewingProfile?.firstName, (viewingProfile as any)?.email]);
 
   const options: SwitcherOption[] = React.useMemo(() => {
     const result: SwitcherOption[] = [];

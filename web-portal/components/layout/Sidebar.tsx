@@ -178,11 +178,10 @@ export function Sidebar() {
               {isViewingShared && (
                 <p className="truncate text-[11px] font-semibold text-brand-primary mt-1">
                   {`Viewing: ${
-                    typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()
-                      ? viewingProfile.preferredName.trim()
-                      : typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()
-                        ? viewingProfile.firstName.trim()
-                        : 'Shared Health'
+                    (typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()) ||
+                    (typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()) ||
+                    (typeof (viewingProfile as any)?.email === 'string' && (viewingProfile as any).email) ||
+                    'Shared Health'
                   }`}
                 </p>
               )}

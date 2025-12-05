@@ -58,7 +58,12 @@ export default function DashboardPage() {
     const profileName =
       (typeof viewedProfile?.preferredName === 'string' && viewedProfile.preferredName.trim()) ||
       (typeof viewedProfile?.firstName === 'string' && viewedProfile.firstName.trim());
+    const email =
+      typeof (viewedProfile as any)?.email === 'string' && (viewedProfile as any).email
+        ? (viewedProfile as any).email
+        : '';
     if (profileName && profileName.length > 0) return profileName;
+    if (email) return email;
     if (viewingUserId && viewingUserId !== user?.uid) return 'Shared Health';
 
     const selfName =
