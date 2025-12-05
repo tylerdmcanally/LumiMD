@@ -14,10 +14,7 @@ export function ReadOnlyBanner() {
   const currentUser = useCurrentUser();
   const { data: viewingProfile } = useUserProfile(viewingUserId);
 
-  if (!isViewingShared || !viewingUserId) {
-    return null;
-  }
-
+  // ALL hooks must be before any early returns
   const displayName = React.useMemo(() => {
     const preferred = typeof viewingProfile?.preferredName === 'string' 
       ? viewingProfile.preferredName.trim() 
@@ -27,6 +24,11 @@ export function ReadOnlyBanner() {
       : '';
     return preferred || first || 'this person';
   }, [viewingProfile?.preferredName, viewingProfile?.firstName]);
+
+  // Early return AFTER all hooks
+  if (!isViewingShared || !viewingUserId) {
+    return null;
+  }
 
   return (
     <div
