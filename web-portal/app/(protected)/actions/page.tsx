@@ -44,11 +44,14 @@ import { db } from '@/lib/firebase';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { downloadActionAsICS } from '@/lib/calendar';
+import { useViewing } from '@/lib/contexts/ViewingContext';
 
 export default function ActionsPage() {
   const user = useCurrentUser();
   // Don't pass userId - let useActions use ViewingContext
   const { data: actions = [], isLoading } = useActions();
+  const { isViewingShared } = useViewing();
+  const isReadOnly = isViewingShared;
   const [showCompleted, setShowCompleted] = React.useState(false);
   const queryClient = useQueryClient();
   const [updatingActionId, setUpdatingActionId] = React.useState<string | null>(null);
@@ -328,17 +331,21 @@ export default function ActionsPage() {
           title="Action Items"
           subtitle="Track tasks and follow-ups from your medical visits"
           actions={
-            <Button
-              variant="primary"
-              size="lg"
-              leftIcon={<Plus className="h-5 w-5" />}
-              onClick={() => {
-                setCreateDefaultDate(null);
-                setCreateDialogOpen(true);
-              }}
-            >
-              Add Action Item
-            </Button>
+            isReadOnly
+              ? undefined
+              : (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  leftIcon={<Plus className="h-5 w-5" />}
+                  onClick={() => {
+                    setCreateDefaultDate(null);
+                    setCreateDialogOpen(true);
+                  }}
+                >
+                  Add Action Item
+                </Button>
+              )
           }
         />
 
@@ -372,81 +379,87 @@ export default function ActionsPage() {
               title="Pending"
               actions={pendingActions}
               emptyMessage="You're all caught up! Create a new action item to get started."
-              onToggleComplete={handleToggleComplete}
+              onToggleComplete={isReadOnly ? undefined : handleToggleComplete}
               updatingActionId={updatingActionId}
-              onEditAction={handleEdit}
-              onDeleteAction={handleDeleteRequest}
+              onEditAction={isReadOnly ? undefined : handleEdit}
+              onDeleteAction={isReadOnly ? undefined : handleDeleteRequest}
+              isReadOnly={isReadOnly}
             />
             <ActionSection
               title="Completed"
               actions={completedActions}
               emptyMessage="No completed action items yet."
-              onToggleComplete={handleToggleComplete}
+              onToggleComplete={isReadOnly ? undefined : handleToggleComplete}
               collapsible
               collapsed={!showCompleted}
               onToggleCollapse={() => setShowCompleted((prev) => !prev)}
               updatingActionId={updatingActionId}
-              onEditAction={handleEdit}
-              onDeleteAction={handleDeleteRequest}
+              onEditAction={isReadOnly ? undefined : handleEdit}
+              onDeleteAction={isReadOnly ? undefined : handleDeleteRequest}
+              isReadOnly={isReadOnly}
             />
           </div>
         )}
-        <ActionCalendar
-          actions={pendingActions}
-          onAddAction={() => {
-            setCreateDefaultDate(null);
-            setCreateDialogOpen(true);
-          }}
-          onSelectDate={(date) => {
-            setCreateDefaultDate(date);
-            setCreateDialogOpen(true);
-          }}
-          onSelectAction={(action) => {
-            setActionBeingEdited(action);
-            setEditDialogOpen(true);
-          }}
-        />
-        <CreateActionDialog
-          open={createDialogOpen}
-          onOpenChange={(open) => {
-            setCreateDialogOpen(open);
-            if (!open) {
-              setCreateDefaultDate(null);
-            }
-          }}
-          defaultDate={createDefaultDate}
-          onSubmit={(values) => {
-            console.log('[ON_SUBMIT] Received values:', values);
-            console.log('[ON_SUBMIT] Calling mutation.mutate...');
-            createActionMutation.mutate(values);
-          }}
-          isSaving={createActionMutation.isPending}
-        />
-        <EditActionDialog
-          open={editDialogOpen}
-          onOpenChange={(open) => {
-            setEditDialogOpen(open);
-            if (!open) {
-              setActionBeingEdited(null);
-            }
-          }}
-          action={actionBeingEdited}
-          onSubmit={(values) =>
-            updateActionDetailsMutation.mutate({ id: actionBeingEdited.id, ...values })
-          }
-          isSaving={updateActionDetailsMutation.isPending}
-        />
-        <DeleteActionDialog
-          open={deleteDialogState.open}
-          action={deleteDialogState.action}
-          onCancel={() => setDeleteDialogState({ open: false, action: null })}
-          onConfirm={() => {
-            if (deleteDialogState.action?.id) {
-              deleteActionMutation.mutate(deleteDialogState.action.id);
-            }
-          }}
-          isDeleting={deleteActionMutation.isPending}
-        />
+        {!isReadOnly && (
+          <>
+            <ActionCalendar
+              actions={pendingActions}
+              onAddAction={() => {
+                setCreateDefaultDate(null);
+                setCreateDialogOpen(true);
+              }}
+              onSelectDate={(date) => {
+                setCreateDefaultDate(date);
+                setCreateDialogOpen(true);
+              }}
+              onSelectAction={(action) => {
+                setActionBeingEdited(action);
+                setEditDialogOpen(true);
+              }}
+            />
+            <CreateActionDialog
+              open={createDialogOpen}
+              onOpenChange={(open) => {
+                setCreateDialogOpen(open);
+                if (!open) {
+                  setCreateDefaultDate(null);
+                }
+              }}
+              defaultDate={createDefaultDate}
+              onSubmit={(values) => {
+                console.log('[ON_SUBMIT] Received values:', values);
+                console.log('[ON_SUBMIT] Calling mutation.mutate...');
+                createActionMutation.mutate(values);
+              }}
+              isSaving={createActionMutation.isPending}
+            />
+            <EditActionDialog
+              open={editDialogOpen}
+              onOpenChange={(open) => {
+                setEditDialogOpen(open);
+                if (!open) {
+                  setActionBeingEdited(null);
+                }
+              }}
+              action={actionBeingEdited}
+              onSubmit={(values) =>
+                updateActionDetailsMutation.mutate({ id: actionBeingEdited.id, ...values })
+              }
+              isSaving={updateActionDetailsMutation.isPending}
+            />
+            <DeleteActionDialog
+              open={deleteDialogState.open}
+              action={deleteDialogState.action}
+              onCancel={() => setDeleteDialogState({ open: false, action: null })}
+              onConfirm={() => {
+                if (deleteDialogState.action?.id) {
+                  deleteActionMutation.mutate(deleteDialogState.action.id);
+                }
+              }}
+              isDeleting={deleteActionMutation.isPending}
+            />
+          </>
+        )}
       </div>
     </PageContainer>
   );
@@ -754,17 +767,19 @@ function ActionSection({
   updatingActionId,
   onEditAction,
   onDeleteAction,
+  isReadOnly = false,
 }: {
   title: string;
   actions: any[];
   emptyMessage: string;
-  onToggleComplete: (action: any) => void;
+  onToggleComplete?: (action: any) => void;
   collapsible?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   updatingActionId?: string | null;
   onEditAction?: (action: any) => void;
   onDeleteAction?: (action: any) => void;
+  isReadOnly?: boolean;
 }) {
   return (
     <section className="space-y-4">
@@ -796,10 +811,13 @@ function ActionSection({
             <ActionCard
               key={action.id}
               action={action}
-              onToggleComplete={() => onToggleComplete(action)}
+              onToggleComplete={
+                onToggleComplete && !isReadOnly ? () => onToggleComplete(action) : undefined
+              }
               isUpdating={updatingActionId === action.id}
-              onEdit={() => onEditAction?.(action)}
-              onDelete={() => onDeleteAction?.(action)}
+              onEdit={!isReadOnly ? () => onEditAction?.(action) : undefined}
+              onDelete={!isReadOnly ? () => onDeleteAction?.(action) : undefined}
+              isReadOnly={isReadOnly}
             />
           ))}
         </div>
@@ -814,12 +832,14 @@ function ActionCard({
   isUpdating,
   onEdit,
   onDelete,
+  isReadOnly = false,
 }: {
   action: any;
-  onToggleComplete: () => void;
+  onToggleComplete?: () => void;
   isUpdating?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  isReadOnly?: boolean;
 }) {
   const isCompleted = action.completed === true;
   const dueDate = action.dueAt ? new Date(action.dueAt) : null;
@@ -865,7 +885,7 @@ function ActionCard({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (!isUpdating) {
+            if (!isUpdating && !isReadOnly && onToggleComplete) {
               onToggleComplete();
             }
           }}
@@ -874,10 +894,10 @@ function ActionCard({
             isCompleted
               ? 'border-success bg-success text-white shadow-sm'
               : 'border-brand-primary/30 bg-brand-primary-pale/40 hover:bg-brand-primary-pale hover:border-brand-primary/60 hover:shadow-md hover:scale-105 active:scale-95',
-            isUpdating && 'cursor-wait opacity-60'
+            (isUpdating || isReadOnly || !onToggleComplete) && 'cursor-not-allowed opacity-60'
           )}
           aria-label={isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
-          disabled={isUpdating}
+          disabled={isUpdating || isReadOnly || !onToggleComplete}
         >
           {isUpdating ? (
             <Loader2 className="h-5 w-5 animate-spin text-brand-primary" />
@@ -978,19 +998,49 @@ function ActionCard({
 
           {/* Actions Menu */}
           <div className="flex items-center gap-2 pt-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                onEdit?.();
-              }}
-              className="flex-1 justify-center sm:w-auto sm:flex-none"
-              leftIcon={<Pencil className="h-4 w-4" />}
-            >
-              Edit
-            </Button>
-            {dueDate && !isCompleted && (
+            {!isReadOnly && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onEdit?.();
+                  }}
+                  className="flex-1 justify-center sm:w-auto sm:flex-none"
+                  leftIcon={<Pencil className="h-4 w-4" />}
+                >
+                  Edit
+                </Button>
+                {dueDate && !isCompleted && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDownloadCalendar();
+                    }}
+                    className="flex-1 justify-center sm:w-auto sm:flex-none"
+                    leftIcon={<Calendar className="h-4 w-4" />}
+                  >
+                    Add to Calendar
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 justify-center text-error hover:text-error focus-visible:ring-error sm:w-auto sm:flex-none"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete?.();
+                  }}
+                  leftIcon={<Trash2 className="h-4 w-4" />}
+                >
+                  Delete
+                </Button>
+              </>
+            )}
+            {isReadOnly && dueDate && !isCompleted && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1004,18 +1054,6 @@ function ActionCard({
                 Add to Calendar
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="flex-1 justify-center text-error hover:text-error focus-visible:ring-error sm:w-auto sm:flex-none"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDelete?.();
-              }}
-              leftIcon={<Trash2 className="h-4 w-4" />}
-            >
-              Delete
-            </Button>
           </div>
         </div>
       </div>

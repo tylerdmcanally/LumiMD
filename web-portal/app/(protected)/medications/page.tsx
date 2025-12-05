@@ -18,6 +18,7 @@ import { deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { api } from '@/lib/api/client';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useViewing } from '@/lib/contexts/ViewingContext';
 
 type GroupedMedications = {
   active: any[];
@@ -33,6 +34,8 @@ export default function MedicationsPage() {
   const [medToDelete, setMedToDelete] = React.useState<any | null>(null);
   const [viewMedication, setViewMedication] = React.useState<any | null>(null);
   const [medicationWarnings, setMedicationWarnings] = React.useState<any | null>(null);
+  const { isViewingShared } = useViewing();
+  const isReadOnly = isViewingShared;
 
   // Don't pass userId - let useMedications use ViewingContext
   const { data: medications = [], isLoading } = useMedications();
@@ -173,25 +176,27 @@ export default function MedicationsPage() {
         </div>
 
         {/* Add Medication */}
-        <Card variant="elevated" padding="lg">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-text-primary">Add a medication</h3>
-              <p className="text-sm text-text-secondary">
-                Keep your list current by adding new prescriptions as you receive them.
-              </p>
+        {!isReadOnly && (
+          <Card variant="elevated" padding="lg">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-text-primary">Add a medication</h3>
+                <p className="text-sm text-text-secondary">
+                  Keep your list current by adding new prescriptions as you receive them.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="lg"
+                leftIcon={<Plus className="h-5 w-5" />}
+                onClick={() => setCreateDialogOpen(true)}
+                className="w-full justify-center sm:w-auto sm:justify-start sm:px-6 sm:whitespace-nowrap"
+              >
+                Add medication
+              </Button>
             </div>
-            <Button
-              variant="primary"
-              size="lg"
-              leftIcon={<Plus className="h-5 w-5" />}
-              onClick={() => setCreateDialogOpen(true)}
-              className="w-full justify-center sm:w-auto sm:justify-start sm:px-6 sm:whitespace-nowrap"
-            >
-              Add medication
-            </Button>
-          </div>
-        </Card>
+          </Card>
+        )}
 
         {/* Active Medications */}
         <MedicationGroup
@@ -204,6 +209,7 @@ export default function MedicationsPage() {
           onEdit={(med) => setEditingMedication(med)}
           onDelete={setMedToDelete}
           onShowWarnings={(med) => setMedicationWarnings({ medicationName: med.name, warnings: med.medicationWarning })}
+          isReadOnly={isReadOnly}
         />
 
         {/* Stopped Medications */}
@@ -217,42 +223,47 @@ export default function MedicationsPage() {
           onEdit={(med) => setEditingMedication(med)}
           onDelete={setMedToDelete}
           onShowWarnings={(med) => setMedicationWarnings({ medicationName: med.name, warnings: med.medicationWarning })}
+          isReadOnly={isReadOnly}
         />
 
-        <DeleteMedicationDialog
-          medication={medToDelete}
-          onClose={() => setMedToDelete(null)}
-        />
+        {!isReadOnly && (
+          <>
+            <DeleteMedicationDialog
+              medication={medToDelete}
+              onClose={() => setMedToDelete(null)}
+            />
 
-        <AddMedicationDialog
-          open={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          onSubmit={(values) => createMedication.mutate(values)}
-          isSaving={createMedication.isPending}
-          mode="create"
-        />
-        <AddMedicationDialog
-          open={Boolean(editingMedication)}
-          onOpenChange={(open) => {
-            if (!open) setEditingMedication(null);
-          }}
-          initialValues={
-            editingMedication
-              ? {
-                name: editingMedication.name || '',
-                dose: editingMedication.dose || '',
-                frequency: editingMedication.frequency || '',
-                notes: editingMedication.notes || '',
+            <AddMedicationDialog
+              open={createDialogOpen}
+              onOpenChange={setCreateDialogOpen}
+              onSubmit={(values) => createMedication.mutate(values)}
+              isSaving={createMedication.isPending}
+              mode="create"
+            />
+            <AddMedicationDialog
+              open={Boolean(editingMedication)}
+              onOpenChange={(open) => {
+                if (!open) setEditingMedication(null);
+              }}
+              initialValues={
+                editingMedication
+                  ? {
+                    name: editingMedication.name || '',
+                    dose: editingMedication.dose || '',
+                    frequency: editingMedication.frequency || '',
+                    notes: editingMedication.notes || '',
+                  }
+                  : undefined
               }
-              : undefined
-          }
-          onSubmit={(values) => {
-            if (!editingMedication) return;
-            updateMedication.mutate({ id: editingMedication.id, values });
-          }}
-          isSaving={updateMedication.isPending}
-          mode="edit"
-        />
+              onSubmit={(values) => {
+                if (!editingMedication) return;
+                updateMedication.mutate({ id: editingMedication.id, values });
+              }}
+              isSaving={updateMedication.isPending}
+              mode="edit"
+            />
+          </>
+        )}
 
         <MedicationInsightDialog
           medication={viewMedication}
@@ -295,6 +306,7 @@ type MedicationGroupProps = {
   onEdit: (med: any) => void;
   onDelete: (med: any) => void;
   onShowWarnings: (med: any) => void;
+  isReadOnly?: boolean;
 };
 
 function MedicationGroup({
@@ -307,6 +319,7 @@ function MedicationGroup({
   onEdit,
   onDelete,
   onShowWarnings,
+  isReadOnly = false,
 }: MedicationGroupProps) {
   return (
     <Card variant="elevated" padding="none">
@@ -332,7 +345,7 @@ function MedicationGroup({
               <div>Dose</div>
               <div>Frequency</div>
               <div>Status</div>
-              <div className="text-right">Actions</div>
+              <div className="text-right">{isReadOnly ? 'Info' : 'Actions'}</div>
             </div>
             <div className="divide-y divide-border-light">
               {medications.map((medication: any) => (
@@ -343,6 +356,7 @@ function MedicationGroup({
                   onEdit={() => onEdit(medication)}
                   onDelete={() => onDelete(medication)}
                   onShowWarnings={() => onShowWarnings(medication)}
+                  isReadOnly={isReadOnly}
                 />
               ))}
             </div>
@@ -356,6 +370,7 @@ function MedicationGroup({
                 onEdit={() => onEdit(medication)}
                 onDelete={() => onDelete(medication)}
                 onShowWarnings={() => onShowWarnings(medication)}
+                isReadOnly={isReadOnly}
               />
             ))}
           </div>
@@ -479,12 +494,14 @@ function MedicationRow({
   onEdit,
   onDelete,
   onShowWarnings,
+  isReadOnly = false,
 }: {
   medication: any;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onShowWarnings: () => void;
+  isReadOnly?: boolean;
 }) {
   const isActive = medication.active !== false && !medication.stoppedAt;
   const { shortIndication, drugClass, showInfoCta, isFetchingInfo, handleNeedInfoClick } =
@@ -683,27 +700,31 @@ function MedicationRow({
           </Badge>
         </div>
         <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(event) => {
-              event.stopPropagation();
-              onEdit();
-            }}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-error hover:text-error"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {!isReadOnly && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit();
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-error hover:text-error"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </TooltipProvider>
@@ -716,12 +737,14 @@ function MedicationCard({
   onEdit,
   onDelete,
   onShowWarnings,
+  isReadOnly = false,
 }: {
   medication: any;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onShowWarnings: () => void;
+  isReadOnly?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const isActive = medication.active !== false && !medication.stoppedAt;
@@ -967,31 +990,33 @@ function MedicationCard({
       </div>
 
       {/* Simplified action buttons */}
-      <div className="mt-5 flex items-center justify-between gap-4 pt-3 border-t border-border-light/60">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onEdit();
-          }}
-          className="flex-1 justify-center"
-        >
-          Edit medication
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 rounded-full text-text-tertiary hover:text-error hover:bg-error/10 active:scale-95"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-          aria-label="Delete medication"
-        >
-          <Trash2 className="h-5 w-5" />
-        </Button>
-      </div>
+      {!isReadOnly && (
+        <div className="mt-5 flex items-center justify-between gap-4 pt-3 border-t border-border-light/60">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+            className="flex-1 justify-center"
+          >
+            Edit medication
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 rounded-full text-text-tertiary hover:text-error hover:bg-error/10 active:scale-95"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Delete medication"
+          >
+            <Trash2 className="h-5 w-5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
