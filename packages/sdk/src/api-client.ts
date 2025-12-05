@@ -83,7 +83,12 @@ async function buildApiError(response: Response): Promise<ApiError> {
   error.code = code;
   error.details = parsedBody?.details ?? parsedBody?.error?.details;
   error.body = parsedBody ?? rawBody ?? null;
-  error.userMessage = mapUserMessage(response.status, message);
+  // Use server-provided userMessage if available, otherwise map based on status
+  // This allows business logic errors (like email_mismatch) to show proper messages
+  error.userMessage =
+    parsedBody?.userMessage ??
+    parsedBody?.error?.userMessage ??
+    mapUserMessage(response.status, message);
   error.retriable =
     RETRYABLE_STATUS_CODES.has(response.status) ||
     (response.status >= 500 && response.status < 600);

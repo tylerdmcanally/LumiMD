@@ -4,9 +4,11 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, LogOut } from 'lucide-react';
+import { signOut } from 'firebase/auth';
 
 import { api } from '@/lib/api/client';
+import { auth } from '@/lib/firebase';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,8 +41,18 @@ export default function InviteAcceptPage() {
   });
 
   // Auto-accept if user is logged in
+  // Track the user ID to detect account switches
+  const lastUserIdRef = React.useRef<string | null>(null);
   const hasAttemptedAccept = React.useRef(false);
+  
   React.useEffect(() => {
+    // Reset attempt flag and mutation state if user changed (signed out and back in with different account)
+    if (user?.uid !== lastUserIdRef.current) {
+      hasAttemptedAccept.current = false;
+      lastUserIdRef.current = user?.uid ?? null;
+      acceptMutation.reset();
+    }
+    
     if (user && token && !hasAttemptedAccept.current && !acceptMutation.isPending) {
       hasAttemptedAccept.current = true;
       acceptMutation.mutate(token);
@@ -118,7 +130,19 @@ export default function InviteAcceptPage() {
                 </Button>
               </>
             )}
-            {user && (
+            {user && isEmailMismatch && (
+              <Button
+                variant="primary"
+                leftIcon={<LogOut className="h-4 w-4" />}
+                onClick={async () => {
+                  await signOut(auth);
+                  // Page will re-render showing sign-in options
+                }}
+              >
+                Sign Out & Use Different Account
+              </Button>
+            )}
+            {user && !isEmailMismatch && (
               <Button variant="primary" onClick={() => router.push('/dashboard')}>
                 Go to Dashboard
               </Button>

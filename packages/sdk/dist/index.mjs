@@ -57,7 +57,7 @@ async function buildApiError(response) {
   error.code = code;
   error.details = parsedBody?.details ?? parsedBody?.error?.details;
   error.body = parsedBody ?? rawBody ?? null;
-  error.userMessage = mapUserMessage(response.status, message);
+  error.userMessage = parsedBody?.userMessage ?? parsedBody?.error?.userMessage ?? mapUserMessage(response.status, message);
   error.retriable = RETRYABLE_STATUS_CODES.has(response.status) || response.status >= 500 && response.status < 600;
   console.error("[API] HTTP Error", {
     status: response.status,
