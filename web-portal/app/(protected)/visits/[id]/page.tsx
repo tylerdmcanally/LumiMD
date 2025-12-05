@@ -70,7 +70,7 @@ export default function VisitDetailPage() {
       return [];
     }
     const unique = new Set<string>();
-    profile.folders.forEach((folder) => {
+    (profile.folders as unknown[]).forEach((folder: unknown) => {
       if (typeof folder !== 'string') return;
       const trimmed = folder.trim();
       if (trimmed) {
