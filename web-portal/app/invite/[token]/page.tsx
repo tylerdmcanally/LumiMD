@@ -111,10 +111,10 @@ export default function InviteAcceptPage() {
             {!user && (
               <>
                 <Button variant="primary" asChild>
-                  <Link href={`/sign-in?redirect=/invite/${token}`}>Sign In</Link>
+                  <Link href={`/sign-in?returnTo=/invite/${token}`}>Sign In</Link>
                 </Button>
                 <Button variant="secondary" asChild>
-                  <Link href={`/sign-up?redirect=/invite/${token}`}>Create Account</Link>
+                  <Link href={`/sign-up?returnTo=/invite/${token}`}>Create Account</Link>
                 </Button>
               </>
             )}
@@ -141,10 +141,10 @@ export default function InviteAcceptPage() {
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button variant="primary" asChild>
-            <Link href={`/sign-in?redirect=/invite/${token}`}>Sign In</Link>
+            <Link href={`/sign-in?returnTo=/invite/${token}`}>Sign In</Link>
           </Button>
           <Button variant="secondary" asChild>
-            <Link href={`/sign-up?redirect=/invite/${token}`}>Create Account</Link>
+            <Link href={`/sign-up?returnTo=/invite/${token}`}>Create Account</Link>
           </Button>
         </div>
       </Card>
