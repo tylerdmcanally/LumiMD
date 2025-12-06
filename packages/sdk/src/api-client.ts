@@ -373,6 +373,14 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'DELETE',
           body: JSON.stringify(data),
         }),
+      exportData: () =>
+        apiRequest<any>('/v1/users/me/export', {
+          method: 'GET',
+        }),
+      deleteAccount: () =>
+        apiRequest<void>('/v1/users/me', {
+          method: 'DELETE',
+        }),
     },
 
     // Shares

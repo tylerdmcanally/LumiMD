@@ -22,6 +22,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
+import { useUserProfile } from '../lib/api/hooks';
+import { useSubscriptionState, startSubscriptionPurchase } from '../lib/purchases';
+import { PaywallScreen } from '../components/PaywallScreen';
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
@@ -30,6 +33,11 @@ const RECORDING_LIMIT_MINUTES = MAX_RECORDING_MS / (60 * 1000);
 export default function RecordVisitScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { data: profile } = useUserProfile(user?.uid);
+  const subscription = useSubscriptionState({
+    trialEndsAt: profile?.trialEndsAt as string | undefined,
+    subscriptionStatus: (profile?.subscriptionStatus as string | undefined) ?? undefined,
+  });
   const {
     recordingState,
     duration,
@@ -49,6 +57,7 @@ export default function RecordVisitScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [paywallVisible, setPaywallVisible] = useState(false);
   const isIdle = recordingState === 'idle';
   const isFinished = recordingState === 'stopped';
   const longRecordingWarningShown = useRef(false);
@@ -59,6 +68,9 @@ export default function RecordVisitScreen() {
   const isPrimaryDisabled = uploading || isFinished;
   const primaryIconName = isRecording ? 'pause' : isPaused ? 'play' : 'mic';
   const primaryIconColor = isRecording || isPaused ? Colors.surface : Colors.primary;
+  const PAYWALL_ENABLED = process.env.EXPO_PUBLIC_PAYWALL_ENABLED === 'true';
+  const isAccessAllowed =
+    !PAYWALL_ENABLED || subscription.status === 'active' || subscription.status === 'trial';
 
   const extractUserMessage = (error: unknown, fallback: string) => {
     if (error && typeof error === 'object') {
@@ -92,6 +104,10 @@ export default function RecordVisitScreen() {
 
   const handleStartRecording = async () => {
     try {
+      if (!isAccessAllowed) {
+        setPaywallVisible(true);
+        return;
+      }
       if (!hasPermission) {
         const granted = await requestPermission();
         if (!granted) {
@@ -295,6 +311,13 @@ export default function RecordVisitScreen() {
       description="If this keeps happening, force close the app and reopen before trying again."
     >
       <SafeAreaView style={styles.container}>
+        {PAYWALL_ENABLED && subscription.status === 'trial' && (
+          <View style={styles.trialBanner}>
+            <Text style={styles.trialBannerText}>
+              {subscription.daysLeft ?? 14} days left in your free trial
+            </Text>
+          </View>
+        )}
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={handleCancel} style={styles.headerButton}>
@@ -421,6 +444,15 @@ export default function RecordVisitScreen() {
         )}
       </SafeAreaView>
       {isRecording && <KeepDeviceAwake tag="visit-recording" />}
+      <PaywallScreen
+        visible={paywallVisible}
+        daysLeft={subscription.daysLeft}
+        onClose={() => setPaywallVisible(false)}
+        onSubscribe={async () => {
+          await startSubscriptionPurchase();
+          setPaywallVisible(false);
+        }}
+      />
     </ErrorBoundary>
   );
 }
@@ -444,6 +476,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: Colors.text,
+  },
+  trialBanner: {
+    backgroundColor: `${Colors.primary}15`,
+    paddingVertical: spacing(2),
+    paddingHorizontal: spacing(5),
+  },
+  trialBannerText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   content: {
     flex: 1,

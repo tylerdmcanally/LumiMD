@@ -17,7 +17,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
-import { useVisits } from '@/lib/api/hooks';
+import { useUserProfile, useVisits } from '@/lib/api/hooks';
 import { normalizeVisitStatus } from '@/lib/visits/status';
 import { format } from 'date-fns';
 import { Search, Filter, Calendar, ChevronDown, Folder, MapPin, Stethoscope, Trash2 } from 'lucide-react';
@@ -34,6 +34,8 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
+import { getSubscriptionState } from '@/lib/subscription';
+import { PaywallModal } from '@/components/PaywallModal';
 
 type VisitFilters = {
   search: string;
@@ -69,7 +71,10 @@ const VISIT_STATUS_STYLES: Record<
 export default function VisitsPage() {
   const router = useRouter();
   const user = useCurrentUser();
+  const { data: profile } = useUserProfile(user?.uid);
   const [filters, setFilters] = React.useState<VisitFilters>(DEFAULT_FILTERS);
+  const [paywallOpen, setPaywallOpen] = React.useState(false);
+  const subscription = getSubscriptionState(profile);
 
   // Don't pass userId - let useVisits use ViewingContext
   const { data: visits = [], isLoading } = useVisits();
@@ -409,6 +414,32 @@ export default function VisitsPage() {
             title="Visits"
             subtitle="View and manage your medical visit history"
           />
+
+          {subscription.paywallEnabled && (
+            <Card
+              variant="elevated"
+              padding="md"
+              className="border border-warning/50 bg-warning-light/50"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-warning-dark">
+                    {subscription.status === 'expired'
+                      ? 'Your trial has ended'
+                      : 'Free trial in progress'}
+                  </p>
+                  <p className="text-sm text-warning-dark/80">
+                    {subscription.status === 'expired'
+                      ? 'Subscribe to keep using AI summaries and medication insights.'
+                      : `${subscription.daysLeft ?? 14} days left in your free trial.`}
+                  </p>
+                </div>
+                <Button variant="primary" onClick={() => setPaywallOpen(true)}>
+                  Subscribe (coming soon)
+                </Button>
+              </div>
+            </Card>
+          )}
 
         {/* Stats Cards - show only Total on mobile, full breakdown on desktop */}
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
@@ -921,6 +952,11 @@ export default function VisitsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <PaywallModal
+          open={paywallOpen}
+          onOpenChange={setPaywallOpen}
+          daysLeft={subscription.daysLeft}
+        />
         </div>
       </PageContainer>
     </TooltipProvider>

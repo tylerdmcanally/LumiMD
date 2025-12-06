@@ -11,6 +11,7 @@ import { medicationsRouter } from './routes/medications';
 import { webhooksRouter } from './routes/webhooks';
 import { usersRouter } from './routes/users';
 import { sharesRouter } from './routes/shares';
+import { subscriptionsRouter } from './routes/subscriptions';
 import { apiLimiter } from './middlewares/rateLimit';
 import { corsConfig } from './config';
 export { processVisitAudio } from './triggers/processVisitAudio';
@@ -131,6 +132,7 @@ app.use('/v1/meds', medicationsRouter);
 app.use('/v1/webhooks', webhooksRouter);
 app.use('/v1/users', usersRouter);
 app.use('/v1/shares', sharesRouter);
+app.use('/v1/subscriptions', subscriptionsRouter);
 
 // Health check
 app.get('/health', (req, res) => {

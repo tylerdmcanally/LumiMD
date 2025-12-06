@@ -1,6 +1,7 @@
 'use client';
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, Folder, Pencil, Plus, Trash2, User, X } from 'lucide-react';
@@ -15,13 +16,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { queryKeys, useUserProfile, useVisits } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { cn } from '@/lib/utils';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { CaregiverSettings } from '@/components/CaregiverSettings';
+import { api } from '@/lib/api/client';
 
 export default function ProfilePage() {
+  const router = useRouter();
   const user = useCurrentUser();
   const queryClient = useQueryClient();
 
@@ -39,6 +50,8 @@ export default function ProfilePage() {
     emergencyContactName: '',
     emergencyContactPhone: '',
   });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const allergies = useMemo<string[]>(
     () => (profile?.allergies && Array.isArray(profile.allergies) ? profile.allergies as string[] : []),
@@ -189,6 +202,52 @@ export default function ProfilePage() {
           ? error.message
           : 'Failed to update folders. Please try again.';
       toast.error(message);
+    },
+  });
+  const exportData = useMutation({
+    mutationFn: async () => {
+      if (!user?.uid) throw new Error('You need to be signed in to export data.');
+      const data = await api.user.exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const today = new Date().toISOString().slice(0, 10);
+      link.download = `lumimd-export-${today}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    },
+    onSuccess: () => {
+      toast.success('Export ready. Download started.');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to export data. Please try again.';
+      toast.error(message);
+    },
+  });
+  const deleteAccount = useMutation({
+    mutationFn: async () => {
+      if (!user?.uid) throw new Error('You need to be signed in to delete your account.');
+      await api.user.deleteAccount();
+      await auth.signOut();
+    },
+    onSuccess: async () => {
+      toast.success('Your account has been deleted');
+      router.push('/sign-in');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete account. Please try again.';
+      toast.error(message);
+    },
+    onSettled: () => {
+      setDeleteDialogOpen(false);
+      setDeleteConfirmText('');
     },
   });
   const updatePersonalInfo = useMutation({
@@ -652,10 +711,72 @@ export default function ProfilePage() {
           </p>
         </Card>
 
+        <Card variant="elevated" padding="lg" className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-text-primary">Data & Privacy</p>
+            <p className="text-sm text-text-secondary">
+              Export your data or delete your account at any time. Deleting your account is
+              permanent and removes visits, medications, actions, and caregiver shares.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button
+              variant="secondary"
+              onClick={() => exportData.mutate()}
+              loading={exportData.isPending}
+              className="sm:w-auto"
+            >
+              Export my data
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+              className="sm:w-auto"
+            >
+              Delete account
+            </Button>
+          </div>
+        </Card>
+
         <Card variant="elevated" padding="lg" className="space-y-6">
           <CaregiverSettings />
         </Card>
       </div>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete your account</DialogTitle>
+            <DialogDescription>
+              This will permanently delete your visits, medications, action items, and caregiver
+              access. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-text-secondary">
+              Type <span className="font-semibold text-text-primary">DELETE</span> to confirm.
+            </p>
+            <Input
+              value={deleteConfirmText}
+              onChange={(event) => setDeleteConfirmText(event.target.value)}
+              placeholder="DELETE"
+            />
+          </div>
+          <DialogFooter className="gap-3 sm:justify-between">
+            <Button variant="secondary" onClick={() => setDeleteDialogOpen(false)} disabled={deleteAccount.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteAccount.mutate()}
+              loading={deleteAccount.isPending}
+              disabled={deleteConfirmText.trim() !== 'DELETE'}
+            >
+              Delete my account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   );
 }

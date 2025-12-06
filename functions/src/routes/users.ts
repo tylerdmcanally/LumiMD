@@ -59,7 +59,26 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const userRef = getDb().collection('users').doc(userId);
-    const userDoc = await userRef.get();
+    let userDoc = await userRef.get();
+
+    // Bootstrap profile with trial information on first fetch
+    if (!userDoc.exists) {
+      const now = admin.firestore.Timestamp.now();
+      const trialEndsAt = admin.firestore.Timestamp.fromDate(
+        new Date(now.toDate().getTime() + 14 * 24 * 60 * 60 * 1000),
+      );
+      await userRef.set(
+        {
+          createdAt: now,
+          updatedAt: now,
+          trialStartedAt: now,
+          trialEndsAt,
+          subscriptionStatus: 'trial',
+        },
+        { merge: true },
+      );
+      userDoc = await userRef.get();
+    }
 
     const data = userDoc.exists ? userDoc.data() ?? {} : {};
 
@@ -74,6 +93,15 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
       folders: Array.isArray(data.folders) ? data.folders : [],
       createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
       updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
+      trialStartedAt: data.trialStartedAt?.toDate?.().toISOString() ?? null,
+      trialEndsAt: data.trialEndsAt?.toDate?.().toISOString() ?? null,
+      subscriptionStatus: typeof data.subscriptionStatus === 'string'
+        ? data.subscriptionStatus
+        : 'trial',
+      subscriptionPlatform:
+        typeof data.subscriptionPlatform === 'string' ? data.subscriptionPlatform : null,
+      revenuecatUserId:
+        typeof data.revenuecatUserId === 'string' ? data.revenuecatUserId : null,
       complete: isProfileComplete(data),
     };
 

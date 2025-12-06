@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,6 +12,7 @@ import {
   registerPushToken,
   unregisterPushToken,
 } from '../lib/notifications';
+import { api } from '../lib/api/client';
 
 const PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
 
@@ -21,6 +22,8 @@ export default function SettingsScreen() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isLoadingPush, setIsLoadingPush] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Check notification permission status on mount
   useEffect(() => {
@@ -122,6 +125,59 @@ export default function SettingsScreen() {
     Linking.openURL(url);
   };
 
+  const handleExportData = async () => {
+    if (!user) {
+      Alert.alert('Not signed in', 'Please sign in to export your data.');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const data = await api.user.exportData();
+      const json = JSON.stringify(data, null, 2);
+      await Share.share({
+        message: json,
+        title: 'LumiMD Data Export',
+      });
+    } catch (error) {
+      console.error('[Settings] Export failed', error);
+      Alert.alert('Export failed', 'Unable to export your data right now. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    if (!user) {
+      Alert.alert('Not signed in', 'Please sign in to delete your account.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your visits, medications, action items, and caregiver access. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              await api.user.deleteAccount();
+              await signOut();
+              router.replace('/sign-in');
+            } catch (error) {
+              console.error('[Settings] Delete account failed', error);
+              Alert.alert('Delete failed', 'Unable to delete your account. Please try again.');
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
       <View style={styles.container}>
@@ -208,6 +264,42 @@ export default function SettingsScreen() {
                   <Ionicons name="shield-checkmark-outline" size={22} color={Colors.textMuted} />
                 </View>
                 <Text style={styles.linkLabel}>Privacy Policy</Text>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </Pressable>
+            </Card>
+          </View>
+
+          {/* Data & Privacy */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Data & Privacy</Text>
+            <Card style={styles.card}>
+              <Pressable
+                style={styles.linkRow}
+                onPress={handleExportData}
+                disabled={isExporting}
+              >
+                <View style={styles.settingIcon}>
+                  <Ionicons name="download-outline" size={22} color={Colors.textMuted} />
+                </View>
+                <Text style={styles.linkLabel}>
+                  {isExporting ? 'Preparing export…' : 'Export my data'}
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </Pressable>
+
+              <View style={styles.divider} />
+
+              <Pressable
+                style={styles.linkRow}
+                onPress={handleDeleteAccount}
+                disabled={isDeleting}
+              >
+                <View style={styles.settingIcon}>
+                  <Ionicons name="trash-outline" size={22} color={Colors.error} />
+                </View>
+                <Text style={[styles.linkLabel, { color: Colors.error }]}>
+                  {isDeleting ? 'Deleting account…' : 'Delete account'}
+                </Text>
                 <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
               </Pressable>
             </Card>
