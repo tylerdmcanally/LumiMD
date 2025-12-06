@@ -729,7 +729,7 @@ export default function ProfilePage() {
               Export my data
             </Button>
             <Button
-              variant="destructive"
+              variant="danger"
               onClick={() => setDeleteDialogOpen(true)}
               className="sm:w-auto"
             >
@@ -767,7 +767,7 @@ export default function ProfilePage() {
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant="danger"
               onClick={() => deleteAccount.mutate()}
               loading={deleteAccount.isPending}
               disabled={deleteConfirmText.trim() !== 'DELETE'}
