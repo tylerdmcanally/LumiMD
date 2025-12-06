@@ -280,6 +280,12 @@ function createApiClient(config) {
       unregisterPushToken: (data) => apiRequest("/v1/users/push-tokens", {
         method: "DELETE",
         body: JSON.stringify(data)
+      }),
+      exportData: () => apiRequest("/v1/users/me/export", {
+        method: "GET"
+      }),
+      deleteAccount: () => apiRequest("/v1/users/me", {
+        method: "DELETE"
       })
     },
     // Shares

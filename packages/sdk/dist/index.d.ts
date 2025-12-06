@@ -143,6 +143,11 @@ interface UserProfile {
     folders?: string[];
     createdAt?: string | null;
     updatedAt?: string | null;
+    trialStartedAt?: string | null;
+    trialEndsAt?: string | null;
+    subscriptionStatus?: 'trial' | 'active' | 'expired' | 'cancelled';
+    subscriptionPlatform?: 'ios' | 'web' | 'stripe' | null;
+    revenuecatUserId?: string | null;
     [key: string]: unknown;
 }
 
@@ -238,6 +243,8 @@ declare function createApiClient(config: ApiClientConfig): {
         unregisterPushToken: (data: {
             token: string;
         }) => Promise<void>;
+        exportData: () => Promise<any>;
+        deleteAccount: () => Promise<void>;
     };
     shares: {
         list: () => Promise<Share[]>;
