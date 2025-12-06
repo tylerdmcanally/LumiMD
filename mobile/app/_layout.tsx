@@ -11,6 +11,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits } from '../lib/api/hooks';
 import { setBadgeCount } from '../lib/notifications';
+import { configurePurchases } from '../lib/purchases';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -106,6 +107,16 @@ function NotificationHandler() {
   return null;
 }
 
+function PurchasesInitializer() {
+  const { user } = useAuth();
+  useEffect(() => {
+    configurePurchases(user?.uid).catch((err) =>
+      console.warn('[Purchases] configure failed', err),
+    );
+  }, [user?.uid]);
+  return null;
+}
+
 export default function RootLayout() {
   const scheme = useColorScheme();
   return (
@@ -117,6 +128,7 @@ export default function RootLayout() {
         >
           <ThemeProvider value={navTheme(scheme ?? 'light')}>
             <NotificationHandler />
+            <PurchasesInitializer />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen

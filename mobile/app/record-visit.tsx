@@ -23,7 +23,7 @@ import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
 import { useUserProfile } from '../lib/api/hooks';
-import { useSubscriptionState, startSubscriptionPurchase } from '../lib/purchases';
+import { useProAccess } from '../lib/purchases';
 import { PaywallScreen } from '../components/PaywallScreen';
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
@@ -34,10 +34,7 @@ export default function RecordVisitScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { data: profile } = useUserProfile(user?.uid);
-  const subscription = useSubscriptionState({
-    trialEndsAt: profile?.trialEndsAt as string | undefined,
-    subscriptionStatus: (profile?.subscriptionStatus as string | undefined) ?? undefined,
-  });
+  const subscription = useProAccess();
   const {
     recordingState,
     duration,
@@ -448,10 +445,6 @@ export default function RecordVisitScreen() {
         visible={paywallVisible}
         daysLeft={subscription.daysLeft}
         onClose={() => setPaywallVisible(false)}
-        onSubscribe={async () => {
-          await startSubscriptionPurchase();
-          setPaywallVisible(false);
-        }}
       />
     </ErrorBoundary>
   );
