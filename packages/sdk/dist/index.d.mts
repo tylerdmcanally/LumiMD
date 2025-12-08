@@ -146,8 +146,9 @@ interface UserProfile {
     trialStartedAt?: string | null;
     trialEndsAt?: string | null;
     subscriptionStatus?: 'trial' | 'active' | 'expired' | 'cancelled';
-    subscriptionPlatform?: 'ios' | 'web' | 'stripe' | null;
-    revenuecatUserId?: string | null;
+    subscriptionPlatform?: 'ios' | null;
+    subscriptionExpiresAt?: string | null;
+    originalTransactionId?: string | null;
     [key: string]: unknown;
 }
 
