@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Mail, UserPlus, X, Clock, CheckCircle2, UserX } from 'lucide-react';
+import { Mail, UserPlus, Clock, CheckCircle2, UserX } from 'lucide-react';
 import { format } from 'date-fns';
 
 import { Card } from '@/components/ui/card';
@@ -82,10 +82,11 @@ export function CaregiverSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      {/* Header */}
+      <div className="space-y-4">
+        <div className="space-y-2">
           <h2 className="text-xl font-semibold text-text-primary">Caregiver Access</h2>
-          <p className="text-sm text-text-secondary mt-1">
+          <p className="text-sm text-text-secondary">
             Share read-only access to your health information with family members or caregivers.
           </p>
         </div>
@@ -93,6 +94,7 @@ export function CaregiverSettings() {
           variant="primary"
           leftIcon={<UserPlus className="h-4 w-4" />}
           onClick={() => setInviteDialogOpen(true)}
+          className="w-full sm:w-auto"
         >
           Invite Caregiver
         </Button>
@@ -100,27 +102,27 @@ export function CaregiverSettings() {
 
       {sharesLoading || invitesLoading ? (
         <div className="space-y-4">
-          <Skeleton className="h-24 w-full rounded-lg" />
-          <Skeleton className="h-24 w-full rounded-lg" />
+          <Skeleton className="h-20 w-full rounded-lg" />
+          <Skeleton className="h-20 w-full rounded-lg" />
         </div>
       ) : (
         <>
           {/* Accepted Shares */}
           {acceptedShares.length > 0 && (
-            <Card variant="elevated" padding="lg" className="space-y-4">
-              <h3 className="text-lg font-semibold text-text-primary">Active Caregivers</h3>
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-text-primary">Active Caregivers</h3>
               <div className="space-y-3">
                 {acceptedShares.map((share: Share) => (
                   <div
                     key={share.id}
-                    className="flex items-center justify-between rounded-lg border border-border-light bg-background-subtle p-4"
+                    className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success-light">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success-light">
                         <CheckCircle2 className="h-5 w-5 text-success-dark" />
                       </div>
-                      <div>
-                        <p className="font-medium text-text-primary">{share.caregiverEmail}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-text-primary truncate">{share.caregiverEmail}</p>
                         <p className="text-sm text-text-secondary">
                           {safeFormatDate(share.acceptedAt)
                             ? `Accepted ${safeFormatDate(share.acceptedAt)}`
@@ -142,40 +144,40 @@ export function CaregiverSettings() {
                         }
                       }}
                       disabled={revokeMutation.isPending}
-                      className="text-error hover:text-error"
+                      className="text-error hover:text-error w-full sm:w-auto justify-center"
                     >
-                      <UserX className="h-4 w-4" />
-                      Revoke
+                      <UserX className="h-4 w-4 mr-1.5" />
+                      Revoke access
                     </Button>
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
           )}
 
-          {/* Pending Shares */}
+          {/* Pending Shares & Invites */}
           {(pendingShares.length > 0 || pendingInvites.length > 0) && (
-            <Card variant="elevated" padding="lg" className="space-y-4">
-              <h3 className="text-lg font-semibold text-text-primary">Pending Invitations</h3>
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold text-text-primary">Pending Invitations</h3>
               <div className="space-y-3">
                 {pendingShares.map((share: Share) => (
                   <div
                     key={share.id}
-                    className="flex items-center justify-between rounded-lg border border-border-light bg-background-subtle p-4"
+                    className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-light">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning-light">
                         <Clock className="h-5 w-5 text-warning-dark" />
                       </div>
-                      <div>
-                        <p className="font-medium text-text-primary">{share.caregiverEmail}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-text-primary truncate">{share.caregiverEmail}</p>
                         <p className="text-sm text-text-secondary">
                           Waiting for acceptance
                           {safeFormatDate(share.createdAt) && ` • Sent ${safeFormatDate(share.createdAt)}`}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 justify-between sm:justify-end">
                       <Badge size="sm" tone="warning" variant="soft">
                         Pending
                       </Badge>
@@ -184,7 +186,7 @@ export function CaregiverSettings() {
                         size="sm"
                         onClick={() => revokeMutation.mutate(share.id)}
                         disabled={revokeMutation.isPending}
-                        className="text-error hover:text-error focus-visible:ring-error rounded-full px-4"
+                        className="text-error hover:text-error"
                       >
                         Cancel
                       </Button>
@@ -194,14 +196,14 @@ export function CaregiverSettings() {
                 {pendingInvites.map((invite: ShareInvite) => (
                   <div
                     key={invite.id}
-                    className="flex items-center justify-between rounded-lg border border-border-light bg-background-subtle p-4"
+                    className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-light">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning-light">
                         <Mail className="h-5 w-5 text-warning-dark" />
                       </div>
-                      <div>
-                        <p className="font-medium text-text-primary">{invite.inviteeEmail}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-text-primary truncate">{invite.inviteeEmail}</p>
                         <p className="text-sm text-text-secondary">
                           No account yet
                           {safeFormatDate(invite.expiresAt) &&
@@ -209,7 +211,7 @@ export function CaregiverSettings() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 justify-between sm:justify-end">
                       <Badge size="sm" tone="warning" variant="soft">
                         Invited
                       </Badge>
@@ -218,7 +220,7 @@ export function CaregiverSettings() {
                         size="sm"
                         onClick={() => cancelInviteMutation.mutate(invite.id)}
                         disabled={cancelInviteMutation.isPending}
-                        className="text-error hover:text-error focus-visible:ring-error rounded-full px-4"
+                        className="text-error hover:text-error"
                       >
                         Cancel
                       </Button>
@@ -226,34 +228,32 @@ export function CaregiverSettings() {
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
           )}
 
           {/* Empty State */}
           {acceptedShares.length === 0 &&
             pendingShares.length === 0 &&
             pendingInvites.length === 0 && (
-              <Card variant="elevated" padding="lg">
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-primary-pale mb-4">
-                    <UserPlus className="h-8 w-8 text-brand-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-text-primary mb-2">
-                    No caregivers yet
-                  </h3>
-                  <p className="text-sm text-text-secondary mb-4 max-w-sm">
-                    Invite family members or caregivers to view your health information. They'll
-                    have read-only access to your visits, medications, and action items.
-                  </p>
-                  <Button
-                    variant="primary"
-                    leftIcon={<UserPlus className="h-4 w-4" />}
-                    onClick={() => setInviteDialogOpen(true)}
-                  >
-                    Invite Your First Caregiver
-                  </Button>
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background-subtle/70 py-10 px-6 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-primary-pale mb-4">
+                  <UserPlus className="h-7 w-7 text-brand-primary" />
                 </div>
-              </Card>
+                <h3 className="text-base font-semibold text-text-primary mb-2">
+                  No caregivers yet
+                </h3>
+                <p className="text-sm text-text-secondary mb-5 max-w-sm">
+                  Invite family members or caregivers to view your health information. They'll
+                  have read-only access to your visits, medications, and action items.
+                </p>
+                <Button
+                  variant="primary"
+                  leftIcon={<UserPlus className="h-4 w-4" />}
+                  onClick={() => setInviteDialogOpen(true)}
+                >
+                  Invite Your First Caregiver
+                </Button>
+              </div>
             )}
         </>
       )}
@@ -262,4 +262,3 @@ export function CaregiverSettings() {
     </div>
   );
 }
-

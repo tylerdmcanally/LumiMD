@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Folder, Pencil, Plus, Trash2, User, X } from 'lucide-react';
+import { Plus, User, X, Download, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { doc, setDoc } from 'firebase/firestore';
 import { differenceInYears } from 'date-fns';
@@ -15,7 +15,6 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { queryKeys, useUserProfile, useVisits } from '@/lib/api/hooks';
+import { queryKeys, useUserProfile } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { cn } from '@/lib/utils';
 import { auth, db } from '@/lib/firebase';
@@ -39,9 +38,6 @@ export default function ProfilePage() {
   const { data: profile, isLoading } = useUserProfile(user?.uid);
   const [newAllergy, setNewAllergy] = useState('');
   const [newMedicalHistory, setNewMedicalHistory] = useState('');
-  const [newFolderName, setNewFolderName] = useState('');
-  const [editingFolder, setEditingFolder] = useState<string | null>(null);
-  const [editingFolderValue, setEditingFolderValue] = useState('');
   const [personalInfo, setPersonalInfo] = useState({
     preferredName: '',
     dateOfBirth: '',
@@ -64,37 +60,6 @@ export default function ProfilePage() {
         : [],
     [profile?.medicalHistory],
   );
-  const folders = useMemo(
-    () =>
-      profile?.folders && Array.isArray(profile.folders)
-        ? (profile.folders as unknown[])
-            .map((folder: unknown) => (typeof folder === 'string' ? folder.trim() : ''))
-            .filter((folder: string) => folder.length > 0)
-        : [],
-    [profile?.folders],
-  );
-  const { data: visits = [], isLoading: visitsLoading } = useVisits(user?.uid);
-  const folderUsage = useMemo(() => {
-    const usage = new Map<string, number>();
-    if (!Array.isArray(visits)) {
-      return usage;
-    }
-
-    visits.forEach((visit) => {
-      if (!visit || !Array.isArray(visit.folders)) {
-        return;
-      }
-      (visit.folders as unknown[]).forEach((folder: unknown) => {
-        if (typeof folder !== 'string') return;
-        const trimmed = folder.trim();
-        if (!trimmed) return;
-        usage.set(trimmed, (usage.get(trimmed) ?? 0) + 1);
-      });
-    });
-
-    return usage;
-  }, [visits]);
-  const isFoldersLoading = isLoading || visitsLoading;
 
   useEffect(() => {
     if (!profile) return;
@@ -167,40 +132,6 @@ export default function ProfilePage() {
         error instanceof Error
           ? error.message
           : 'Failed to update medical history. Please try again.';
-      toast.error(message);
-    },
-  });
-  const updateFolders = useMutation({
-    mutationFn: async (payload: { folders: string[] }) => {
-      if (!user?.uid) {
-        throw new Error('You need to be signed in to update your profile.');
-      }
-      const ref = doc(db, 'users', user.uid);
-      const sanitizedFolders = Array.from(
-        new Set(
-          (payload.folders || [])
-            .map((folder) => (typeof folder === 'string' ? folder.trim() : ''))
-            .filter((folder) => folder.length > 0),
-        ),
-      ).sort((a, b) => a.localeCompare(b));
-      await setDoc(ref, { folders: sanitizedFolders }, { merge: true });
-    },
-    onSuccess: () => {
-      if (user?.uid) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.userProfile(user.uid),
-        });
-      }
-      toast.success('Folders updated');
-      setNewFolderName('');
-      setEditingFolder(null);
-      setEditingFolderValue('');
-    },
-    onError: (error: unknown) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Failed to update folders. Please try again.';
       toast.error(message);
     },
   });
@@ -350,78 +281,6 @@ export default function ProfilePage() {
     });
   };
 
-  const handleAddFolder = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (updateFolders.isPending) return;
-    const trimmed = newFolderName.trim();
-    if (!trimmed) return;
-    const normalized = trimmed.toLowerCase();
-    const existing = new Set(folders.map((folder) => folder.toLowerCase()));
-    if (existing.has(normalized)) {
-      toast.info('That folder already exists.');
-      setNewFolderName('');
-      return;
-    }
-    updateFolders.mutate({ folders: [...folders, trimmed] });
-  };
-
-  const handleStartRenameFolder = (folder: string) => {
-    if (updateFolders.isPending) return;
-    setEditingFolder(folder);
-    setEditingFolderValue(folder);
-  };
-
-  const handleCancelRenameFolder = () => {
-    if (updateFolders.isPending) return;
-    setEditingFolder(null);
-    setEditingFolderValue('');
-  };
-
-  const handleSaveRenameFolder = (folder: string) => {
-    if (!editingFolder) return;
-    if (folder !== editingFolder) {
-      handleStartRenameFolder(folder);
-      return;
-    }
-    const trimmed = editingFolderValue.trim();
-    if (!trimmed) {
-      toast.info('Folder name cannot be empty.');
-      return;
-    }
-    if (trimmed === folder) {
-      handleCancelRenameFolder();
-      return;
-    }
-    const normalized = trimmed.toLowerCase();
-    const existing = new Set(
-      folders.filter((item) => item !== folder).map((item) => item.toLowerCase()),
-    );
-    if (existing.has(normalized)) {
-      toast.info('A folder with that name already exists.');
-      return;
-    }
-    updateFolders.mutate({
-      folders: folders.map((item) => (item === folder ? trimmed : item)),
-    });
-  };
-
-  const handleDeleteFolder = (folder: string) => {
-    if (updateFolders.isPending) return;
-    const usageCount = folderUsage.get(folder) ?? 0;
-    if (
-      usageCount > 0 &&
-      typeof window !== 'undefined' &&
-      !window.confirm(
-        `"${folder}" is linked to ${usageCount} visit${usageCount === 1 ? '' : 's'}. Removing it won't change existing visits. Continue?`,
-      )
-    ) {
-      return;
-    }
-    updateFolders.mutate({
-      folders: folders.filter((item) => item !== folder),
-    });
-  };
-
   return (
     <PageContainer maxWidth="lg">
       <div className="space-y-8">
@@ -440,6 +299,7 @@ export default function ProfilePage() {
           }
         />
 
+        {/* Personal Information */}
         <Card variant="elevated" padding="lg" className="space-y-6">
           <div className="space-y-2">
             <h2 className="text-xl font-semibold text-text-primary">Personal information</h2>
@@ -541,11 +401,17 @@ export default function ProfilePage() {
           )}
         </Card>
 
+        {/* Caregiver Access - moved up */}
+        <Card variant="elevated" padding="lg">
+          <CaregiverSettings />
+        </Card>
+
+        {/* Medical History */}
         <Card variant="elevated" padding="lg" className="space-y-6">
           <div className="space-y-2">
             <h2 className="text-xl font-semibold text-text-primary">Medical history</h2>
             <p className="text-sm text-text-secondary">
-              Record chronic conditions, surgeries, and other past medical events so they’re easy to
+              Record chronic conditions, surgeries, and other past medical events so they're easy to
               reference during visits.
             </p>
           </div>
@@ -597,66 +463,7 @@ export default function ProfilePage() {
           </p>
         </Card>
 
-        <Card variant="elevated" padding="lg" className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-text-primary">Visit folders & shortcuts</h2>
-            <p className="text-sm text-text-secondary">
-              Curate the folder list that powers visit filters, suggestions, and quick organization for every visit.
-            </p>
-          </div>
-
-          {isFoldersLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-48 rounded-lg bg-brand-primary/10" />
-              <Skeleton className="h-14 w-full rounded-xl bg-brand-primary/10" />
-              <Skeleton className="h-14 w-full rounded-xl bg-brand-primary/10" />
-            </div>
-          ) : (
-            <>
-              <FolderManagerList
-                folders={folders}
-                folderUsage={folderUsage}
-                editingFolder={editingFolder}
-                editingValue={editingFolderValue}
-                isMutating={updateFolders.isPending}
-                onStartRename={handleStartRenameFolder}
-                onCancelRename={handleCancelRenameFolder}
-                onChangeEditingValue={setEditingFolderValue}
-                onSaveRename={handleSaveRenameFolder}
-                onDelete={handleDeleteFolder}
-              />
-
-              <form
-                onSubmit={handleAddFolder}
-                className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle/60 p-4 sm:flex-row sm:items-center sm:gap-3"
-              >
-                <div className="flex-1 w-full">
-                  <Input
-                    placeholder="Add a folder (e.g. Oncology)"
-                    value={newFolderName}
-                    onChange={(event) => setNewFolderName(event.target.value)}
-                    disabled={updateFolders.isPending}
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="md"
-                  leftIcon={<Plus className="h-4 w-4" />}
-                  loading={updateFolders.isPending}
-                  className="w-full sm:w-auto"
-                >
-                  Add folder
-                </Button>
-              </form>
-            </>
-          )}
-
-          <p className="text-sm text-text-muted">
-            Changes sync instantly across your visits. Removing a folder keeps existing visits untouched, but the folder will no longer be suggested elsewhere.
-          </p>
-        </Card>
-
+        {/* Drug Allergies & Sensitivities */}
         <Card variant="elevated" padding="lg" className="space-y-6">
           <div className="space-y-2">
             <h2 className="text-xl font-semibold text-text-primary">Drug allergies & sensitivities</h2>
@@ -711,35 +518,34 @@ export default function ProfilePage() {
           </p>
         </Card>
 
-        <Card variant="elevated" padding="lg" className="space-y-4">
+        {/* Data & Privacy - at bottom */}
+        <Card variant="elevated" padding="lg" className="space-y-6">
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-text-primary">Data & Privacy</p>
+            <h2 className="text-xl font-semibold text-text-primary">Data & Privacy</h2>
             <p className="text-sm text-text-secondary">
               Export your data or delete your account at any time. Deleting your account is
               permanent and removes visits, medications, actions, and caregiver shares.
             </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Button
               variant="secondary"
+              leftIcon={<Download className="h-4 w-4" />}
               onClick={() => exportData.mutate()}
               loading={exportData.isPending}
-              className="sm:w-auto"
+              className="w-full sm:w-auto"
             >
               Export my data
             </Button>
             <Button
               variant="danger"
+              leftIcon={<Trash2 className="h-4 w-4" />}
               onClick={() => setDeleteDialogOpen(true)}
-              className="sm:w-auto"
+              className="w-full sm:w-auto"
             >
               Delete account
             </Button>
           </div>
-        </Card>
-
-        <Card variant="elevated" padding="lg" className="space-y-6">
-          <CaregiverSettings />
         </Card>
       </div>
 
@@ -824,131 +630,3 @@ function RemovableChipList({
     </div>
   );
 }
-
-type FolderManagerListProps = {
-  folders: string[];
-  folderUsage: Map<string, number>;
-  editingFolder: string | null;
-  editingValue: string;
-  isMutating: boolean;
-  onStartRename: (folder: string) => void;
-  onCancelRename: () => void;
-  onChangeEditingValue: (value: string) => void;
-  onSaveRename: (folder: string) => void;
-  onDelete: (folder: string) => void;
-};
-
-function FolderManagerList({
-  folders,
-  folderUsage,
-  editingFolder,
-  editingValue,
-  isMutating,
-  onStartRename,
-  onCancelRename,
-  onChangeEditingValue,
-  onSaveRename,
-  onDelete,
-}: FolderManagerListProps) {
-  if (!folders.length) {
-    return (
-      <p className="rounded-xl border border-dashed border-border bg-background-subtle/70 p-6 text-sm text-text-secondary">
-        You haven’t added any visit folders yet. Create folders like “Primary Care”, “Specialists”, or “Follow-ups” to speed up organization later.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {folders.map((folder) => {
-        const usageCount = folderUsage.get(folder) ?? 0;
-        const isEditing = editingFolder === folder;
-
-        return (
-          <div
-            key={folder}
-            className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle/60 p-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="flex flex-1 flex-col gap-2">
-              {isEditing ? (
-                <Input
-                  value={editingValue}
-                  onChange={(event) => onChangeEditingValue(event.target.value)}
-                  autoFocus
-                  disabled={isMutating}
-                />
-              ) : (
-                <div className="flex flex-wrap items-center gap-3">
-                  <Badge
-                    size="sm"
-                    tone="neutral"
-                    variant="soft"
-                    className="bg-background-subtle text-text-primary"
-                    leftIcon={<Folder className="h-3.5 w-3.5 text-text-tertiary" aria-hidden="true" />}
-                  >
-                    {folder}
-                  </Badge>
-                  <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
-                    {usageCount === 0
-                      ? 'Unused'
-                      : `${usageCount} visit${usageCount === 1 ? '' : 's'}`}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 self-end sm:self-auto">
-              {isEditing ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    leftIcon={<Check className="h-4 w-4" aria-hidden="true" />}
-                    onClick={() => onSaveRename(folder)}
-                    loading={isMutating}
-                  >
-                    Save
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={onCancelRename}
-                    disabled={isMutating}
-                  >
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onStartRename(folder)}
-                    disabled={isMutating}
-                  >
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                    Rename
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-error hover:text-error focus-visible:ring-error"
-                    onClick={() => onDelete(folder)}
-                    disabled={isMutating}
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    Remove
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
