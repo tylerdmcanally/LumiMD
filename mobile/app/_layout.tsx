@@ -7,11 +7,11 @@ import * as Notifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { SubscriptionProvider } from '../lib/contexts/SubscriptionContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits } from '../lib/api/hooks';
 import { setBadgeCount } from '../lib/notifications';
-import { configurePurchases } from '../lib/purchases';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -107,99 +107,90 @@ function NotificationHandler() {
   return null;
 }
 
-function PurchasesInitializer() {
-  const { user } = useAuth();
-  useEffect(() => {
-    configurePurchases(user?.uid).catch((err) =>
-      console.warn('[Purchases] configure failed', err),
-    );
-  }, [user?.uid]);
-  return null;
-}
-
 export default function RootLayout() {
   const scheme = useColorScheme();
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ErrorBoundary
-          onReset={() => queryClient.clear()}
-          renderFallback={({ reset }) => <RootFallback reset={reset} />}
-        >
-          <ThemeProvider value={navTheme(scheme ?? 'light')}>
-            <NotificationHandler />
-            <PurchasesInitializer />
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="sign-in"
-                options={{
-                  headerShown: false,
-                  animation: 'fade',
-                }}
-              />
-              <Stack.Screen
-                name="sign-up"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="forgot-password"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="settings"
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="medications"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="record-visit"
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                  animation: 'slide_from_bottom',
-                }}
-              />
-              <Stack.Screen
-                name="visits"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="visit-detail"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="onboarding"
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                  animation: 'slide_from_bottom',
-                }}
-              />
-            </Stack>
-          </ThemeProvider>
-        </ErrorBoundary>
+        <SubscriptionProvider>
+          <ErrorBoundary
+            onReset={() => queryClient.clear()}
+            renderFallback={({ reset }) => <RootFallback reset={reset} />}
+          >
+            <ThemeProvider value={navTheme(scheme ?? 'light')}>
+              <NotificationHandler />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                <Stack.Screen
+                  name="sign-in"
+                  options={{
+                    headerShown: false,
+                    animation: 'fade',
+                  }}
+                />
+                <Stack.Screen
+                  name="sign-up"
+                  options={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="forgot-password"
+                  options={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="settings"
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="medications"
+                  options={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="record-visit"
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                    animation: 'slide_from_bottom',
+                  }}
+                />
+                <Stack.Screen
+                  name="visits"
+                  options={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="visit-detail"
+                  options={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                  }}
+                />
+                <Stack.Screen
+                  name="onboarding"
+                  options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                    animation: 'slide_from_bottom',
+                  }}
+                />
+              </Stack>
+            </ThemeProvider>
+          </ErrorBoundary>
+        </SubscriptionProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

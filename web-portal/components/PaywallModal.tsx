@@ -21,10 +21,10 @@ export function PaywallModal({ open, onOpenChange, daysLeft }: PaywallModalProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Subscribe to keep using AI summaries</DialogTitle>
+          <DialogTitle>Subscribe in the LumiMD mobile app</DialogTitle>
           <DialogDescription>
-            Get AI visit summaries, medication insights, and caregiver sharing with a 14-day free
-            trial. Cancel anytime.
+            Recording visits and AI summaries are premium features. Subscriptions are managed in the
+            LumiMD mobile app. Start a 14-day free trial in the app, then return here to continue.
           </DialogDescription>
         </DialogHeader>
         {typeof daysLeft === 'number' && (
@@ -34,15 +34,14 @@ export function PaywallModal({ open, onOpenChange, daysLeft }: PaywallModalProps
         )}
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Maybe later
+            Close
           </Button>
           <Button variant="primary" onClick={() => onOpenChange(false)}>
-            Subscribe (coming soon)
+            Got it
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
 

@@ -15,7 +15,7 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
   return (
     <header
       className={cn(
-        'z-sticky bg-surface border-b border-border-light md:hidden shrink-0',
+        'sticky top-0 z-50 bg-surface/95 backdrop-blur border-b border-border-light md:hidden shrink-0',
         className
       )}
       style={{
@@ -43,7 +43,8 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
           </span>
         </div>
 
-        <div className="h-10 shrink-0 flex items-center" />
+        {/* Right spacer to keep logo perfectly centered */}
+        <div className="h-10 w-10 shrink-0 flex items-center justify-center" />
       </div>
     </header>
   );

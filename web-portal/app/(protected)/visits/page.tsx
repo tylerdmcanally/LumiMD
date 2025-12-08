@@ -35,7 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
 import { getSubscriptionState } from '@/lib/subscription';
-import { PaywallModal } from '@/components/PaywallModal';
+import { useViewing } from '@/lib/contexts/ViewingContext';
 
 type VisitFilters = {
   search: string;
@@ -72,9 +72,10 @@ export default function VisitsPage() {
   const router = useRouter();
   const user = useCurrentUser();
   const { data: profile } = useUserProfile(user?.uid);
+  const { isViewingSelf } = useViewing();
   const [filters, setFilters] = React.useState<VisitFilters>(DEFAULT_FILTERS);
-  const [paywallOpen, setPaywallOpen] = React.useState(false);
   const subscription = getSubscriptionState(profile);
+  const isReadOnly = !isViewingSelf;
 
   // Don't pass userId - let useVisits use ViewingContext
   const { data: visits = [], isLoading } = useVisits();
@@ -429,14 +430,10 @@ export default function VisitsPage() {
                       : 'Free trial in progress'}
                   </p>
                   <p className="text-sm text-warning-dark/80">
-                    {subscription.status === 'expired'
-                      ? 'Subscribe to keep using AI summaries and medication insights.'
-                      : `${subscription.daysLeft ?? 14} days left in your free trial.`}
+                    Recording visits and AI summaries are done in the LumiMD iOS app. Install the app
+                    to start or manage your subscription.
                   </p>
                 </div>
-                <Button variant="primary" onClick={() => setPaywallOpen(true)}>
-                  Subscribe (coming soon)
-                </Button>
               </div>
             </Card>
           )}
@@ -952,11 +949,6 @@ export default function VisitsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <PaywallModal
-          open={paywallOpen}
-          onOpenChange={setPaywallOpen}
-          daysLeft={subscription.daysLeft}
-        />
         </div>
       </PageContainer>
     </TooltipProvider>

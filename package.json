@@ -12,8 +12,6 @@
     "postinstall": "npm run build -w packages/sdk --if-present"
   },
   "dependencies": {
-    "firebase-admin": "^13.6.0",
-    "react-native-purchases": "9.6.9",
-    "react-native-purchases-ui": "9.6.9"
+    "firebase-admin": "^13.6.0"
   }
 }

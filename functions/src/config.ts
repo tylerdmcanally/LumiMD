@@ -2,16 +2,18 @@
  * Configuration for Firebase Functions
  * Reads from environment variables (process.env)
  *
- * For local development, create a .env file in the functions directory with:
- * - OPENAI_API_KEY
- * - ASSEMBLYAI_API_KEY
- * - VISIT_PROCESSING_WEBHOOK_SECRET
- * - RESEND_API_KEY (for sending caregiver invitation emails)
- * - NEXT_PUBLIC_APP_URL or APP_URL (web portal URL for invite links)
- * - STORAGE_BUCKET
- * - ALLOWED_ORIGINS (comma-separated list of allowed CORS origins)
+ * Required environment variables:
+ * - OPENAI_API_KEY: For AI summaries
+ * - ASSEMBLYAI_API_KEY: For audio transcription
+ * - VISIT_PROCESSING_WEBHOOK_SECRET: For secure webhook calls
+ * - STORAGE_BUCKET: Firebase Storage bucket name
+ * - ALLOWED_ORIGINS: Comma-separated list of allowed CORS origins
  *
- * For production, set these via Firebase Functions secrets or environment config
+ * Optional:
+ * - SUBSCRIPTION_ENFORCEMENT_DISABLED: Set to "true" to bypass subscription checks
+ *
+ * For production, set these via Firebase Functions secrets:
+ *   firebase functions:secrets:set OPENAI_API_KEY
  */
 
 export const assemblyAIConfig = {
@@ -33,7 +35,7 @@ export const webhookConfig = {
 
 export const corsConfig = {
   // Comma-separated list of allowed origins for CORS
-  // Example: "https://app.lumimd.com,https://admin.lumimd.com"
+  // Example: "https://portal.lumimd.app,https://lumimd.app"
   allowedOrigins: process.env.ALLOWED_ORIGINS || '',
   // Allow development origins when NODE_ENV is not production
   isDevelopment: process.env.NODE_ENV !== 'production',

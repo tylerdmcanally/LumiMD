@@ -1,3 +1,16 @@
+/**
+ * Subscription Routes
+ *
+ * Handles App Store Server Notifications V2 webhook for subscription events.
+ * When Apple sends a notification (purchase, renewal, expiry, etc.), this
+ * endpoint updates the user's subscription status in Firestore.
+ *
+ * Setup in App Store Connect:
+ * 1. Go to App Information → App Store Server Notifications
+ * 2. Set Production URL: https://[YOUR_FUNCTIONS_URL]/api/v1/subscriptions/apple-webhook
+ * 3. Set Version: V2
+ */
+
 import { Router } from 'express';
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
@@ -6,82 +19,163 @@ export const subscriptionsRouter = Router();
 
 const getDb = () => admin.firestore();
 
-type RevenueCatEvent = {
-  event: {
-    type: string;
-    app_user_id?: string;
-    product_id?: string;
-    purchased_at_ms?: number;
-    expiration_at_ms?: number | null;
-    environment?: string;
-    app_id?: string;
-  };
-};
+// Notification types from Apple
+type NotificationType =
+  | 'SUBSCRIBED'
+  | 'DID_RENEW'
+  | 'DID_CHANGE_RENEWAL_STATUS'
+  | 'DID_FAIL_TO_RENEW'
+  | 'EXPIRED'
+  | 'GRACE_PERIOD_EXPIRED'
+  | 'OFFER_REDEEMED'
+  | 'REFUND'
+  | 'REVOKE'
+  | string;
 
-function verifySecret(req: any): boolean {
-  const secret = process.env.REVENUECAT_WEBHOOK_SECRET;
-  if (!secret) return true; // allow if not set to avoid blocking in dev
-  const header = req.headers['authorization'] || req.headers['Authorization'];
-  if (typeof header !== 'string') return false;
-  return header === `Bearer ${secret}`;
-}
+/**
+ * Map Apple notification type to our subscription status
+ */
+function mapNotificationToStatus(
+  type: NotificationType,
+  subtype?: string,
+): 'active' | 'expired' {
+  // Active states
+  if (
+    type === 'SUBSCRIBED' ||
+    type === 'DID_RENEW' ||
+    type === 'OFFER_REDEEMED'
+  ) {
+    return 'active';
+  }
 
-function mapStatus(eventType: string, expirationMs?: number | null): 'active' | 'expired' {
-  if (eventType === 'CANCELLATION' || eventType === 'EXPIRATION') return 'expired';
-  if (typeof expirationMs === 'number' && expirationMs < Date.now()) return 'expired';
+  // Expired/cancelled states
+  if (
+    type === 'EXPIRED' ||
+    type === 'DID_FAIL_TO_RENEW' ||
+    type === 'GRACE_PERIOD_EXPIRED' ||
+    type === 'REFUND' ||
+    type === 'REVOKE'
+  ) {
+    return 'expired';
+  }
+
+  // Auto-renew disabled (still active until expiry)
+  if (type === 'DID_CHANGE_RENEWAL_STATUS' && subtype === 'AUTO_RENEW_DISABLED') {
+    return 'active'; // Still active, just won't renew
+  }
+
+  // Default to active for unknown types
   return 'active';
 }
 
-subscriptionsRouter.post('/webhook', async (req, res) => {
-  if (!verifySecret(req)) {
-    res.status(401).json({ message: 'Unauthorized' });
-    return;
-  }
+/**
+ * Decode base64url to string
+ */
+function base64UrlDecode(value: string): string {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = normalized.length % 4;
+  const padded = pad ? normalized + '='.repeat(4 - pad) : normalized;
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
 
-  const payload = req.body as RevenueCatEvent;
-  const event = payload?.event;
-  if (!event?.app_user_id) {
-    res.status(400).json({ message: 'Missing app_user_id' });
-    return;
-  }
+/**
+ * Decode JWS payload (without verification - add verification for production)
+ */
+function decodeJwsPayload<T>(jws?: string): T | null {
+  if (!jws || typeof jws !== 'string') return null;
 
-  const userId = event.app_user_id;
+  const parts = jws.split('.');
+  if (parts.length < 2) return null;
 
   try {
-    const status = mapStatus(event.type, event.expiration_at_ms ?? null);
-    const trialStartedAt = event.purchased_at_ms
-      ? admin.firestore.Timestamp.fromMillis(event.purchased_at_ms)
-      : admin.firestore.Timestamp.now();
-    const trialEndsAt =
-      typeof event.expiration_at_ms === 'number'
-        ? admin.firestore.Timestamp.fromMillis(event.expiration_at_ms)
-        : null;
+    const payload = base64UrlDecode(parts[1]);
+    return JSON.parse(payload) as T;
+  } catch (error) {
+    functions.logger.error('[subscriptions] Failed to decode JWS payload', error);
+    return null;
+  }
+}
 
-    await getDb()
-      .collection('users')
-      .doc(userId)
-      .set(
-        {
-          subscriptionStatus: status,
-          subscriptionPlatform: 'ios',
-          revenuecatUserId: userId,
-          updatedAt: admin.firestore.Timestamp.now(),
-          trialStartedAt,
-          ...(trialEndsAt ? { trialEndsAt } : {}),
-        },
-        { merge: true },
-      );
+/**
+ * POST /v1/subscriptions/apple-webhook
+ *
+ * Receives App Store Server Notifications V2
+ * https://developer.apple.com/documentation/appstoreservernotifications
+ */
+subscriptionsRouter.post('/apple-webhook', async (req, res) => {
+  const { signedPayload } = req.body || {};
 
-    functions.logger.info(`[subscriptions] Updated subscription for ${userId} via RevenueCat`, {
-      type: event.type,
+  if (!signedPayload || typeof signedPayload !== 'string') {
+    functions.logger.warn('[subscriptions] Missing signedPayload');
+    res.status(400).json({ message: 'Missing signedPayload' });
+    return;
+  }
+
+  // Decode the notification
+  const notification = decodeJwsPayload<any>(signedPayload);
+  if (!notification) {
+    functions.logger.warn('[subscriptions] Invalid signedPayload');
+    res.status(400).json({ message: 'Invalid signedPayload' });
+    return;
+  }
+
+  const notificationType: NotificationType = notification.notificationType;
+  const subtype: string | undefined = notification.subtype;
+
+  // Decode transaction info
+  const signedTransactionInfo: string | undefined = notification.data?.signedTransactionInfo;
+  const transaction = decodeJwsPayload<any>(signedTransactionInfo);
+
+  // Get user ID from appAccountToken (set when initiating purchase)
+  // Note: You need to set appAccountToken to Firebase UID when calling purchase
+  const userId: string | undefined = transaction?.appAccountToken;
+
+  if (!userId) {
+    functions.logger.info('[subscriptions] No appAccountToken in transaction, ignoring', {
+      notificationType,
+      hasTransaction: !!transaction,
+    });
+    // Return 200 to acknowledge receipt (Apple will retry on non-2xx)
+    res.status(200).json({ received: true, ignored: true });
+    return;
+  }
+
+  // Map to subscription status
+  const status = mapNotificationToStatus(notificationType, subtype);
+
+  // Parse expiration date
+  const expiresMs =
+    typeof transaction?.expiresDate === 'number'
+      ? transaction.expiresDate
+      : typeof transaction?.expiresDate === 'string'
+        ? Number(transaction.expiresDate)
+        : undefined;
+
+  // Update Firestore
+  const update: Record<string, any> = {
+    subscriptionStatus: status,
+    subscriptionPlatform: 'ios',
+    originalTransactionId: transaction?.originalTransactionId ?? null,
+    updatedAt: admin.firestore.Timestamp.now(),
+  };
+
+  if (expiresMs && Number.isFinite(expiresMs)) {
+    update.subscriptionExpiresAt = admin.firestore.Timestamp.fromMillis(expiresMs);
+  }
+
+  try {
+    await getDb().collection('users').doc(userId).set(update, { merge: true });
+
+    functions.logger.info('[subscriptions] Updated subscription', {
+      userId,
+      notificationType,
       status,
+      expiresAt: update.subscriptionExpiresAt?.toDate?.()?.toISOString?.(),
     });
 
     res.status(200).json({ received: true });
   } catch (error) {
-    functions.logger.error('[subscriptions] Webhook error', error);
-    res.status(500).json({ message: 'Failed to process webhook' });
+    functions.logger.error('[subscriptions] Failed to update user', { userId, error });
+    res.status(500).json({ message: 'Failed to update subscription' });
   }
 });
-
-

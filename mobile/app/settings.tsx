@@ -13,7 +13,7 @@ import {
   unregisterPushToken,
 } from '../lib/notifications';
 import { api } from '../lib/api/client';
-import { openCustomerCenter, restorePurchases } from '../lib/purchases';
+import { openManageSubscriptions, restorePurchases } from '../lib/store';
 
 const PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
 
@@ -313,7 +313,7 @@ export default function SettingsScreen() {
               <Pressable
                 style={styles.linkRow}
                 onPress={() => {
-                  openCustomerCenter().catch((e) =>
+                  openManageSubscriptions().catch((e) =>
                     Alert.alert('Unable to open', e?.message ?? 'Please try again.'),
                   );
                 }}
@@ -329,10 +329,17 @@ export default function SettingsScreen() {
 
               <Pressable
                 style={styles.linkRow}
-                onPress={() => {
-                  restorePurchases().catch((e) =>
-                    Alert.alert('Restore failed', e?.message ?? 'Please try again.'),
-                  );
+                onPress={async () => {
+                  try {
+                    const restored = await restorePurchases();
+                    if (restored) {
+                      Alert.alert('Purchases Restored', 'Your previous purchases have been restored.');
+                    } else {
+                      Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
+                    }
+                  } catch (e: any) {
+                    Alert.alert('Restore failed', e?.message ?? 'Please try again.');
+                  }
                 }}
               >
                 <View style={styles.settingIcon}>

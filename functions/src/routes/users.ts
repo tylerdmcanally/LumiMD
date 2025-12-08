@@ -100,8 +100,9 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
         : 'trial',
       subscriptionPlatform:
         typeof data.subscriptionPlatform === 'string' ? data.subscriptionPlatform : null,
-      revenuecatUserId:
-        typeof data.revenuecatUserId === 'string' ? data.revenuecatUserId : null,
+      subscriptionExpiresAt: data.subscriptionExpiresAt?.toDate?.().toISOString() ?? null,
+      originalTransactionId:
+        typeof data.originalTransactionId === 'string' ? data.originalTransactionId : null,
       complete: isProfileComplete(data),
     };
 
