@@ -3,9 +3,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import Image from 'next/image';
-import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { Mail, Lock, ArrowRight, Smartphone } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -16,17 +15,38 @@ import { Card } from '@/components/ui/card';
 export default function SignInPage() {
   const router = useRouter();
   const [returnTo, setReturnTo] = React.useState('/dashboard');
+  const [fromApp, setFromApp] = React.useState(false);
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isSigningOut, setIsSigningOut] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const next = params.get('returnTo');
+    const reason = params.get('reason');
+    
     if (next) {
       setReturnTo(next);
+    }
+    
+    // If coming from app handoff, sign out existing user to prevent showing wrong account
+    if (reason === 'app_handoff') {
+      setFromApp(true);
+      setIsSigningOut(true);
+      
+      signOut(auth)
+        .then(() => {
+          console.log('[sign-in] Signed out existing user for app handoff');
+        })
+        .catch((err) => {
+          console.error('[sign-in] Error signing out:', err);
+        })
+        .finally(() => {
+          setIsSigningOut(false);
+        });
     }
   }, []);
 
@@ -64,6 +84,29 @@ export default function SignInPage() {
           </p>
         </div>
 
+        {/* App Handoff Notice */}
+        {fromApp && (
+          <Card
+            variant="flat"
+            padding="md"
+            className="mb-6 border border-brand-primary/30 bg-brand-primary-pale"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary/20">
+                <Smartphone className="h-5 w-5 text-brand-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-text-primary">
+                  Sign in to continue
+                </p>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Please sign in with the same account you use in the LumiMD app to view your data.
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Sign In Card */}
         <Card variant="elevated" padding="lg" className="shadow-floating">
           <div className="space-y-6">
@@ -76,69 +119,79 @@ export default function SignInPage() {
               </p>
             </div>
 
-            <form className="space-y-5" onSubmit={handleSubmit}>
-              {/* Email Field */}
-              <div className="space-y-2">
-                <Label htmlFor="email" required>
-                  Email Address
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  leftIcon={<Mail className="h-4 w-4" />}
-                  required
-                />
+            {isSigningOut ? (
+              <div className="flex flex-col items-center py-8">
+                <div className="relative w-12 h-12 mb-4">
+                  <div className="absolute inset-0 border-4 border-brand-primary/20 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-brand-primary rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <p className="text-sm text-text-secondary">Preparing sign in...</p>
               </div>
-
-              {/* Password Field */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password" required>
-                    Password
+            ) : (
+              <form className="space-y-5" onSubmit={handleSubmit}>
+                {/* Email Field */}
+                <div className="space-y-2">
+                  <Label htmlFor="email" required>
+                    Email Address
                   </Label>
-                  <Link
-                    href="/forgot-password"
-                    className="text-sm font-medium text-brand-primary hover:text-brand-primary-dark transition-smooth"
-                  >
-                    Forgot password?
-                  </Link>
+                  <Input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                    leftIcon={<Mail className="h-4 w-4" />}
+                    required
+                  />
                 </div>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter your password"
-                  leftIcon={<Lock className="h-4 w-4" />}
-                  required
-                />
-              </div>
 
-              {/* Error Message */}
-              {error && (
-                <div className="rounded-lg border border-error-light bg-error-light p-4 animate-fade-in-up">
-                  <p className="text-sm font-medium text-error-dark">{error}</p>
+                {/* Password Field */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password" required>
+                      Password
+                    </Label>
+                    <Link
+                      href="/forgot-password"
+                      className="text-sm font-medium text-brand-primary hover:text-brand-primary-dark transition-smooth"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Enter your password"
+                    leftIcon={<Lock className="h-4 w-4" />}
+                    required
+                  />
                 </div>
-              )}
 
-              {/* Submit Button */}
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                fullWidth
-                loading={isSubmitting}
-                disabled={isSubmitting}
-                rightIcon={<ArrowRight className="h-5 w-5" />}
-              >
-                {isSubmitting ? 'Signing in...' : 'Sign in'}
-              </Button>
-            </form>
+                {/* Error Message */}
+                {error && (
+                  <div className="rounded-lg border border-error-light bg-error-light p-4 animate-fade-in-up">
+                    <p className="text-sm font-medium text-error-dark">{error}</p>
+                  </div>
+                )}
+
+                {/* Submit Button */}
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  loading={isSubmitting}
+                  disabled={isSubmitting}
+                  rightIcon={<ArrowRight className="h-5 w-5" />}
+                >
+                  {isSubmitting ? 'Signing in...' : 'Sign in'}
+                </Button>
+              </form>
+            )}
 
             {/* Divider */}
             <div className="relative">
@@ -181,48 +234,50 @@ export default function SignInPage() {
           </p>
         </div>
 
-        {/* App Download Prompt */}
-        <Card
-          variant="flat"
-          padding="md"
-          className="mt-8 border border-brand-primary/20 bg-brand-primary-pale"
-        >
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary/20">
-              <svg
-                className="h-5 w-5 text-brand-primary"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
+        {/* App Download Prompt - only show if not from app */}
+        {!fromApp && (
+          <Card
+            variant="flat"
+            padding="md"
+            className="mt-8 border border-brand-primary/20 bg-brand-primary-pale"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary/20">
+                <svg
+                  className="h-5 w-5 text-brand-primary"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="font-semibold text-text-primary">
+                  Get the mobile app
+                </p>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Record visits and access your health data on the go with LumiMD
+                  for iOS.
+                </p>
+                <Link
+                  href="https://lumimd.app"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-primary hover:text-brand-primary-dark transition-smooth"
+                >
+                  Download now
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-text-primary">
-                Get the mobile app
-              </p>
-              <p className="mt-1 text-sm text-text-secondary">
-                Record visits and access your health data on the go with LumiMD
-                for iOS.
-              </p>
-              <Link
-                href="https://lumimd.app"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-primary hover:text-brand-primary-dark transition-smooth"
-              >
-                Download now
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        )}
       </div>
     </div>
   );

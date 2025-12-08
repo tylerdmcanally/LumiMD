@@ -47,14 +47,11 @@ async function createHandoffCode(): Promise<string | null> {
 }
 
 /**
- * Opens web portal URL with optional auth handoff
+ * Opens web portal URL with auth handoff
+ * If handoff fails, redirects to sign-in page instead of showing wrong account
  * @param path - Path to open (e.g., '/dashboard', '/visits/123')
- * @param fallbackToUnauthenticated - If true, opens URL even if handoff fails
  */
-async function openWebUrl(
-  path: string,
-  fallbackToUnauthenticated: boolean = true
-): Promise<void> {
+async function openWebUrl(path: string): Promise<void> {
   try {
     // Attempt to create handoff code
     const code = await createHandoffCode();
@@ -65,13 +62,11 @@ async function openWebUrl(
       // Success: use handoff flow
       url = `${cfg.webPortalUrl}/auth/handoff?code=${code}&returnTo=${encodeURIComponent(path)}`;
       console.log(`[linking] Opening with handoff: ${path}`);
-    } else if (fallbackToUnauthenticated) {
-      // Fallback: open without auth
-      url = `${cfg.webPortalUrl}${path}`;
-      console.log(`[linking] Opening without handoff (fallback): ${path}`);
     } else {
-      // No fallback allowed
-      throw new Error('Authentication required but handoff failed');
+      // Handoff failed - redirect to sign-in with the intended destination
+      // This prevents showing wrong account data
+      url = `${cfg.webPortalUrl}/sign-in?returnTo=${encodeURIComponent(path)}&reason=app_handoff`;
+      console.log(`[linking] Handoff failed, redirecting to sign-in: ${path}`);
     }
     
     await WebBrowser.openBrowserAsync(url);
@@ -135,4 +130,3 @@ export async function openWebProfile(): Promise<void> {
 export async function openWeb(path: string): Promise<void> {
   await openWebUrl(path);
 }
-
