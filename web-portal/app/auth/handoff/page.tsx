@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithCustomToken, signOut } from 'firebase/auth';
 
 export default function AuthHandoffPage() {
   const router = useRouter();
@@ -26,6 +26,12 @@ export default function AuthHandoffPage() {
   async function handleHandoff(code: string, returnTo: string) {
     try {
       setError(null);
+      
+      // Always sign out existing user first to prevent session mismatch
+      if (auth.currentUser) {
+        console.log('[handoff] Signing out existing user:', auth.currentUser.email);
+        await signOut(auth);
+      }
       
       // Exchange code for custom token
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
@@ -78,20 +84,20 @@ export default function AuthHandoffPage() {
   
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="max-w-md w-full bg-surface rounded-2xl shadow-lg p-8 text-center">
+          <div className="w-16 h-16 bg-error-light rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900 mb-2">
+          <h1 className="text-xl font-semibold text-text-primary mb-2">
             Authentication Failed
           </h1>
-          <p className="text-gray-600 mb-4">
+          <p className="text-text-secondary mb-4">
             {error}
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-muted">
             Redirecting to sign in...
           </p>
         </div>
@@ -100,23 +106,21 @@ export default function AuthHandoffPage() {
   }
   
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="max-w-md w-full bg-surface rounded-2xl shadow-lg p-8 text-center">
         {/* Loading spinner */}
         <div className="relative w-16 h-16 mx-auto mb-4">
-          <div className="absolute inset-0 border-4 border-blue-200 rounded-full"></div>
-          <div className="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+          <div className="absolute inset-0 border-4 border-brand-primary/20 rounded-full"></div>
+          <div className="absolute inset-0 border-4 border-brand-primary rounded-full border-t-transparent animate-spin"></div>
         </div>
         
-        <h1 className="text-xl font-semibold text-gray-900 mb-2">
+        <h1 className="text-xl font-semibold text-text-primary mb-2">
           Signing you in...
         </h1>
-        <p className="text-gray-600">
+        <p className="text-text-secondary">
           Please wait a moment
         </p>
       </div>
     </div>
   );
 }
-
-
