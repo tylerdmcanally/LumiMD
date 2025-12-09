@@ -35,14 +35,25 @@ service cloud.firestore {
       // Account creation - ensure userId matches auth.uid
       allow create: if isAuthenticated() && isOwner(userId);
 
-      // Update own profile - whitelist allowed fields
+      // Update own profile - whitelist allowed fields and validate sizes
       allow update: if isAuthenticated()
         && isOwner(userId)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['firstName', 'lastName', 'preferredName', 'dateOfBirth', 'allergies', 'medicalHistory', 'tags', 'folders', 'createdAt', 'updatedAt']);
+          .hasOnly(['firstName', 'lastName', 'preferredName', 'dateOfBirth', 'allergies', 'medicalHistory', 'tags', 'folders', 'createdAt', 'updatedAt'])
+        // Size validation to prevent storage exhaustion
+        && (!('firstName' in request.resource.data) || request.resource.data.firstName.size() <= 100)
+        && (!('lastName' in request.resource.data) || request.resource.data.lastName.size() <= 100)
+        && (!('preferredName' in request.resource.data) || request.resource.data.preferredName.size() <= 100)
+        && (!('allergies' in request.resource.data) || request.resource.data.allergies.size() <= 50)
+        && (!('medicalHistory' in request.resource.data) || request.resource.data.medicalHistory.size() <= 100);
 
       // No deletes - use Cloud Function for cascading delete
       allow delete: if false;
+
+      // Subcollection: Push Tokens
+      match /pushTokens/{tokenId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
     }
 
     match /visits/{visitId} {

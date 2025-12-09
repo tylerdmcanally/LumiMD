@@ -619,7 +619,7 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
 
         const [signedUrl] = await file.getSignedUrl({
           action: 'read',
-          expires: Date.now() + 60 * 60 * 1000,
+          expires: Date.now() + 4 * 60 * 60 * 1000, // 4 hours to allow for long transcription queues
         });
 
         if (!signedUrl) {

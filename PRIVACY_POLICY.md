@@ -61,16 +61,17 @@ At LumiMD, we believe your health information is deeply personal and should rema
 - **Secure Infrastructure**: Hosted on Google Firebase with enterprise-grade security
 
 ### AI Processing
-We use trusted AI providers to transcribe and analyze your health information:
+We use trusted AI providers to transcribe and analyze your health information. We enforce a strict **Data Minimization Policy**:
 
 **AssemblyAI** (Transcription)
 - Processes audio to create text transcripts
-- Deletes your data after transcription is complete
+- **Auto-Deletion**: We automatically delete your data from AssemblyAI's servers immediately after transcription is complete.
+- **Daily Sweeps**: We run automated daily privacy audits to ensure no data is inadvertently left behind.
 - Privacy policy: https://www.assemblyai.com/legal/privacy-policy
 
 **OpenAI** (Summarization)
 - Analyzes transcripts to extract key information
-- **Zero Data Retention**: Your data is immediately deleted after processing
+- **Zero Data Retention**: We utilize OpenAI's "Zero Retention" configuration. Your data is processed in memory and immediately deleted. It is never used to train their models.
 - Privacy policy: https://openai.com/enterprise-privacy
 
 ### Access Controls
@@ -135,9 +136,11 @@ All service providers are bound by strict confidentiality agreements.
 ## Data Retention
 
 ### How Long We Keep Your Data
-- **Active Accounts**: We keep your data as long as your account is active
-- **Inactive Accounts**: If you don't use the app for 2 years, we'll email you before deleting your data
-- **Deleted Accounts**: Immediately deleted, with a 30-day recovery period
+- **Audio Recordings**: **Deleted immediately** after processing. Once your transcript and summary are generated, the original audio file is permanently erased from our servers to protect your privacy.
+- **Transcripts & Summaries**: Kept as long as your account is active, so you can review your medical history.
+- **Active Accounts**: We keep your profile and health data as long as your account is active.
+- **Inactive Accounts**: If you don't use the app for 2 years, we'll email you before deleting your data.
+- **Deleted Accounts**: Immediately deleted, with a 30-day recovery period.
 
 ### Backups
 Your data may remain in backup systems for up to 90 days after deletion, then is permanently erased.

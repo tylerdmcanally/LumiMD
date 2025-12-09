@@ -125,6 +125,11 @@ export const processVisitAudio = onObjectFinalized(
 
       await visitRef.update(updatePayload);
 
+      // Step 4: Clean up external data (Privacy & Data Minimization)
+      // NOTE: This runs AFTER the transcript has been received and processed.
+      // Since this function (processVisitAudio) only SUBMITS the job, we can't delete yet.
+      // Deletion must happen in the webhook handler (when job is done) or the sweeper.
+      
       logger.info(
         `[processVisitAudio] Visit ${visitRef.id} submitted to AssemblyAI. transcriptionId=${transcriptionId}`,
       );

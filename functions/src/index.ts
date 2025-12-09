@@ -13,12 +13,15 @@ import { usersRouter } from './routes/users';
 import { sharesRouter } from './routes/shares';
 import { subscriptionsRouter } from './routes/subscriptions';
 import { apiLimiter } from './middlewares/rateLimit';
+import { requireHttps } from './middlewares/httpsOnly';
+import { errorHandler } from './middlewares/errorHandler';
 import { corsConfig } from './config';
 export { processVisitAudio } from './triggers/processVisitAudio';
 export { checkPendingTranscriptions } from './triggers/checkPendingTranscriptions';
 export { summarizeVisitTrigger } from './triggers/summarizeVisit';
 export { autoAcceptShareInvites } from './triggers/autoAcceptShareInvites';
 export { analyzeMedicationSafety } from './callables/medicationSafety';
+export { privacyDataSweeper } from './triggers/privacySweeper';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -49,6 +52,7 @@ if (allAllowedOrigins.length === 0) {
 }
 
 // Middleware
+app.use(requireHttps);
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, Postman, server-to-server)
@@ -138,6 +142,9 @@ app.use('/v1/subscriptions', subscriptionsRouter);
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Centralized error handling
+app.use(errorHandler);
 
 // Export the API (v2)
 export const api = onRequest(

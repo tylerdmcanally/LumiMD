@@ -69,6 +69,9 @@ export async function summarizeVisit({
       summarizationCompletedAt: processedAt,
     });
 
+    // Privacy Audit Log
+    functions.logger.info(`[PrivacyAudit] Visit ${visitRef.id} processed by OpenAI (Zero Retention). Summary generated.`);
+
     const actionsCollection = db().collection('actions');
     const existingActions = await actionsCollection.where('visitId', '==', visitRef.id).get();
 
