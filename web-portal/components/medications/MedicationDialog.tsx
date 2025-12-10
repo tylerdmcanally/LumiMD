@@ -208,7 +208,7 @@ export function MedicationDialog({
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3 md:gap-4">
             <DialogClose asChild>
               <Button type="button" variant="ghost">
                 Cancel
