@@ -144,7 +144,7 @@ export function CaregiverSettings() {
                         }
                       }}
                       disabled={revokeMutation.isPending}
-                      className="text-error hover:text-error hover:bg-error-light px-2 py-1 h-8 rounded-full shrink-0"
+                      className="text-error-dark bg-error-light hover:bg-error/20 px-3 py-1 h-8 rounded-full shrink-0"
                     >
                       <UserX className="h-4 w-4" />
                       <span className="hidden sm:inline ml-1.5">Revoke</span>
