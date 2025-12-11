@@ -172,7 +172,7 @@ const DialogContent = React.forwardRef<
               WebkitOverflowScrolling: 'touch',
             }}
           >
-            <div className="flex flex-col gap-4 pb-2">
+            <div className="flex flex-col gap-4 pb-6">
               {children}
             </div>
           </div>

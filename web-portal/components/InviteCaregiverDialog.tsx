@@ -118,8 +118,8 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} repositionInputs={false}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md min-h-[45vh] md:min-h-0">
         <DialogHeader>
           <DialogTitle>Invite Caregiver</DialogTitle>
           <DialogDescription>
