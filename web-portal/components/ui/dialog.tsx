@@ -148,7 +148,8 @@ const DialogContent = React.forwardRef<
           ref={ref}
           className={cn(
             'fixed inset-x-0 bottom-0 z-modal flex h-auto max-h-[90dvh] flex-col',
-            'rounded-t-2xl border-t border-border-light bg-surface',
+            // Clean background without border (border can cause visible line)
+            'rounded-t-2xl bg-surface shadow-lg',
             'focus:outline-none',
             // GPU acceleration for smooth animations
             'transform-gpu',
@@ -157,21 +158,19 @@ const DialogContent = React.forwardRef<
           {...props}
         >
           {/* Drag Handle */}
-          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-text-muted/30" />
+          <div className="mx-auto mt-3 mb-1 h-1.5 w-12 shrink-0 rounded-full bg-text-muted/30" />
           {/* Scrollable Content - optimized for iOS */}
           <div
             className={cn(
-              'flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 pb-8',
+              'flex-1 overflow-y-auto overflow-x-hidden px-6 py-3',
               // iOS scroll optimization
               'overscroll-contain',
-              // Ensure smooth scrolling
-              '[&]:scroll-smooth',
             )}
             style={{
               WebkitOverflowScrolling: 'touch',
             }}
           >
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 pb-6">
               {children}
             </div>
           </div>
