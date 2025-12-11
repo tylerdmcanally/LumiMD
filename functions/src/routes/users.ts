@@ -61,19 +61,13 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
     const userRef = getDb().collection('users').doc(userId);
     let userDoc = await userRef.get();
 
-    // Bootstrap profile with trial information on first fetch
+    // Bootstrap profile on first fetch
     if (!userDoc.exists) {
       const now = admin.firestore.Timestamp.now();
-      const trialEndsAt = admin.firestore.Timestamp.fromDate(
-        new Date(now.toDate().getTime() + 14 * 24 * 60 * 60 * 1000),
-      );
       await userRef.set(
         {
           createdAt: now,
           updatedAt: now,
-          trialStartedAt: now,
-          trialEndsAt,
-          subscriptionStatus: 'trial',
         },
         { merge: true },
       );
@@ -93,16 +87,6 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
       folders: Array.isArray(data.folders) ? data.folders : [],
       createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
       updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
-      trialStartedAt: data.trialStartedAt?.toDate?.().toISOString() ?? null,
-      trialEndsAt: data.trialEndsAt?.toDate?.().toISOString() ?? null,
-      subscriptionStatus: typeof data.subscriptionStatus === 'string'
-        ? data.subscriptionStatus
-        : 'trial',
-      subscriptionPlatform:
-        typeof data.subscriptionPlatform === 'string' ? data.subscriptionPlatform : null,
-      subscriptionExpiresAt: data.subscriptionExpiresAt?.toDate?.().toISOString() ?? null,
-      originalTransactionId:
-        typeof data.originalTransactionId === 'string' ? data.originalTransactionId : null,
       complete: isProfileComplete(data),
     };
 
@@ -210,12 +194,12 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
     const { token, platform } = payload;
 
     const tokensRef = getDb().collection('users').doc(userId).collection('pushTokens');
-    
+
     // Check if token already exists
     const existingTokenQuery = await tokensRef.where('token', '==', token).limit(1).get();
-    
+
     const now = admin.firestore.Timestamp.now();
-    
+
     if (!existingTokenQuery.empty) {
       // Update existing token
       const existingDoc = existingTokenQuery.docs[0];
@@ -224,7 +208,7 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
         updatedAt: now,
         lastActive: now,
       });
-      
+
       functions.logger.info(`[users] Updated push token for user ${userId}`);
     } else {
       // Create new token document
@@ -235,7 +219,7 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
         updatedAt: now,
         lastActive: now,
       });
-      
+
       functions.logger.info(`[users] Registered new push token for user ${userId}`);
     }
 

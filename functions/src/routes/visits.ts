@@ -3,7 +3,6 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
-import { requireSubscription } from '../middlewares/subscription';
 import { storageConfig } from '../config';
 import { normalizeMedicationSummary } from '../services/medicationSync';
 import { getAssemblyAIService } from '../services/assemblyai';
@@ -110,11 +109,11 @@ visitsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
       .collection('visits')
       .where('userId', '==', userId)
       .orderBy('createdAt', sort === 'asc' ? 'asc' : 'desc');
-    
+
     if (limit && limit > 0) {
       query = query.limit(limit);
     }
-    
+
     const visitsSnapshot = await query.get();
 
     const visits = visitsSnapshot.docs.map(doc => ({
@@ -193,7 +192,7 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
  * POST /v1/visits
  * Create a new visit (premium)
  */
-visitsRouter.post('/', requireAuth, requireSubscription, async (req: AuthRequest, res) => {
+visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
 

@@ -22,8 +22,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
-import { useSubscription } from '../lib/contexts/SubscriptionContext';
-import { PaywallSheet } from '../components/PaywallSheet';
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
@@ -32,7 +30,6 @@ const RECORDING_LIMIT_MINUTES = MAX_RECORDING_MS / (60 * 1000);
 export default function RecordVisitScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { isActive: hasActiveSubscription, status: subscriptionStatus, daysLeft } = useSubscription();
   const {
     recordingState,
     duration,
@@ -52,7 +49,6 @@ export default function RecordVisitScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [paywallVisible, setPaywallVisible] = useState(false);
   const isIdle = recordingState === 'idle';
   const isFinished = recordingState === 'stopped';
   const longRecordingWarningShown = useRef(false);
@@ -63,8 +59,6 @@ export default function RecordVisitScreen() {
   const isPrimaryDisabled = uploading || isFinished;
   const primaryIconName = isRecording ? 'pause' : isPaused ? 'play' : 'mic';
   const primaryIconColor = isRecording || isPaused ? Colors.surface : Colors.primary;
-  const PAYWALL_ENABLED = process.env.EXPO_PUBLIC_PAYWALL_ENABLED === 'true';
-  const isAccessAllowed = !PAYWALL_ENABLED || hasActiveSubscription;
 
   const extractUserMessage = (error: unknown, fallback: string) => {
     if (error && typeof error === 'object') {
@@ -98,10 +92,6 @@ export default function RecordVisitScreen() {
 
   const handleStartRecording = async () => {
     try {
-      if (!isAccessAllowed) {
-        setPaywallVisible(true);
-        return;
-      }
       if (!hasPermission) {
         const granted = await requestPermission();
         if (!granted) {
@@ -316,17 +306,17 @@ export default function RecordVisitScreen() {
 
         {/* Main Content */}
         <View style={styles.content}>
-        {errorMessage && (
-          <View style={styles.errorBanner}>
-            <Ionicons name="warning" size={18} color={Colors.error} />
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
-            <Pressable onPress={() => setErrorMessage(null)} style={styles.errorDismiss}>
-              <Ionicons name="close" size={18} color={Colors.error} />
-            </Pressable>
-          </View>
-        )}
+          {errorMessage && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="warning" size={18} color={Colors.error} />
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+              <Pressable onPress={() => setErrorMessage(null)} style={styles.errorDismiss}>
+                <Ionicons name="close" size={18} color={Colors.error} />
+              </Pressable>
+            </View>
+          )}
 
-        {/* Status */}
+          {/* Status */}
           <View style={styles.statusContainer}>
             <Text style={styles.statusText}>
               {recordingState === 'idle' && 'Ready to record'}
@@ -431,11 +421,6 @@ export default function RecordVisitScreen() {
         )}
       </SafeAreaView>
       {isRecording && <KeepDeviceAwake tag="visit-recording" />}
-      <PaywallSheet
-        visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
-        daysLeft={daysLeft}
-      />
     </ErrorBoundary>
   );
 }
