@@ -138,7 +138,6 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
               onChange={(e) => setEmail(e.target.value)}
               disabled={inviteMutation.isPending}
               required
-              autoFocus
             />
           </div>
 
@@ -146,12 +145,11 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
             <Label htmlFor="caregiver-message">Optional Message</Label>
             <textarea
               id="caregiver-message"
-              className="flex min-h-[100px] w-full rounded-lg border border-border-light bg-background px-3 py-2 text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-24 w-full resize-none rounded-lg border border-border-light bg-background px-3 py-2 text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Add a personal note (optional)"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               disabled={inviteMutation.isPending}
-              rows={3}
             />
           </div>
 
