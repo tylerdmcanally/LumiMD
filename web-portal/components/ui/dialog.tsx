@@ -40,9 +40,14 @@ function Dialog({ children, open, onOpenChange, defaultOpen, modal = true }: Dia
     );
   }
 
+  // Mobile: Use drawer without scaling background (prevents rendering artifacts)
   return (
     <ResponsiveDialogContext.Provider value={{ isDesktop: false }}>
-      <DrawerPrimitive.Root open={open} onOpenChange={onOpenChange} shouldScaleBackground>
+      <DrawerPrimitive.Root
+        open={open}
+        onOpenChange={onOpenChange}
+        shouldScaleBackground={false}
+      >
         {children}
       </DrawerPrimitive.Root>
     </ResponsiveDialogContext.Provider>
@@ -86,7 +91,7 @@ const DialogClose = React.forwardRef<
 DialogClose.displayName = 'DialogClose';
 
 // =============================================================================
-// OVERLAYS
+// OVERLAYS (optimized for smooth rendering)
 // =============================================================================
 
 const DialogOverlay = React.forwardRef<
@@ -96,7 +101,8 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-modal bg-overlay backdrop-blur-sm',
+      // Simpler overlay without backdrop-blur to prevent rendering artifacts
+      'fixed inset-0 z-modal bg-black/40',
       'data-[state=open]:animate-in data-[state=closed]:animate-out',
       'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className
@@ -112,7 +118,11 @@ const DrawerOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DrawerPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-modal bg-overlay', className)}
+    className={cn(
+      // Simple solid overlay for mobile - no blur effects
+      'fixed inset-0 z-modal bg-black/40',
+      className
+    )}
     {...props}
   />
 ));
@@ -137,17 +147,30 @@ const DialogContent = React.forwardRef<
         <DrawerPrimitive.Content
           ref={ref}
           className={cn(
-            'fixed inset-x-0 bottom-0 z-modal mt-24 flex h-auto max-h-[96dvh] flex-col',
+            'fixed inset-x-0 bottom-0 z-modal flex h-auto max-h-[90dvh] flex-col',
             'rounded-t-2xl border-t border-border-light bg-surface',
             'focus:outline-none',
+            // GPU acceleration for smooth animations
+            'transform-gpu',
             className
           )}
           {...props}
         >
           {/* Drag Handle */}
-          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-text-muted/40" />
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 py-4 pb-8">
+          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-text-muted/30" />
+          {/* Scrollable Content - optimized for iOS */}
+          <div
+            className={cn(
+              'flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 pb-8',
+              // iOS scroll optimization
+              'overscroll-contain',
+              // Ensure smooth scrolling
+              '[&]:scroll-smooth',
+            )}
+            style={{
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
             <div className="flex flex-col gap-4">
               {children}
             </div>
@@ -168,6 +191,8 @@ const DialogContent = React.forwardRef<
           'w-[90vw] max-w-2xl max-h-[85vh] overflow-hidden',
           'rounded-2xl border border-border-light bg-surface shadow-floating',
           'flex flex-col',
+          // GPU acceleration
+          'transform-gpu',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
           'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -176,7 +201,12 @@ const DialogContent = React.forwardRef<
         )}
         {...props}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 lg:p-8">
+        <div
+          className="flex-1 overflow-y-auto overflow-x-hidden p-6 lg:p-8"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
           <div className="flex flex-col gap-5 lg:gap-6">
             {children}
           </div>
