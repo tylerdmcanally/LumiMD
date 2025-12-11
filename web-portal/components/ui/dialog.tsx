@@ -153,12 +153,16 @@ const DialogContent = React.forwardRef<
     if (!shouldAdapt || !height) {
       return undefined;
     }
+    // When keyboard is open, position dialog at top of visible viewport
     const offset = Math.max(offsetTop ?? 0, 8);
-    const availableHeight = Math.max(height - offset - 16, 280);
+    // More aggressive height limiting for mobile keyboards
+    const availableHeight = Math.max(height - 32, 200);
     return {
-      top: `calc(${offset}px + env(safe-area-inset-top, 0px))`,
+      top: `${offset + 8}px`,
+      transform: 'translateX(-50%)',
+      left: '50%',
       maxHeight: `${availableHeight}px`,
-      paddingBottom: '1rem', // Reduce padding when keyboard is open
+      paddingBottom: '0.5rem',
     };
   }, [height, offsetTop, shouldAdapt]);
 

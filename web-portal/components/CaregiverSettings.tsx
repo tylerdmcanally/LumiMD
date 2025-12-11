@@ -58,7 +58,7 @@ export function CaregiverSettings() {
       const message = error?.userMessage || error?.message || 'Failed to cancel invitation';
       const details = error?.code ? ` (${error.code})` : '';
       toast.error(message + details, {
-        description: error?.status === 404 
+        description: error?.status === 404
           ? 'The invitation was not found. It may have already been cancelled or accepted.'
           : undefined,
       });
@@ -144,10 +144,10 @@ export function CaregiverSettings() {
                         }
                       }}
                       disabled={revokeMutation.isPending}
-                      className="text-error hover:text-error w-full sm:w-auto justify-center"
+                      className="text-error hover:text-error hover:bg-error-light px-2 py-1 h-8 rounded-full shrink-0"
                     >
-                      <UserX className="h-4 w-4 mr-1.5" />
-                      Revoke access
+                      <UserX className="h-4 w-4" />
+                      <span className="hidden sm:inline ml-1.5">Revoke</span>
                     </Button>
                   </div>
                 ))}
@@ -256,9 +256,10 @@ export function CaregiverSettings() {
               </div>
             )}
         </>
-      )}
+      )
+      }
 
       <InviteCaregiverDialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen} />
-    </div>
+    </div >
   );
 }
