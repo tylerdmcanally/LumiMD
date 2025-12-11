@@ -53,7 +53,7 @@ export default function ProtectedLayout({
           <MobileSidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
           {/* Spacer for fixed header */}
-          <div className="h-16 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)' }} />
+          <div className="h-20 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)' }} />
 
           <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
             <ReadOnlyBanner />
