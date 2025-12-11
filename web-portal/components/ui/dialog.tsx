@@ -2,112 +2,92 @@
 
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { Drawer as DrawerPrimitive } from 'vaul';
 import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/lib/hooks/useMediaQuery';
 
-const mergeRefs = <T,>(...refs: (React.Ref<T> | undefined)[]) => {
-  return (value: T | null) => {
-    refs.forEach((ref) => {
-      if (typeof ref === 'function') {
-        ref(value);
-      } else if (ref != null) {
-        (ref as React.MutableRefObject<T | null>).current = value;
-      }
-    });
-  };
-};
+// =============================================================================
+// CONTEXT FOR RESPONSIVE BEHAVIOR
+// =============================================================================
 
-type VisualViewportSnapshot = {
-  height: number | null;
-  offsetTop: number;
-  innerHeight: number | null;
-  baselineHeight: number | null;
-};
+const ResponsiveDialogContext = React.createContext<{ isDesktop: boolean }>({ isDesktop: true });
 
-function useVisualViewportSnapshot(): VisualViewportSnapshot {
-  const baselineRef = React.useRef<number | null>(null);
-  const [viewport, setViewport] = React.useState<{ height: number | null; offsetTop: number }>({
-    height: null,
-    offsetTop: 0,
-  });
-  const [innerHeight, setInnerHeight] = React.useState<number | null>(null);
+// =============================================================================
+// RESPONSIVE DIALOG ROOT
+// Automatically uses Drawer on mobile, Dialog on desktop
+// =============================================================================
 
-  React.useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const handleResize = () => {
-      setInnerHeight(window.innerHeight);
-    };
-
-    handleResize();
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) {
-      return;
-    }
-
-    const { visualViewport } = window;
-
-    const updateViewport = () => {
-      if (visualViewport == null) {
-        return;
-      }
-
-      if (
-        visualViewport.offsetTop === 0 &&
-        baselineRef.current !== null &&
-        Math.abs(visualViewport.height - baselineRef.current) > 120
-      ) {
-        baselineRef.current = visualViewport.height;
-      }
-
-      if (
-        baselineRef.current === null ||
-        visualViewport.height > (baselineRef.current ?? 0) + 32
-      ) {
-        baselineRef.current = visualViewport.height;
-      }
-
-      setViewport({
-        height: visualViewport.height,
-        offsetTop: visualViewport.offsetTop,
-      });
-    };
-
-    updateViewport();
-    visualViewport.addEventListener('resize', updateViewport);
-    visualViewport.addEventListener('scroll', updateViewport);
-
-    return () => {
-      visualViewport.removeEventListener('resize', updateViewport);
-      visualViewport.removeEventListener('scroll', updateViewport);
-    };
-  }, []);
-
-  return {
-    height: viewport.height,
-    offsetTop: viewport.offsetTop,
-    innerHeight,
-    baselineHeight: baselineRef.current,
-  };
+interface DialogProps {
+  children: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  defaultOpen?: boolean;
+  modal?: boolean;
 }
 
-const Dialog = DialogPrimitive.Root;
+function Dialog({ children, open, onOpenChange, defaultOpen, modal = true }: DialogProps) {
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
-const DialogTrigger = DialogPrimitive.Trigger;
+  if (isDesktop) {
+    return (
+      <ResponsiveDialogContext.Provider value={{ isDesktop: true }}>
+        <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen} modal={modal}>
+          {children}
+        </DialogPrimitive.Root>
+      </ResponsiveDialogContext.Provider>
+    );
+  }
 
-const DialogPortal = DialogPrimitive.Portal;
+  return (
+    <ResponsiveDialogContext.Provider value={{ isDesktop: false }}>
+      <DrawerPrimitive.Root open={open} onOpenChange={onOpenChange} shouldScaleBackground>
+        {children}
+      </DrawerPrimitive.Root>
+    </ResponsiveDialogContext.Provider>
+  );
+}
 
-const DialogClose = DialogPrimitive.Close;
+// =============================================================================
+// DIALOG TRIGGER
+// =============================================================================
+
+const DialogTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Trigger>
+>(({ ...props }, ref) => {
+  const { isDesktop } = React.useContext(ResponsiveDialogContext);
+
+  if (isDesktop) {
+    return <DialogPrimitive.Trigger ref={ref} {...props} />;
+  }
+
+  return <DrawerPrimitive.Trigger ref={ref} {...props} />;
+});
+DialogTrigger.displayName = 'DialogTrigger';
+
+// =============================================================================
+// DIALOG CLOSE
+// =============================================================================
+
+const DialogClose = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Close>
+>(({ ...props }, ref) => {
+  const { isDesktop } = React.useContext(ResponsiveDialogContext);
+
+  if (isDesktop) {
+    return <DialogPrimitive.Close ref={ref} {...props} />;
+  }
+
+  return <DrawerPrimitive.Close ref={ref} {...props} />;
+});
+DialogClose.displayName = 'DialogClose';
+
+// =============================================================================
+// OVERLAYS
+// =============================================================================
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -119,117 +99,85 @@ const DialogOverlay = React.forwardRef<
       'fixed inset-0 z-modal bg-overlay backdrop-blur-sm',
       'data-[state=open]:animate-in data-[state=closed]:animate-out',
       'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-      'data-[state=closed]:pointer-events-none',
       className
     )}
     {...props}
   />
 ));
-DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
+DialogOverlay.displayName = 'DialogOverlay';
+
+const DrawerOverlay = React.forwardRef<
+  React.ElementRef<typeof DrawerPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <DrawerPrimitive.Overlay
+    ref={ref}
+    className={cn('fixed inset-0 z-modal bg-overlay', className)}
+    {...props}
+  />
+));
+DrawerOverlay.displayName = 'DrawerOverlay';
+
+// =============================================================================
+// RESPONSIVE DIALOG CONTENT
+// =============================================================================
 
 const DialogContent = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, style, ...props }, ref) => {
-  const contentRef = React.useRef<HTMLDivElement | null>(null);
-  const mergedRef = React.useMemo(() => mergeRefs(ref, contentRef), [ref]);
-  const { height, offsetTop, innerHeight, baselineHeight } = useVisualViewportSnapshot();
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & { forceDesktopMode?: boolean }
+>(({ className, children, forceDesktopMode = false, ...props }, ref) => {
+  const { isDesktop } = React.useContext(ResponsiveDialogContext);
+  const useDrawer = !forceDesktopMode && !isDesktop;
 
-  // Enable dynamic viewport adjustment across all devices for keyboard handling
-  const shouldAdapt = React.useMemo(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    if (!height) {
-      return false;
-    }
-    const baseline = baselineHeight ?? innerHeight ?? height;
-    const heightDelta = baseline != null ? baseline - height : 0;
-    // Detect keyboard: viewport scrolled OR height decreased by >60px (more sensitive)
-    return (offsetTop ?? 0) > 0 || heightDelta > 60;
-  }, [baselineHeight, height, innerHeight, offsetTop]);
+  // Mobile: Use bottom drawer
+  if (useDrawer) {
+    return (
+      <DrawerPrimitive.Portal>
+        <DrawerOverlay />
+        <DrawerPrimitive.Content
+          ref={ref}
+          className={cn(
+            'fixed inset-x-0 bottom-0 z-modal mt-24 flex h-auto max-h-[96dvh] flex-col',
+            'rounded-t-2xl border-t border-border-light bg-surface',
+            'focus:outline-none',
+            className
+          )}
+          {...props}
+        >
+          {/* Drag Handle */}
+          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-text-muted/40" />
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 py-4 pb-8">
+            <div className="flex flex-col gap-4">
+              {children}
+            </div>
+          </div>
+        </DrawerPrimitive.Content>
+      </DrawerPrimitive.Portal>
+    );
+  }
 
-  const dynamicStyle = React.useMemo<React.CSSProperties | undefined>(() => {
-    if (!shouldAdapt || !height) {
-      return undefined;
-    }
-    // When keyboard is open, position dialog at top of visible viewport
-    const offset = Math.max(offsetTop ?? 0, 8);
-    // More aggressive height limiting for mobile keyboards
-    const availableHeight = Math.max(height - 32, 200);
-    return {
-      top: `${offset + 8}px`,
-      transform: 'translateX(-50%)',
-      left: '50%',
-      maxHeight: `${availableHeight}px`,
-      paddingBottom: '0.5rem',
-    };
-  }, [height, offsetTop, shouldAdapt]);
-
-  const contentStyle = React.useMemo<React.CSSProperties | undefined>(() => {
-    if (!dynamicStyle) {
-      return style;
-    }
-    return {
-      ...style,
-      ...dynamicStyle,
-    };
-  }, [dynamicStyle, style]);
-
-  React.useEffect(() => {
-    const node = contentRef.current;
-    if (!node) {
-      return;
-    }
-
-    const handleFocus = (event: FocusEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target || !node.contains(target)) {
-        return;
-      }
-      if (typeof target.scrollIntoView !== 'function') {
-        return;
-      }
-      requestAnimationFrame(() => {
-        target.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-          behavior: 'smooth',
-        });
-      });
-    };
-
-    node.addEventListener('focusin', handleFocus);
-
-    return () => {
-      node.removeEventListener('focusin', handleFocus);
-    };
-  }, []);
-
+  // Desktop: Use centered dialog
   return (
-    <DialogPortal>
+    <DialogPrimitive.Portal>
       <DialogOverlay />
       <DialogPrimitive.Content
-        ref={mergedRef}
-        style={contentStyle}
+        ref={ref as React.Ref<HTMLDivElement>}
         className={cn(
-          // Mobile: Full-width with margins, dynamic height based on viewport
-          'fixed inset-x-4 top-4 z-modal w-auto max-w-full rounded-2xl border border-border-light bg-surface shadow-floating',
-          'h-auto max-h-[85vh] overflow-hidden flex flex-col',
-          // Tablet & Desktop: Centered dialog (dynamic positioning when keyboard active)
-          'md:inset-x-auto md:left-[50%] md:top-[50%] md:translate-x-[-50%] md:translate-y-[-50%]',
-          'md:h-auto md:max-h-[80vh] md:w-[90vw] md:max-w-2xl',
-          'lg:h-auto lg:max-h-[85vh] lg:w-auto lg:max-w-2xl',
+          'fixed left-[50%] top-[50%] z-modal translate-x-[-50%] translate-y-[-50%]',
+          'w-[90vw] max-w-2xl max-h-[85vh] overflow-hidden',
+          'rounded-2xl border border-border-light bg-surface shadow-floating',
+          'flex flex-col',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-          'data-[state=closed]:zoom-out-95 data-[state-open]:zoom-in-95',
-          'data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%]',
+          'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          'data-[state=closed]:slide-out-to-top-[2%] data-[state=open]:slide-in-from-top-[2%]',
           className
         )}
         {...props}
       >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-6 pb-8 md:p-7 lg:p-8 [&_input]:text-[16px] [&_select]:text-[16px] [&_textarea]:text-[16px]">
-          <div className="flex flex-col gap-4 md:gap-5 lg:gap-6">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 lg:p-8">
+          <div className="flex flex-col gap-5 lg:gap-6">
             {children}
           </div>
         </div>
@@ -237,7 +185,7 @@ const DialogContent = React.forwardRef<
           className={cn(
             'absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full z-10',
             'bg-background-subtle text-text-tertiary hover:text-text-primary hover:bg-hover',
-            'transition-smooth focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
+            'transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus',
             'disabled:pointer-events-none'
           )}
         >
@@ -245,10 +193,14 @@ const DialogContent = React.forwardRef<
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
-    </DialogPortal>
+    </DialogPrimitive.Portal>
   );
 });
-DialogContent.displayName = DialogPrimitive.Content.displayName;
+DialogContent.displayName = 'DialogContent';
+
+// =============================================================================
+// DIALOG HEADER / FOOTER / TITLE / DESCRIPTION
+// =============================================================================
 
 const DialogHeader = ({
   className,
@@ -267,7 +219,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex flex-col-reverse gap-3 md:flex-row md:justify-end',
+      'flex flex-col-reverse gap-3 sm:flex-row sm:justify-end pt-4',
       className
     )}
     {...props}
@@ -276,31 +228,69 @@ const DialogFooter = ({
 DialogFooter.displayName = 'DialogFooter';
 
 const DialogTitle = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title
-    ref={ref}
-    className={cn(
-      'text-2xl font-semibold leading-tight tracking-tight text-text-primary',
-      className
-    )}
-    {...props}
-  />
-));
-DialogTitle.displayName = DialogPrimitive.Title.displayName;
+  HTMLHeadingElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => {
+  const { isDesktop } = React.useContext(ResponsiveDialogContext);
+
+  if (isDesktop) {
+    return (
+      <DialogPrimitive.Title
+        ref={ref}
+        className={cn(
+          'text-xl font-semibold leading-tight tracking-tight text-text-primary',
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+
+  return (
+    <DrawerPrimitive.Title
+      ref={ref}
+      className={cn(
+        'text-lg font-semibold leading-tight tracking-tight text-text-primary text-center',
+        className
+      )}
+      {...props}
+    />
+  );
+});
+DialogTitle.displayName = 'DialogTitle';
 
 const DialogDescription = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description
-    ref={ref}
-    className={cn('text-base text-text-secondary hidden md:block', className)}
-    {...props}
-  />
-));
-DialogDescription.displayName = DialogPrimitive.Description.displayName;
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => {
+  const { isDesktop } = React.useContext(ResponsiveDialogContext);
+
+  if (isDesktop) {
+    return (
+      <DialogPrimitive.Description
+        ref={ref}
+        className={cn('text-sm text-text-secondary', className)}
+        {...props}
+      />
+    );
+  }
+
+  return (
+    <DrawerPrimitive.Description
+      ref={ref}
+      className={cn('text-sm text-text-secondary text-center', className)}
+      {...props}
+    />
+  );
+});
+DialogDescription.displayName = 'DialogDescription';
+
+// Keep portal for backwards compatibility
+const DialogPortal = DialogPrimitive.Portal;
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
 
 export {
   Dialog,
