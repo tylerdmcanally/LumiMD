@@ -25,9 +25,10 @@ interface DialogProps {
   onOpenChange?: (open: boolean) => void;
   defaultOpen?: boolean;
   modal?: boolean;
+  repositionInputs?: boolean;
 }
 
-function Dialog({ children, open, onOpenChange, defaultOpen, modal = true }: DialogProps) {
+function Dialog({ children, open, onOpenChange, defaultOpen, modal = true, repositionInputs = true }: DialogProps) {
   const isDesktop = useMediaQuery('(min-width: 768px)');
 
   if (isDesktop) {
@@ -47,6 +48,7 @@ function Dialog({ children, open, onOpenChange, defaultOpen, modal = true }: Dia
         open={open}
         onOpenChange={onOpenChange}
         shouldScaleBackground={false}
+        repositionInputs={repositionInputs}
       >
         {children}
       </DrawerPrimitive.Root>
