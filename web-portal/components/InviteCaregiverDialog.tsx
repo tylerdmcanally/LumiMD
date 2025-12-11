@@ -119,7 +119,7 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Invite Caregiver</DialogTitle>
           <DialogDescription>
