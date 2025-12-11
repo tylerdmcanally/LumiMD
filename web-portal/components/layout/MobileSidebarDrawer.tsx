@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import {
-  LayoutDashboard,
+  Home,
   Stethoscope,
   Pill,
-  ClipboardCheck,
-  Settings2,
+  Users,
+  Settings,
   LogOut,
   User,
   X,
@@ -30,32 +30,11 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  {
-    label: 'Dashboard',
-    href: '/dashboard',
-    icon: LayoutDashboard,
-    exact: true,
-  },
-  {
-    label: 'Visits',
-    href: '/visits',
-    icon: Stethoscope,
-  },
-  {
-    label: 'Medications',
-    href: '/medications',
-    icon: Pill,
-  },
-  {
-    label: 'Action Items',
-    href: '/actions',
-    icon: ClipboardCheck,
-  },
-  {
-    label: 'Profile',
-    href: '/profile',
-    icon: Settings2,
-  },
+  { label: 'Home', href: '/dashboard', icon: Home, exact: true },
+  { label: 'Visits', href: '/visits', icon: Stethoscope },
+  { label: 'Medications', href: '/medications', icon: Pill },
+  { label: 'Sharing', href: '/sharing', icon: Users },
+  { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
 interface MobileSidebarDrawerProps {
@@ -169,7 +148,7 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 px-4 py-6 overflow-y-auto">
-          {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Profile')).map((item) => {
+          {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Sharing')).map((item) => {
             const isActive = item.exact
               ? pathname === item.href
               : pathname?.startsWith(item.href);

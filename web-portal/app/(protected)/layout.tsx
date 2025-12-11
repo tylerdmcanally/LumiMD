@@ -2,9 +2,8 @@
 
 import * as React from 'react';
 import { AuthGuard } from '@/components/AuthGuard';
-import { Sidebar } from '@/components/layout/Sidebar';
+import { TopNavigation } from '@/components/layout/TopNavigation';
 import { MobileSidebarDrawer } from '@/components/layout/MobileSidebarDrawer';
-import { TopBar } from '@/components/layout/TopBar';
 import { ViewingProvider } from '@/lib/contexts/ViewingContext';
 import { ReadOnlyBanner } from '@/components/ReadOnlyBanner';
 
@@ -47,14 +46,13 @@ export default function ProtectedLayout({
     <AuthGuard>
       <ViewingProvider>
         <div
-          className="flex bg-background overflow-hidden"
+          className="flex flex-col bg-background overflow-hidden"
           style={{ height: 'var(--app-height)' }}
         >
-          <Sidebar />
+          <TopNavigation onMobileMenuClick={() => setDrawerOpen(true)} />
           <MobileSidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
           <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
-            <TopBar onMenuClick={() => setDrawerOpen(true)} />
             <ReadOnlyBanner />
             <div
               className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain"
@@ -70,3 +68,4 @@ export default function ProtectedLayout({
     </AuthGuard>
   );
 }
+

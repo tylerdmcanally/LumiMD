@@ -3,10 +3,18 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Stethoscope, Pill, ClipboardCheck, ArrowRight } from 'lucide-react';
+import {
+  Stethoscope,
+  Pill,
+  ClipboardCheck,
+  ArrowRight,
+  AlertTriangle,
+  Users,
+} from 'lucide-react';
 
 import { Card } from '@/components/ui/card';
 import { PageContainer } from '@/components/layout/PageContainer';
+import { LatestVisitCard } from '@/components/visits/LatestVisitCard';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useViewing } from '@/lib/contexts/ViewingContext';
 import { useActions, useMedications, useUserProfile, useVisits } from '@/lib/api/hooks';
@@ -22,6 +30,7 @@ export default function DashboardPage() {
   const { data: visits = [], isLoading: visitsLoading } = useVisits();
   const { data: actions = [], isLoading: actionsLoading } = useActions();
   const { data: medications = [], isLoading: medicationsLoading } = useMedications();
+  const { data: userProfile } = useUserProfile();
 
   const pendingActions = React.useMemo(
     () => actions.filter((action: any) => !action.completed),
@@ -36,15 +45,36 @@ export default function DashboardPage() {
     [medications]
   );
 
-  const recentVisits = React.useMemo(() => {
-    return [...visits]
-      .sort((a, b) => {
-        const aTime = new Date(a.createdAt || 0).getTime();
-        const bTime = new Date(b.createdAt || 0).getTime();
-        return bTime - aTime;
-      })
-      .slice(0, 3);
+  // Get the most recent visit
+  const latestVisit = React.useMemo(() => {
+    if (!visits.length) return null;
+    const sorted = [...visits].sort((a, b) => {
+      const aTime = new Date(a.createdAt || 0).getTime();
+      const bTime = new Date(b.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+    return sorted[0];
   }, [visits]);
+
+  // Count medication changes and action items from latest visit
+  const latestVisitStats = React.useMemo(() => {
+    if (!latestVisit) return { medicationChanges: 0, actionItems: 0 };
+
+    // Count medications associated with this visit
+    const visitMeds = medications.filter(
+      (med: any) => med.visitId === latestVisit.id
+    );
+
+    // Count action items from this visit
+    const visitActions = actions.filter(
+      (action: any) => action.visitId === latestVisit.id && !action.completed
+    );
+
+    return {
+      medicationChanges: visitMeds.length,
+      actionItems: visitActions.length,
+    };
+  }, [latestVisit, medications, actions]);
 
   const greeting = React.useMemo(() => {
     const hour = new Date().getHours();
@@ -89,118 +119,105 @@ export default function DashboardPage() {
     profileLoading,
   ]);
 
+  // Get allergies count for quick reference
+  const allergiesCount = React.useMemo(() => {
+    return Array.isArray(userProfile?.allergies) ? userProfile.allergies.length : 0;
+  }, [userProfile?.allergies]);
+
   return (
     <PageContainer maxWidth="2xl">
-      <div className="space-y-10 animate-fade-in-up">
-        {/* Hero Section - Welcome Card */}
-        <Card
-          variant="elevated"
-          padding="lg"
-          className="relative overflow-hidden border border-border-light bg-surface text-text-primary shadow-floating"
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/15 via-brand-primary-pale/40 to-transparent" />
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-3">
-              <span className="inline-flex items-center gap-2 rounded-full bg-brand-primary-pale px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-brand-primary-dark">
-                {greeting}
-              </span>
-              <h1 className="text-3xl font-bold lg:text-4xl text-text-primary">
-                {isViewingShared ? `${viewedName}'s Health` : `Welcome back, ${viewedName}`}
-              </h1>
-              <div className="flex flex-col gap-2">
-                {isViewingShared ? (
-                  <>
-                    <p className="text-sm font-semibold text-brand-primary">
-                      Viewing shared data (read-only)
-                    </p>
-                    <p className="max-w-2xl text-base text-text-secondary">
-                      You can browse visits, medications, and action items for this shared account.
-                    </p>
-                  </>
-                ) : (
-                  <p className="max-w-2xl text-base text-text-secondary">
-                    Pick up right where you left off—review recent visits, keep medications up to
-                    date, and move action items forward with confidence.
-                  </p>
-                )}
-                {user?.email && (
-                  <p className="text-xs text-text-tertiary">
-                    Logged in as {user.email}
-                  </p>
-                )}
-              </div>
-            </div>
+      <div className="space-y-8 animate-fade-in-up">
+        {/* Welcome Header with warm background */}
+        <div className="rounded-2xl bg-hero-brand p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+          <div className="space-y-1">
+            <span className="text-sm font-medium text-brand-primary-dark uppercase tracking-wider">
+              {greeting}
+            </span>
+            <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
+              {isViewingShared ? `${viewedName}'s Health` : `Welcome back, ${viewedName}`}
+            </h1>
+            {isViewingShared && (
+              <p className="text-sm text-brand-primary font-medium">
+                Viewing shared data (read-only)
+              </p>
+            )}
           </div>
-        </Card>
+        </div>
 
-        {/* Quick Stats */}
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-          <StatCard
-            icon={<ClipboardCheck className="h-6 w-6" />}
-            label="Pending Actions"
-            value={pendingActions.length}
-            trend={pendingActions.length > 0 ? 'Needs attention' : 'All caught up'}
-            variant={pendingActions.length > 0 ? 'warning' : 'success'}
-            isLoading={actionsLoading}
-            href="/actions"
-          />
-          <StatCard
-            icon={<Stethoscope className="h-6 w-6" />}
-            label="Total Visits"
-            value={visits.length}
-            trend="Recorded visits"
-            variant="info"
+        {/* Latest Visit Hero */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-text-primary">Latest Visit</h2>
+          </div>
+          <LatestVisitCard
+            visit={latestVisit}
+            medicationChanges={latestVisitStats.medicationChanges}
+            actionItems={latestVisitStats.actionItems}
             isLoading={visitsLoading}
-            href="/visits"
           />
-          <StatCard
-            icon={<Pill className="h-6 w-6" />}
-            label="Active Medications"
-            value={activeMedications.length}
-            trend="Currently taking"
-            variant="brand"
-            isLoading={medicationsLoading}
-            href="/medications"
-          />
-        </div>
+        </section>
 
-        {/* Main Content */}
-        <div className="space-y-8">
-          {/* Recent Activity */}
-          <Card variant="elevated" padding="lg">
-            <div className="space-y-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-text-primary">
-                    Recent Activity
-                  </h2>
-                  <p className="text-sm text-text-secondary mt-1">
-                    Your latest visits and updates
-                  </p>
-                </div>
-              </div>
+        {/* Quick Stats Row */}
+        <section>
+          <h2 className="text-lg font-semibold text-text-primary mb-4">At a Glance</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <QuickStatCard
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              label="Pending Actions"
+              value={pendingActions.length}
+              sublabel={pendingActions.length > 0 ? 'Needs attention' : 'All caught up'}
+              variant={pendingActions.length > 0 ? 'warning' : 'success'}
+              isLoading={actionsLoading}
+              href="/actions"
+            />
+            <QuickStatCard
+              icon={<Pill className="h-5 w-5" />}
+              label="Active Medications"
+              value={activeMedications.length}
+              sublabel="Currently taking"
+              variant="brand"
+              isLoading={medicationsLoading}
+              href="/medications"
+            />
+            <QuickStatCard
+              icon={<Stethoscope className="h-5 w-5" />}
+              label="Total Visits"
+              value={visits.length}
+              sublabel="All time"
+              variant="info"
+              isLoading={visitsLoading}
+              href="/visits"
+            />
+          </div>
+        </section>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {recentVisits.length > 0 ? (
-                  recentVisits.map((visit: any) => (
-                    <ActivityItem
-                      key={visit.id}
-                      title={visit.provider || 'Medical Visit'}
-                      subtitle={visit.specialty || 'General'}
-                      date={visit.createdAt}
-                      icon={<Stethoscope className="h-4 w-4" />}
-                      href={`/visits/${visit.id}`}
-                    />
-                  ))
-                ) : (
-                  <p className="text-center py-8 text-text-muted">
-                    No recent activity yet
-                  </p>
-                )}
-              </div>
+        {/* Past Visits Preview */}
+        {visits.length > 1 && (
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-text-primary">Past Visits</h2>
+              <Link
+                href="/visits"
+                className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+              >
+                View all
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
-          </Card>
-        </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visits
+                .sort((a: any, b: any) => {
+                  const aTime = new Date(a.createdAt || 0).getTime();
+                  const bTime = new Date(b.createdAt || 0).getTime();
+                  return bTime - aTime;
+                })
+                .slice(1, 4)
+                .map((visit: any) => (
+                  <PastVisitCard key={visit.id} visit={visit} />
+                ))}
+            </div>
+          </section>
+        )}
       </div>
     </PageContainer>
   );
@@ -210,11 +227,11 @@ export default function DashboardPage() {
 // SUB-COMPONENTS
 // ============================================================================
 
-function StatCard({
+function QuickStatCard({
   icon,
   label,
   value,
-  trend,
+  sublabel,
   variant,
   isLoading,
   href,
@@ -222,7 +239,7 @@ function StatCard({
   icon: React.ReactNode;
   label: string;
   value: number;
-  trend: string;
+  sublabel: string;
   variant: 'success' | 'warning' | 'brand' | 'info';
   isLoading?: boolean;
   href?: string;
@@ -237,31 +254,28 @@ function StatCard({
   const content = (
     <Card
       variant="elevated"
-      padding="lg"
-      interactive
-      className={cn('h-full transition-smooth', href && 'group')}
+      padding="md"
+      className="h-full transition-all duration-150 hover:shadow-hover hover:-translate-y-0.5 group"
     >
-      <div className="flex items-start justify-between">
-        <div className="space-y-3">
-          <div
-            className={cn(
-              'flex h-12 w-12 items-center justify-center rounded-lg',
-              variantClasses[variant],
-            )}
-          >
-            {icon}
-          </div>
-          <div>
-            <p className="text-sm font-medium text-text-secondary">{label}</p>
-            {isLoading ? (
-              <div className="mt-2 h-10 w-20 rounded bg-background-subtle animate-pulse-soft" />
-            ) : (
-              <p className="mt-1 text-4xl font-bold text-text-primary">{value}</p>
-            )}
-            <p className="mt-2 text-xs text-text-muted">{trend}</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+            variantClasses[variant],
+          )}
+        >
+          {icon}
         </div>
-        <ArrowRight className={cn('h-5 w-5 text-text-tertiary transition-smooth', href && 'group-hover:translate-x-1')} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-text-secondary truncate">{label}</p>
+          {isLoading ? (
+            <div className="h-7 w-12 rounded bg-background-subtle animate-pulse-soft mt-0.5" />
+          ) : (
+            <p className="text-2xl font-bold text-text-primary">{value}</p>
+          )}
+          <p className="text-xs text-text-muted truncate">{sublabel}</p>
+        </div>
+        <ArrowRight className="h-4 w-4 text-text-tertiary transition-transform group-hover:translate-x-1" />
       </div>
     </Card>
   );
@@ -280,38 +294,34 @@ function StatCard({
   return content;
 }
 
-function ActivityItem({
-  title,
-  subtitle,
-  date,
-  icon,
-  href,
-}: {
-  title: string;
-  subtitle: string;
-  date: string;
-  icon: React.ReactNode;
-  href: string;
-}) {
+function PastVisitCard({ visit }: { visit: any }) {
+  const formattedDate = visit.createdAt
+    ? format(new Date(visit.createdAt), 'MMM d, yyyy')
+    : 'Unknown date';
+
   return (
-    <Link href={href}>
-      <div className="flex items-start gap-3 rounded-lg border border-border-light bg-surface p-4 transition-smooth hover:bg-hover hover:shadow-base">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
-          {icon}
+    <Link href={`/visits/${visit.id}`}>
+      <Card
+        variant="elevated"
+        padding="md"
+        className="h-full transition-all duration-150 hover:shadow-hover hover:-translate-y-0.5 group"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+            <Stethoscope className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-text-primary truncate">
+              {visit.provider || 'Medical Visit'}
+            </p>
+            <p className="text-sm text-text-secondary truncate">
+              {visit.specialty || 'General'}
+            </p>
+            <p className="text-xs text-text-muted mt-1">{formattedDate}</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-text-tertiary transition-transform group-hover:translate-x-1" />
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-text-primary truncate" title={title}>
-            {title}
-          </p>
-          <p className="text-sm text-text-secondary mt-0.5 truncate" title={subtitle}>
-            {subtitle}
-          </p>
-          <p className="text-xs text-text-muted mt-1">
-            {format(new Date(date), 'MMM d, yyyy')}
-          </p>
-        </div>
-        <ArrowRight className="h-5 w-5 text-text-tertiary" />
-      </div>
+      </Card>
     </Link>
   );
 }

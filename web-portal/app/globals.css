@@ -97,7 +97,7 @@
   }
 
   body {
-    background-color: var(--color-background);
+    background: linear-gradient(135deg, #f8fafb 0%, #e8f7f8 50%, #f8fafb 100%);
     color: var(--color-text-primary);
     font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI',
       'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
@@ -276,6 +276,15 @@
 
   .bg-gradient-cool {
     background-image: linear-gradient(135deg, #dbeafe 0%, #60a5fa 100%);
+  }
+
+  /* Hero Section Background */
+  .bg-hero-warm {
+    background: linear-gradient(135deg, rgba(64, 201, 208, 0.08) 0%, rgba(137, 216, 198, 0.12) 50%, rgba(254, 243, 199, 0.08) 100%);
+  }
+
+  .bg-hero-brand {
+    background: linear-gradient(135deg, rgba(64, 201, 208, 0.15) 0%, rgba(137, 216, 198, 0.10) 100%);
   }
 
   /* Text Gradients */
