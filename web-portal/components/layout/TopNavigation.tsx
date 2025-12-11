@@ -92,7 +92,7 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
 
     return (
         <header
-            className="sticky top-0 z-header bg-surface/95 backdrop-blur border-b border-border-light shrink-0"
+            className="fixed top-0 left-0 right-0 z-header bg-surface border-b border-border-light shrink-0"
             style={{
                 paddingTop: 'max(env(safe-area-inset-top), 0px)',
                 paddingLeft: 'env(safe-area-inset-left)',
