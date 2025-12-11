@@ -47,6 +47,8 @@ function Dialog({ children, open, onOpenChange, defaultOpen, modal = true }: Dia
         open={open}
         onOpenChange={onOpenChange}
         shouldScaleBackground={false}
+        snapPoints={[1]}
+        activeSnapPoint={1}
       >
         {children}
       </DrawerPrimitive.Root>
@@ -147,7 +149,7 @@ const DialogContent = React.forwardRef<
         <DrawerPrimitive.Content
           ref={ref}
           className={cn(
-            'fixed inset-x-0 bottom-0 z-modal flex h-auto max-h-[90dvh] flex-col',
+            'fixed inset-x-0 bottom-0 z-modal flex h-auto max-h-[96dvh] flex-col',
             // Clean background without border (border can cause visible line)
             'rounded-t-2xl bg-surface shadow-lg',
             'focus:outline-none',
