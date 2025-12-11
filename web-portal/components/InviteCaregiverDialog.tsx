@@ -7,6 +7,7 @@ import { Mail } from 'lucide-react';
 
 import {
   Dialog,
+  DialogContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,
@@ -118,60 +119,62 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>Invite Caregiver</DialogTitle>
-        <DialogDescription>
-          Share read-only access to your health information with a family member or caregiver.
-        </DialogDescription>
-      </DialogHeader>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Invite Caregiver</DialogTitle>
+          <DialogDescription>
+            Share read-only access to your health information with a family member or caregiver.
+          </DialogDescription>
+        </DialogHeader>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="caregiver-email">Email Address</Label>
-          <Input
-            id="caregiver-email"
-            type="email"
-            placeholder="caregiver@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={inviteMutation.isPending}
-            required
-            autoFocus
-          />
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="caregiver-email">Email Address</Label>
+            <Input
+              id="caregiver-email"
+              type="email"
+              placeholder="caregiver@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={inviteMutation.isPending}
+              required
+              autoFocus
+            />
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="caregiver-message">Optional Message</Label>
-          <textarea
-            id="caregiver-message"
-            className="flex min-h-[100px] w-full rounded-lg border border-border-light bg-background px-3 py-2 text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="Add a personal note (optional)"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            disabled={inviteMutation.isPending}
-            rows={3}
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="caregiver-message">Optional Message</Label>
+            <textarea
+              id="caregiver-message"
+              className="flex min-h-[100px] w-full rounded-lg border border-border-light bg-background px-3 py-2 text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="Add a personal note (optional)"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              disabled={inviteMutation.isPending}
+              rows={3}
+            />
+          </div>
 
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={inviteMutation.isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            loading={inviteMutation.isPending}
-            leftIcon={<Mail className="h-4 w-4" />}
-          >
-            Send Invitation
-          </Button>
-        </DialogFooter>
-      </form>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={inviteMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={inviteMutation.isPending}
+              leftIcon={<Mail className="h-4 w-4" />}
+            >
+              Send Invitation
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 }
