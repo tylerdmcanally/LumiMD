@@ -7,6 +7,7 @@ import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } 
 import { Mail, Lock, User, ArrowRight } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
+import { getEmailVerificationSettings } from '@/lib/emailVerification';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,7 +56,7 @@ export default function SignUpPage() {
         await updateProfile(credential.user, { displayName: fullName.trim() });
       }
 
-      await sendEmailVerification(credential.user);
+      await sendEmailVerification(credential.user, getEmailVerificationSettings());
       setSuccessMessage('Account created! Check your inbox to verify your email before signing in.');
 
       setTimeout(() => {

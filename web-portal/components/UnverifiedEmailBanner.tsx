@@ -4,6 +4,7 @@ import * as React from 'react';
 import { X, Mail, AlertCircle } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { sendEmailVerification } from 'firebase/auth';
+import { getEmailVerificationSettings } from '@/lib/emailVerification';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -36,7 +37,7 @@ export function UnverifiedEmailBanner() {
 
         setIsSending(true);
         try {
-            await sendEmailVerification(user);
+            await sendEmailVerification(user, getEmailVerificationSettings());
             toast.success('Verification email sent!', {
                 description: 'Check your inbox to verify your email address.',
             });

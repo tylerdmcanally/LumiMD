@@ -128,20 +128,24 @@ export default function DashboardPage() {
   // Track if user has ever had data (to avoid showing welcome cards after deleting all data)
   const hasEverHadData = React.useRef(false);
 
+  // Initialize from localStorage on mount
   React.useEffect(() => {
-    // Check if user currently has data
-    const hasData = visits.length > 0 || medications.length > 0 || actions.length > 0;
-
-    if (hasData && user?.uid) {
-      // User has data now, remember this
-      hasEverHadData.current = true;
-      localStorage.setItem(`lumimd_has_data_${user.uid}`, 'true');
-    } else if (user?.uid) {
-      // Check if they've had data before
+    if (user?.uid) {
       const hadDataBefore = localStorage.getItem(`lumimd_has_data_${user.uid}`) === 'true';
       if (hadDataBefore) {
         hasEverHadData.current = true;
       }
+    }
+  }, [user?.uid]);
+
+  // Track when user adds data
+  React.useEffect(() => {
+    const hasData = visits.length > 0 || medications.length > 0 || actions.length > 0;
+
+    if (hasData && user?.uid && !hasEverHadData.current) {
+      // User has data now, remember this
+      hasEverHadData.current = true;
+      localStorage.setItem(`lumimd_has_data_${user.uid}`, 'true');
     }
   }, [visits.length, medications.length, actions.length, user?.uid]);
 
