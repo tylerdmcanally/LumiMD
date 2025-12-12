@@ -6,11 +6,15 @@ import { getFirestore } from 'firebase-admin/firestore';
 
 // Initialize Firebase Admin if not already initialized
 if (!getApps().length) {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
     initializeApp({
         credential: cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            // Handle both escaped (\n) and literal newlines
+            privateKey: privateKey?.includes('\\n')
+                ? privateKey.replace(/\\n/g, '\n')
+                : privateKey,
         }),
     });
 }
