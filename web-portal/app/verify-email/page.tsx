@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const user = useCurrentUser();
@@ -174,5 +174,17 @@ export default function VerifyEmailPage() {
                 </Card>
             </div>
         </div>
+    );
+}
+
+export default function VerifyEmailPage() {
+    return (
+        <React.Suspense fallback={
+            <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-brand-primary-pale">
+                <Loader2 className="h-8 w-8 animate-spin text-brand-primary" />
+            </div>
+        }>
+            <VerifyEmailContent />
+        </React.Suspense>
     );
 }
