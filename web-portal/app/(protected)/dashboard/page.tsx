@@ -125,10 +125,31 @@ export default function DashboardPage() {
     return Array.isArray(userProfile?.allergies) ? userProfile.allergies.length : 0;
   }, [userProfile?.allergies]);
 
-  // Check if user is completely new (no data)
+  // Track if user has ever had data (to avoid showing welcome cards after deleting all data)
+  const hasEverHadData = React.useRef(false);
+
+  React.useEffect(() => {
+    // Check if user currently has data
+    const hasData = visits.length > 0 || medications.length > 0 || actions.length > 0;
+
+    if (hasData && user?.uid) {
+      // User has data now, remember this
+      hasEverHadData.current = true;
+      localStorage.setItem(`lumimd_has_data_${user.uid}`, 'true');
+    } else if (user?.uid) {
+      // Check if they've had data before
+      const hadDataBefore = localStorage.getItem(`lumimd_has_data_${user.uid}`) === 'true';
+      if (hadDataBefore) {
+        hasEverHadData.current = true;
+      }
+    }
+  }, [visits.length, medications.length, actions.length, user?.uid]);
+
+  // Check if user is completely new (no data AND never had data before)
   const isNewUser = React.useMemo(() => {
     return !visitsLoading && !medicationsLoading && !actionsLoading &&
-      visits.length === 0 && medications.length === 0 && actions.length === 0;
+      visits.length === 0 && medications.length === 0 && actions.length === 0 &&
+      !hasEverHadData.current;
   }, [visits.length, medications.length, actions.length, visitsLoading, medicationsLoading, actionsLoading]);
 
   return (
