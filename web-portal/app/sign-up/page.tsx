@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { Mail, Lock, User, ArrowRight } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
@@ -56,12 +56,34 @@ export default function SignUpPage() {
         await updateProfile(credential.user, { displayName: fullName.trim() });
       }
 
-      await sendEmailVerification(credential.user, getEmailVerificationSettings());
-      setSuccessMessage('Account created! Check your inbox to verify your email before signing in.');
+      // Try to send verification email via our custom Resend endpoint
+      try {
+        const idToken = await credential.user.getIdToken();
+        const response = await fetch('/api/send-verification-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            userId: credential.user.uid,
+            email: email.trim(),
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to send verification email');
+        }
+
+        setSuccessMessage('Account created! Check your inbox to verify your email before signing in.');
+      } catch (emailError: any) {
+        console.error('Failed to send verification email:', emailError);
+        setSuccessMessage('Account created! However, we had trouble sending the verification email. You can resend it after signing in.');
+      }
 
       setTimeout(() => {
         router.push(`/sign-in?returnTo=${encodeURIComponent(returnTo)}`);
-      }, 2000);
+      }, 3000);
     } catch (err: any) {
       const message =
         err?.code === 'auth/email-already-in-use'
