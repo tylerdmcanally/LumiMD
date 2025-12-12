@@ -128,11 +128,6 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
                         </Link>
                     </div>
 
-                    {/* Account Switcher (desktop only, if caregiver) */}
-                    <div className="hidden md:block">
-                        <AccountSwitcher />
-                    </div>
-
                     {/* Center: Navigation (desktop only) */}
                     <nav className="hidden md:flex items-center gap-1">
                         {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Sharing')).map((item) => {
@@ -160,19 +155,12 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
                         })}
                     </nav>
 
-                    {/* Right: Caregiver indicator + User Menu */}
+                    {/* Right: Account Switcher + User Menu */}
                     <div className="flex items-center gap-3">
-                        {/* Caregiver viewing indicator */}
-                        {isCaregiver && viewingProfile && (
-                            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-primary-pale text-brand-primary text-xs font-semibold">
-                                <span>Viewing:</span>
-                                <span className="truncate max-w-[100px]">
-                                    {(typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()) ||
-                                        (typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()) ||
-                                        'Shared'}
-                                </span>
-                            </div>
-                        )}
+                        {/* Account Switcher (desktop only, if caregiver) */}
+                        <div className="hidden md:block">
+                            <AccountSwitcher />
+                        </div>
 
                         {/* User Menu */}
                         <div className="relative" ref={userMenuRef}>
