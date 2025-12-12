@@ -19,6 +19,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useViewing } from '@/lib/contexts/ViewingContext';
 import { useActions, useMedications, useUserProfile, useVisits } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
+import { WelcomeCards } from '@/components/dashboard/WelcomeCards';
 
 export default function DashboardPage() {
   const user = useCurrentUser();
@@ -124,6 +125,12 @@ export default function DashboardPage() {
     return Array.isArray(userProfile?.allergies) ? userProfile.allergies.length : 0;
   }, [userProfile?.allergies]);
 
+  // Check if user is completely new (no data)
+  const isNewUser = React.useMemo(() => {
+    return !visitsLoading && !medicationsLoading && !actionsLoading &&
+      visits.length === 0 && medications.length === 0 && actions.length === 0;
+  }, [visits.length, medications.length, actions.length, visitsLoading, medicationsLoading, actionsLoading]);
+
   return (
     <PageContainer maxWidth="2xl">
       <div className="space-y-8 animate-fade-in-up">
@@ -144,52 +151,61 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Latest Visit Hero */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-text-primary">Latest Visit</h2>
-          </div>
-          <LatestVisitCard
-            visit={latestVisit}
-            medicationChanges={latestVisitStats.medicationChanges}
-            actionItems={latestVisitStats.actionItems}
-            isLoading={visitsLoading}
-          />
-        </section>
+        {/* Welcome Cards for New Users */}
+        {isNewUser && !isViewingShared && (
+          <WelcomeCards />
+        )}
 
-        {/* Quick Stats Row */}
-        <section>
-          <h2 className="text-lg font-semibold text-text-primary mb-4">At a Glance</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <QuickStatCard
-              icon={<ClipboardCheck className="h-5 w-5" />}
-              label="Pending Actions"
-              value={pendingActions.length}
-              sublabel={pendingActions.length > 0 ? 'Needs attention' : 'All caught up'}
-              variant={pendingActions.length > 0 ? 'warning' : 'success'}
-              isLoading={actionsLoading}
-              href="/actions"
-            />
-            <QuickStatCard
-              icon={<Pill className="h-5 w-5" />}
-              label="Active Medications"
-              value={activeMedications.length}
-              sublabel="Currently taking"
-              variant="brand"
-              isLoading={medicationsLoading}
-              href="/medications"
-            />
-            <QuickStatCard
-              icon={<Stethoscope className="h-5 w-5" />}
-              label="Total Visits"
-              value={visits.length}
-              sublabel="All time"
-              variant="info"
-              isLoading={visitsLoading}
-              href="/visits"
-            />
-          </div>
-        </section>
+        {/* Latest Visit Hero */}
+        {!isNewUser && (
+          <>
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-text-primary">Latest Visit</h2>
+              </div>
+              <LatestVisitCard
+                visit={latestVisit}
+                medicationChanges={latestVisitStats.medicationChanges}
+                actionItems={latestVisitStats.actionItems}
+                isLoading={visitsLoading}
+              />
+            </section>
+
+            {/* Quick Stats Row */}
+            <section>
+              <h2 className="text-lg font-semibold text-text-primary mb-4">At a Glance</h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <QuickStatCard
+                  icon={<ClipboardCheck className="h-5 w-5" />}
+                  label="Pending Actions"
+                  value={pendingActions.length}
+                  sublabel={pendingActions.length > 0 ? 'Needs attention' : 'All caught up'}
+                  variant={pendingActions.length > 0 ? 'warning' : 'success'}
+                  isLoading={actionsLoading}
+                  href="/actions"
+                />
+                <QuickStatCard
+                  icon={<Pill className="h-5 w-5" />}
+                  label="Active Medications"
+                  value={activeMedications.length}
+                  sublabel="Currently taking"
+                  variant="brand"
+                  isLoading={medicationsLoading}
+                  href="/medications"
+                />
+                <QuickStatCard
+                  icon={<Stethoscope className="h-5 w-5" />}
+                  label="Total Visits"
+                  value={visits.length}
+                  sublabel="All time"
+                  variant="info"
+                  isLoading={visitsLoading}
+                  href="/visits"
+                />
+              </div>
+            </section>
+          </>
+        )}
 
         {/* Past Visits Preview */}
         {visits.length > 1 && (
