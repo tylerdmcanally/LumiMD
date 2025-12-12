@@ -3,8 +3,6 @@
 import * as React from 'react';
 import { X, Mail, AlertCircle } from 'lucide-react';
 import { auth } from '@/lib/firebase';
-import { sendEmailVerification } from 'firebase/auth';
-import { getEmailVerificationSettings } from '@/lib/emailVerification';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -37,20 +35,31 @@ export function UnverifiedEmailBanner() {
 
         setIsSending(true);
         try {
-            await sendEmailVerification(user, getEmailVerificationSettings());
+            const idToken = await user.getIdToken();
+            const response = await fetch('/api/send-verification-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    userId: user.uid,
+                    email: user.email,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to send verification email');
+            }
+
             toast.success('Verification email sent!', {
                 description: 'Check your inbox to verify your email address.',
             });
         } catch (error: any) {
-            if (error.code === 'auth/too-many-requests') {
-                toast.error('Too many requests', {
-                    description: 'Please wait a few minutes before trying again.',
-                });
-            } else {
-                toast.error('Failed to send verification email', {
-                    description: 'Please try again later.',
-                });
-            }
+            toast.error('Failed to send verification email', {
+                description: 'Please try again later.',
+            });
         } finally {
             setIsSending(false);
         }

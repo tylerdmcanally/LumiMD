@@ -19,8 +19,6 @@ import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/client';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { auth } from '@/lib/firebase';
-import { sendEmailVerification } from 'firebase/auth';
-import { getEmailVerificationSettings } from '@/lib/emailVerification';
 
 interface InviteCaregiverDialogProps {
   open: boolean;
@@ -122,13 +120,28 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
         action: {
           label: 'Resend',
           onClick: async () => {
+            if (!user) return;
             try {
-              if (user) {
-                await sendEmailVerification(user, getEmailVerificationSettings());
-                toast.success('Verification email sent!', {
-                  description: 'Check your inbox to verify your email.',
-                });
+              const idToken = await user.getIdToken();
+              const response = await fetch('/api/send-verification-email', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                  userId: user.uid,
+                  email: user.email,
+                }),
+              });
+
+              if (!response.ok) {
+                throw new Error('Failed to send verification email');
               }
+
+              toast.success('Verification email sent!', {
+                description: 'Check your inbox to verify your email.',
+              });
             } catch (error) {
               toast.error('Failed to send verification email');
             }
