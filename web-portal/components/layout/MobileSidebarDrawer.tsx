@@ -13,6 +13,7 @@ import {
   LogOut,
   User,
   X,
+  CheckSquare,
 } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
@@ -21,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
 import { useViewing } from '@/lib/contexts/ViewingContext';
+import { AccountSwitcher } from './AccountSwitcher';
 
 type NavItem = {
   label: string;
@@ -33,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Home', href: '/dashboard', icon: Home, exact: true },
   { label: 'Visits', href: '/visits', icon: Stethoscope },
   { label: 'Medications', href: '/medications', icon: Pill },
+  { label: 'Action Items', href: '/actions', icon: CheckSquare },
   { label: 'Sharing', href: '/sharing', icon: Users },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -186,16 +189,10 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
 
         {/* User Profile & Sign Out */}
         <div className="border-t border-border-light p-4 space-y-3">
+          {/* Account Switcher for caregivers */}
           {isCaregiver && (
-            <div className="rounded-lg border border-border-light bg-background-subtle px-4 py-3">
-              <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">Viewing</p>
-              <p className="text-sm font-bold text-text-primary truncate">
-                {(typeof viewingProfile?.preferredName === 'string' && viewingProfile.preferredName.trim()) ||
-                  (typeof viewingProfile?.firstName === 'string' && viewingProfile.firstName.trim()) ||
-                  (typeof (viewingProfile as any)?.email === 'string' && (viewingProfile as any).email) ||
-                  'Shared Health'}
-              </p>
-              <p className="text-[11px] text-text-tertiary mt-1">Read-only access</p>
+            <div className="mb-3">
+              <AccountSwitcher />
             </div>
           )}
 
