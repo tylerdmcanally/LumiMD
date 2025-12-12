@@ -84,3 +84,5 @@ functions/lib/
 # Local environment secrets
 web-portal/.env.local
 .vercel
+firebase-admin-key.json
+firebase-admin-key.json
