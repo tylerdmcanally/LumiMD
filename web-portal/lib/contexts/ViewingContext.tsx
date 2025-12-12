@@ -49,15 +49,6 @@ export function ViewingProvider({ children }: { children: React.ReactNode }) {
 
   const isCaregiver = incomingShares.length > 0;
 
-  // Auto-select shared view for caregiver users
-  React.useEffect(() => {
-    if (!isCaregiver) return;
-    const firstShare = incomingShares[0];
-    if (firstShare && selectedViewingUserId !== firstShare.ownerId) {
-      setSelectedViewingUserId(firstShare.ownerId);
-    }
-  }, [isCaregiver, incomingShares, selectedViewingUserId]);
-
   const effectiveUserId = selectedViewingUserId || currentUserId;
 
   const value = React.useMemo(
