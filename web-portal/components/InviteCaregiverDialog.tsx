@@ -18,6 +18,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/client';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
+import { auth } from '@/lib/firebase';
+import { sendEmailVerification } from 'firebase/auth';
 
 interface InviteCaregiverDialogProps {
   open: boolean;
@@ -108,6 +110,30 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       toast.error('Please enter a valid email address');
+      return;
+    }
+
+    // Check email verification
+    const user = auth.currentUser;
+    if (!user?.emailVerified) {
+      toast.error('Please verify your email before inviting caregivers', {
+        description: 'Check your inbox for the verification email.',
+        action: {
+          label: 'Resend',
+          onClick: async () => {
+            try {
+              if (user) {
+                await sendEmailVerification(user);
+                toast.success('Verification email sent!', {
+                  description: 'Check your inbox to verify your email.',
+                });
+              }
+            } catch (error) {
+              toast.error('Failed to send verification email');
+            }
+          },
+        },
+      });
       return;
     }
 

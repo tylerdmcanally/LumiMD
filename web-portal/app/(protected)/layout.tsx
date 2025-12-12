@@ -6,6 +6,7 @@ import { TopNavigation } from '@/components/layout/TopNavigation';
 import { MobileSidebarDrawer } from '@/components/layout/MobileSidebarDrawer';
 import { ViewingProvider } from '@/lib/contexts/ViewingContext';
 import { ReadOnlyBanner } from '@/components/ReadOnlyBanner';
+import { UnverifiedEmailBanner } from '@/components/UnverifiedEmailBanner';
 
 export default function ProtectedLayout({
   children,
@@ -56,6 +57,7 @@ export default function ProtectedLayout({
           <div className="h-20 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)' }} />
 
           <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
+            <UnverifiedEmailBanner />
             <ReadOnlyBanner />
             <div
               className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain"
