@@ -9,8 +9,8 @@ if (!getApps().length) {
     const privateKey = process.env.FIREBASE_PRIVATE_KEY;
     initializeApp({
         credential: cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            projectId: process.env.FIREBASE_PROJECT_ID?.trim(),
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim(),
             // Handle both escaped (\n) and literal newlines
             privateKey: privateKey?.includes('\\n')
                 ? privateKey.replace(/\\n/g, '\n')
