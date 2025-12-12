@@ -42,9 +42,11 @@ export function AccountSwitcher() {
 
     const isViewingSelf = !viewingUserId || viewingUserId === currentUserId;
 
-    const currentDisplayName = isViewingSelf
-        ? currentUserProfile?.preferredName || currentUserProfile?.firstName || 'My Health'
-        : viewingProfile?.preferredName || viewingProfile?.firstName || 'Shared Account';
+    const currentDisplayName = String(
+        isViewingSelf
+            ? (currentUserProfile?.preferredName ?? currentUserProfile?.firstName ?? 'My Health')
+            : (viewingProfile?.preferredName ?? viewingProfile?.firstName ?? 'Shared Account')
+    );
 
     const handleSwitch = (userId: string | null) => {
         setViewingUserId(userId);
@@ -128,7 +130,9 @@ function ShareAccountItem({ ownerId, isSelected, onSelect }: ShareAccountItemPro
         enabled: Boolean(ownerId),
     });
 
-    const displayName = ownerProfile?.preferredName || ownerProfile?.firstName || 'Shared Account';
+    const displayName = String(
+        ownerProfile?.preferredName ?? ownerProfile?.firstName ?? 'Shared Account'
+    );
 
     return (
         <button
