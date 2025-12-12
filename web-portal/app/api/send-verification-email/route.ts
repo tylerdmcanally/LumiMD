@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     // Send email via Resend
     const { data, error: resendError } = await resend.emails.send({
-      from: 'LumiMD <no-reply@lumimd.app>',
+      from: 'LumiMD <onboarding@resend.dev>',
       to: email,
       subject: 'Verify your LumiMD email address',
       html: `
