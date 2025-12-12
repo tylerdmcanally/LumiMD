@@ -7,13 +7,13 @@ import { getFirestore } from 'firebase-admin/firestore';
 
 // Initialize Firebase Admin if not already initialized
 if (!getApps().length) {
-    initializeApp({
-        credential: cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-        }),
-    });
+  initializeApp({
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  });
 }
 
 const adminAuth = getAuth();
@@ -22,60 +22,60 @@ const adminDb = getFirestore();
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const requestSchema = z.object({
-    userId: z.string(),
-    email: z.string().email(),
+  userId: z.string(),
+  email: z.string().email(),
 });
 
 export async function POST(request: NextRequest) {
-    try {
-        if (!process.env.RESEND_API_KEY) {
-            console.error('[send-verification-email] RESEND_API_KEY not configured');
-            return NextResponse.json(
-                { error: 'Email service not configured' },
-                { status: 500 }
-            );
-        }
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error('[send-verification-email] RESEND_API_KEY not configured');
+      return NextResponse.json(
+        { error: 'Email service not configured' },
+        { status: 500 }
+      );
+    }
 
-        // Verify authentication
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+    // Verify authentication
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-        const token = authHeader.split('Bearer ')[1];
-        const decodedToken = await adminAuth.verifyIdToken(token);
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await adminAuth.verifyIdToken(token);
 
-        const body = await request.json();
-        const { userId, email } = requestSchema.parse(body);
+    const body = await request.json();
+    const { userId, email } = requestSchema.parse(body);
 
-        // Verify user is requesting their own verification
-        if (decodedToken.uid !== userId) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
+    // Verify user is requesting their own verification
+    if (decodedToken.uid !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
-        // Generate verification token (valid for 24 hours)
-        const verificationToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
-        const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
+    // Generate verification token (valid for 24 hours)
+    const verificationToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
-        // Store verification token in Firestore
-        await adminDb.collection('emailVerifications').doc(userId).set({
-            email,
-            token: verificationToken,
-            expiresAt,
-            createdAt: Date.now(),
-            verified: false,
-        });
+    // Store verification token in Firestore
+    await adminDb.collection('emailVerifications').doc(userId).set({
+      email,
+      token: verificationToken,
+      expiresAt,
+      createdAt: Date.now(),
+      verified: false,
+    });
 
-        // Get app URL
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'https://lumimd.app';
-        const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
+    // Get app URL
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'https://lumimd.app';
+    const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
 
-        // Send email via Resend
-        const { data, error: resendError } = await resend.emails.send({
-            from: 'LumiMD <no-reply@lumimd.app>',
-            to: email,
-            subject: 'Verify your LumiMD email address',
-            html: `
+    // Send email via Resend
+    const { data, error: resendError } = await resend.emails.send({
+      from: 'LumiMD <no-reply@lumimd.app>',
+      to: email,
+      subject: 'Verify your LumiMD email address',
+      html: `
         <!DOCTYPE html>
         <html>
           <head>
@@ -144,32 +144,32 @@ export async function POST(request: NextRequest) {
           </body>
         </html>
       `,
-        });
+    });
 
-        if (resendError) {
-            console.error('[send-verification-email] Resend error:', resendError);
-            return NextResponse.json(
-                { error: 'Failed to send verification email' },
-                { status: 500 }
-            );
-        }
-
-        console.log('[send-verification-email] Email sent successfully:', data);
-
-        return NextResponse.json({ success: true, messageId: data?.id });
-    } catch (error: any) {
-        console.error('[send-verification-email] Error:', error);
-
-        if (error instanceof z.ZodError) {
-            return NextResponse.json(
-                { error: 'Invalid request data', details: error.errors },
-                { status: 400 }
-            );
-        }
-
-        return NextResponse.json(
-            { error: error.message || 'Internal server error' },
-            { status: 500 }
-        );
+    if (resendError) {
+      console.error('[send-verification-email] Resend error:', resendError);
+      return NextResponse.json(
+        { error: 'Failed to send verification email' },
+        { status: 500 }
+      );
     }
+
+    console.log('[send-verification-email] Email sent successfully:', data);
+
+    return NextResponse.json({ success: true, messageId: data?.id });
+  } catch (error: any) {
+    console.error('[send-verification-email] Error:', error);
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Invalid request data', details: error.issues },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }
