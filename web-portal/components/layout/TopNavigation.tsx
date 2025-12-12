@@ -8,6 +8,7 @@ import {
     Home,
     Stethoscope,
     Pill,
+    CheckSquare,
     Users,
     Settings,
     LogOut,
@@ -34,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
     { label: 'Home', href: '/dashboard', icon: Home, exact: true },
     { label: 'Visits', href: '/visits', icon: Stethoscope },
     { label: 'Medications', href: '/medications', icon: Pill },
+    { label: 'Action Items', href: '/actions', icon: CheckSquare },
     { label: 'Sharing', href: '/sharing', icon: Users },
 ];
 
