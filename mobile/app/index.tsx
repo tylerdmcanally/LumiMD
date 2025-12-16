@@ -131,22 +131,9 @@ export default function HomeScreen() {
     }
   }, [authLoading, profileLoading, profile, profileError, isAuthenticated, router]);
 
-  // Show loading state while checking auth
-  if (authLoading) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={{ marginTop: spacing(4), color: Colors.textMuted }}>Loading...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  // Don't render home screen if not authenticated
-  if (!isAuthenticated) {
-    return null;
-  }
-
   // Calculate stats from real data - ensure we always have valid numbers
+  // NOTE: All hooks must be called unconditionally before any early returns
+  // to satisfy React's Rules of Hooks
   const recentVisits = useMemo(() => {
     if (!Array.isArray(visits)) return [];
     return visits.slice(0, 3);
@@ -180,6 +167,7 @@ export default function HomeScreen() {
 
   const isLoadingData = actionsLoading || visitsLoading || medsLoading || profileLoading;
   const hasErrors = actionsError || visitsError || medsError || profileError;
+
   const latestVisitBadge = useMemo(() => {
     if (!latestVisit) return undefined;
 
@@ -190,7 +178,7 @@ export default function HomeScreen() {
       return { text: 'Latest: Needs attention', color: Colors.error };
     }
 
-    if (['processing', 'transcribing', 'summarizing', 'pending'].includes(status)) {
+    if (status && ['processing', 'transcribing', 'summarizing', 'pending'].includes(status)) {
       return { text: 'Latest: Processing…', color: Colors.warning };
     }
 
@@ -205,12 +193,27 @@ export default function HomeScreen() {
     return undefined;
   }, [isVisitSummaryReady, latestVisit, showReadyBadge]);
 
-  const handleRecentVisitsPress = () => {
+  const handleRecentVisitsPress = useCallback(() => {
     if (latestCompletedVisitIdRef.current) {
       updateLastViewedCompletedVisit(latestCompletedVisitIdRef.current);
     }
     router.push('/visits');
-  };
+  }, [updateLastViewedCompletedVisit, router]);
+
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={{ marginTop: spacing(4), color: Colors.textMuted }}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // Don't render home screen if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <ErrorBoundary title="Unable to load your dashboard" description="Try refreshing the home screen. If this keeps happening, please force close and reopen the app.">

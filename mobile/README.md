@@ -48,6 +48,7 @@ Or press `a` in the terminal after `npm start`
 5. If the server misbehaves, run `npm run reset` or the manual cache clearing steps in the Troubleshooting section.
 
 > Because we’re fully managed, no local Xcode/Android Studio build is required for day-to-day development.
+> Note: Firebase native modules are not available in Expo Go. Use a dev client or TestFlight build to exercise auth/firestore/storage.
 
 ## 📱 Current Features
 
@@ -257,5 +258,4 @@ The mobile app is ready when:
 ---
 
 **Ready to start?** Run `npm install && npm start` 🚀
-
 

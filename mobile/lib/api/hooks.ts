@@ -3,19 +3,17 @@
  * Re-exports shared SDK hooks
  */
 
-import { useCallback, useMemo } from 'react';
-import { collection, query, where, type FirestoreError } from 'firebase/firestore';
-import { QueryKey, UseQueryOptions } from '@tanstack/react-query';
+import { useEffect, useCallback, useMemo, useState } from 'react';
+import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import { QueryKey, UseQueryOptions, useQueryClient } from '@tanstack/react-query';
 
 import {
   createApiHooks,
   queryKeys,
   sortByTimestampDescending,
-  useFirestoreCollection,
 } from '@lumimd/sdk';
 import type { Visit, Medication, ActionItem, UserProfile } from '@lumimd/sdk';
 import { api } from './client';
-import { db } from '../firebase';
 
 // Create hooks using the mobile API client
 const hooks = createApiHooks(api);
@@ -47,29 +45,66 @@ type QueryEnabledOptions<TData> = Omit<
   'queryKey' | 'queryFn'
 >;
 
-const useRealtimeErrorHandler = () =>
-  useCallback((error: FirestoreError) => {
-    console.error('[Realtime] Firestore listener error', error);
-  }, []);
+// Generic hook to subscribe to Firestore query
+function useFirestoreSubscription<T>(
+  queryKey: QueryKey,
+  queryFactory: () => FirebaseFirestoreTypes.Query | null,
+  options?: {
+    enabled?: boolean;
+    transform?: (data: T[]) => T[];
+  }
+) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    if (options?.enabled === false) return;
+
+    const query = queryFactory();
+    if (!query) return;
+
+    const unsubscribe = query.onSnapshot(
+      (snapshot) => {
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as unknown as T[];
+
+        const transformedData = options?.transform ? options.transform(data) : data;
+
+        queryClient.setQueryData(queryKey, transformedData);
+        setError(null);
+      },
+      (err) => {
+        console.error('[Realtime] Firestore listener error', err);
+        setError(err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [queryKey, queryFactory, options?.enabled, options?.transform, queryClient]);
+
+  // Return data from cache to mimic useQuery
+  const data = queryClient.getQueryData<T[]>(queryKey);
+
+  return { data, error, isLoading: !data && !error };
+}
+
 
 export function useRealtimeVisits(
   userId?: string | null,
   options?: QueryEnabledOptions<Visit[]>,
 ) {
   const key = useMemo(() => realtimeQueryKeys.visits(userId), [userId]);
-  const enabled = Boolean(userId);
-  const handleSnapshotError = useRealtimeErrorHandler();
 
-  const visitsQueryRef = useMemo(() => {
+  const queryFactory = useCallback(() => {
     if (!userId) return null;
-    return query(collection(db, 'visits'), where('userId', '==', userId));
+    return firestore().collection('visits').where('userId', '==', userId);
   }, [userId]);
 
-  return useFirestoreCollection<Visit>(visitsQueryRef, key, {
+  return useFirestoreSubscription<Visit>(key, queryFactory, {
+    enabled: !!userId,
     transform: sortByTimestampDescending,
-    enabled,
-    onError: handleSnapshotError,
-    queryOptions: options,
   });
 }
 
@@ -78,12 +113,10 @@ export function useRealtimeActiveMedications(
   options?: QueryEnabledOptions<Medication[]>,
 ) {
   const key = useMemo(() => realtimeQueryKeys.medications(userId), [userId]);
-  const enabled = Boolean(userId);
-  const handleSnapshotError = useRealtimeErrorHandler();
 
-  const medicationsQueryRef = useMemo(() => {
+  const queryFactory = useCallback(() => {
     if (!userId) return null;
-    return query(collection(db, 'medications'), where('userId', '==', userId));
+    return firestore().collection('medications').where('userId', '==', userId);
   }, [userId]);
 
   const filterActiveMeds = useCallback((meds: Medication[]) => {
@@ -92,11 +125,9 @@ export function useRealtimeActiveMedications(
     );
   }, []);
 
-  return useFirestoreCollection<Medication>(medicationsQueryRef, key, {
+  return useFirestoreSubscription<Medication>(key, queryFactory, {
+    enabled: !!userId,
     transform: filterActiveMeds,
-    enabled,
-    onError: handleSnapshotError,
-    queryOptions: options,
   });
 }
 
@@ -105,12 +136,10 @@ export function useRealtimePendingActions(
   options?: QueryEnabledOptions<ActionItem[]>,
 ) {
   const key = useMemo(() => realtimeQueryKeys.actions(userId), [userId]);
-  const enabled = Boolean(userId);
-  const handleSnapshotError = useRealtimeErrorHandler();
 
-  const actionsQueryRef = useMemo(() => {
+  const queryFactory = useCallback(() => {
     if (!userId) return null;
-    return query(collection(db, 'actions'), where('userId', '==', userId));
+    return firestore().collection('actions').where('userId', '==', userId);
   }, [userId]);
 
   const filterPendingActions = useCallback((actions: ActionItem[]) => {
@@ -129,11 +158,9 @@ export function useRealtimePendingActions(
       });
   }, []);
 
-  return useFirestoreCollection<ActionItem>(actionsQueryRef, key, {
+  return useFirestoreSubscription<ActionItem>(key, queryFactory, {
+    enabled: !!userId,
     transform: filterPendingActions,
-    enabled,
-    onError: handleSnapshotError,
-    queryOptions: options,
   });
 }
 

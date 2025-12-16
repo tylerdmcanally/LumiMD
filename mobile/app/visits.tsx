@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -10,13 +10,17 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Colors, spacing, Card } from '../components/ui';
 import { useVisits } from '../lib/api/hooks';
-import { openWebVisit } from '../lib/linking';
+import { openWebVisit, openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { dismissAllNotifications } from '../lib/notifications';
+import { EmptyState } from '../components/EmptyState';
+import { ListSkeletonGroup } from '../components/SkeletonLoader';
 
 dayjs.extend(relativeTime);
 
@@ -50,6 +54,15 @@ export default function VisitsScreen() {
   } = useVisits({
     staleTime: 60 * 1000,
   });
+
+  // Clear notifications when screen is focused (user is viewing visits)
+  useFocusEffect(
+    useCallback(() => {
+      dismissAllNotifications();
+      // Refetch visits to show newly recorded ones
+      refetch();
+    }, [refetch])
+  );
 
   const sortedVisits = useMemo(() => {
     if (!Array.isArray(visits)) return [];
@@ -122,10 +135,7 @@ export default function VisitsScreen() {
           </Text>
 
           {isLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={styles.loadingText}>Loading visits...</Text>
-            </View>
+            <ListSkeletonGroup count={5} />
           ) : error ? (
             <Card style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>Unable to load visits</Text>
@@ -134,12 +144,15 @@ export default function VisitsScreen() {
               </Text>
             </Card>
           ) : sortedVisits.length === 0 ? (
-            <Card style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No visits recorded yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Record your next appointment to see AI summaries here.
-              </Text>
-            </Card>
+            <EmptyState
+              icon="document-text-outline"
+              title="No Visits Yet"
+              description="Start recording your medical appointments to get AI-powered summaries, track medications, and never miss important details."
+              primaryAction={{
+                text: "Record Your First Visit",
+                onPress: () => router.push('/record-visit'),
+              }}
+            />
           ) : (
             <Card style={styles.listCard}>
               {sortedVisits.map((visit: any, index: number) => (
@@ -157,9 +170,8 @@ export default function VisitsScreen() {
                         const statusKey = normalizeStatus(visit);
                         switch (statusKey) {
                           case 'completed':
-                            return `Processed ${
-                              visit.processedAt ? dayjs(visit.processedAt).fromNow() : ''
-                            }`;
+                            return `Processed ${visit.processedAt ? dayjs(visit.processedAt).fromNow() : ''
+                              }`;
                           case 'finalizing':
                             return 'Finalizing summary…';
                           case 'failed':

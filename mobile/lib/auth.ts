@@ -3,28 +3,17 @@
  * Provides auth utilities and wrappers for Firebase Auth
  */
 
-import { auth as firebaseAuth } from './firebase';
-import { 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  sendPasswordResetEmail,
-  User,
-  onAuthStateChanged
-} from 'firebase/auth';
-
-// Re-export Firebase auth for direct use
-export { firebaseAuth as auth };
+import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 // Re-export User type
-export type AuthUser = User;
+export type AuthUser = FirebaseAuthTypes.User;
 
 /**
  * Sign in with email and password
  */
 export async function signInWithEmail(email: string, password: string) {
   try {
-    const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+    const userCredential = await auth().signInWithEmailAndPassword(email, password);
     return { user: userCredential.user, error: null };
   } catch (error: any) {
     console.error('[auth] Sign in error:', error);
@@ -37,7 +26,7 @@ export async function signInWithEmail(email: string, password: string) {
  */
 export async function signUpWithEmail(email: string, password: string) {
   try {
-    const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+    const userCredential = await auth().createUserWithEmailAndPassword(email, password);
     return { user: userCredential.user, error: null };
   } catch (error: any) {
     console.error('[auth] Sign up error:', error);
@@ -50,7 +39,7 @@ export async function signUpWithEmail(email: string, password: string) {
  */
 export async function signOut() {
   try {
-    await firebaseSignOut(firebaseAuth);
+    await auth().signOut();
     return { error: null };
   } catch (error: any) {
     console.error('[auth] Sign out error:', error);
@@ -61,17 +50,17 @@ export async function signOut() {
 /**
  * Get current user
  */
-export function getCurrentUser(): User | null {
-  return firebaseAuth.currentUser;
+export function getCurrentUser(): FirebaseAuthTypes.User | null {
+  return auth().currentUser;
 }
 
 /**
  * Get ID token for API calls
  */
 export async function getIdToken(): Promise<string | null> {
-  const user = firebaseAuth.currentUser;
+  const user = auth().currentUser;
   if (!user) return null;
-  
+
   try {
     return await user.getIdToken();
   } catch (error) {
@@ -84,14 +73,14 @@ export async function getIdToken(): Promise<string | null> {
  * Check if user is authenticated
  */
 export function isAuthenticated(): boolean {
-  return firebaseAuth.currentUser !== null;
+  return auth().currentUser !== null;
 }
 
 /**
  * Subscribe to auth state changes
  */
-export function onAuthStateChange(callback: (user: User | null) => void) {
-  return onAuthStateChanged(firebaseAuth, callback);
+export function onAuthStateChange(callback: (user: FirebaseAuthTypes.User | null) => void) {
+  return auth().onAuthStateChanged(callback);
 }
 
 /**
@@ -99,7 +88,7 @@ export function onAuthStateChange(callback: (user: User | null) => void) {
  */
 export async function resetPassword(email: string) {
   try {
-    await sendPasswordResetEmail(firebaseAuth, email);
+    await auth().sendPasswordResetEmail(email);
     return { error: null };
   } catch (error: any) {
     console.error('[auth] Password reset error:', error);

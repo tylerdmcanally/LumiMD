@@ -42,11 +42,13 @@ function RootFallback({ reset }: { reset: () => void }) {
 function NotificationHandler() {
   const router = useRouter();
   const segments = useSegments();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
-  const { data: pendingActions } = usePendingActions();
-  const { data: visits } = useVisits();
+
+  // Only fetch data when authenticated to prevent SDK errors
+  const { data: pendingActions } = usePendingActions({ enabled: isAuthenticated && !!user });
+  const { data: visits } = useVisits({ enabled: isAuthenticated && !!user });
 
   // Update badge count when actions or visits change
   useEffect(() => {

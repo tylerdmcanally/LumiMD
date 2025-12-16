@@ -3,8 +3,7 @@
  * Handle audio file uploads to Firebase Storage
  */
 
-import { storage } from './firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import storage from '@react-native-firebase/storage';
 
 export interface UploadProgress {
   bytesTransferred: number;
@@ -27,22 +26,19 @@ export async function uploadAudioFile(
   onProgress?: (progress: UploadProgress) => void
 ): Promise<UploadedAudio> {
   try {
-    // Fetch the file from the URI
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    
     // Create a unique filename with timestamp
     const timestamp = Date.now();
     const filename = `visits/${userId}/${timestamp}.m4a`;
-    
+
     // Create storage reference
-    const storageRef = ref(storage, filename);
-    
-    // Upload with progress tracking
-    const uploadTask = uploadBytesResumable(storageRef, blob, {
+    const storageRef = storage().ref(filename);
+
+    // Native SDK prefers file path for uploads
+    // Ensure URI is a string (putFile handles 'file://' prefix)
+    const uploadTask = storageRef.putFile(uri, {
       contentType: 'audio/m4a',
     });
-    
+
     return new Promise((resolve, reject) => {
       uploadTask.on(
         'state_changed',
@@ -62,7 +58,7 @@ export async function uploadAudioFile(
         async () => {
           // Upload complete - get download URL
           try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            const downloadURL = await storageRef.getDownloadURL();
             console.log('[Storage] Upload complete:', downloadURL);
             resolve({
               downloadUrl: downloadURL,
@@ -85,10 +81,17 @@ export async function uploadAudioFile(
  */
 export async function deleteAudioFile(url: string): Promise<void> {
   try {
-    const storageRef = ref(storage, url);
-    // Note: deleteObject is available but we'll skip for now
-    // as it requires additional imports and isn't critical for MVP
-    console.log('[Storage] Delete requested for:', url);
+    // Determine if url is full URL or path
+    let storageRef;
+    if (url.startsWith('http')) {
+      storageRef = storage().refFromURL(url);
+    } else {
+      storageRef = storage().ref(url);
+    }
+
+    // Native SDK has delete() method on reference
+    await storageRef.delete();
+    console.log('[Storage] Deleted:', url);
   } catch (error) {
     console.error('[Storage] Delete failed:', error);
     throw error;

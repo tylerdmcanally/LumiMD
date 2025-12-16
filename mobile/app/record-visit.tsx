@@ -17,11 +17,17 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from '../components/ui';
 import { useAudioRecording, MAX_RECORDING_MS } from '../lib/hooks/useAudioRecording';
-import { uploadAudioFile, UploadProgress } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
+import { saveRecordingToQueue } from '../lib/recordingQueue';
+import { QueuedRecording } from '../lib/types/queue';
+import * as FileSystem from 'expo-file-system/legacy';
+import { NetworkBanner } from '../components/NetworkBanner';
+import { formatError } from '../lib/utils/errorMessages';
+import { haptics } from '../lib/haptics';
+
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
@@ -106,26 +112,31 @@ export default function RecordVisitScreen() {
       }
       setErrorMessage(null);
       longRecordingWarningShown.current = false;
+      haptics.heavy();
       await startRecording();
     } catch (error: any) {
+      haptics.error();
       console.error('[RecordVisit] Start error:', error);
-      showError('We couldn’t start recording. Please try again.');
-      Alert.alert('Error', 'Failed to start recording. Please try again.');
+      const userError = formatError(error, 'recording');
+      Alert.alert(userError.title, userError.message);
     }
   };
 
   const handleStopAndSave = async () => {
     try {
+      haptics.heavy();
       await stopRecording();
     } catch (error: any) {
+      haptics.error();
       console.error('[RecordVisit] Stop error:', error);
-      showError('We couldn’t stop the recording. Please try again.');
-      Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      const userError = formatError(error, 'recording');
+      Alert.alert(userError.title, userError.message);
     }
   };
 
   const handlePauseToggle = async () => {
     try {
+      haptics.medium();
       if (isPaused) {
         await resumeRecording();
       } else {
@@ -151,73 +162,62 @@ export default function RecordVisitScreen() {
     }
   };
 
-  const performUpload = async () => {
+  const performSave = async () => {
     if (!uri || !user) return;
 
     setUploading(true);
-    setUploadProgress(0);
 
     try {
-      // Upload audio file
-      const { downloadUrl, storagePath } = await uploadAudioFile(
-        uri,
-        user.uid,
-        (progress: UploadProgress) => {
-          setUploadProgress(progress.progress);
-        }
-      );
+      // Get file size
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      const fileSize = fileInfo.exists ? (fileInfo as any).size || 0 : 0;
 
-      console.log('[RecordVisit] Audio uploaded:', downloadUrl);
+      // Create queued recording
+      const recording: QueuedRecording = {
+        id: `recording_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        localUri: uri,
+        userId: user.uid,
+        recordedAt: new Date().toISOString(),
+        duration,
+        fileSize,
+        uploadStatus: 'pending',
+        uploadAttempts: 0,
+      };
 
-      // Create visit record
-      await api.visits.create({
-        audioUrl: downloadUrl,
-        storagePath,
-        status: 'processing',
-        notes: '',
-      });
+      // Save to queue for background upload
+      await saveRecordingToQueue(recording);
 
-      console.log('[RecordVisit] Visit created');
+      console.log('[RecordVisit] Recording saved to queue:', recording.id);
 
-      // Success!
+      haptics.success();
       Alert.alert(
-        'Visit Recorded',
-        'Your visit has been saved and is being processed.',
-        [],
-        { cancelable: false }
+        'Recording Saved',
+        'Your recording has been saved and will upload automatically.',
+        [{ text: 'OK', onPress: () => router.back() }]
       );
-
-      setTimeout(() => {
-        resetRecording();
-        router.replace('/');
-      }, 2000);
     } catch (error: any) {
-      console.error('[RecordVisit] Upload error:', error);
-      showError(extractUserMessage(error, 'Failed to save your recording. Please try again.'));
-      Alert.alert(
-        'Upload Failed',
-        extractUserMessage(error, 'Failed to save your recording. Please try again.'),
-        [{ text: 'OK' }]
-      );
+      console.error('[RecordVisit] Save error:', error);
+      const userError = formatError(error, 'upload');
+      Alert.alert(userError.title, userError.message);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleUpload = () => {
+  const handleSave = () => {
     if (!uri || !user || uploading) return;
 
     if (duration >= LONG_RECORDING_CONFIRM_THRESHOLD_MS) {
       Alert.alert(
-        'Upload long recording?',
-        'This visit runs longer than an hour. Long recordings cost more to transcribe. Do you still want to send it?',
+        'Save long recording?',
+        'This visit runs longer than an hour. Long recordings cost more to transcribe. Do you still want to save it?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Send',
-            style: 'destructive',
+            text: 'Save',
+            style: 'default',
             onPress: () => {
-              void performUpload();
+              void performSave();
             },
           },
         ]
@@ -225,7 +225,7 @@ export default function RecordVisitScreen() {
       return;
     }
 
-    void performUpload();
+    void performSave();
   };
 
   const handleCancel = () => {
@@ -294,6 +294,7 @@ export default function RecordVisitScreen() {
       title="Recording encountered an issue"
       description="If this keeps happening, force close the app and reopen before trying again."
     >
+      <NetworkBanner />
       <SafeAreaView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -397,7 +398,7 @@ export default function RecordVisitScreen() {
 
             <Pressable
               style={[styles.actionButton, styles.saveButton]}
-              onPress={handleUpload}
+              onPress={handleSave}
             >
               <Ionicons name="checkmark" size={20} color="#fff" />
               <Text style={styles.saveButtonText}>Save Visit</Text>

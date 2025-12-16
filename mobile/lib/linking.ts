@@ -4,8 +4,8 @@
 
 import { Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import auth from '@react-native-firebase/auth';
 import { cfg } from './config';
-import { auth } from './auth';
 
 /**
  * Creates a one-time auth handoff code
@@ -13,7 +13,7 @@ import { auth } from './auth';
  */
 async function createHandoffCode(): Promise<string | null> {
   try {
-    const currentUser = auth.currentUser;
+    const currentUser = auth().currentUser;
     if (!currentUser) {
       console.warn('[linking] No auth token available - user not signed in');
       return null;
@@ -21,7 +21,7 @@ async function createHandoffCode(): Promise<string | null> {
 
     console.log('[linking] Getting ID token for user:', currentUser.uid);
     const idToken = await currentUser.getIdToken();
-    
+
     console.log('[linking] Calling create-handoff API...');
     const response = await fetch(`${cfg.apiBaseUrl}/v1/auth/create-handoff`, {
       method: 'POST',
@@ -30,13 +30,13 @@ async function createHandoffCode(): Promise<string | null> {
         'Content-Type': 'application/json',
       },
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[linking] create-handoff failed:', response.status, errorText);
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
-    
+
     const data = await response.json();
     console.log('[linking] Got handoff code successfully');
     return data.code;
@@ -55,9 +55,9 @@ async function openWebUrl(path: string): Promise<void> {
   try {
     // Attempt to create handoff code
     const code = await createHandoffCode();
-    
+
     let url: string;
-    
+
     if (code) {
       // Success: use handoff flow
       url = `${cfg.webPortalUrl}/auth/handoff?code=${code}&returnTo=${encodeURIComponent(path)}`;
@@ -68,11 +68,11 @@ async function openWebUrl(path: string): Promise<void> {
       url = `${cfg.webPortalUrl}/sign-in?returnTo=${encodeURIComponent(path)}&reason=app_handoff`;
       console.log(`[linking] Handoff failed, redirecting to sign-in: ${path}`);
     }
-    
+
     await WebBrowser.openBrowserAsync(url);
   } catch (error) {
     console.error('[linking] Failed to open web URL:', error);
-    
+
     Alert.alert(
       'Unable to Open',
       'We couldn\'t open the web portal. Please check your internet connection and try again.',

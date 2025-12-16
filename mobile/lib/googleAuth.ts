@@ -1,12 +1,6 @@
-/**
- * Google Sign-In integration using web-based OAuth flow.
- * Works in Expo Go (uses the AuthSession proxy).
- */
-
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { auth } from './firebase';
+import auth from '@react-native-firebase/auth';
 import { cfg } from './config';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -17,7 +11,8 @@ const discovery = {
 };
 
 const scopes = ['openid', 'profile', 'email'];
-const useProxy = true; // Required for Expo Go
+// Dev client/TestFlight builds should use the native redirect scheme (no Expo proxy)
+const useProxy = false;
 
 /**
  * Sign in with Google via web OAuth and authenticate with Firebase.
@@ -29,7 +24,7 @@ export async function signInWithGoogle() {
   }
 
   try {
-    const redirectUri = AuthSession.makeRedirectUri({ useProxy } as any);
+    const redirectUri = AuthSession.makeRedirectUri({ scheme: 'lumimd' });
 
     const request = await AuthSession.loadAsync(
       {
@@ -61,8 +56,8 @@ export async function signInWithGoogle() {
       return { user: null, error: 'Failed to obtain Google credentials' };
     }
 
-    const credential = GoogleAuthProvider.credential(idToken);
-    const userCredential = await signInWithCredential(auth, credential);
+    const credential = auth.GoogleAuthProvider.credential(idToken);
+    const userCredential = await auth().signInWithCredential(credential);
 
     console.log('[googleAuth] Successfully signed in:', userCredential.user.email);
     return { user: userCredential.user, error: null };
@@ -86,4 +81,3 @@ export async function signOutFromGoogle() {
 export async function isSignedInToGoogle(): Promise<boolean> {
   return false;
 }
-

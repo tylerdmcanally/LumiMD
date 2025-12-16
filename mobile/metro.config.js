@@ -8,11 +8,12 @@ const config = getDefaultConfig(__dirname);
 const workspaceRoot = path.resolve(__dirname, '..');
 const sdkPath = path.resolve(workspaceRoot, 'packages/sdk');
 
-// Watch only the necessary folders to reduce Watchman load
-config.watchFolders = [
-  __dirname, // mobile/
-  sdkPath,   // packages/sdk/
-];
+// Include Expo defaults and add the workspace SDK for monorepo support
+const defaultWatchFolders = config.watchFolders || [];
+config.watchFolders = Array.from(new Set([
+  ...defaultWatchFolders,
+  sdkPath, // packages/sdk/
+]));
 
 // Only use local node_modules - hoisted packages will be found via symlinks
 config.resolver.nodeModulesPaths = [

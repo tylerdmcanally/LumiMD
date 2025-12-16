@@ -27,7 +27,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[ErrorBoundary]', error, errorInfo.componentStack);
+    // Log just the message and component stack to reduce console noise
+    console.error('[ErrorBoundary]', error?.message, errorInfo.componentStack);
   }
 
   resetBoundary = () => {
@@ -112,4 +113,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

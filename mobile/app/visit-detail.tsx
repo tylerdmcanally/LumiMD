@@ -3,7 +3,7 @@
  * Displays AI-generated summary, transcript, and action items for a visit
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -25,6 +26,8 @@ import { useVisit, queryKeys } from '../lib/api/hooks';
 import { api } from '../lib/api/client';
 import { openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { dismissAllNotifications } from '../lib/notifications';
+import { haptics } from '../lib/haptics';
 
 dayjs.extend(relativeTime);
 
@@ -149,6 +152,13 @@ export default function VisitDetailScreen() {
   const [retrying, setRetrying] = useState(false);
   const processingStates = ['pending', 'processing', 'transcribing', 'summarizing'];
   const queryClient = useQueryClient();
+
+  // Clear notifications when screen is focused (user is viewing visit detail)
+  useFocusEffect(
+    useCallback(() => {
+      dismissAllNotifications();
+    }, [])
+  );
 
   const {
     data: visit,
@@ -395,7 +405,10 @@ export default function VisitDetailScreen() {
                         styles.tabButton,
                         isActive ? styles.tabButtonActive : styles.tabButtonInactive,
                       ]}
-                      onPress={() => setActiveTab(tab.key)}
+                      onPress={() => {
+                        haptics.selection();
+                        setActiveTab(tab.key);
+                      }}
                     >
                       <Ionicons
                         name={tab.icon}

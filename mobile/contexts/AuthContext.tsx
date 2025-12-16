@@ -4,17 +4,17 @@
  */
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User } from 'firebase/auth';
-import { 
-  onAuthStateChange, 
-  signInWithEmail, 
-  signUpWithEmail, 
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import {
+  onAuthStateChange,
+  signInWithEmail,
+  signUpWithEmail,
   signOut as authSignOut,
   getCurrentUser
 } from '../lib/auth';
 
 interface AuthContextType {
-  user: User | null;
+  user: FirebaseAuthTypes.User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -25,7 +25,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -108,7 +108,7 @@ function formatErrorMessage(error: string): string {
   if (!match) return error;
 
   const errorCode = match[1];
-  
+
   const messages: Record<string, string> = {
     'email-already-in-use': 'This email is already registered. Try signing in instead.',
     'invalid-email': 'Please enter a valid email address.',
