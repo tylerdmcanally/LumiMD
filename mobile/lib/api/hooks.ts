@@ -1,21 +1,15 @@
 /**
  * React Query Hooks for Mobile
- * Re-exports shared SDK hooks
+ * Uses React Native Firebase for realtime listeners
  */
 
-import { useCallback, useMemo } from 'react';
-import { collection, query, where, type FirestoreError } from 'firebase/firestore';
-import { QueryKey, UseQueryOptions } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo } from 'react';
+import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
+import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 
-import {
-  createApiHooks,
-  queryKeys,
-  sortByTimestampDescending,
-  useFirestoreCollection,
-} from '@lumimd/sdk';
+import { createApiHooks, queryKeys, sortByTimestampDescending } from '@lumimd/sdk';
 import type { Visit, Medication, ActionItem, UserProfile } from '@lumimd/sdk';
 import { api } from './client';
-import { db } from '../firebase';
 
 // Create hooks using the mobile API client
 const hooks = createApiHooks(api);
@@ -47,29 +41,75 @@ type QueryEnabledOptions<TData> = Omit<
   'queryKey' | 'queryFn'
 >;
 
-const useRealtimeErrorHandler = () =>
-  useCallback((error: FirestoreError) => {
-    console.error('[Realtime] Firestore listener error', error);
-  }, []);
+// Helper to convert Firestore timestamps to ISO strings
+function serializeDoc<T extends { id: string }>(
+  doc: FirebaseFirestoreTypes.QueryDocumentSnapshot | FirebaseFirestoreTypes.DocumentSnapshot
+): T {
+  const data = doc.data() ?? {};
+  const converted: Record<string, unknown> = { id: doc.id };
+
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === 'object' && 'toDate' in value) {
+      // Firestore Timestamp
+      converted[key] = (value as FirebaseFirestoreTypes.Timestamp).toDate().toISOString();
+    } else if (Array.isArray(value)) {
+      converted[key] = value.map(item =>
+        item && typeof item === 'object' && 'toDate' in item
+          ? (item as FirebaseFirestoreTypes.Timestamp).toDate().toISOString()
+          : item
+      );
+    } else {
+      converted[key] = value;
+    }
+  }
+
+  return converted as T;
+}
 
 export function useRealtimeVisits(
   userId?: string | null,
   options?: QueryEnabledOptions<Visit[]>,
 ) {
+  const queryClient = useQueryClient();
   const key = useMemo(() => realtimeQueryKeys.visits(userId), [userId]);
   const enabled = Boolean(userId);
-  const handleSnapshotError = useRealtimeErrorHandler();
 
-  const visitsQueryRef = useMemo(() => {
-    if (!userId) return null;
-    return query(collection(db, 'visits'), where('userId', '==', userId));
-  }, [userId]);
+  // Set up realtime listener
+  useEffect(() => {
+    if (!userId || !enabled) return;
 
-  return useFirestoreCollection<Visit>(visitsQueryRef, key, {
-    transform: sortByTimestampDescending,
+    const unsubscribe = firestore()
+      .collection('visits')
+      .where('userId', '==', userId)
+      .onSnapshot(
+        (snapshot) => {
+          const docs = snapshot.docs.map(doc => serializeDoc<Visit>(doc));
+          const sorted = sortByTimestampDescending(docs);
+          queryClient.setQueryData(key, sorted);
+        },
+        (error) => {
+          console.error('[Realtime] Visits listener error', error);
+        }
+      );
+
+    return () => unsubscribe();
+  }, [userId, enabled, key, queryClient]);
+
+  // Initial fetch query
+  return useQuery<Visit[]>({
+    queryKey: key,
+    staleTime: 30_000,
     enabled,
-    onError: handleSnapshotError,
-    queryOptions: options,
+    ...options,
+    queryFn: async () => {
+      if (!userId) return [];
+      const snapshot = await firestore()
+        .collection('visits')
+        .where('userId', '==', userId)
+        .get();
+      const docs = snapshot.docs.map(doc => serializeDoc<Visit>(doc));
+      return sortByTimestampDescending(docs);
+    },
   });
 }
 
@@ -77,14 +117,9 @@ export function useRealtimeActiveMedications(
   userId?: string | null,
   options?: QueryEnabledOptions<Medication[]>,
 ) {
+  const queryClient = useQueryClient();
   const key = useMemo(() => realtimeQueryKeys.medications(userId), [userId]);
   const enabled = Boolean(userId);
-  const handleSnapshotError = useRealtimeErrorHandler();
-
-  const medicationsQueryRef = useMemo(() => {
-    if (!userId) return null;
-    return query(collection(db, 'medications'), where('userId', '==', userId));
-  }, [userId]);
 
   const filterActiveMeds = useCallback((meds: Medication[]) => {
     return sortByTimestampDescending(
@@ -92,11 +127,40 @@ export function useRealtimeActiveMedications(
     );
   }, []);
 
-  return useFirestoreCollection<Medication>(medicationsQueryRef, key, {
-    transform: filterActiveMeds,
+  // Set up realtime listener
+  useEffect(() => {
+    if (!userId || !enabled) return;
+
+    const unsubscribe = firestore()
+      .collection('medications')
+      .where('userId', '==', userId)
+      .onSnapshot(
+        (snapshot) => {
+          const docs = snapshot.docs.map(doc => serializeDoc<Medication>(doc));
+          queryClient.setQueryData(key, filterActiveMeds(docs));
+        },
+        (error) => {
+          console.error('[Realtime] Medications listener error', error);
+        }
+      );
+
+    return () => unsubscribe();
+  }, [userId, enabled, key, queryClient, filterActiveMeds]);
+
+  return useQuery<Medication[]>({
+    queryKey: key,
+    staleTime: 30_000,
     enabled,
-    onError: handleSnapshotError,
-    queryOptions: options,
+    ...options,
+    queryFn: async () => {
+      if (!userId) return [];
+      const snapshot = await firestore()
+        .collection('medications')
+        .where('userId', '==', userId)
+        .get();
+      const docs = snapshot.docs.map(doc => serializeDoc<Medication>(doc));
+      return filterActiveMeds(docs);
+    },
   });
 }
 
@@ -104,14 +168,9 @@ export function useRealtimePendingActions(
   userId?: string | null,
   options?: QueryEnabledOptions<ActionItem[]>,
 ) {
+  const queryClient = useQueryClient();
   const key = useMemo(() => realtimeQueryKeys.actions(userId), [userId]);
   const enabled = Boolean(userId);
-  const handleSnapshotError = useRealtimeErrorHandler();
-
-  const actionsQueryRef = useMemo(() => {
-    if (!userId) return null;
-    return query(collection(db, 'actions'), where('userId', '==', userId));
-  }, [userId]);
 
   const filterPendingActions = useCallback((actions: ActionItem[]) => {
     return actions
@@ -129,11 +188,40 @@ export function useRealtimePendingActions(
       });
   }, []);
 
-  return useFirestoreCollection<ActionItem>(actionsQueryRef, key, {
-    transform: filterPendingActions,
+  // Set up realtime listener
+  useEffect(() => {
+    if (!userId || !enabled) return;
+
+    const unsubscribe = firestore()
+      .collection('actions')
+      .where('userId', '==', userId)
+      .onSnapshot(
+        (snapshot) => {
+          const docs = snapshot.docs.map(doc => serializeDoc<ActionItem>(doc));
+          queryClient.setQueryData(key, filterPendingActions(docs));
+        },
+        (error) => {
+          console.error('[Realtime] Actions listener error', error);
+        }
+      );
+
+    return () => unsubscribe();
+  }, [userId, enabled, key, queryClient, filterPendingActions]);
+
+  return useQuery<ActionItem[]>({
+    queryKey: key,
+    staleTime: 30_000,
     enabled,
-    onError: handleSnapshotError,
-    queryOptions: options,
+    ...options,
+    queryFn: async () => {
+      if (!userId) return [];
+      const snapshot = await firestore()
+        .collection('actions')
+        .where('userId', '==', userId)
+        .get();
+      const docs = snapshot.docs.map(doc => serializeDoc<ActionItem>(doc));
+      return filterPendingActions(docs);
+    },
   });
 }
 

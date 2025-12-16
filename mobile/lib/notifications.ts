@@ -13,8 +13,11 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
+
 
 export interface PushTokenData {
   token: string;
@@ -50,9 +53,10 @@ export async function getNotificationPermissions(): Promise<Notifications.Permis
     return status;
   } catch (error) {
     console.error('[Notifications] Error getting permissions:', error);
-    return 'undetermined';
+    return Notifications.PermissionStatus.UNDETERMINED;
   }
 }
+
 
 /**
  * Get Expo push token for the current device

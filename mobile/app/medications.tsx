@@ -13,11 +13,13 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { Colors, spacing, Radius, Card } from '../components/ui';
+import { EmptyState } from '../components/EmptyState';
 import { openWebMeds, openWebVisit } from '../lib/linking';
 import { useAuth } from '../contexts/AuthContext';
 import { useMedications } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
+
 
 const formatDate = (value?: string | null) => {
   if (!value) return null;
@@ -238,34 +240,25 @@ export default function MedicationsScreen() {
                 <Text style={styles.emptyDescription}>Loading medications…</Text>
               </View>
             ) : error ? (
-              <View style={styles.emptyContainer}>
-                <View style={styles.emptyIcon}>
-                  <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
-                </View>
-                <Text style={styles.emptyTitle}>Unable to load medications</Text>
-                <Text style={styles.emptyDescription}>
-                  We couldn’t sync your medication list. Pull down to refresh or visit the web portal.
-                </Text>
-                <Pressable style={styles.emptyButton} onPress={openWebMeds}>
-                  <Text style={styles.emptyButtonText}>Open Web Portal</Text>
-                  <Ionicons name="arrow-forward" size={18} color="#fff" />
-                </Pressable>
-              </View>
+              <EmptyState
+                variant="error"
+                icon="cloud-offline-outline"
+                title="Unable to load medications"
+                description="We couldn't sync your medication list. Pull down to refresh or visit the web portal."
+                actionLabel="Open Web Portal"
+                onAction={openWebMeds}
+              />
             ) : meds.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <View style={styles.emptyIcon}>
-                  <Ionicons name="medkit-outline" size={48} color={Colors.textMuted} />
-                </View>
-                <Text style={styles.emptyTitle}>No medications yet</Text>
-                <Text style={styles.emptyDescription}>
-                  Start a visit or add medications in your web portal to see them here.
-                </Text>
-                <Pressable style={styles.emptyButton} onPress={openWebMeds}>
-                  <Text style={styles.emptyButtonText}>Open Web Portal</Text>
-                  <Ionicons name="arrow-forward" size={18} color="#fff" />
-                </Pressable>
-              </View>
+              <EmptyState
+                variant="empty"
+                icon="medkit-outline"
+                title="No medications yet"
+                description="Start a visit or add medications in your web portal to see them here."
+                actionLabel="Open Web Portal"
+                onAction={openWebMeds}
+              />
             ) : (
+
               <>
                 <Text style={styles.sectionSubtitle}>
                   Active medications automatically update as your visit summaries note changes.

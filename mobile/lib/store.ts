@@ -92,10 +92,11 @@ export async function getProducts(): Promise<Product[]> {
       productId: p.productId,
       title: p.title ?? 'Subscription',
       description: p.description ?? '',
-      price: p.priceString ?? '',
+      price: p.price ?? '',
       priceAmountMicros: p.priceAmountMicros ?? 0,
       priceCurrencyCode: p.priceCurrencyCode ?? 'USD',
     }));
+
   } catch (error) {
     console.error('[Store] Failed to fetch products:', error);
     return [];
@@ -136,7 +137,7 @@ export async function restorePurchases(): Promise<boolean> {
     const IAP = await import('expo-in-app-purchases');
     await configureStore();
 
-    const history = await IAP.getPurchaseHistoryAsync(false);
+    const history = await IAP.getPurchaseHistoryAsync({ useGooglePlayCache: false });
     const hasPurchases = (history?.results?.length ?? 0) > 0;
 
     console.log('[Store] Restored purchases:', hasPurchases);

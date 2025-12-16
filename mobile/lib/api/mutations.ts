@@ -66,7 +66,9 @@ interface UpdateProfileInput {
   allergies?: string[];
   medicalHistory?: string[];
   complete?: boolean;
+  [key: string]: unknown;
 }
+
 
 export function useUpdateUserProfile() {
   const queryClient = useQueryClient();

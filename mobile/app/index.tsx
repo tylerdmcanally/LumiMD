@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, spacing } from '../components/ui';
 import { HeroBanner } from '../components/HeroBanner';
-import { WebPortalBanner } from '../components/WebPortalBanner';
+import { WebPortalBanner, useWebPortalBannerState, NeedHelpButton } from '../components/WebPortalBanner';
 import { StartVisitCTA } from '../components/StartVisitCTA';
 import { GlanceableCard } from '../components/GlanceableCard';
 import { useAuth } from '../contexts/AuthContext';
@@ -50,8 +50,13 @@ export default function HomeScreen() {
     error: medsError,
   } = useRealtimeActiveMedications(user?.uid);
 
+  // Web portal banner state - for placing "Need help?" button below cards
+  const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();
+
+
   const [lastViewedCompletedVisitId, setLastViewedCompletedVisitIdState] = useState<string | null>(null);
   const latestCompletedVisitIdRef = useRef<string | null>(null);
+
 
   const persistLastViewedVisit = useCallback(async (visitId: string | null) => {
     if (!user?.uid) return;
@@ -127,6 +132,8 @@ export default function HomeScreen() {
       router.replace('/onboarding');
     }
   }, [authLoading, profileLoading, isAuthenticated, profile, router]);
+
+
 
   // Calculate stats from real data - ensure we always have valid numbers
   // NOTE: All hooks must be called unconditionally before any early returns
@@ -218,11 +225,6 @@ export default function HomeScreen() {
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <HeroBanner />
 
-          {/* Web Portal Introduction */}
-          <View style={styles.section}>
-            <WebPortalBanner />
-          </View>
-
           {/* Primary CTA */}
           <View style={styles.ctaSection}>
             <StartVisitCTA onPress={() => router.push('/record-visit')} />
@@ -271,12 +273,27 @@ export default function HomeScreen() {
             )}
           </View>
 
+          {/* Web Portal Banner or Need Help button - below Quick Overview */}
+          <View style={styles.webPortalSection}>
+            {webBannerDismissed ? (
+              <NeedHelpButton onPress={restoreWebBanner} />
+            ) : (
+              <WebPortalBanner
+                isDismissed={webBannerDismissed}
+                onDismiss={dismissWebBanner}
+                onRestore={restoreWebBanner}
+              />
+            )}
+          </View>
+
           {/* Helper text */}
           {!isLoadingData && (
             <Text style={styles.helperText}>
               Tap any card above to view details
             </Text>
           )}
+
+
 
         </ScrollView>
       </SafeAreaView>
@@ -321,5 +338,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
   },
+  webPortalSection: {
+    marginTop: spacing(5),
+  },
 });
+
+
 

@@ -3,7 +3,7 @@
  * Collects name and date of birth (required)
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -15,19 +15,98 @@ import {
     ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius } from '../../components/ui';
-import { OnboardingData } from './index';
+import { Colors, spacing, Radius } from '../ui';
+
+export type OnboardingData = {
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    allergies: string[];
+    medicalHistory: string[];
+    noAllergies: boolean;
+    noMedicalHistory: boolean;
+};
 
 type Props = {
     data: OnboardingData;
     onUpdate: (updates: Partial<OnboardingData>) => void;
     onNext: () => void;
+    onBack?: () => void;
 };
 
-export function ProfileStep({ data, onUpdate, onNext }: Props) {
+// Validate DOB format and values
+const validateDOB = (dob: string): string | null => {
+    if (dob.length !== 10) return null; // Not complete yet
+
+    const parts = dob.split('/');
+    if (parts.length !== 3) return 'Invalid date format';
+
+    const month = parseInt(parts[0], 10);
+    const day = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+
+    if (isNaN(month) || isNaN(day) || isNaN(year)) {
+        return 'Invalid date';
+    }
+
+    if (month < 1 || month > 12) {
+        return 'Month must be 01-12';
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (year < 1900 || year > currentYear) {
+        return `Year must be 1900-${currentYear}`;
+    }
+
+    // Days in each month (accounting for leap year)
+    const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    const daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    if (day < 1 || day > daysInMonth[month - 1]) {
+        return `Invalid day for ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]}`;
+    }
+
+    // Check if date is not in the future
+    const inputDate = new Date(year, month - 1, day);
+    if (inputDate > new Date()) {
+        return 'Date cannot be in the future';
+    }
+
+    return null; // Valid
+};
+
+export function ProfileStep({ data, onUpdate, onNext, onBack }: Props) {
+    const [dobError, setDobError] = useState<string | null>(null);
+
     const canContinue = useMemo(() => {
-        return data.firstName.trim().length > 0 && data.dateOfBirth.trim().length > 0;
+        const hasName = data.firstName.trim().length > 0;
+        const hasDob = data.dateOfBirth.length === 10;
+        const dobValid = hasDob && validateDOB(data.dateOfBirth) === null;
+        return hasName && dobValid;
     }, [data.firstName, data.dateOfBirth]);
+
+    const handleDobChange = (text: string) => {
+        // Auto-format DOB as MM/DD/YYYY
+        const digits = text.replace(/\D/g, '');
+        let formatted = '';
+        if (digits.length > 0) {
+            formatted = digits.substring(0, 2);
+        }
+        if (digits.length > 2) {
+            formatted += '/' + digits.substring(2, 4);
+        }
+        if (digits.length > 4) {
+            formatted += '/' + digits.substring(4, 8);
+        }
+        onUpdate({ dateOfBirth: formatted });
+
+        // Validate when complete
+        if (formatted.length === 10) {
+            setDobError(validateDOB(formatted));
+        } else {
+            setDobError(null);
+        }
+    };
 
     return (
         <KeyboardAvoidingView
@@ -39,6 +118,13 @@ export function ProfileStep({ data, onUpdate, onNext }: Props) {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
             >
+                {/* Back Button */}
+                {onBack && (
+                    <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                        <Ionicons name="arrow-back" size={24} color={Colors.text} />
+                    </TouchableOpacity>
+                )}
+
                 {/* Header */}
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
@@ -85,15 +171,21 @@ export function ProfileStep({ data, onUpdate, onNext }: Props) {
                             Date of Birth <Text style={styles.required}>*</Text>
                         </Text>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, dobError && styles.inputError]}
                             value={data.dateOfBirth}
-                            onChangeText={(text) => onUpdate({ dateOfBirth: text })}
+                            onChangeText={handleDobChange}
                             placeholder="MM/DD/YYYY"
                             placeholderTextColor={Colors.textMuted}
-                            keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+                            keyboardType="number-pad"
+                            maxLength={10}
                         />
-                        <Text style={styles.hint}>Format: MM/DD/YYYY (e.g., 04/15/1978)</Text>
+                        {dobError ? (
+                            <Text style={styles.errorText}>{dobError}</Text>
+                        ) : (
+                            <Text style={styles.hint}>Format: MM/DD/YYYY (e.g., 04/15/1978)</Text>
+                        )}
                     </View>
+
                 </View>
 
                 {/* CTA */}
@@ -111,6 +203,7 @@ export function ProfileStep({ data, onUpdate, onNext }: Props) {
         </KeyboardAvoidingView>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: {
@@ -195,4 +288,19 @@ const styles = StyleSheet.create({
         fontSize: 17,
         fontWeight: '600',
     },
+    backButton: {
+        position: 'absolute',
+        top: spacing(4),
+        left: 0,
+        padding: spacing(2),
+        zIndex: 10,
+    },
+    inputError: {
+        borderColor: Colors.error,
+    },
+    errorText: {
+        fontSize: 13,
+        color: Colors.error,
+    },
 });
+

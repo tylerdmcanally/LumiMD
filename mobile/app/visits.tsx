@@ -14,8 +14,9 @@ import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Colors, spacing, Card } from '../components/ui';
+import { EmptyState } from '../components/EmptyState';
 import { useVisits } from '../lib/api/hooks';
-import { openWebVisit } from '../lib/linking';
+import { openWebVisit, openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 dayjs.extend(relativeTime);
@@ -86,7 +87,7 @@ export default function VisitsScreen() {
   return (
     <ErrorBoundary
       title="Unable to load your visits"
-      description="Pull to refresh or head back to the dashboard. We’ll gather more details and try again."
+      description="Pull to refresh or head back to the dashboard. We'll gather more details and try again."
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <ScrollView
@@ -127,20 +128,23 @@ export default function VisitsScreen() {
               <Text style={styles.loadingText}>Loading visits...</Text>
             </View>
           ) : error ? (
-            <Card style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>Unable to load visits</Text>
-              <Text style={styles.emptySubtitle}>
-                Check your connection and pull down to refresh.
-              </Text>
-            </Card>
+            <EmptyState
+              variant="error"
+              icon="cloud-offline-outline"
+              title="Unable to load visits"
+              description="Check your connection and pull down to refresh."
+            />
           ) : sortedVisits.length === 0 ? (
-            <Card style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No visits recorded yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Record your next appointment to see AI summaries here.
-              </Text>
-            </Card>
+            <EmptyState
+              variant="empty"
+              icon="document-text-outline"
+              title="No visits recorded yet"
+              description="Record your next appointment to see AI summaries here."
+              actionLabel="Record a Visit"
+              onAction={() => router.push('/record-visit')}
+            />
           ) : (
+
             <Card style={styles.listCard}>
               {sortedVisits.map((visit: any, index: number) => (
                 <Pressable
@@ -157,9 +161,8 @@ export default function VisitsScreen() {
                         const statusKey = normalizeStatus(visit);
                         switch (statusKey) {
                           case 'completed':
-                            return `Processed ${
-                              visit.processedAt ? dayjs(visit.processedAt).fromNow() : ''
-                            }`;
+                            return `Processed ${visit.processedAt ? dayjs(visit.processedAt).fromNow() : ''
+                              }`;
                           case 'finalizing':
                             return 'Finalizing summary…';
                           case 'failed':
@@ -236,22 +239,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.textMuted,
   },
-  emptyCard: {
-    alignItems: 'center',
-    gap: spacing(2),
-    padding: spacing(5),
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
   listCard: {
+
     paddingHorizontal: spacing(3),
     paddingVertical: spacing(1),
   },

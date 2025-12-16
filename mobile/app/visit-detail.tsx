@@ -196,13 +196,14 @@ export default function VisitDetailScreen() {
   const isProcessing =
     visit?.processingStatus && processingStates.includes(visit.processingStatus);
 
-  const lastProcessingUpdate =
-    visit?.transcriptionSubmittedAt ||
-    visit?.updatedAt ||
-    visit?.createdAt ||
+  const lastProcessingUpdate: string | null =
+    (visit?.transcriptionSubmittedAt as string | undefined) ||
+    (visit?.updatedAt as string | undefined) ||
+    (visit?.createdAt as string | undefined) ||
     null;
   const STUCK_THRESHOLD_MS = 30 * 60 * 1000;
   const lastUpdateMs = lastProcessingUpdate ? new Date(lastProcessingUpdate).getTime() : null;
+
   const isStuck =
     isProcessing && lastUpdateMs ? Date.now() - lastUpdateMs > STUCK_THRESHOLD_MS : false;
   const stuckMinutes =
@@ -356,7 +357,7 @@ export default function VisitDetailScreen() {
                       </Text>
                       <Text style={styles.failureText}>
                         {visit.processingStatus === 'failed'
-                          ? visit.processingError ||
+                          ? (visit.processingError as string) ||
                           'The transcription request failed. Please retry in a moment.'
                           : 'Tap the button to kick off AI processing now.'}
                       </Text>
@@ -367,8 +368,9 @@ export default function VisitDetailScreen() {
                         (retrying || isProcessing) && styles.retryButtonDisabled,
                       ]}
                       onPress={handleRetry}
-                      disabled={retrying || isProcessing}
+                      disabled={retrying || Boolean(isProcessing)}
                     >
+
                       {retrying ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : isProcessing ? (

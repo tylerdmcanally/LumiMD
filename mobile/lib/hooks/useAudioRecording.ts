@@ -20,14 +20,14 @@ export interface UseAudioRecordingResult {
   isRecording: boolean;
   isPaused: boolean;
   autoStopReason: AutoStopReason | null;
-  
+
   // Actions
   startRecording: () => Promise<void>;
   pauseRecording: () => Promise<void>;
   resumeRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   resetRecording: () => void;
-  
+
   // Permission
   hasPermission: boolean | null;
   requestPermission: () => Promise<boolean>;
@@ -232,7 +232,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       await configureAudioMode();
 
       console.log('[Recording] Starting recording...');
-      
+
       const recordingOptions = {
         ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
         ios: {
@@ -241,7 +241,38 @@ export function useAudioRecording(): UseAudioRecordingResult {
           outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
         },
       };
-      const { recording: newRecording } = await Audio.Recording.createAsync(recordingOptions);
+
+      // Retry logic for createAsync - sometimes audio mode needs time to apply
+      let newRecording: Audio.Recording | null = null;
+      let lastError: Error | null = null;
+      const maxRetries = 3;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // Small delay before retry to allow audio mode to fully apply
+          if (attempt > 1) {
+            console.log(`[Recording] Retrying (attempt ${attempt}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await configureAudioMode(); // Re-configure audio mode before retry
+          }
+
+          const result = await Audio.Recording.createAsync(recordingOptions);
+          newRecording = result.recording;
+          break; // Success, exit retry loop
+        } catch (createError: any) {
+          lastError = createError;
+          console.warn(`[Recording] createAsync attempt ${attempt} failed:`, createError.message);
+
+          // Only retry on "not prepared" errors
+          if (!createError.message?.includes('not prepared') && attempt < maxRetries) {
+            throw createError; // Re-throw non-retry-able errors immediately
+          }
+        }
+      }
+
+      if (!newRecording) {
+        throw lastError || new Error('Failed to create recording after retries');
+      }
 
       setRecording(newRecording);
       recordingRef.current = newRecording;
@@ -263,16 +294,17 @@ export function useAudioRecording(): UseAudioRecordingResult {
     }
   };
 
+
   // Pause recording
   const pauseRecording = async () => {
     try {
       if (!recording) return;
-      
+
       await recording.pauseAsync();
       unregisterRecordingStatusUpdates(recording);
       recordingStateRef.current = 'paused';
       setRecordingState('paused');
-      
+
       clearDurationTimer();
       commitActiveSegment();
       setDuration(accumulatedDurationRef.current);
@@ -288,18 +320,18 @@ export function useAudioRecording(): UseAudioRecordingResult {
   const resumeRecording = async () => {
     try {
       if (!recording) return;
-      
+
       await configureAudioMode();
       await recording.startAsync();
       activeSegmentStartRef.current = Date.now();
       registerRecordingStatusUpdates(recording);
       recordingStateRef.current = 'recording';
       setRecordingState('recording');
-      
+
       // Restart duration tracker
       startDurationTimer(recording);
       updateDisplayedDuration();
-      
+
       console.log('[Recording] Resumed');
     } catch (error) {
       console.error('[Recording] Failed to resume:', error);
@@ -313,7 +345,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       if (!recording) return;
 
       console.log('[Recording] Stopping recording...');
-      
+
       await finalizeRecording(recording);
 
       console.log('[Recording] Stopped. URI:', recording.getURI());
@@ -326,7 +358,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
   // Reset to initial state
   const resetRecording = () => {
     clearDurationTimer();
-    
+
     if (recording) {
       unregisterRecordingStatusUpdates(recording);
     }

@@ -163,15 +163,8 @@ export default function SignUpScreen() {
               <Text style={styles.disclaimer}>
                 By signing up, you agree to our Terms of Service and Privacy Policy
               </Text>
-
-              {/* Already have an account */}
-              <View style={styles.helperBox}>
-                <Text style={styles.helperText}>Already have an account?</Text>
-                <TouchableOpacity onPress={() => router.replace('/sign-in')} disabled={loading}>
-                  <Text style={styles.helperLink}>Sign in</Text>
-                </TouchableOpacity>
-              </View>
             </View>
+
 
             {/* Footer */}
             <View style={styles.footer}>

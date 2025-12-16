@@ -9,10 +9,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Colors, spacing } from '../../components/ui';
 import { useUpdateUserProfile } from '../../lib/api/mutations';
-import { WelcomeStep } from './WelcomeStep';
-import { ProfileStep } from './ProfileStep';
-import { HealthStep } from './HealthStep';
-import { CompletionStep } from './CompletionStep';
+import { WelcomeStep } from '../../components/onboarding/WelcomeStep';
+import { ProfileStep } from '../../components/onboarding/ProfileStep';
+import { HealthStep } from '../../components/onboarding/HealthStep';
+import { CompletionStep } from '../../components/onboarding/CompletionStep';
+
 
 export type OnboardingData = {
     firstName: string;
@@ -67,21 +68,29 @@ export default function OnboardingScreen() {
                 medicalHistory: data.noMedicalHistory ? [] : data.medicalHistory,
                 complete: true,
             });
+            // Small delay to allow query invalidation to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
             router.replace('/');
         } catch (error) {
             console.error('[Onboarding] Failed to save profile:', error);
-            // Still navigate to home - user can update profile later
             router.replace('/');
         } finally {
             setSaving(false);
         }
     }, [data, updateProfile, router]);
 
+
     const handleRecordFirst = useCallback(async () => {
         await handleComplete();
         // After completing, navigate to record-visit
         setTimeout(() => router.push('/record-visit'), 100);
     }, [handleComplete, router]);
+
+    const handleBack = useCallback(() => {
+        if (currentStep > 0) {
+            setCurrentStep(prev => prev - 1);
+        }
+    }, [currentStep]);
 
     const renderStep = () => {
         switch (currentStep) {
@@ -93,6 +102,7 @@ export default function OnboardingScreen() {
                         data={data}
                         onUpdate={updateData}
                         onNext={handleNext}
+                        onBack={handleBack}
                     />
                 );
             case 2:
@@ -102,6 +112,7 @@ export default function OnboardingScreen() {
                         onUpdate={updateData}
                         onNext={handleNext}
                         onSkip={handleSkip}
+                        onBack={handleBack}
                     />
                 );
             case 3:
@@ -110,12 +121,14 @@ export default function OnboardingScreen() {
                         onRecordFirst={handleRecordFirst}
                         onExplore={handleComplete}
                         saving={saving}
+                        onBack={handleBack}
                     />
                 );
             default:
                 return null;
         }
     };
+
 
     return (
         <SafeAreaView style={styles.container}>

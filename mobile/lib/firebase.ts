@@ -1,26 +1,20 @@
 /**
- * Firebase initialization and configuration
- * Initialized once and exported for use throughout the app
+ * Firebase initialization for React Native
+ * Uses React Native Firebase (native SDK) exclusively
  */
 
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import * as Firestore from 'firebase/firestore';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import { configureFirestoreRealtime } from '@lumimd/sdk';
-import { cfg } from './config';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import storage from '@react-native-firebase/storage';
 
-// Initialize Firebase only once
-const app = getApps().length === 0 ? initializeApp(cfg.firebase) : getApp();
+// Export pre-configured Firebase services from RNFB
+// These are already initialized by the native modules
+export { auth, firestore, storage };
 
-// Export Firebase services
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Convenience export for Firestore instance
+export const db = firestore();
 
-configureFirestoreRealtime(Firestore);
-
-export default app;
-
-
+// Export types for convenience
+export type { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+export type { FirebaseAuthTypes } from '@react-native-firebase/auth';
+export type { FirebaseStorageTypes } from '@react-native-firebase/storage';

@@ -46,14 +46,12 @@ const sanitizeStringArray = (values?: string[]) => {
 };
 
 const isProfileComplete = (data: Record<string, unknown>): boolean => {
-  const hasName =
-    typeof data.firstName === 'string' &&
-    data.firstName.trim().length > 0 &&
-    typeof data.lastName === 'string' &&
-    data.lastName.trim().length > 0;
+  const hasFirstName =
+    typeof data.firstName === 'string' && data.firstName.trim().length > 0;
   const hasDob = typeof data.dateOfBirth === 'string' && data.dateOfBirth.trim().length > 0;
-  return hasName && hasDob;
+  return hasFirstName && hasDob;
 };
+
 
 usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
   try {

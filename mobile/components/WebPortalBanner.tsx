@@ -7,7 +7,8 @@ import { openWebDashboard } from '../lib/linking';
 
 const STORAGE_KEY = 'lumimd:webPortalBannerDismissed';
 
-export function WebPortalBanner() {
+// Hook to get and control banner dismissed state
+export function useWebPortalBannerState() {
   const [isDismissed, setIsDismissed] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -26,6 +27,47 @@ export function WebPortalBanner() {
     AsyncStorage.removeItem(STORAGE_KEY);
   }, []);
 
+  return { isDismissed, handleDismiss, handleRestore };
+}
+
+// Separate "Need help?" button component for flexible placement
+export function NeedHelpButton({ onPress }: { onPress: () => void }) {
+  return (
+    <View style={styles.collapsedContainer}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.needHelpButton,
+          pressed && styles.needHelpButtonPressed,
+        ]}
+      >
+        <Ionicons name="help-circle-outline" size={16} color={Colors.accent} />
+        <Text style={styles.needHelpText}>Need help?</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+type WebPortalBannerProps = {
+  isDismissed?: boolean | null;
+  onDismiss?: () => void;
+  onRestore?: () => void;
+  hideCollapsedState?: boolean;
+};
+
+export function WebPortalBanner({
+  isDismissed: externalIsDismissed,
+  onDismiss: externalOnDismiss,
+  onRestore: externalOnRestore,
+  hideCollapsedState = false,
+}: WebPortalBannerProps = {}) {
+  const internalState = useWebPortalBannerState();
+
+  // Use external state if provided, otherwise use internal
+  const isDismissed = externalIsDismissed !== undefined ? externalIsDismissed : internalState.isDismissed;
+  const handleDismiss = externalOnDismiss || internalState.handleDismiss;
+  const handleRestore = externalOnRestore || internalState.handleRestore;
+
   const handleOpenPortal = useCallback(() => {
     openWebDashboard();
   }, []);
@@ -35,23 +77,14 @@ export function WebPortalBanner() {
     return null;
   }
 
-  // Collapsed "Need help?" button
+  // Collapsed "Need help?" button - hide if parent will render it elsewhere
   if (isDismissed) {
-    return (
-      <View style={styles.collapsedContainer}>
-        <Pressable
-          onPress={handleRestore}
-          style={({ pressed }) => [
-            styles.needHelpButton,
-            pressed && styles.needHelpButtonPressed,
-          ]}
-        >
-          <Ionicons name="help-circle-outline" size={16} color={Colors.accent} />
-          <Text style={styles.needHelpText}>Need help?</Text>
-        </Pressable>
-      </View>
-    );
+    if (hideCollapsedState) {
+      return null;
+    }
+    return <NeedHelpButton onPress={handleRestore} />;
   }
+
 
   // Full banner
   return (

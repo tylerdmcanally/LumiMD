@@ -10,23 +10,19 @@ export function HeroBanner() {
   return (
     <GradientHero style={styles.hero}>
       <View style={styles.header}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="medical" size={28} color="#fff" />
-        </View>
-        <View style={{ flex: 1 }} />
-        <Pressable 
+        <Text style={styles.brandText}>LumiMD</Text>
+        <Pressable
           onPress={() => router.push('/settings')}
           style={({ pressed }) => [
             styles.profileButton,
             pressed && styles.profileButtonPressed,
           ]}
         >
-          <Ionicons name="person-circle" size={28} color="#fff" />
+          <Ionicons name="person-circle" size={32} color="#fff" />
         </Pressable>
       </View>
-      
+
       <View style={styles.content}>
-        <Text style={styles.title}>LumiMD</Text>
         <Text style={styles.subtitle}>Your health, simplified.</Text>
       </View>
     </GradientHero>
@@ -40,20 +36,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing(4),
+    justifyContent: 'space-between',
+    marginBottom: spacing(3),
   },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  brandText: {
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   profileButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -64,16 +59,10 @@ const styles = StyleSheet.create({
   content: {
     marginTop: spacing(2),
   },
-  title: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    marginBottom: spacing(1),
-  },
   subtitle: {
     color: 'rgba(255,255,255,0.95)',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '400',
   },
 });
+

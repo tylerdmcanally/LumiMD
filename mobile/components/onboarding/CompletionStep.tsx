@@ -6,12 +6,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius } from '../../components/ui';
+import { Colors, spacing, Radius } from '../ui';
 
 type Props = {
     onRecordFirst: () => void;
     onExplore: () => void;
     saving: boolean;
+    onBack?: () => void;
 };
 
 const features = [
@@ -22,9 +23,16 @@ const features = [
     { icon: 'people-outline' as const, text: 'Caregiver sharing' },
 ];
 
-export function CompletionStep({ onRecordFirst, onExplore, saving }: Props) {
+export function CompletionStep({ onRecordFirst, onExplore, saving, onBack }: Props) {
     return (
         <View style={styles.container}>
+            {/* Back Button */}
+            {onBack && (
+                <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
+                </TouchableOpacity>
+            )}
+
             {/* Header */}
             <View style={styles.header}>
                 <View style={styles.checkContainer}>
@@ -79,6 +87,7 @@ export function CompletionStep({ onRecordFirst, onExplore, saving }: Props) {
         </View>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: {
@@ -172,4 +181,12 @@ const styles = StyleSheet.create({
         fontSize: 17,
         fontWeight: '600',
     },
+    backButton: {
+        position: 'absolute',
+        top: spacing(4),
+        left: spacing(6),
+        padding: spacing(2),
+        zIndex: 10,
+    },
 });
+

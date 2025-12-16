@@ -16,14 +16,15 @@ import {
     Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius } from '../../components/ui';
-import { OnboardingData } from './index';
+import { Colors, spacing, Radius } from '../ui';
+import { OnboardingData } from './ProfileStep';
 
 type Props = {
     data: OnboardingData;
     onUpdate: (updates: Partial<OnboardingData>) => void;
     onNext: () => void;
     onSkip: () => void;
+    onBack?: () => void;
 };
 
 const sanitizeListInput = (value: string): string[] =>
@@ -32,7 +33,7 @@ const sanitizeListInput = (value: string): string[] =>
         .map((item) => item.trim())
         .filter(Boolean);
 
-export function HealthStep({ data, onUpdate, onNext, onSkip }: Props) {
+export function HealthStep({ data, onUpdate, onNext, onSkip, onBack }: Props) {
     const [conditionsText, setConditionsText] = React.useState(
         data.medicalHistory.join(', ')
     );
@@ -84,6 +85,13 @@ export function HealthStep({ data, onUpdate, onNext, onSkip }: Props) {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
             >
+                {/* Back Button */}
+                {onBack && (
+                    <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                        <Ionicons name="arrow-back" size={24} color={Colors.text} />
+                    </TouchableOpacity>
+                )}
+
                 {/* Header */}
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
@@ -94,6 +102,7 @@ export function HealthStep({ data, onUpdate, onNext, onSkip }: Props) {
                         This helps us catch medication interactions and personalize your care
                     </Text>
                 </View>
+
 
                 {/* Form */}
                 <View style={styles.form}>
@@ -278,4 +287,12 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '500',
     },
+    backButton: {
+        position: 'absolute',
+        top: spacing(4),
+        left: 0,
+        padding: spacing(2),
+        zIndex: 10,
+    },
 });
+

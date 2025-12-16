@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius } from '../../components/ui';
+import { Colors, spacing, Radius } from '../ui';
 
 type Props = {
     onNext: () => void;

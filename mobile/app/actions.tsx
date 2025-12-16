@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { Colors, spacing, Card } from '../components/ui';
+import { EmptyState } from '../components/EmptyState';
 import { useActionItems, queryKeys } from '../lib/api/hooks';
 import { openWebActions } from '../lib/linking';
 import { useCompleteAction } from '../lib/api/mutations';
@@ -223,10 +224,10 @@ export default function ActionsScreen() {
               {action.completed
                 ? `Completed ${formatDate(action.completedAt)}`
                 : dueDate
-                ? `Due on ${dueDate}`
-                : visitDate
-                ? `From visit on ${visitDate}`
-                : 'Tap to mark complete'}
+                  ? `Due on ${dueDate}`
+                  : visitDate
+                    ? `From visit on ${visitDate}`
+                    : 'Tap to mark complete'}
             </Text>
           </View>
           <Ionicons
@@ -257,7 +258,7 @@ export default function ActionsScreen() {
   return (
     <ErrorBoundary
       title="Unable to load action items"
-      description="Pull to refresh or go back to the home screen. If this continues, we’ll look into it."
+      description="Pull to refresh or go back to the home screen. If this continues, we'll look into it."
     >
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
@@ -289,11 +290,14 @@ export default function ActionsScreen() {
               <Text style={styles.loadingText}>Loading action items…</Text>
             </View>
           ) : error ? (
-            <Card style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>Unable to load action items</Text>
-              <Text style={styles.emptySubtitle}>Check your connection and pull down to refresh.</Text>
-            </Card>
+            <EmptyState
+              variant="error"
+              icon="cloud-offline-outline"
+              title="Unable to load action items"
+              description="Check your connection and pull down to refresh."
+            />
           ) : (
+
             <>
               <Card style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
@@ -302,14 +306,13 @@ export default function ActionsScreen() {
                 </View>
 
                 {pendingActions.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <Ionicons name="checkmark-done-circle" size={36} color={Colors.success} />
-                    <Text style={styles.emptyStateTitle}>All caught up</Text>
-                    <Text style={styles.emptyStateSubtitle}>
-                      You have no open action items. They’ll appear here as your doctor recommends new
-                      follow-ups.
-                    </Text>
-                  </View>
+                  <EmptyState
+                    variant="success"
+                    icon="checkmark-circle-outline"
+                    title="All caught up"
+                    description="You have no open action items. They'll appear here as your doctor recommends new follow-ups."
+                    compact
+                  />
                 ) : (
                   pendingActions.map((action: any, index: number) =>
                     renderActionRow(action, index === pendingActions.length - 1),
@@ -413,21 +416,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.textMuted,
   },
-  emptyCard: {
-    alignItems: 'center',
-    gap: spacing(2),
-    padding: spacing(5),
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
   sectionCard: {
     paddingHorizontal: spacing(3),
     paddingVertical: spacing(2),
@@ -458,29 +446,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing(1),
     borderRadius: 8,
   },
-  emptyState: {
-    alignItems: 'center',
-    gap: spacing(2),
-    paddingVertical: spacing(6),
-    paddingHorizontal: spacing(4),
-  },
-  emptyStateTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  emptyStateSubtitle: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   emptyCompleted: {
     fontSize: 13,
     color: Colors.textMuted,
     paddingVertical: spacing(2),
   },
   actionRow: {
+
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing(3),
