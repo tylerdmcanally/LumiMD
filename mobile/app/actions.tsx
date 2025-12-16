@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { Colors, spacing, Card } from '../components/ui';
@@ -21,11 +20,8 @@ import { useActionItems, queryKeys } from '../lib/api/hooks';
 import { openWebActions } from '../lib/linking';
 import { useCompleteAction } from '../lib/api/mutations';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { EmptyState } from '../components/EmptyState';
 import { addActionToCalendar, removeCalendarEvent } from '../lib/calendar';
 import { api } from '../lib/api/client';
-import { dismissAllNotifications } from '../lib/notifications';
-import { haptics } from '../lib/haptics';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';
@@ -62,13 +58,6 @@ export default function ActionsScreen() {
 
   const { mutate: toggleAction, isPending: isUpdating } = useCompleteAction();
 
-  // Clear notifications when screen is focused (user is viewing action items)
-  useFocusEffect(
-    useCallback(() => {
-      dismissAllNotifications();
-    }, [])
-  );
-
   const pendingActions = useMemo(() => {
     if (!Array.isArray(actions)) return [];
     return actions
@@ -92,13 +81,6 @@ export default function ActionsScreen() {
   }, [actions]);
 
   const handleToggle = (action: any) => {
-    // Success haptic when completing, light when uncompleting
-    if (!action.completed) {
-      haptics.success();
-    } else {
-      haptics.light();
-    }
-
     toggleAction({
       id: action.id,
       completed: !action.completed,
@@ -241,10 +223,10 @@ export default function ActionsScreen() {
               {action.completed
                 ? `Completed ${formatDate(action.completedAt)}`
                 : dueDate
-                  ? `Due on ${dueDate}`
-                  : visitDate
-                    ? `From visit on ${visitDate}`
-                    : 'Tap to mark complete'}
+                ? `Due on ${dueDate}`
+                : visitDate
+                ? `From visit on ${visitDate}`
+                : 'Tap to mark complete'}
             </Text>
           </View>
           <Ionicons
@@ -321,12 +303,11 @@ export default function ActionsScreen() {
 
                 {pendingActions.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <View style={styles.emptyIconCircle}>
-                      <Ionicons name="checkmark-done-circle-outline" size={48} color={Colors.primary} />
-                    </View>
-                    <Text style={styles.emptyStateTitle}>All Caught Up!</Text>
+                    <Ionicons name="checkmark-done-circle" size={36} color={Colors.success} />
+                    <Text style={styles.emptyStateTitle}>All caught up</Text>
                     <Text style={styles.emptyStateSubtitle}>
-                      You have no pending action items. New tasks will appear here when your doctor recommends follow-ups from your visits.
+                      You have no open action items. They’ll appear here as your doctor recommends new
+                      follow-ups.
                     </Text>
                   </View>
                 ) : (
@@ -482,15 +463,6 @@ const styles = StyleSheet.create({
     gap: spacing(2),
     paddingVertical: spacing(6),
     paddingHorizontal: spacing(4),
-  },
-  emptyIconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: `${Colors.primary}10`,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing(2),
   },
   emptyStateTitle: {
     fontSize: 16,

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { Colors, spacing, Radius, Card } from '../components/ui';
@@ -18,9 +17,7 @@ import { openWebMeds, openWebVisit } from '../lib/linking';
 import { useAuth } from '../contexts/AuthContext';
 import { useMedications } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { EmptyState } from '../components/EmptyState';
 import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
-import { dismissAllNotifications } from '../lib/notifications';
 
 const formatDate = (value?: string | null) => {
   if (!value) return null;
@@ -70,13 +67,6 @@ export default function MedicationsScreen() {
     staleTime: 0,
     gcTime: 0,
   });
-
-  // Clear notifications when screen is focused (user is viewing medications)
-  useFocusEffect(
-    useCallback(() => {
-      dismissAllNotifications();
-    }, [])
-  );
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -262,19 +252,19 @@ export default function MedicationsScreen() {
                 </Pressable>
               </View>
             ) : meds.length === 0 ? (
-              <EmptyState
-                icon="medical-outline"
-                title="No Medications Tracked"
-                description="Medications mentioned in your visit summaries will automatically appear here. You can also add them manually in the web portal."
-                primaryAction={{
-                  text: "Record a Visit",
-                  onPress: () => router.push('/record-visit'),
-                }}
-                secondaryAction={{
-                  text: "Open Web Portal",
-                  onPress: openWebMeds,
-                }}
-              />
+              <View style={styles.emptyContainer}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons name="medkit-outline" size={48} color={Colors.textMuted} />
+                </View>
+                <Text style={styles.emptyTitle}>No medications yet</Text>
+                <Text style={styles.emptyDescription}>
+                  Start a visit or add medications in your web portal to see them here.
+                </Text>
+                <Pressable style={styles.emptyButton} onPress={openWebMeds}>
+                  <Text style={styles.emptyButtonText}>Open Web Portal</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#fff" />
+                </Pressable>
+              </View>
             ) : (
               <>
                 <Text style={styles.sectionSubtitle}>
