@@ -62,7 +62,7 @@ export default function SignUpScreen() {
         return;
       }
 
-      router.replace('/');
+      router.replace('/onboarding');
     } catch (err: any) {
       console.error('[SignUp] Error:', err);
       setError('An unexpected error occurred');

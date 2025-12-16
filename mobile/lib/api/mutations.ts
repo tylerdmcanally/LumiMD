@@ -65,6 +65,7 @@ interface UpdateProfileInput {
   dateOfBirth?: string;
   allergies?: string[];
   medicalHistory?: string[];
+  complete?: boolean;
 }
 
 export function useUpdateUserProfile() {

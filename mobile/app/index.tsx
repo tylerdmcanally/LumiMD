@@ -115,6 +115,19 @@ export default function HomeScreen() {
     }
   }, [isAuthenticated, authLoading]);
 
+  // Redirect to onboarding if profile is not complete
+  useEffect(() => {
+    if (
+      !authLoading &&
+      !profileLoading &&
+      isAuthenticated &&
+      profile &&
+      profile.complete !== true
+    ) {
+      router.replace('/onboarding');
+    }
+  }, [authLoading, profileLoading, isAuthenticated, profile, router]);
+
   // Calculate stats from real data - ensure we always have valid numbers
   // NOTE: All hooks must be called unconditionally before any early returns
   // to satisfy React's Rules of Hooks
