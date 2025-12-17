@@ -286,7 +286,58 @@ export const spacing = (n: number) => n * 4; // 4pt grid
 
 ---
 
+## EAS Build Environment Variables
+
+> **CRITICAL**: EAS builds do NOT use `.env` files! Environment variables must be configured in `eas.json` or EAS dashboard.
+
+**File**: `eas.json`
+
+```json
+"production": {
+  "autoIncrement": true,
+  "ios": {
+    "simulator": false
+  },
+  "env": {
+    "EXPO_PUBLIC_ENV": "production",
+    "EXPO_PUBLIC_API_BASE_URL": "https://us-central1-lumimd-dev.cloudfunctions.net/api",
+    "EXPO_PUBLIC_WEB_PORTAL_URL": "https://lumimd.app"
+  }
+}
+```
+
+**Why this matters:**
+- Without these, production falls back to `localhost:5001` for API calls
+- This causes auth handoff and other API calls to fail silently
+- The simulator works because it uses local `.env` file
+
+---
+
+## Web Portal Auth Handoff
+
+The mobile app can seamlessly authenticate users in the web portal via a one-time handoff code.
+
+### Flow
+1. **Mobile**: Creates handoff code via `POST /v1/auth/create-handoff`
+2. **Mobile**: Opens URL: `/auth/handoff?code=xxx&returnTo=/dashboard&uid=xxx`
+3. **Web**: Waits for Firebase to restore session from IndexedDB
+4. **Web**: If already signed in with matching UID → skip to destination
+5. **Web**: Otherwise → exchange code for token, sign in, redirect
+
+### Key Files
+- **Mobile**: `lib/linking.ts` - Creates handoff code and opens URL
+- **Backend**: `functions/src/routes/auth.ts` - `create-handoff` and `exchange-handoff` endpoints
+- **Web Portal**: `app/auth/handoff/page.tsx` - Exchanges code and signs in
+
+### Important Notes
+- Uses `Linking.openURL()` to open in user's default browser (not SFSafariViewController)
+- Web portal waits for `onAuthStateChanged` before checking auth state
+- Handoff codes expire after 5 minutes and are single-use
+
+---
+
 ## Quick Reference
+
 
 | Feature | File(s) |
 |---------|---------|
