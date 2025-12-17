@@ -1,6 +1,6 @@
 /**
  * Onboarding Flow - Main Container
- * 4-screen wizard: Welcome → Profile → Health → Complete
+ * 5-screen wizard: Welcome → Profile → Health → Terms → Complete
  */
 
 import React, { useState, useCallback } from 'react';
@@ -13,6 +13,7 @@ import { WelcomeStep } from '../../components/onboarding/WelcomeStep';
 import { ProfileStep } from '../../components/onboarding/ProfileStep';
 import { HealthStep } from '../../components/onboarding/HealthStep';
 import { CompletionStep } from '../../components/onboarding/CompletionStep';
+import { TermsStep } from '../../components/onboarding/TermsStep';
 
 
 export type OnboardingData = {
@@ -47,13 +48,13 @@ export default function OnboardingScreen() {
     }, []);
 
     const handleNext = useCallback(() => {
-        if (currentStep < 3) {
+        if (currentStep < 4) {
             setCurrentStep(prev => prev + 1);
         }
     }, [currentStep]);
 
     const handleSkip = useCallback(() => {
-        // Skip health step - go directly to completion
+        // Skip health step - go directly to terms
         setCurrentStep(3);
     }, []);
 
@@ -117,6 +118,13 @@ export default function OnboardingScreen() {
                 );
             case 3:
                 return (
+                    <TermsStep
+                        onNext={handleNext}
+                        onBack={handleBack}
+                    />
+                );
+            case 4:
+                return (
                     <CompletionStep
                         onRecordFirst={handleRecordFirst}
                         onExplore={handleComplete}
@@ -138,7 +146,7 @@ export default function OnboardingScreen() {
 
             {/* Progress Dots */}
             <View style={styles.progressContainer}>
-                {[0, 1, 2, 3].map(step => (
+                {[0, 1, 2, 3, 4].map(step => (
                     <View
                         key={step}
                         style={[
