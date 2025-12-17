@@ -195,7 +195,7 @@ export default function SettingsScreen() {
           {/* Account Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Account</Text>
-            
+
             <Card style={styles.card}>
               <View style={styles.accountInfo}>
                 <View style={styles.avatar}>
@@ -216,7 +216,7 @@ export default function SettingsScreen() {
           {/* Preferences Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Preferences</Text>
-            
+
             <Card style={styles.card}>
               <View style={styles.settingRow}>
                 <View style={styles.settingIcon}>
@@ -242,11 +242,11 @@ export default function SettingsScreen() {
           {/* Legal Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Legal</Text>
-            
+
             <Card style={styles.card}>
-              <Pressable 
+              <Pressable
                 style={styles.linkRow}
-                onPress={() => openLink('https://lumimd.com/terms')}
+                onPress={() => openLink('https://lumimd.app/terms')}
               >
                 <View style={styles.settingIcon}>
                   <Ionicons name="document-text-outline" size={22} color={Colors.textMuted} />
@@ -353,7 +353,7 @@ export default function SettingsScreen() {
 
           {/* Sign Out */}
           <View style={styles.section}>
-            <Pressable 
+            <Pressable
               style={styles.signOutButton}
               onPress={handleSignOut}
             >
