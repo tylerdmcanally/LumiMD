@@ -2,8 +2,7 @@
  * Deep linking and web portal navigation with seamless auth
  */
 
-import { Alert } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
+import { Alert, Linking } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { cfg } from './config';
 
@@ -48,6 +47,7 @@ async function createHandoffCode(): Promise<string | null> {
 
 /**
  * Opens web portal URL with auth handoff
+ * Uses Linking.openURL to open in user's default browser (Chrome, Safari, etc.)
  * If handoff fails, redirects to sign-in page instead of showing wrong account
  * @param path - Path to open (e.g., '/dashboard', '/visits/123')
  */
@@ -69,7 +69,13 @@ async function openWebUrl(path: string): Promise<void> {
       console.log(`[linking] Handoff failed, redirecting to sign-in: ${path}`);
     }
 
-    await WebBrowser.openBrowserAsync(url);
+    // Open in user's default browser (Chrome, Safari, etc.)
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+    } else {
+      throw new Error('Cannot open URL');
+    }
   } catch (error) {
     console.error('[linking] Failed to open web URL:', error);
 
@@ -80,6 +86,7 @@ async function openWebUrl(path: string): Promise<void> {
     );
   }
 }
+
 
 /**
  * Opens the main dashboard
