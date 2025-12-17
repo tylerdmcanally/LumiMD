@@ -13,7 +13,9 @@ export default function AuthHandoffPage() {
 
   // Wait for Firebase auth to restore session from IndexedDB before processing
   useEffect(() => {
+    console.log('[handoff] Waiting for auth state...');
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('[handoff] Auth state changed:', user ? `User: ${user.uid} (${user.email})` : 'No user');
       setCurrentUser(user);
       setAuthReady(true);
     });
@@ -24,11 +26,15 @@ export default function AuthHandoffPage() {
     // Don't process until auth state is determined
     if (!authReady) return;
 
+    console.log('[handoff] Auth ready, currentUser:', currentUser ? currentUser.uid : 'null');
+
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const returnTo = params.get('returnTo') || '/dashboard';
     const expectedUid = params.get('uid');
+
+    console.log('[handoff] Params - expectedUid:', expectedUid, 'returnTo:', returnTo);
 
     if (!code) {
       router.push('/sign-in?error=missing_code');
@@ -42,24 +48,26 @@ export default function AuthHandoffPage() {
     try {
       setError(null);
 
+      console.log('[handoff] handleHandoff called - user:', user?.uid, 'expectedUid:', expectedUid);
+
       // If user is already signed in with the correct UID, skip the handoff entirely
       if (user && expectedUid && user.uid === expectedUid) {
-        console.log('[handoff] User already signed in with correct UID, skipping handoff');
+        console.log('[handoff] ✓ User already signed in with correct UID, skipping handoff');
         router.push(returnTo);
         return;
       }
 
       // Sign out only if there's a different user (session mismatch)
       if (user && user.uid !== expectedUid) {
-        console.log('[handoff] Signing out mismatched user:', user.email);
+        console.log('[handoff] ✗ Different user signed in, signing out:', user.email);
         await signOut(auth);
+      } else {
+        console.log('[handoff] No user signed in, proceeding with handoff');
       }
-
 
       // Exchange code for custom token
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
-      console.log('[handoff] Code received:', code?.substring(0, 10) + '...');
-      console.log('[handoff] Using API URL:', apiBaseUrl);
+      console.log('[handoff] Exchanging code at:', apiBaseUrl);
 
       const response = await fetch(`${apiBaseUrl}/v1/auth/exchange-handoff`, {
         method: 'POST',
@@ -69,11 +77,11 @@ export default function AuthHandoffPage() {
         body: JSON.stringify({ code }),
       });
 
-      console.log('[handoff] Response status:', response.status);
+      console.log('[handoff] Exchange response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[handoff] Error response:', errorText);
+        console.error('[handoff] Exchange failed:', errorText);
         let errorData;
         try {
           errorData = JSON.parse(errorText);
@@ -84,18 +92,18 @@ export default function AuthHandoffPage() {
       }
 
       const { token } = await response.json();
-      console.log('[handoff] Got token, signing in...');
+      console.log('[handoff] Got custom token, calling signInWithCustomToken...');
 
       // Sign in with custom token
-      await signInWithCustomToken(auth, token);
+      const userCredential = await signInWithCustomToken(auth, token);
+      console.log('[handoff] ✓ Signed in successfully! User:', userCredential.user.uid);
+      console.log('[handoff] Current auth.currentUser:', auth.currentUser?.uid);
 
-      console.log('[handoff] Successfully authenticated, redirecting to:', returnTo);
-
-      // Redirect to intended destination
+      console.log('[handoff] Redirecting to:', returnTo);
       router.push(returnTo);
 
     } catch (err) {
-      console.error('[handoff] Authentication failed:', err);
+      console.error('[handoff] ✗ Authentication failed:', err);
       setError(err instanceof Error ? err.message : 'Authentication failed');
 
       // Redirect to sign-in after delay
@@ -104,6 +112,7 @@ export default function AuthHandoffPage() {
       }, 3000);
     }
   }
+
 
 
   if (error) {
