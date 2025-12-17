@@ -544,6 +544,20 @@ export default function SettingsPage() {
                             Delete account
                         </Button>
                     </div>
+                    <div className="flex flex-wrap gap-4 pt-4 border-t border-border-light text-sm">
+                        <a
+                            href="/privacy"
+                            className="text-brand-primary hover:underline"
+                        >
+                            Privacy Policy
+                        </a>
+                        <a
+                            href="/terms"
+                            className="text-brand-primary hover:underline"
+                        >
+                            Terms of Service
+                        </a>
+                    </div>
                 </Card>
             </div>
 
