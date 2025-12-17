@@ -3,6 +3,8 @@ import * as functions from 'firebase-functions';
 import { getOpenAIService } from './openai';
 import { normalizeMedicationSummary, syncMedicationsFromSummary } from './medicationSync';
 import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
+import { getAssemblyAIService } from './assemblyai';
+
 
 const db = () => admin.firestore();
 
@@ -105,9 +107,37 @@ export async function summarizeVisit({
       processedAt,
     });
 
+    // PRIVACY: Delete AssemblyAI transcript immediately after summarization
+    // This ensures we don't retain transcriptions longer than necessary
+    const transcriptionId = visitData.transcriptionId;
+    if (transcriptionId && typeof transcriptionId === 'string') {
+      try {
+        const assemblyAI = getAssemblyAIService();
+        await assemblyAI.deleteTranscript(transcriptionId);
+
+        // Clear the transcriptionId from the document
+        await visitRef.update({
+          transcriptionId: admin.firestore.FieldValue.delete(),
+          transcriptionDeletedAt: admin.firestore.Timestamp.now(),
+        });
+
+        functions.logger.info(
+          `[PrivacyAudit] Deleted AssemblyAI transcript ${transcriptionId} for visit ${visitRef.id}`,
+        );
+      } catch (deleteError) {
+        // Log but don't fail the whole operation if deletion doesn't work
+        // The privacySweeper will catch any orphaned transcripts
+        functions.logger.warn(
+          `[PrivacyAudit] Failed to delete AssemblyAI transcript ${transcriptionId} for visit ${visitRef.id}:`,
+          deleteError,
+        );
+      }
+    }
+
     functions.logger.info(
       `[visitProcessor] Visit ${visitRef.id} summarized successfully. Actions created: ${summary.nextSteps.length}`,
     );
+
   } catch (error) {
     const errorMessage = getSafeErrorMessage(error);
 
