@@ -8,36 +8,44 @@ import { signInWithCustomToken, signOut } from 'firebase/auth';
 export default function AuthHandoffPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const returnTo = params.get('returnTo') || '/dashboard';
-    
+    const expectedUid = params.get('uid');
+
     if (!code) {
       router.push('/sign-in?error=missing_code');
       return;
     }
-    
-    handleHandoff(code, returnTo);
+
+    handleHandoff(code, returnTo, expectedUid);
   }, [router]);
-  
-  async function handleHandoff(code: string, returnTo: string) {
+
+  async function handleHandoff(code: string, returnTo: string, expectedUid: string | null) {
     try {
       setError(null);
-      
-      // Always sign out existing user first to prevent session mismatch
-      if (auth.currentUser) {
-        console.log('[handoff] Signing out existing user:', auth.currentUser.email);
+
+      // If user is already signed in with the correct UID, skip the handoff entirely
+      if (auth.currentUser && expectedUid && auth.currentUser.uid === expectedUid) {
+        console.log('[handoff] User already signed in with correct UID, skipping handoff');
+        router.push(returnTo);
+        return;
+      }
+
+      // Sign out only if there's a different user (session mismatch)
+      if (auth.currentUser && auth.currentUser.uid !== expectedUid) {
+        console.log('[handoff] Signing out mismatched user:', auth.currentUser.email);
         await signOut(auth);
       }
-      
+
       // Exchange code for custom token
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
       console.log('[handoff] Code received:', code?.substring(0, 10) + '...');
       console.log('[handoff] Using API URL:', apiBaseUrl);
-      
+
       const response = await fetch(`${apiBaseUrl}/v1/auth/exchange-handoff`, {
         method: 'POST',
         headers: {
@@ -45,9 +53,9 @@ export default function AuthHandoffPage() {
         },
         body: JSON.stringify({ code }),
       });
-      
+
       console.log('[handoff] Response status:', response.status);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[handoff] Error response:', errorText);
@@ -59,29 +67,30 @@ export default function AuthHandoffPage() {
         }
         throw new Error(errorData.message || 'Failed to authenticate');
       }
-      
+
       const { token } = await response.json();
       console.log('[handoff] Got token, signing in...');
-      
+
       // Sign in with custom token
       await signInWithCustomToken(auth, token);
-      
+
       console.log('[handoff] Successfully authenticated, redirecting to:', returnTo);
-      
+
       // Redirect to intended destination
       router.push(returnTo);
-      
+
     } catch (err) {
       console.error('[handoff] Authentication failed:', err);
       setError(err instanceof Error ? err.message : 'Authentication failed');
-      
+
       // Redirect to sign-in after delay
       setTimeout(() => {
         router.push('/sign-in?error=handoff_failed');
       }, 3000);
     }
   }
-  
+
+
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -104,7 +113,7 @@ export default function AuthHandoffPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="max-w-md w-full bg-surface rounded-2xl shadow-lg p-8 text-center">
@@ -113,7 +122,7 @@ export default function AuthHandoffPage() {
           <div className="absolute inset-0 border-4 border-brand-primary/20 rounded-full"></div>
           <div className="absolute inset-0 border-4 border-brand-primary rounded-full border-t-transparent animate-spin"></div>
         </div>
-        
+
         <h1 className="text-xl font-semibold text-text-primary mb-2">
           Signing you in...
         </h1>

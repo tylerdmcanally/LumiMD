@@ -59,9 +59,11 @@ async function openWebUrl(path: string): Promise<void> {
     let url: string;
 
     if (code) {
-      // Success: use handoff flow
-      url = `${cfg.webPortalUrl}/auth/handoff?code=${code}&returnTo=${encodeURIComponent(path)}`;
+      // Success: use handoff flow - include userId so web can skip re-auth if already signed in
+      const userId = auth().currentUser?.uid;
+      url = `${cfg.webPortalUrl}/auth/handoff?code=${code}&returnTo=${encodeURIComponent(path)}&uid=${userId}`;
       console.log(`[linking] Opening with handoff: ${path}`);
+
     } else {
       // Handoff failed - redirect to sign-in with the intended destination
       // This prevents showing wrong account data
