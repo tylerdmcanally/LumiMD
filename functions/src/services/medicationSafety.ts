@@ -14,6 +14,9 @@ import {
   CANONICAL_MEDICATIONS,
   ALIAS_TO_CANONICAL,
 } from '../data/canonicalMedications';
+import {
+  DRUG_INTERACTIONS as COMPREHENSIVE_DRUG_INTERACTIONS,
+} from '../data/drugInteractions';
 
 // Re-export for backward compatibility
 export { CANONICAL_MEDICATIONS };
@@ -67,92 +70,12 @@ const getCanonicalNameFromDocument = (data: FirebaseFirestore.DocumentData): str
 
 /**
  * Drug Interaction Database
- * Maps medication classes/names to potential interactions
+ * Comprehensive database of 100+ clinically-verified drug interactions
+ * Imported from data/drugInteractions.ts
  */
-const DRUG_INTERACTIONS: Array<{
-  drug1: string;
-  drug2: string;
-  severity: 'critical' | 'high' | 'moderate' | 'low';
-  description: string;
-}> = [
-    // Critical interactions
-    {
-      drug1: 'warfarin',
-      drug2: 'nsaid',
-      severity: 'critical',
-      description: 'Increased bleeding risk. NSAIDs can potentiate anticoagulant effects.',
-    },
-    {
-      drug1: 'anticoagulant',
-      drug2: 'antiplatelet',
-      severity: 'critical',
-      description: 'Significantly increased bleeding risk when combining blood thinners.',
-    },
-    {
-      drug1: 'ace-inhibitor',
-      drug2: 'arb',
-      severity: 'high',
-      description: 'Dual RAAS blockade can cause kidney problems and high potassium levels.',
-    },
-    {
-      drug1: 'beta-blocker',
-      drug2: 'beta-blocker',
-      severity: 'high',
-      description: 'Duplicate beta-blocker therapy. May cause excessive heart rate slowing.',
-    },
-    {
-      drug1: 'statin',
-      drug2: 'statin',
-      severity: 'high',
-      description: 'Duplicate statin therapy increases risk of muscle problems.',
-    },
+const DRUG_INTERACTIONS = COMPREHENSIVE_DRUG_INTERACTIONS;
 
-    // Moderate interactions
-    {
-      drug1: 'nsaid',
-      drug2: 'ace-inhibitor',
-      severity: 'moderate',
-      description: 'NSAIDs may reduce effectiveness of blood pressure medications and affect kidney function.',
-    },
-    {
-      drug1: 'nsaid',
-      drug2: 'arb',
-      severity: 'moderate',
-      description: 'NSAIDs may reduce effectiveness of blood pressure medications and affect kidney function.',
-    },
-    {
-      drug1: 'nsaid',
-      drug2: 'diuretic',
-      severity: 'moderate',
-      description: 'NSAIDs may reduce effectiveness of diuretics and affect kidney function.',
-    },
-    {
-      drug1: 'ssri',
-      drug2: 'nsaid',
-      severity: 'moderate',
-      description: 'Increased bleeding risk, especially gastrointestinal bleeding.',
-    },
-    {
-      drug1: 'aspirin',
-      drug2: 'nsaid',
-      severity: 'moderate',
-      description: 'Increased risk of stomach ulcers and bleeding.',
-    },
 
-    // Low severity interactions
-    {
-      drug1: 'ppi',
-      drug2: 'ppi',
-      severity: 'low',
-      description: 'Duplicate acid-reducing therapy.',
-    },
-    {
-      drug1: 'ppi',
-      drug2: 'h2-blocker',
-      severity: 'low',
-      description: 'Duplicate acid-reducing therapy with different mechanisms.',
-    },
-  ];
 
 /**
  * Common medication salts/formulations to strip
@@ -385,7 +308,8 @@ export async function checkDrugInteractions(
     // Check against interaction database
     for (const interaction of DRUG_INTERACTIONS) {
       let interactionFound = false;
-      let interactionDescription = interaction.description;
+      // Use clinicalEffect for more detailed interaction info
+      const interactionDescription = interaction.clinicalEffect;
 
       // Check if interaction applies (drug1 = new, drug2 = current OR vice versa)
       const newMatchesDrug1 =
