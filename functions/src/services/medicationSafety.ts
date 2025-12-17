@@ -253,10 +253,29 @@ export async function checkDuplicateTherapy(
       });
 
       if (sharedClasses.length > 0) {
-        // Filter out broad classes like 'cardiovascular' to reduce false positives
+        // Filter out broad classes to reduce false positives
+        // These are categories that contain multiple distinct drug classes
+        const BROAD_CLASSES_TO_IGNORE = [
+          'cardiovascular',       // Contains beta-blockers, CCBs, ACE-I, ARBs, diuretics, etc.
+          'blood-pressure',       // Same - too broad, would flag BB + CCB as duplicate
+          'antibiotic',           // Contains many unrelated antibiotic classes
+          'antidepressant',       // Contains SSRIs, SNRIs, tricyclics, etc.
+          'psychiatric',          // Very broad
+          'blood-thinner',        // Contains anticoagulants AND antiplatelets
+          'pain-reliever',        // Contains NSAIDs and non-NSAIDs
+          'anti-inflammatory',    // Too broad
+          'antidiabetic',         // Contains metformin, sulfonylureas, GLP1, SGLT2, etc.
+          'diabetes',             // Same as above
+          'respiratory',          // Contains many distinct classes
+          'allergy',              // Contains antihistamines and other classes
+          'gi',                   // Contains PPIs, H2 blockers, antiemetics
+          'hormone-replacement',  // Too broad
+        ];
+
         const specificSharedClasses = sharedClasses.filter(
-          c => !['cardiovascular', 'antibiotic'].includes(c)
+          c => !BROAD_CLASSES_TO_IGNORE.includes(c)
         );
+
 
         functions.logger.info('[checkDuplicateTherapy] After filtering broad classes', {
           specificSharedClasses,
