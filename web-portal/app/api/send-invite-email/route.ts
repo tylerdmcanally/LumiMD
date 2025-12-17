@@ -101,7 +101,7 @@ If you didn't expect this invitation, you can safely ignore this email.
 
     // Send email via Resend
     const { data, error } = await resend.emails.send({
-      from: 'LumiMD <onboarding@resend.dev>', // Use your verified domain when available
+      from: 'LumiMD <no-reply@lumimd.app>',
       to: inviteeEmail,
       subject: `${ownerName} wants to share their health information with you`,
       html: emailHtml,
