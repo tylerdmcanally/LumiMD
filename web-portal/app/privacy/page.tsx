@@ -12,13 +12,13 @@ export default function PrivacyPolicyPage() {
         {/* Header */}
         <header className="text-center pb-10 mb-12">
           <div className="inline-flex items-center gap-2 rounded-full bg-brand-primary-pale px-4 py-2 text-sm font-semibold text-brand-primary-dark">
-            Privacy & Security
+            Privacy &amp; Security
           </div>
           <h1 className="mt-4 text-4xl font-bold text-text-primary tracking-tight">
             LumiMD Privacy Policy
           </h1>
           <p className="mt-3 text-text-secondary">
-            Effective Date: December 3, 2025 • Last Updated: December 3, 2025
+            Effective Date: December 17, 2024 | Last Updated: December 17, 2024
           </p>
         </header>
 
@@ -29,12 +29,11 @@ export default function PrivacyPolicyPage() {
               Our Commitment to Your Privacy
             </h2>
             <p className="text-text-secondary mb-4">
-              At LumiMD, we believe your health information is deeply personal and should remain private.
-              This policy explains what information we collect, how we use it, and your rights to control your data.
+              At LumiMD, we understand that your health information is deeply personal. We are committed to protecting your privacy and ensuring you maintain control over your data. This policy explains what information we collect, how we use it, and your rights regarding your data.
             </p>
             <div className="bg-brand-primary-pale/80 border-l-4 border-brand-primary p-4 rounded">
               <p className="text-text-primary">
-                <strong>Bottom Line:</strong> We never sell your data. We only use it to provide and improve our service.
+                <strong>Our Promise:</strong> We never sell your data. We only use it to provide and improve our service to you.
               </p>
             </div>
           </section>
@@ -42,10 +41,10 @@ export default function PrivacyPolicyPage() {
           {/* What We Collect */}
           <section>
             <h2 className="text-2xl font-semibold text-text-primary mb-4 pb-2 border-b border-border-light">
-              What Information We Collect
+              Information We Collect
             </h2>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">
                   Information You Provide
@@ -53,7 +52,7 @@ export default function PrivacyPolicyPage() {
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
                   <li><strong>Account Information:</strong> Name, email address, date of birth</li>
                   <li><strong>Health Information:</strong> Medical history, allergies, current medications</li>
-                  <li><strong>Visit Recordings:</strong> Audio recordings of your doctor visits</li>
+                  <li><strong>Visit Recordings:</strong> Audio recordings of your healthcare visits</li>
                   <li><strong>Notes:</strong> Any notes you add to your visits or medications</li>
                 </ul>
               </div>
@@ -63,9 +62,9 @@ export default function PrivacyPolicyPage() {
                   Information We Generate
                 </h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li><strong>Transcripts:</strong> Text transcriptions of your visit recordings (created by AI)</li>
-                  <li><strong>Summaries:</strong> Visit summaries, medications, and action items (created by AI)</li>
-                  <li><strong>Usage Data:</strong> How you use the app (pages visited, features used)</li>
+                  <li><strong>Transcripts:</strong> Text transcriptions of your visit recordings, created using AI</li>
+                  <li><strong>Summaries:</strong> Visit summaries, medication lists, and action items, created using AI</li>
+                  <li><strong>Safety Alerts:</strong> Drug interaction and allergy warnings generated from your medication list</li>
                 </ul>
               </div>
 
@@ -75,7 +74,7 @@ export default function PrivacyPolicyPage() {
                 </h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
                   <li><strong>Device Information:</strong> Device type, operating system, app version</li>
-                  <li><strong>Log Data:</strong> IP address, access times, error logs</li>
+                  <li><strong>Log Data:</strong> IP address, access times, error logs for debugging</li>
                 </ul>
               </div>
             </div>
@@ -87,33 +86,34 @@ export default function PrivacyPolicyPage() {
               How We Use Your Information
             </h2>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">Primary Uses</h3>
                 <ol className="list-decimal list-inside space-y-1 text-text-secondary ml-4">
                   <li><strong>Transcribe Your Visits:</strong> Convert audio recordings to text</li>
-                  <li><strong>Generate Summaries:</strong> Extract key information (diagnoses, medications, next steps)</li>
-                  <li><strong>Organize Your Data:</strong> Store and display your health information</li>
-                  <li><strong>Send Notifications:</strong> Remind you about action items and updates</li>
+                  <li><strong>Generate Summaries:</strong> Extract key information including diagnoses, medications, and follow-up steps</li>
+                  <li><strong>Medication Safety:</strong> Check for drug interactions and allergy alerts</li>
+                  <li><strong>Organize Your Data:</strong> Store and display your health information securely</li>
+                  <li><strong>Send Notifications:</strong> Remind you about action items and important updates</li>
                 </ol>
               </div>
 
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">Secondary Uses</h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li><strong>Improve Our Service:</strong> Analyze usage patterns to improve the app</li>
+                  <li><strong>Improve Our Service:</strong> Analyze aggregated usage patterns to improve the app</li>
                   <li><strong>Provide Support:</strong> Help troubleshoot issues you report</li>
                   <li><strong>Ensure Security:</strong> Detect and prevent fraud, abuse, and security threats</li>
                 </ul>
               </div>
 
               <div className="bg-error-light/60 border-l-4 border-error p-4 rounded">
-                <h3 className="text-lg font-semibold text-text-primary mb-2">What We DON&apos;T Do</h3>
-                <ul className="space-y-1 text-text-primary">
-                  <li>❌ We never sell your data</li>
-                  <li>❌ We never share your data with advertisers</li>
-                  <li>❌ We never use your data for marketing third-party products</li>
-                  <li>❌ We never share your data with insurance companies</li>
+                <h3 className="text-lg font-semibold text-text-primary mb-2">What We Do Not Do</h3>
+                <ul className="space-y-1 text-text-primary ml-4">
+                  <li>We do not sell your data to any third party</li>
+                  <li>We do not share your data with advertisers</li>
+                  <li>We do not use your data for marketing third-party products</li>
+                  <li>We do not share your data with insurance companies</li>
                 </ul>
               </div>
             </div>
@@ -125,28 +125,29 @@ export default function PrivacyPolicyPage() {
               How We Protect Your Information
             </h2>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">Encryption</h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li><strong>In Transit:</strong> All data sent between your device and our servers is encrypted with HTTPS/TLS</li>
+                  <li><strong>In Transit:</strong> All data sent between your device and our servers is encrypted using HTTPS/TLS</li>
                   <li><strong>At Rest:</strong> All stored data is encrypted using AES-256 encryption</li>
-                  <li><strong>Secure Infrastructure:</strong> Hosted on Google Firebase with enterprise-grade security</li>
+                  <li><strong>Infrastructure:</strong> Hosted on Google Firebase with enterprise-grade security controls</li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-xl font-medium text-text-primary mb-2">AI Processing</h3>
-                <p className="text-text-secondary mb-2">
-                  We use trusted AI providers to transcribe and analyze your health information:
+                <h3 className="text-xl font-medium text-text-primary mb-2">AI Processing and Data Retention</h3>
+                <p className="text-text-secondary mb-3">
+                  We use trusted AI providers to transcribe and analyze your health information. We have implemented strict data retention policies to minimize how long your data exists on third-party systems:
                 </p>
 
-                <div className="ml-4 space-y-3">
-                  <div>
+                <div className="ml-4 space-y-4">
+                  <div className="bg-background-subtle p-4 rounded border border-border-light">
                     <p className="font-medium text-text-primary">AssemblyAI (Transcription)</p>
-                    <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                      <li>Processes audio to create text transcripts</li>
-                      <li>Deletes your data after transcription is complete</li>
+                    <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4 mt-2">
+                      <li>Processes audio recordings to create text transcripts</li>
+                      <li><strong>Immediate Deletion:</strong> Transcripts are automatically deleted from AssemblyAI immediately after we receive the transcript and complete processing</li>
+                      <li>Audio is never stored permanently on their servers</li>
                       <li>
                         Privacy policy:{' '}
                         <a
@@ -161,11 +162,12 @@ export default function PrivacyPolicyPage() {
                     </ul>
                   </div>
 
-                  <div>
+                  <div className="bg-background-subtle p-4 rounded border border-border-light">
                     <p className="font-medium text-text-primary">OpenAI (Summarization)</p>
-                    <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                      <li>Analyzes transcripts to extract key information</li>
-                      <li><strong>Zero Data Retention:</strong> Your data is immediately deleted after processing</li>
+                    <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4 mt-2">
+                      <li>Analyzes transcripts to extract key clinical information</li>
+                      <li><strong>Zero Data Retention:</strong> We use OpenAI&apos;s zero-retention API setting, which means your data is deleted immediately after processing completes</li>
+                      <li>Your data is never used to train AI models</li>
                       <li>
                         Privacy policy:{' '}
                         <a
@@ -185,9 +187,10 @@ export default function PrivacyPolicyPage() {
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">Access Controls</h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li>Only you can access your data (unless you explicitly share it)</li>
-                  <li>Our employees cannot access your data without your explicit permission</li>
+                  <li>Only you can access your data unless you explicitly share it with a caregiver</li>
+                  <li>LumiMD employees cannot access your personal health data without your explicit permission</li>
                   <li>Strong authentication protects your account</li>
+                  <li>All access to sensitive data is logged for audit purposes</li>
                 </ul>
               </div>
             </div>
@@ -203,7 +206,7 @@ export default function PrivacyPolicyPage() {
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">Access Your Data</h3>
                 <p className="text-text-secondary">
-                  You can view all your data anytime in the app. To download a copy of all your data,
+                  You can view all your data at any time within the app. To download a complete copy of all your data,
                   contact us at{' '}
                   <a href="mailto:privacy@lumimd.app" className="text-brand-primary hover:underline">
                     privacy@lumimd.app
@@ -218,14 +221,15 @@ export default function PrivacyPolicyPage() {
                   You can delete your account and all associated data at any time:
                 </p>
                 <ol className="list-decimal list-inside space-y-1 text-text-secondary ml-4">
-                  <li>Go to Settings → Account</li>
-                  <li>Tap &quot;Delete Account&quot;</li>
-                  <li>Confirm deletion</li>
+                  <li>Navigate to Settings, then Account</li>
+                  <li>Select Delete Account</li>
+                  <li>Confirm the deletion</li>
                 </ol>
-                <p className="text-text-secondary mt-2 font-medium">What happens when you delete your account:</p>
+                <p className="text-text-secondary mt-3 font-medium">When you delete your account:</p>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li>All visits, recordings, and transcripts are permanently deleted</li>
+                  <li>All visits, recordings, transcripts, and summaries are permanently deleted</li>
                   <li>All personal information is permanently deleted</li>
+                  <li>All medications, allergies, and health history are permanently deleted</li>
                   <li>Your account is immediately deactivated</li>
                   <li>This action cannot be undone</li>
                 </ul>
@@ -234,7 +238,7 @@ export default function PrivacyPolicyPage() {
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">Correct Your Data</h3>
                 <p className="text-text-secondary">
-                  You can update your personal information anytime in Settings.
+                  You can update your personal information at any time in the Settings section of the app.
                 </p>
               </div>
 
@@ -245,7 +249,7 @@ export default function PrivacyPolicyPage() {
                   <a href="mailto:privacy@lumimd.app" className="text-brand-primary hover:underline">
                     privacy@lumimd.app
                   </a>
-                  . We&apos;ll respond within 30 days.
+                  . We will respond within 30 days.
                 </p>
               </div>
             </div>
@@ -257,23 +261,23 @@ export default function PrivacyPolicyPage() {
               Data Sharing
             </h2>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">When We Share Your Data</h3>
 
-                <div className="ml-4 space-y-3">
+                <div className="ml-4 space-y-4">
                   <div>
                     <p className="font-medium text-text-primary">With Your Permission</p>
                     <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                      <li>If you use our sharing feature to give caregivers access to your health information</li>
-                      <li>If you explicitly authorize sharing with healthcare providers</li>
+                      <li>When you use our sharing feature to give caregivers access to your health information</li>
+                      <li>When you explicitly authorize sharing with healthcare providers</li>
                     </ul>
                   </div>
 
                   <div>
                     <p className="font-medium text-text-primary">For Legal Reasons</p>
                     <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                      <li>To comply with valid legal processes (court orders, subpoenas)</li>
+                      <li>To comply with valid legal processes such as court orders or subpoenas</li>
                       <li>To protect our rights or the safety of others</li>
                       <li>To detect, prevent, or address fraud or security issues</li>
                     </ul>
@@ -282,12 +286,12 @@ export default function PrivacyPolicyPage() {
                   <div>
                     <p className="font-medium text-text-primary">With Service Providers</p>
                     <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                      <li>Hosting provider (Google Firebase)</li>
-                      <li>AI providers (AssemblyAI, OpenAI) - only during processing, immediately deleted</li>
-                      <li>Analytics services (for app improvement)</li>
+                      <li><strong>Google Firebase:</strong> Cloud infrastructure and data storage</li>
+                      <li><strong>AssemblyAI:</strong> Audio transcription (data deleted immediately after processing)</li>
+                      <li><strong>OpenAI:</strong> Medical summarization (zero data retention)</li>
                     </ul>
                     <p className="text-text-secondary mt-2">
-                      All service providers are bound by strict confidentiality agreements.
+                      All service providers are bound by strict confidentiality agreements and data processing terms.
                     </p>
                   </div>
                 </div>
@@ -295,10 +299,11 @@ export default function PrivacyPolicyPage() {
 
               <div className="bg-error-light/60 border-l-4 border-error p-4 rounded">
                 <h3 className="text-lg font-semibold text-text-primary mb-2">What We Never Share</h3>
-                <ul className="space-y-1 text-text-primary">
-                  <li>❌ Your data with advertisers or marketing companies</li>
-                  <li>❌ Your data with insurance companies</li>
-                  <li>❌ Your data for sale to third parties</li>
+                <ul className="space-y-1 text-text-primary ml-4">
+                  <li>Your data with advertisers or marketing companies</li>
+                  <li>Your data with insurance companies</li>
+                  <li>Your data for sale to any third party</li>
+                  <li>Your data for purposes other than providing our service to you</li>
                 </ul>
               </div>
             </div>
@@ -313,17 +318,26 @@ export default function PrivacyPolicyPage() {
             <div className="space-y-4">
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">How Long We Keep Your Data</h3>
-                <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li><strong>Active Accounts:</strong> We keep your data as long as your account is active</li>
-                  <li><strong>Inactive Accounts:</strong> If you don&apos;t use the app for 2 years, we&apos;ll email you before deleting your data</li>
-                  <li><strong>Deleted Accounts:</strong> Immediately deleted, with a 30-day recovery period</li>
+                <ul className="list-disc list-inside space-y-2 text-text-secondary ml-4">
+                  <li><strong>Your Account Data:</strong> We retain your data as long as your account is active</li>
+                  <li><strong>AI Processing Data:</strong> Deleted immediately after processing (see AI Processing section above)</li>
+                  <li><strong>Audio Recordings:</strong> Stored securely until you delete them or delete your account</li>
+                  <li><strong>Inactive Accounts:</strong> If you do not use the app for 2 years, we will email you before deleting your data</li>
+                  <li><strong>Deleted Accounts:</strong> Data is immediately deleted with a 30-day recovery period</li>
                 </ul>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-medium text-text-primary mb-2">Automated Privacy Measures</h3>
+                <p className="text-text-secondary">
+                  We run automated daily processes to ensure no sensitive data is retained longer than necessary. This includes sweeping for any orphaned transcription data or audio files that should have been deleted.
+                </p>
               </div>
 
               <div>
                 <h3 className="text-xl font-medium text-text-primary mb-2">Backups</h3>
                 <p className="text-text-secondary">
-                  Your data may remain in backup systems for up to 90 days after deletion, then is permanently erased.
+                  Your data may remain in encrypted backup systems for up to 90 days after deletion, after which it is permanently erased.
                 </p>
               </div>
             </div>
@@ -335,8 +349,7 @@ export default function PrivacyPolicyPage() {
               Children&apos;s Privacy
             </h2>
             <p className="text-text-secondary">
-              LumiMD is not intended for children under 13. We do not knowingly collect information from children under 13.
-              If you believe we have collected information from a child under 13, please contact us immediately at{' '}
+              LumiMD is not intended for use by children under 13 years of age. We do not knowingly collect personal information from children under 13. If you believe we have collected information from a child under 13, please contact us immediately at{' '}
               <a href="mailto:privacy@lumimd.app" className="text-brand-primary hover:underline">
                 privacy@lumimd.app
               </a>
@@ -350,35 +363,35 @@ export default function PrivacyPolicyPage() {
               California Privacy Rights (CCPA)
             </h2>
             <p className="text-text-secondary mb-4">
-              If you&apos;re a California resident, you have additional rights:
+              If you are a California resident, you have the following additional rights under the California Consumer Privacy Act:
             </p>
 
             <div className="space-y-3 ml-4">
               <div>
                 <h3 className="text-lg font-medium text-text-primary">Right to Know</h3>
                 <p className="text-text-secondary">
-                  Request information about what personal data we collect, use, and share.
+                  You may request information about what personal data we collect, use, and share.
                 </p>
               </div>
 
               <div>
                 <h3 className="text-lg font-medium text-text-primary">Right to Delete</h3>
                 <p className="text-text-secondary">
-                  Request deletion of your personal data (subject to legal exceptions).
+                  You may request deletion of your personal data, subject to certain legal exceptions.
                 </p>
               </div>
 
               <div>
-                <h3 className="text-lg font-medium text-text-primary">Right to Opt-Out</h3>
+                <h3 className="text-lg font-medium text-text-primary">Right to Non-Discrimination</h3>
                 <p className="text-text-secondary">
-                  We don&apos;t sell your data, so there&apos;s nothing to opt out of.
+                  We will not discriminate against you for exercising your privacy rights.
                 </p>
               </div>
 
               <div>
-                <h3 className="text-lg font-medium text-text-primary">No Discrimination</h3>
+                <h3 className="text-lg font-medium text-text-primary">No Sale of Personal Information</h3>
                 <p className="text-text-secondary">
-                  We won&apos;t discriminate against you for exercising your privacy rights.
+                  We do not sell your personal information to third parties.
                 </p>
               </div>
             </div>
@@ -398,15 +411,15 @@ export default function PrivacyPolicyPage() {
               European Privacy Rights (GDPR)
             </h2>
             <p className="text-text-secondary mb-4">
-              If you&apos;re in the EU/EEA, you have additional rights under GDPR:
+              If you are located in the European Union or European Economic Area, you have additional rights under the General Data Protection Regulation:
             </p>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-medium text-text-primary mb-2">Legal Basis for Processing</h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li><strong>Consent:</strong> You consent by using our service</li>
-                  <li><strong>Contract:</strong> Processing is necessary to provide our service</li>
+                  <li><strong>Consent:</strong> You consent to data processing when you create an account and use our service</li>
+                  <li><strong>Contract:</strong> Processing is necessary to provide the services you have requested</li>
                   <li><strong>Legitimate Interest:</strong> To improve our service and prevent fraud</li>
                 </ul>
               </div>
@@ -414,13 +427,13 @@ export default function PrivacyPolicyPage() {
               <div>
                 <h3 className="text-lg font-medium text-text-primary mb-2">Your GDPR Rights</h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li>Right to access your data</li>
-                  <li>Right to correct inaccurate data</li>
-                  <li>Right to delete your data</li>
+                  <li>Right to access your personal data</li>
+                  <li>Right to rectification of inaccurate data</li>
+                  <li>Right to erasure of your data</li>
                   <li>Right to restrict processing</li>
                   <li>Right to data portability</li>
                   <li>Right to object to processing</li>
-                  <li>Right to withdraw consent</li>
+                  <li>Right to withdraw consent at any time</li>
                 </ul>
               </div>
             </div>
@@ -439,26 +452,27 @@ export default function PrivacyPolicyPage() {
               Cookies and Tracking
             </h2>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-medium text-text-primary mb-2">What We Use</h3>
+                <h3 className="text-lg font-medium text-text-primary mb-2">Cookies We Use</h3>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
                   <li><strong>Essential Cookies:</strong> Required for authentication and security</li>
-                  <li><strong>Analytics:</strong> To understand how you use the app (anonymized)</li>
+                  <li><strong>Analytics Cookies:</strong> To understand how you use the app (anonymized data only)</li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="text-lg font-medium text-text-primary mb-2">What We Don&apos;t Use</h3>
-                <ul className="space-y-1 text-text-secondary ml-4">
-                  <li>❌ Advertising cookies</li>
-                  <li>❌ Third-party tracking for marketing</li>
+                <h3 className="text-lg font-medium text-text-primary mb-2">What We Do Not Use</h3>
+                <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
+                  <li>Advertising or marketing cookies</li>
+                  <li>Third-party tracking for advertising purposes</li>
+                  <li>Cross-site tracking</li>
                 </ul>
               </div>
             </div>
 
             <p className="text-text-secondary mt-3">
-              You can disable non-essential cookies in your browser settings, though this may affect functionality.
+              You can disable non-essential cookies in your browser settings, though this may affect some functionality.
             </p>
           </section>
 
@@ -468,15 +482,15 @@ export default function PrivacyPolicyPage() {
               Changes to This Policy
             </h2>
             <p className="text-text-secondary mb-3">
-              We may update this policy occasionally. If we make significant changes, we&apos;ll notify you via:
+              We may update this policy from time to time. If we make significant changes, we will notify you through:
             </p>
             <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-              <li>Email to your registered address</li>
+              <li>Email to your registered email address</li>
               <li>In-app notification</li>
-              <li>Notice on our website</li>
+              <li>A notice on our website</li>
             </ul>
             <p className="text-text-secondary mt-3">
-              Continued use of LumiMD after changes means you accept the updated policy.
+              Your continued use of LumiMD after changes are posted constitutes your acceptance of the updated policy.
             </p>
           </section>
 
@@ -486,8 +500,7 @@ export default function PrivacyPolicyPage() {
               International Data Transfers
             </h2>
             <p className="text-text-secondary">
-              Your data is processed and stored in the United States. If you&apos;re located outside the U.S.,
-              your data will be transferred to and processed in the U.S. We use appropriate safeguards to protect your data.
+              Your data is processed and stored in the United States. If you are located outside the United States, your data will be transferred to and processed in the U.S. We implement appropriate safeguards to protect your data during transfer and processing.
             </p>
           </section>
 
@@ -510,7 +523,7 @@ export default function PrivacyPolicyPage() {
               <p>
                 <strong>Website:</strong>{' '}
                 <a href="https://lumimd.app" className="text-brand-primary hover:underline">
-                  https://lumimd.app
+                  lumimd.app
                 </a>
               </p>
             </div>
@@ -519,40 +532,43 @@ export default function PrivacyPolicyPage() {
           {/* Summary */}
           <section>
             <h2 className="text-2xl font-semibold text-text-primary mb-4 pb-2 border-b border-border-light">
-              Summary: Your Privacy in Plain English
+              Summary
             </h2>
 
             <div className="space-y-4">
               <div className="bg-brand-primary-pale/80 border-l-4 border-brand-primary p-4 rounded">
-                <p className="font-semibold text-text-primary mb-2">✅ What we do:</p>
+                <p className="font-semibold text-text-primary mb-2">What We Do</p>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li>Keep your health information secure and encrypted</li>
-                  <li>Use AI to transcribe and summarize your visits</li>
-                  <li>Let you control, download, and delete your data anytime</li>
+                  <li>Keep your health information secure with encryption at rest and in transit</li>
+                  <li>Use AI to transcribe and summarize your visits with zero data retention</li>
+                  <li>Delete AI processing data immediately after use</li>
+                  <li>Give you complete control to view, download, and delete your data at any time</li>
                 </ul>
               </div>
 
               <div className="bg-error-light/60 border-l-4 border-error p-4 rounded">
-                <p className="font-semibold text-text-primary mb-2">❌ What we don&apos;t do:</p>
+                <p className="font-semibold text-text-primary mb-2">What We Do Not Do</p>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li>Sell your data</li>
-                  <li>Share with advertisers or insurance companies</li>
-                  <li>Keep your data longer than necessary</li>
+                  <li>Sell your data to any third party</li>
+                  <li>Share your data with advertisers or insurance companies</li>
+                  <li>Retain your data on AI systems longer than necessary for processing</li>
+                  <li>Use your data for any purpose other than providing our service</li>
                 </ul>
               </div>
 
               <div className="bg-info-light/70 border-l-4 border-info p-4 rounded">
-                <p className="font-semibold text-text-primary mb-2">🔒 Your rights:</p>
+                <p className="font-semibold text-text-primary mb-2">Your Rights</p>
                 <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                  <li>View, download, or delete your data anytime</li>
-                  <li>Control who has access to your information</li>
-                  <li>Ask questions about how we handle your data</li>
+                  <li>Access, view, and download your data at any time</li>
+                  <li>Delete your account and all associated data</li>
+                  <li>Control who has access to your health information</li>
+                  <li>Contact us with any questions about your privacy</li>
                 </ul>
               </div>
             </div>
 
             <p className="text-text-secondary mt-4">
-              <strong>Questions?</strong> We&apos;re here to help:{' '}
+              <strong>Questions?</strong> We are here to help:{' '}
               <a href="mailto:privacy@lumimd.app" className="text-brand-primary hover:underline">
                 privacy@lumimd.app
               </a>
@@ -563,10 +579,10 @@ export default function PrivacyPolicyPage() {
         {/* Footer */}
         <footer className="text-center mt-12 pt-8 border-t border-border-light text-text-secondary">
           <p>
-            Policy Version: 1.0 | Last Reviewed: December 3, 2025
+            Policy Version: 2.0 | Last Reviewed: December 17, 2024
           </p>
           <p className="mt-2">
-            &copy; 2025 LumiMD. All rights reserved.
+            &copy; 2024 LumiMD. All rights reserved.
           </p>
         </footer>
       </div>
