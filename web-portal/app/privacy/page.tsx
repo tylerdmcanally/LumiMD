@@ -143,42 +143,20 @@ export default function PrivacyPolicyPage() {
 
                 <div className="ml-4 space-y-4">
                   <div className="bg-background-subtle p-4 rounded border border-border-light">
-                    <p className="font-medium text-text-primary">AssemblyAI (Transcription)</p>
+                    <p className="font-medium text-text-primary">Audio Transcription Services</p>
                     <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4 mt-2">
-                      <li>Processes audio recordings to create text transcripts</li>
-                      <li><strong>Immediate Deletion:</strong> Transcripts are automatically deleted from AssemblyAI immediately after we receive the transcript and complete processing</li>
-                      <li>Audio is never stored permanently on their servers</li>
-                      <li>
-                        Privacy policy:{' '}
-                        <a
-                          href="https://www.assemblyai.com/legal/privacy-policy"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-brand-primary hover:underline"
-                        >
-                          assemblyai.com/legal/privacy-policy
-                        </a>
-                      </li>
+                      <li>We use a third-party AI service to convert your audio recordings into text transcripts</li>
+                      <li><strong>Immediate Deletion:</strong> Transcripts are automatically deleted from the transcription service immediately after we receive and process them</li>
+                      <li>Audio is never stored permanently on third-party servers</li>
                     </ul>
                   </div>
 
                   <div className="bg-background-subtle p-4 rounded border border-border-light">
-                    <p className="font-medium text-text-primary">OpenAI (Summarization)</p>
+                    <p className="font-medium text-text-primary">AI Summarization Services</p>
                     <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4 mt-2">
-                      <li>Analyzes transcripts to extract key clinical information</li>
-                      <li><strong>Zero Data Retention:</strong> We use OpenAI&apos;s zero-retention API setting, which means your data is deleted immediately after processing completes</li>
+                      <li>We use a third-party AI service to analyze transcripts and extract key clinical information</li>
+                      <li><strong>Zero Data Retention:</strong> We configure our AI provider with zero-retention settings, meaning your data is deleted immediately after processing completes</li>
                       <li>Your data is never used to train AI models</li>
-                      <li>
-                        Privacy policy:{' '}
-                        <a
-                          href="https://openai.com/enterprise-privacy"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-brand-primary hover:underline"
-                        >
-                          openai.com/enterprise-privacy
-                        </a>
-                      </li>
                     </ul>
                   </div>
                 </div>
@@ -286,9 +264,9 @@ export default function PrivacyPolicyPage() {
                   <div>
                     <p className="font-medium text-text-primary">With Service Providers</p>
                     <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
-                      <li><strong>Google Firebase:</strong> Cloud infrastructure and data storage</li>
-                      <li><strong>AssemblyAI:</strong> Audio transcription (data deleted immediately after processing)</li>
-                      <li><strong>OpenAI:</strong> Medical summarization (zero data retention)</li>
+                      <li><strong>Cloud Infrastructure Provider:</strong> Secure cloud storage and authentication services</li>
+                      <li><strong>AI Transcription Service:</strong> Audio-to-text processing (data deleted immediately after processing)</li>
+                      <li><strong>AI Summarization Service:</strong> Medical information extraction (zero data retention)</li>
                     </ul>
                     <p className="text-text-secondary mt-2">
                       All service providers are bound by strict confidentiality agreements and data processing terms.
