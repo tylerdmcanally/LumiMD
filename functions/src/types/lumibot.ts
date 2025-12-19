@@ -18,6 +18,7 @@ export type NudgeActionType =
     | 'log_bp'
     | 'log_glucose'
     | 'log_weight'
+    | 'log_symptom_check'
     | 'confirm_yes_no'
     | 'medication_check'
     | 'symptom_check'
@@ -106,10 +107,12 @@ export interface MedComplianceValue {
 }
 
 export interface SymptomCheckValue {
-    symptoms: string[];
-    severity?: 'mild' | 'moderate' | 'severe';
-    isEmergency?: boolean;
-    note?: string;
+    breathingDifficulty: number;  // 1-5 scale
+    swelling: 'none' | 'mild' | 'moderate' | 'severe';
+    swellingLocations?: string[];
+    energyLevel: number;  // 1-5 scale
+    cough: boolean;
+    otherSymptoms?: string;
 }
 
 export type HealthLogValue =

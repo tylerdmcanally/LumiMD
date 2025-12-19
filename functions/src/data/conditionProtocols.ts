@@ -263,12 +263,122 @@ export const diabetesProtocol: ConditionProtocol = {
 };
 
 // =============================================================================
+// Heart Failure Protocol (AHA/ACC Guidelines)
+// =============================================================================
+
+export const heartFailureProtocol: ConditionProtocol = {
+    id: 'heart_failure',
+    name: 'Heart Failure',
+    aliases: [
+        'heart failure',
+        'chf',
+        'congestive heart failure',
+        'hfref',
+        'hfpef',
+        'ef reduced',
+        'ef preserved',
+        'cardiomyopathy',
+        'weak heart',
+        'enlarged heart',
+        'lvef',
+    ],
+    source: 'AHA/ACC Heart Failure Guidelines',
+
+    tracking: [
+        {
+            type: 'weight',
+            suggestedFrequency: 'daily',
+            unit: 'lbs',
+        },
+        {
+            type: 'bp',
+            suggestedFrequency: 'daily',
+            unit: 'mmHg',
+        },
+        {
+            type: 'symptom_check',
+            suggestedFrequency: 'daily',
+        },
+    ],
+
+    thresholds: {
+        weight: {
+            dailyGain: 2,   // ≥2 lbs in 1 day → caution
+            weeklyGain: 5,  // ≥5 lbs in 1 week → warning
+        },
+        bp: {
+            normal: {
+                systolic: { max: 129 },
+                diastolic: { max: 79 },
+            },
+            caution: {
+                systolic: { min: 130, max: 159 },
+                diastolic: { min: 80, max: 99 },
+            },
+            warning: {
+                systolic: { min: 160 },
+                diastolic: { min: 100 },
+            },
+        },
+    },
+
+    emergencySymptoms: [
+        'severe shortness of breath',
+        'can\'t breathe',
+        'gasping',
+        'chest pain',
+        'chest pressure',
+        'pink frothy sputum',
+        'coughing up blood',
+        'fainting',
+        'passed out',
+        'unresponsive',
+        'blue lips',
+        'blue fingernails',
+        'severe weakness',
+    ],
+
+    nudgeSchedule: [
+        {
+            day: 1,
+            message: 'Welcome! Daily weight tracking is the #1 way to catch fluid buildup early. Weigh yourself each morning, same time, after using the bathroom.',
+        },
+        {
+            day: 3,
+            message: 'How\'s the daily weighing going? A gain of 2+ lbs in a day or 5+ lbs in a week can signal fluid buildup. Let\'s log today\'s weight.',
+        },
+        {
+            day: 5,
+            message: 'Quick check-in: Any swelling in your ankles or feet? More shortness of breath than usual? Let us know how you\'re feeling.',
+        },
+        {
+            day: 7,
+            message: 'Weekly symptom check: How are you doing overall? Rate your breathing, energy level, and any swelling you\'ve noticed.',
+        },
+        {
+            day: 14,
+            recurring: true,
+            interval: 7,
+            message: 'Time for your weekly heart failure check-in. How\'s your weight trend? Any changes in breathing or swelling?',
+        },
+    ],
+
+    responseTemplates: {
+        normal: 'Weight is stable. Great job staying on track with your daily monitoring!',
+        caution: 'Your weight is up a bit from yesterday. Watch your sodium intake and check again tomorrow. If it continues rising, contact your care team.',
+        warning: 'Your weight has increased significantly. This may indicate fluid retention. Please contact your doctor\'s office today.',
+        emergency: 'These symptoms need immediate attention. Please call 911 or go to the emergency room now.',
+    },
+};
+
+// =============================================================================
 // Protocol Registry
 // =============================================================================
 
 export const conditionProtocols: ConditionProtocol[] = [
     hypertensionProtocol,
     diabetesProtocol,
+    heartFailureProtocol,
 ];
 
 /**

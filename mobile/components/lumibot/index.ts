@@ -13,6 +13,7 @@ export { WeightLogModal } from './WeightLogModal';
 export { SideEffectsModal } from './SideEffectsModal';
 export { SafetyAlert } from './SafetyAlert';
 export { LumiBotContainer } from './LumiBotContainer';
+export { SymptomCheckModal } from './SymptomCheckModal';
 
 
 // Re-export types for convenience
@@ -24,3 +25,4 @@ export type { WeightLogModalProps, WeightValue } from './WeightLogModal';
 export type { SideEffectsModalProps, SideEffectResponse } from './SideEffectsModal';
 export type { SafetyAlertProps } from './SafetyAlert';
 export type { LumiBotContainerProps } from './LumiBotContainer';
+export type { SymptomCheckModalProps, SymptomCheckValue } from './SymptomCheckModal';

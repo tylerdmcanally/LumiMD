@@ -57,9 +57,12 @@ const medComplianceValueSchema = z.object({
 });
 
 const symptomCheckValueSchema = z.object({
-    symptoms: z.array(z.string()),
-    severity: z.enum(['mild', 'moderate', 'severe']).optional(),
-    note: z.string().optional(),
+    breathingDifficulty: z.number().min(1).max(5),
+    swelling: z.enum(['none', 'mild', 'moderate', 'severe']),
+    swellingLocations: z.array(z.string()).optional(),
+    energyLevel: z.number().min(1).max(5),
+    cough: z.boolean(),
+    otherSymptoms: z.string().optional(),
 });
 
 const createHealthLogSchema = z.object({

@@ -9,6 +9,7 @@ import * as functions from 'firebase-functions';
 import {
     BloodPressureValue,
     GlucoseValue,
+    WeightValue,
     HealthLogValue,
     HealthLogType,
     SafetyCheckResult,
@@ -16,6 +17,7 @@ import {
 import {
     hypertensionProtocol,
     diabetesProtocol,
+    heartFailureProtocol,
 } from '../data/conditionProtocols';
 
 // =============================================================================
@@ -188,8 +190,98 @@ export function checkGlucose(
 }
 
 // =============================================================================
+// Weight Checking
+// =============================================================================
+
+/**
+ * Check weight value
+ * Basic check - weight change detection requires historical data
+ * and is handled at the route level with checkWeightChange()
+ */
+export function checkWeight(value: WeightValue): SafetyCheckResult {
+    // Weight alone doesn't have universal thresholds
+    // The important metric for HF is change over time
+    return {
+        alertLevel: undefined,
+        message: 'Weight logged. ✓',
+        shouldShowAlert: false,
+    };
+}
+
+/**
+ * Check weight change for Heart Failure monitoring
+ * Call this with previous weights to detect fluid retention
+ */
+export function checkWeightChange(
+    currentWeight: number,
+    previousWeights: { weight: number; date: Date }[]
+): SafetyCheckResult {
+    const thresholds = heartFailureProtocol.thresholds.weight!;
+    const responses = heartFailureProtocol.responseTemplates;
+
+    if (previousWeights.length === 0) {
+        return {
+            alertLevel: undefined,
+            message: 'Weight logged. ✓',
+            shouldShowAlert: false,
+        };
+    }
+
+    // Check daily gain (compare to yesterday)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const recentWeights = previousWeights.filter(w => {
+        const diff = (yesterday.getTime() - w.date.getTime()) / (1000 * 60 * 60 * 24);
+        return diff >= 0 && diff < 1;
+    });
+
+    if (recentWeights.length > 0) {
+        const yesterdayWeight = recentWeights[0].weight;
+        const dailyGain = currentWeight - yesterdayWeight;
+
+        if (dailyGain >= (thresholds.dailyGain || 2)) {
+            return {
+                alertLevel: 'caution',
+                message: responses.caution ||
+                    `Your weight is up ${dailyGain.toFixed(1)} lbs from yesterday. Watch your sodium intake and check again tomorrow.`,
+                shouldShowAlert: true,
+            };
+        }
+    }
+
+    // Check weekly gain (compare to 7 days ago)
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const weekAgoWeights = previousWeights.filter(w => {
+        const diff = (weekAgo.getTime() - w.date.getTime()) / (1000 * 60 * 60 * 24);
+        return diff >= 0 && diff < 1;
+    });
+
+    if (weekAgoWeights.length > 0) {
+        const weekAgoWeight = weekAgoWeights[0].weight;
+        const weeklyGain = currentWeight - weekAgoWeight;
+
+        if (weeklyGain >= (thresholds.weeklyGain || 5)) {
+            return {
+                alertLevel: 'warning',
+                message: responses.warning ||
+                    `Your weight is up ${weeklyGain.toFixed(1)} lbs this week. This may indicate fluid retention. Please contact your doctor's office today.`,
+                shouldShowAlert: true,
+            };
+        }
+    }
+
+    return {
+        alertLevel: 'normal',
+        message: responses.normal || 'Weight is stable. Great job staying on track!',
+        shouldShowAlert: false,
+    };
+}
+
+// =============================================================================
 // General Value Checker
 // =============================================================================
+
 
 export function checkHealthValue(
     type: HealthLogType,
@@ -205,13 +297,9 @@ export function checkHealthValue(
             return checkGlucose(value as GlucoseValue, hasSymptoms, symptoms);
 
         case 'weight':
-            // Weight has no universal "normal" - varies by patient
-            // No alertLevel means no status badge shown
-            return {
-                alertLevel: undefined,
-                message: 'Weight logged. ✓',
-                shouldShowAlert: false,
-            };
+            // For HF patients, weight gain triggers alerts
+            // Otherwise, just log without alert
+            return checkWeight(value as WeightValue);
 
         case 'med_compliance':
         case 'symptom_check':

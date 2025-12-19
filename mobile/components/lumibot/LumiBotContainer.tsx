@@ -11,6 +11,8 @@ import { LumiBotBanner } from './LumiBotBanner';
 import { BPLogModal } from './BPLogModal';
 import { GlucoseLogModal } from './GlucoseLogModal';
 import { SideEffectsModal } from './SideEffectsModal';
+import { SymptomCheckModal } from './SymptomCheckModal';
+import type { SymptomCheckValue } from './SymptomCheckModal';
 import type { SideEffectResponse } from './SideEffectsModal';
 import { SafetyAlert } from './SafetyAlert';
 import {
@@ -32,6 +34,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
     const [activeBPNudge, setActiveBPNudge] = useState<Nudge | null>(null);
     const [activeGlucoseNudge, setActiveGlucoseNudge] = useState<Nudge | null>(null);
     const [activeSideEffectsNudge, setActiveSideEffectsNudge] = useState<Nudge | null>(null);
+    const [activeSymptomCheckNudge, setActiveSymptomCheckNudge] = useState<Nudge | null>(null);
     const [safetyAlert, setSafetyAlert] = useState<{
         visible: boolean;
         level: AlertLevel;
@@ -86,6 +89,8 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             setActiveBPNudge(nudge);
         } else if (nudge.actionType === 'log_glucose') {
             setActiveGlucoseNudge(nudge);
+        } else if (nudge.actionType === 'log_symptom_check') {
+            setActiveSymptomCheckNudge(nudge);
         } else {
             // Fallback for other action types
             Alert.alert('Coming Soon', 'This log type will be available soon!');
@@ -161,6 +166,38 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         setSafetyAlert({ visible: false, level: 'normal', message: '' });
     }, []);
 
+    const handleSymptomCheckSubmit = useCallback(async (value: SymptomCheckValue) => {
+        try {
+            const result = await createHealthLog.mutateAsync({
+                type: 'symptom_check',
+                value,
+                nudgeId: activeSymptomCheckNudge?.id,
+                source: activeSymptomCheckNudge ? 'nudge' : 'manual',
+            });
+
+            // Check if symptoms indicate concern
+            if (value.breathingDifficulty >= 4 || value.swelling === 'severe') {
+                setSafetyAlert({
+                    visible: true,
+                    level: 'warning',
+                    message: 'Your symptoms suggest you may need to contact your care team. Please reach out if symptoms worsen.',
+                });
+            }
+
+            setActiveSymptomCheckNudge(null);
+
+            return {
+                alertLevel: result.alertLevel,
+                alertMessage: result.alertMessage,
+                shouldShowAlert: result.shouldShowAlert,
+            };
+        } catch (err) {
+            console.error('[LumiBot] Symptom check error:', err);
+            Alert.alert('Error', 'Failed to save check-in. Please try again.');
+            return { shouldShowAlert: false };
+        }
+    }, [activeSymptomCheckNudge, createHealthLog]);
+
     if (!enabled) {
         return null;
     }
@@ -205,6 +242,13 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 alertLevel={safetyAlert.level}
                 message={safetyAlert.message}
                 onDismiss={handleDismissSafetyAlert}
+            />
+
+            <SymptomCheckModal
+                visible={activeSymptomCheckNudge !== null}
+                onClose={() => setActiveSymptomCheckNudge(null)}
+                onSubmit={handleSymptomCheckSubmit}
+                isSubmitting={createHealthLog.isPending}
             />
         </>
 

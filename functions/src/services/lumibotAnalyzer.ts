@@ -155,9 +155,9 @@ function getActionTypeForTracking(trackingType: string): NudgeActionType {
         case 'weight':
             return 'log_weight';
         case 'symptom_check':
-            return 'symptom_check';
+            return 'log_symptom_check';
         default:
-            return 'symptom_check';
+            return 'log_symptom_check';
     }
 }
 
