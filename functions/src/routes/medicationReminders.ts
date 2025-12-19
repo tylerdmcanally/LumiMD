@@ -133,16 +133,20 @@ medicationRemindersRouter.post('/', requireAuth, async (req: AuthRequest, res) =
 
         const now = admin.firestore.Timestamp.now();
 
-        const reminderData = {
+        const reminderData: Record<string, unknown> = {
             userId,
             medicationId: data.medicationId,
             medicationName: medData.name || 'Unknown',
-            medicationDose: medData.dosage,
             times: data.times,
             enabled: true,
             createdAt: now,
             updatedAt: now,
         };
+
+        // Only add medicationDose if it exists (Firestore doesn't accept undefined)
+        if (medData.dosage) {
+            reminderData.medicationDose = medData.dosage;
+        }
 
         const docRef = await getRemindersCollection().add(reminderData);
 

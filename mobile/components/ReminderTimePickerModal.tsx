@@ -4,7 +4,7 @@
  * Allows users to set medication reminder times.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
     Modal,
     View,
@@ -55,9 +55,18 @@ export function ReminderTimePickerModal({
     onCancel,
     isLoading = false,
 }: ReminderTimePickerModalProps) {
-    const [times, setTimes] = useState<string[]>(existingTimes.length > 0 ? existingTimes : ['08:00']);
+    const [times, setTimes] = useState<string[]>(['08:00']);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [showPicker, setShowPicker] = useState(false);
+
+    // Reset state when modal opens
+    useEffect(() => {
+        if (visible) {
+            setTimes(existingTimes.length > 0 ? [...existingTimes] : ['08:00']);
+            setShowPicker(false);
+            setEditingIndex(null);
+        }
+    }, [visible, existingTimes]);
 
     const handleAddTime = useCallback(() => {
         // Add a new time 12 hours after the last one
@@ -194,6 +203,8 @@ export function ReminderTimePickerModal({
                                 display="spinner"
                                 onChange={handleTimeChange}
                                 style={styles.picker}
+                                themeVariant="light"
+                                textColor={Colors.text}
                             />
                         </View>
                     )}
