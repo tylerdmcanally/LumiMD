@@ -34,7 +34,7 @@ export interface WeightThresholds {
 export type AlertLevel = 'normal' | 'caution' | 'warning' | 'emergency';
 
 export interface TrackingConfig {
-    type: 'bp' | 'glucose' | 'weight' | 'symptom_check' | 'peak_flow';
+    type: 'bp' | 'glucose' | 'weight' | 'symptom_check' | 'peak_flow' | 'med_compliance';
     suggestedFrequency: string;
     unit?: string;
 }
@@ -393,12 +393,11 @@ export const copdProtocol: ConditionProtocol = {
     tracking: [
         {
             type: 'symptom_check',
-            suggestedFrequency: 'daily',
+            suggestedFrequency: 'weekly',
         },
         {
-            type: 'peak_flow',
-            suggestedFrequency: 'daily',
-            unit: 'L/min',
+            type: 'med_compliance',
+            suggestedFrequency: 'weekly',
         },
     ],
 
@@ -421,21 +420,17 @@ export const copdProtocol: ConditionProtocol = {
     nudgeSchedule: [
         {
             day: 1,
-            message: 'Welcome! Tracking your breathing symptoms daily helps catch flare-ups early. Let\'s start with how you\'re feeling today.',
-        },
-        {
-            day: 3,
-            message: 'How\'s your breathing today? Any increase in cough, sputum, or shortness of breath?',
+            message: 'Welcome! We\'ll help you track your breathing symptoms and inhaler use to catch flare-ups early.',
         },
         {
             day: 7,
-            message: 'Weekly check-in: Rate your breathing this week. Have you needed your rescue inhaler more than usual?',
+            message: 'Weekly COPD check: Any increase in shortness of breath, cough, or sputum? How often have you needed your rescue inhaler?',
         },
         {
             day: 14,
             recurring: true,
             interval: 7,
-            message: 'Time for your COPD check-in. How are your breathing symptoms? Any changes in sputum color or amount?',
+            message: 'Time for your COPD check-in. How\'s your breathing this week? Any changes in symptoms or inhaler use?',
         },
     ],
 
@@ -471,11 +466,11 @@ export const afibProtocol: ConditionProtocol = {
     tracking: [
         {
             type: 'symptom_check',
-            suggestedFrequency: 'daily',
+            suggestedFrequency: 'weekly',
         },
         {
             type: 'bp',
-            suggestedFrequency: 'daily',
+            suggestedFrequency: '2x weekly',
             unit: 'mmHg',
         },
     ],
@@ -516,21 +511,17 @@ export const afibProtocol: ConditionProtocol = {
     nudgeSchedule: [
         {
             day: 1,
-            message: 'Welcome! For AFib, we\'ll track your heart rhythm symptoms and help you watch for warning signs.',
-        },
-        {
-            day: 3,
-            message: 'How\'s your heart rhythm feeling? Any palpitations, racing heart, or irregular beats?',
+            message: 'Welcome! We\'ll help you track your heart rhythm symptoms and watch for warning signs.',
         },
         {
             day: 7,
-            message: 'Weekly AFib check: Rate your energy level and any episodes of irregular heartbeat this week.',
+            message: 'Weekly AFib check: Any palpitations, racing heart, or dizziness this week? How\'s your energy?',
         },
         {
             day: 14,
             recurring: true,
             interval: 7,
-            message: 'Time for your rhythm check-in. How often have you noticed your heart fluttering or racing?',
+            message: 'Time for your rhythm check-in. How often have you noticed your heart fluttering or racing this week?',
         },
     ],
 
@@ -576,7 +567,7 @@ export const anticoagulationProtocol: ConditionProtocol = {
     tracking: [
         {
             type: 'symptom_check',
-            suggestedFrequency: 'daily',
+            suggestedFrequency: 'weekly',
         },
     ],
 
@@ -602,21 +593,17 @@ export const anticoagulationProtocol: ConditionProtocol = {
     nudgeSchedule: [
         {
             day: 1,
-            message: 'Welcome! Blood thinners require careful monitoring. We\'ll help you watch for any concerning bleeding or bruising.',
-        },
-        {
-            day: 3,
-            message: 'Quick check: Any unusual bleeding, bruising, or blood in your stool/urine? These are important to track.',
+            message: 'Welcome! Blood thinners require monitoring. We\'ll help you watch for any concerning bleeding or bruising.',
         },
         {
             day: 7,
-            message: 'Weekly blood thinner check: How are you doing? Any bleeding, bruising, or missed doses this week?',
+            message: 'Weekly blood thinner check: Any unusual bleeding, bruising, or blood in your stool/urine this week?',
         },
         {
             day: 14,
             recurring: true,
             interval: 7,
-            message: 'Time for your anticoagulation check-in. Any bleeding symptoms or bruising to report?',
+            message: 'Time for your anticoagulation check-in. Any bleeding symptoms or bruising to report this week?',
         },
     ],
 
