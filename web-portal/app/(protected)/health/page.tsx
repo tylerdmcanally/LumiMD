@@ -12,6 +12,7 @@ import {
     Plus,
     Trash2,
     Scale,
+    Download,
 } from 'lucide-react';
 import {
     LineChart,
@@ -303,6 +304,29 @@ export default function HealthDashboardPage() {
     const [modalOpen, setModalOpen] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [deletingId, setDeletingId] = React.useState<string | null>(null);
+    const [isExporting, setIsExporting] = React.useState(false);
+
+    // Handle provider report export
+    const handleExportReport = async () => {
+        setIsExporting(true);
+        try {
+            const blob = await apiClient.healthLogs.providerReport();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `LumiMD-Health-Report-${new Date().toISOString().slice(0, 10)}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            toast.success('Report downloaded successfully');
+        } catch (error) {
+            toast.error('Failed to generate report');
+            console.error('[health] Error exporting report:', error);
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     // Handle log submission
     const handleLogSubmit = async (type: LogType, value: Record<string, unknown>) => {
@@ -442,13 +466,23 @@ export default function HealthDashboardPage() {
                             )}
                         </div>
                         {!isViewingShared && (
-                            <Button
-                                variant="primary"
-                                onClick={() => setModalOpen(true)}
-                                leftIcon={<Plus className="h-4 w-4" />}
-                            >
-                                Log Reading
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="ghost"
+                                    onClick={handleExportReport}
+                                    disabled={isExporting || hasNoData}
+                                    leftIcon={<Download className="h-4 w-4" />}
+                                >
+                                    {isExporting ? 'Exporting...' : 'Export PDF'}
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    onClick={() => setModalOpen(true)}
+                                    leftIcon={<Plus className="h-4 w-4" />}
+                                >
+                                    Log Reading
+                                </Button>
+                            </div>
                         )}
                     </div>
                 </div>

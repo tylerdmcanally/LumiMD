@@ -380,6 +380,7 @@ declare function createApiClient(config: ApiClientConfig): {
         delete: (id: string) => Promise<void>;
         summary: (days?: number) => Promise<HealthLogSummaryResponse>;
         export: (days?: number) => Promise<any>;
+        providerReport: () => Promise<Blob>;
     };
 };
 type ApiClient = ReturnType<typeof createApiClient>;

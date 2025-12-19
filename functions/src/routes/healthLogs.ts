@@ -424,3 +424,38 @@ healthLogsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
         });
     }
 });
+
+// =============================================================================
+// GET /v1/health-logs/provider-report - Generate PDF report for healthcare provider
+// =============================================================================
+
+healthLogsRouter.get('/provider-report', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+
+        // Import PDF generator dynamically to avoid loading it for every request
+        const { generateProviderReport } = await import('../services/pdfGenerator');
+
+        functions.logger.info(`[healthLogs] Generating provider report for user ${userId}`);
+
+        // Generate PDF (30 days fixed)
+        const pdfBuffer = await generateProviderReport(userId, 30);
+
+        // Set headers for PDF download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="LumiMD-Health-Report-${new Date().toISOString().slice(0, 10)}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+
+        functions.logger.info(`[healthLogs] Provider report generated successfully for user ${userId}`, {
+            sizeBytes: pdfBuffer.length,
+        });
+
+        res.send(pdfBuffer);
+    } catch (error) {
+        functions.logger.error('[healthLogs] Error generating provider report:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to generate provider report',
+        });
+    }
+});

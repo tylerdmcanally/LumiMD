@@ -460,6 +460,19 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<HealthLogSummaryResponse>(`/v1/health-logs/summary${days ? `?days=${days}` : ''}`),
       export: (days?: number) =>
         apiRequest<any>(`/v1/health-logs/export${days ? `?days=${days}` : ''}`),
+      providerReport: async (): Promise<Blob> => {
+        const token = await config.getAuthToken();
+        const response = await fetch(`${config.baseUrl}/v1/health-logs/provider-report`, {
+          method: 'GET',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        if (!response.ok) {
+          throw new Error('Failed to generate provider report');
+        }
+        return response.blob();
+      },
     },
 
   };
