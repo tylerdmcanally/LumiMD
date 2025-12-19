@@ -15,6 +15,7 @@
     "@lumimd/sdk": "file:../packages/sdk",
     "@react-native-assets/slider": "^11.0.12",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-firebase/app": "^23.7.0",
     "@react-native-firebase/auth": "^23.7.0",
     "@react-native-firebase/firestore": "^23.7.0",

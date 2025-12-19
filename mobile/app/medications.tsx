@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,9 +17,17 @@ import { Colors, spacing, Radius, Card } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
 import { openWebMeds, openWebVisit } from '../lib/linking';
 import { useAuth } from '../contexts/AuthContext';
-import { useMedications } from '../lib/api/hooks';
+import {
+  useMedications,
+  useMedicationReminders,
+  useCreateMedicationReminder,
+  useUpdateMedicationReminder,
+  useDeleteMedicationReminder,
+} from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
+import { ReminderTimePickerModal } from '../components/ReminderTimePickerModal';
+import type { MedicationReminder } from '@lumimd/sdk';
 
 
 const formatDate = (value?: string | null) => {
@@ -58,6 +67,10 @@ export default function MedicationsScreen() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [showInactive, setShowInactive] = useState(false);
 
+  // Reminder modal state
+  const [reminderModalVisible, setReminderModalVisible] = useState(false);
+  const [selectedMed, setSelectedMed] = useState<{ id: string; name: string } | null>(null);
+
   const {
     data: medications,
     isLoading,
@@ -69,6 +82,20 @@ export default function MedicationsScreen() {
     staleTime: 0,
     gcTime: 0,
   });
+
+  // Reminders data
+  const { data: reminders = [] } = useMedicationReminders({
+    enabled: isAuthenticated,
+  });
+
+  const createReminder = useCreateMedicationReminder();
+  const updateReminder = useUpdateMedicationReminder();
+  const deleteReminder = useDeleteMedicationReminder();
+
+  // Get reminder for a specific medication
+  const getReminderForMed = useCallback((medId: string): MedicationReminder | undefined => {
+    return reminders.find(r => r.medicationId === medId);
+  }, [reminders]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -129,6 +156,43 @@ export default function MedicationsScreen() {
     const startedLabel = formatDate(med.startedAt);
     const stoppedLabel = formatDate(med.stoppedAt);
 
+    // Get reminder for this medication
+    const reminder = med.id ? getReminderForMed(med.id) : undefined;
+    const hasReminder = reminder && reminder.enabled;
+
+    const handleReminderPress = (e: any) => {
+      e.stopPropagation();
+      setSelectedMed({ id: med.id, name: med.name || 'Medication' });
+      setReminderModalVisible(true);
+    };
+
+    const handleRemoveReminder = (e: any) => {
+      e.stopPropagation();
+      if (reminder) {
+        Alert.alert(
+          'Remove Reminder',
+          `Stop reminding you to take ${med.name}?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Remove',
+              style: 'destructive',
+              onPress: () => deleteReminder.mutate(reminder.id),
+            },
+          ]
+        );
+      }
+    };
+
+    const formatReminderTimes = (times: string[]) => {
+      return times.map(time => {
+        const [hours, minutes] = time.split(':').map(Number);
+        const period = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+      }).join(', ');
+    };
+
     return (
       <Pressable
         key={med.id || `${med.name}-${index}`}
@@ -174,6 +238,43 @@ export default function MedicationsScreen() {
             </View>
           )}
 
+          {/* Reminder Row - Only show for active medications */}
+          {isActive && med.id && (
+            <View style={styles.reminderRow}>
+              <Ionicons
+                name={hasReminder ? 'notifications' : 'notifications-outline'}
+                size={18}
+                color={hasReminder ? Colors.primary : Colors.textMuted}
+              />
+              {hasReminder ? (
+                <>
+                  <Text style={styles.reminderTimeText}>
+                    {formatReminderTimes(reminder.times)}
+                  </Text>
+                  <Pressable
+                    style={styles.reminderEditButton}
+                    onPress={handleReminderPress}
+                  >
+                    <Ionicons name="pencil" size={14} color={Colors.primary} />
+                  </Pressable>
+                  <Pressable
+                    style={styles.reminderRemoveButton}
+                    onPress={handleRemoveReminder}
+                  >
+                    <Ionicons name="trash-outline" size={14} color={Colors.error} />
+                  </Pressable>
+                </>
+              ) : (
+                <Pressable
+                  style={styles.setReminderButton}
+                  onPress={handleReminderPress}
+                >
+                  <Text style={styles.setReminderText}>Set Reminder</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+
           <View style={styles.medMeta}>
             <View style={[styles.sourceBadge, { backgroundColor: badge.background }]}>
               <Ionicons name="sparkles-outline" size={12} color={badge.color} />
@@ -210,101 +311,151 @@ export default function MedicationsScreen() {
     );
   };
 
+  // Handle saving reminder from modal
+  const handleSaveReminder = useCallback(async (times: string[]) => {
+    if (!selectedMed) return;
+
+    const existingReminder = getReminderForMed(selectedMed.id);
+
+    try {
+      if (existingReminder) {
+        // Update existing reminder
+        await updateReminder.mutateAsync({
+          id: existingReminder.id,
+          data: { times, enabled: true },
+        });
+      } else {
+        // Create new reminder
+        await createReminder.mutateAsync({
+          medicationId: selectedMed.id,
+          times,
+        });
+      }
+      setReminderModalVisible(false);
+      setSelectedMed(null);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save reminder. Please try again.');
+    }
+  }, [selectedMed, getReminderForMed, createReminder, updateReminder]);
+
+  const handleCancelReminder = useCallback(() => {
+    setReminderModalVisible(false);
+    setSelectedMed(null);
+  }, []);
+
+  // Get existing times for the modal
+  const getExistingTimes = useCallback(() => {
+    if (!selectedMed) return [];
+    const reminder = getReminderForMed(selectedMed.id);
+    return reminder?.times || [];
+  }, [selectedMed, getReminderForMed]);
+
   return (
-    <ErrorBoundary
-      title="Unable to load medications"
-      description="Please pull to refresh or open the web portal while we double-check your medication list."
-    >
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.container}>
-          <View style={styles.header}>
-            <Pressable onPress={() => router.back()} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={28} color={Colors.text} />
-            </Pressable>
-            <Text style={styles.headerTitle}>Medications</Text>
-            <Pressable onPress={openWebMeds} style={styles.webLink}>
-              <Ionicons name="open-outline" size={18} color={Colors.primary} />
-              <Text style={styles.webLinkText}>Manage on Web</Text>
-            </Pressable>
-          </View>
+    <>
+      {/* Reminder Time Picker Modal */}
+      <ReminderTimePickerModal
+        visible={reminderModalVisible}
+        medicationName={selectedMed?.name || ''}
+        existingTimes={getExistingTimes()}
+        onSave={handleSaveReminder}
+        onCancel={handleCancelReminder}
+        isLoading={createReminder.isPending || updateReminder.isPending}
+      />
+      <ErrorBoundary
+        title="Unable to load medications"
+        description="Please pull to refresh or open the web portal while we double-check your medication list."
+      >
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.container}>
+            <View style={styles.header}>
+              <Pressable onPress={() => router.back()} style={styles.backButton}>
+                <Ionicons name="chevron-back" size={28} color={Colors.text} />
+              </Pressable>
+              <Text style={styles.headerTitle}>Medications</Text>
+              <Pressable onPress={openWebMeds} style={styles.webLink}>
+                <Ionicons name="open-outline" size={18} color={Colors.primary} />
+                <Text style={styles.webLinkText}>Manage on Web</Text>
+              </Pressable>
+            </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.primary} />
-            }
-          >
-            {isLoading ? (
-              <View style={styles.emptyContainer}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={styles.emptyDescription}>Loading medications…</Text>
-              </View>
-            ) : error ? (
-              <EmptyState
-                variant="error"
-                icon="cloud-offline-outline"
-                title="Unable to load medications"
-                description="We couldn't sync your medication list. Pull down to refresh or visit the web portal."
-                actionLabel="Open Web Portal"
-                onAction={openWebMeds}
-              />
-            ) : meds.length === 0 ? (
-              <EmptyState
-                variant="empty"
-                icon="medkit-outline"
-                title="No medications yet"
-                description="Start a visit or add medications in your web portal to see them here."
-                actionLabel="Open Web Portal"
-                onAction={openWebMeds}
-              />
-            ) : (
-
-              <>
-                <Text style={styles.sectionSubtitle}>
-                  Active medications automatically update as your visit summaries note changes.
-                </Text>
-
-                <View style={styles.section}>
-                  {activeMeds.length === 0 ? (
-                    <View style={styles.emptyActive}>
-                      <Ionicons name="checkmark-done" size={20} color={Colors.success} />
-                      <Text style={styles.emptyActiveText}>No active medications right now.</Text>
-                    </View>
-                  ) : (
-                    activeMeds.map((med, index) => renderMedicationCard(med, index, true))
-                  )}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.primary} />
+              }
+            >
+              {isLoading ? (
+                <View style={styles.emptyContainer}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={styles.emptyDescription}>Loading medications…</Text>
                 </View>
+              ) : error ? (
+                <EmptyState
+                  variant="error"
+                  icon="cloud-offline-outline"
+                  title="Unable to load medications"
+                  description="We couldn't sync your medication list. Pull down to refresh or visit the web portal."
+                  actionLabel="Open Web Portal"
+                  onAction={openWebMeds}
+                />
+              ) : meds.length === 0 ? (
+                <EmptyState
+                  variant="empty"
+                  icon="medkit-outline"
+                  title="No medications yet"
+                  description="Start a visit or add medications in your web portal to see them here."
+                  actionLabel="Open Web Portal"
+                  onAction={openWebMeds}
+                />
+              ) : (
 
-                {inactiveMeds.length > 0 && (
-                  <Card style={styles.inactiveCard}>
-                    <Pressable
-                      style={styles.inactiveHeader}
-                      onPress={() => setShowInactive((prev) => !prev)}
-                    >
-                      <View style={styles.inactiveHeaderLeft}>
-                        <Ionicons name="archive-outline" size={18} color={Colors.textMuted} />
-                        <Text style={styles.inactiveTitle}>Recently stopped</Text>
-                        <View style={styles.sectionCount}>
-                          <Text style={styles.sectionCountText}>{inactiveMeds.length}</Text>
-                        </View>
+                <>
+                  <Text style={styles.sectionSubtitle}>
+                    Active medications automatically update as your visit summaries note changes.
+                  </Text>
+
+                  <View style={styles.section}>
+                    {activeMeds.length === 0 ? (
+                      <View style={styles.emptyActive}>
+                        <Ionicons name="checkmark-done" size={20} color={Colors.success} />
+                        <Text style={styles.emptyActiveText}>No active medications right now.</Text>
                       </View>
-                      <Ionicons
-                        name={showInactive ? 'chevron-up' : 'chevron-down'}
-                        size={18}
-                        color={Colors.textMuted}
-                      />
-                    </Pressable>
+                    ) : (
+                      activeMeds.map((med, index) => renderMedicationCard(med, index, true))
+                    )}
+                  </View>
 
-                    {showInactive &&
-                      inactiveMeds.map((med, index) => renderMedicationCard(med, index, false))}
-                  </Card>
-                )}
-              </>
-            )}
-          </ScrollView>
-        </View>
-      </SafeAreaView>
-    </ErrorBoundary>
+                  {inactiveMeds.length > 0 && (
+                    <Card style={styles.inactiveCard}>
+                      <Pressable
+                        style={styles.inactiveHeader}
+                        onPress={() => setShowInactive((prev) => !prev)}
+                      >
+                        <View style={styles.inactiveHeaderLeft}>
+                          <Ionicons name="archive-outline" size={18} color={Colors.textMuted} />
+                          <Text style={styles.inactiveTitle}>Recently stopped</Text>
+                          <View style={styles.sectionCount}>
+                            <Text style={styles.sectionCountText}>{inactiveMeds.length}</Text>
+                          </View>
+                        </View>
+                        <Ionicons
+                          name={showInactive ? 'chevron-up' : 'chevron-down'}
+                          size={18}
+                          color={Colors.textMuted}
+                        />
+                      </Pressable>
+
+                      {showInactive &&
+                        inactiveMeds.map((med, index) => renderMedicationCard(med, index, false))}
+                    </Card>
+                  )}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </SafeAreaView>
+      </ErrorBoundary>
+    </>
   );
 }
 
@@ -554,5 +705,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  // Reminder styles
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(3),
+    marginBottom: spacing(3),
+    backgroundColor: 'rgba(64,201,208,0.08)',
+    borderRadius: Radius.md,
+  },
+  reminderTimeText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.text,
+  },
+  reminderEditButton: {
+    padding: spacing(2),
+  },
+  reminderRemoveButton: {
+    padding: spacing(2),
+  },
+  setReminderButton: {
+    flex: 1,
+  },
+  setReminderText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.primary,
+  },
 });
-

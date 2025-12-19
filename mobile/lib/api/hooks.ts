@@ -325,3 +325,62 @@ export function useRealtimeNudges(
 // Export types
 export type { Visit, Medication, ActionItem, UserProfile, Nudge };
 
+// =============================================================================
+// Medication Reminders Hooks
+// =============================================================================
+
+import { useMutation } from '@tanstack/react-query';
+import type {
+  MedicationReminder,
+  CreateMedicationReminderRequest,
+  UpdateMedicationReminderRequest,
+} from '@lumimd/sdk';
+
+export const medicationRemindersKey = ['medicationReminders'] as const;
+
+export function useMedicationReminders(options?: QueryEnabledOptions<MedicationReminder[]>) {
+  return useQuery<MedicationReminder[]>({
+    queryKey: medicationRemindersKey,
+    staleTime: 30_000,
+    ...options,
+    queryFn: async () => {
+      const response = await api.medicationReminders.list();
+      return response.reminders;
+    },
+  });
+}
+
+export function useCreateMedicationReminder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateMedicationReminderRequest) =>
+      api.medicationReminders.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
+    },
+  });
+}
+
+export function useUpdateMedicationReminder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateMedicationReminderRequest }) =>
+      api.medicationReminders.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
+    },
+  });
+}
+
+export function useDeleteMedicationReminder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.medicationReminders.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
+    },
+  });
+}
