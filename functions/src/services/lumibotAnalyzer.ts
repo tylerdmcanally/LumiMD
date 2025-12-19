@@ -692,3 +692,75 @@ export async function createFollowUpNudge(input: CreateFollowUpNudgeInput): Prom
         return null;
     }
 }
+
+// =============================================================================
+// Insight Nudges (Trend Detection)
+// =============================================================================
+
+interface CreateInsightNudgeInput {
+    userId: string;
+    type: 'weight' | 'bp' | 'glucose';
+    pattern: string;
+    severity: string;
+    title: string;
+    message: string;
+}
+
+/**
+ * Create an insight nudge when a trend pattern is detected.
+ * These are informational nudges with lifestyle suggestions.
+ */
+export async function createInsightNudge(input: CreateInsightNudgeInput): Promise<string | null> {
+    const { userId, type, pattern, severity, title, message } = input;
+
+    // Don't create nudge if we recently created one for this pattern
+    const recentInsights = await getNudgesCollection()
+        .where('userId', '==', userId)
+        .where('type', '==', 'insight')
+        .where('conditionId', '==', `${type}_${pattern}`)
+        .where('createdAt', '>', admin.firestore.Timestamp.fromDate(
+            new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) // Last 3 days
+        ))
+        .limit(1)
+        .get();
+
+    if (!recentInsights.empty) {
+        functions.logger.info(`[LumibotAnalyzer] Skipping duplicate insight nudge`, {
+            userId,
+            pattern: `${type}_${pattern}`,
+        });
+        return null;
+    }
+
+    // Schedule for now (immediate visibility)
+    const scheduledDate = new Date();
+    scheduledDate.setSeconds(scheduledDate.getSeconds() + 10);
+
+    try {
+        const nudgeId = await createNudge({
+            userId,
+            visitId: 'insight',
+            type: 'insight',
+            conditionId: `${type}_${pattern}`, // Used for deduplication
+            title,
+            message,
+            actionType: 'view_insight',
+            scheduledFor: scheduledDate,
+            sequenceDay: 0,
+            sequenceId: `insight_${type}_${Date.now()}`,
+        });
+
+        functions.logger.info(`[LumibotAnalyzer] Created insight nudge`, {
+            userId,
+            nudgeId,
+            type,
+            pattern,
+            severity,
+        });
+
+        return nudgeId;
+    } catch (error) {
+        functions.logger.error(`[LumibotAnalyzer] Failed to create insight nudge:`, error);
+        return null;
+    }
+}

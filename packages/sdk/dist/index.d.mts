@@ -200,9 +200,9 @@ interface ShareInvite {
  *
  * Types for nudges, health logs, and health tracking.
  */
-type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction';
+type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight';
 type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
-type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'confirm_yes_no' | 'medication_check' | 'symptom_check' | 'acknowledge';
+type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'confirm_yes_no' | 'medication_check' | 'symptom_check' | 'acknowledge' | 'view_insight';
 interface Nudge {
     id: string;
     userId: string;

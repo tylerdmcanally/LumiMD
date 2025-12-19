@@ -21,7 +21,8 @@ import {
     checkHealthValue,
     screenForEmergencySymptoms,
 } from '../services/safetyChecker';
-import { completeNudge, createFollowUpNudge } from '../services/lumibotAnalyzer';
+import { completeNudge, createFollowUpNudge, createInsightNudge } from '../services/lumibotAnalyzer';
+import { getPrimaryInsight } from '../services/trendAnalyzer';
 
 
 export const healthLogsRouter = Router();
@@ -79,6 +80,67 @@ const createHealthLogSchema = z.object({
     source: z.enum(['manual', 'nudge', 'quick_log']).default('manual'),
     symptoms: z.array(z.string()).optional(), // For safety checking
 });
+
+// =============================================================================
+// Trend Analysis Helper
+// =============================================================================
+
+/**
+ * Check for trend patterns after a health log is created.
+ * If a significant pattern is found, create an insight nudge.
+ */
+async function checkForTrendInsights(userId: string, logType: string): Promise<void> {
+    // Only analyze for types we have trend detection
+    if (!['bp', 'glucose', 'weight'].includes(logType)) {
+        return;
+    }
+
+    // Fetch recent health logs (last 14 days)
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const logsSnapshot = await getHealthLogsCollection()
+        .where('userId', '==', userId)
+        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(fourteenDaysAgo))
+        .orderBy('createdAt', 'asc')
+        .get();
+
+    if (logsSnapshot.empty || logsSnapshot.size < 3) {
+        return; // Not enough data for trend analysis
+    }
+
+    // Transform to format expected by trend analyzer
+    const logs = logsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            type: data.type as string,
+            value: data.data as Record<string, unknown>,
+            createdAt: (data.createdAt as admin.firestore.Timestamp).toDate(),
+        };
+    });
+
+    // Run trend analysis
+    const insight = getPrimaryInsight(logs);
+
+    if (insight && insight.severity !== 'positive') {
+        // Create insight nudge for non-positive patterns
+        await createInsightNudge({
+            userId,
+            type: insight.type,
+            pattern: insight.pattern,
+            severity: insight.severity,
+            title: insight.title,
+            message: insight.message,
+        });
+
+        functions.logger.info(`[healthLogs] Created trend insight nudge`, {
+            userId,
+            type: insight.type,
+            pattern: insight.pattern,
+            severity: insight.severity,
+        });
+    }
+}
 
 // =============================================================================
 // POST /v1/health-logs - Create new health log
@@ -155,6 +217,12 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
             userId,
             type: data.type,
             alertLevel: safetyResult.alertLevel,
+        });
+
+        // TREND ANALYSIS: Check for patterns after logging
+        // Run asynchronously so we don't slow down the response
+        checkForTrendInsights(userId, data.type).catch(err => {
+            functions.logger.error('[healthLogs] Trend analysis failed:', err);
         });
 
 

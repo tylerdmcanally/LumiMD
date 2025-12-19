@@ -4,7 +4,7 @@
  * Types for nudges, health logs, and health tracking.
  */
 
-export type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction';
+export type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight';
 export type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
 export type NudgeActionType =
     | 'log_bp'
@@ -13,7 +13,8 @@ export type NudgeActionType =
     | 'confirm_yes_no'
     | 'medication_check'
     | 'symptom_check'
-    | 'acknowledge';
+    | 'acknowledge'
+    | 'view_insight';
 
 export interface Nudge {
     id: string;

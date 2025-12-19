@@ -32,6 +32,8 @@ function getIconForActionType(actionType: NudgeActionType): keyof typeof Ionicon
             return 'pulse-outline';
         case 'acknowledge':
             return 'information-circle-outline';
+        case 'view_insight':
+            return 'analytics-outline';
         default:
             return 'chatbubble-outline';
     }
@@ -44,7 +46,9 @@ function getIconColorForType(type: Nudge['type']): string {
         case 'medication_checkin':
             return Colors.accent;
         case 'introduction':
-            return Colors.primary; // Or a specific color for intros
+            return Colors.primary;
+        case 'insight':
+            return Colors.accent; // Purple/accent for insights
         default:
             return Colors.primary;
     }
@@ -78,7 +82,8 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                         >
                             <Text style={styles.primaryButtonText}>
                                 {nudge.actionType === 'confirm_yes_no' ? 'Respond' :
-                                    nudge.actionType === 'acknowledge' ? 'Got it' : 'Log'}
+                                    nudge.actionType === 'acknowledge' ? 'Got it' :
+                                        nudge.actionType === 'view_insight' ? 'Got it' : 'Log'}
                             </Text>
                         </Pressable>
 

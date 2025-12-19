@@ -73,8 +73,8 @@ export function LumiBotBanner({
     }, []);
 
     const handleAction = useCallback((nudge: Nudge) => {
-        if (nudge.actionType === 'acknowledge') {
-            // Introduction nudge - just dismiss it after acknowledging
+        if (nudge.actionType === 'acknowledge' || nudge.actionType === 'view_insight') {
+            // Introduction/insight nudge - just dismiss it after acknowledging
             onUpdateNudge(nudge.id, { status: 'dismissed' });
         } else if (nudge.actionType === 'confirm_yes_no') {
             Alert.alert(
