@@ -10,6 +10,7 @@ import * as functions from 'firebase-functions';
 import PdfPrinter from 'pdfmake';
 import type { TDocumentDefinitions, Content, TableCell } from 'pdfmake/interfaces';
 import { BloodPressureValue, GlucoseValue, WeightValue, HealthLogType } from '../types/lumibot';
+import { analyzeTrends, TrendInsight } from './trendAnalyzer';
 
 // =============================================================================
 // Types
@@ -36,6 +37,7 @@ interface ReportData {
     generatedAt: string;
     healthLogs: HealthLogDoc[];
     medications: MedicationDoc[];
+    trendInsights: TrendInsight[];
 }
 
 interface ReportStats {
@@ -364,6 +366,59 @@ function buildDocumentDefinition(data: ReportData): TDocumentDefinitions {
         });
     }
 
+    // Trend Insights Section
+    if (data.trendInsights && data.trendInsights.length > 0) {
+        content.push({ text: '', margin: [0, 10, 0, 0] });
+        content.push({ text: 'Trend Analysis', style: 'sectionHeader' });
+
+        const trendTableBody: TableCell[][] = [
+            [
+                { text: 'Metric', style: 'tableHeader' },
+                { text: 'Pattern', style: 'tableHeader' },
+                { text: 'Insight', style: 'tableHeader' },
+            ],
+        ];
+
+        data.trendInsights.forEach(insight => {
+            const metricName = insight.type === 'bp' ? 'Blood Pressure'
+                : insight.type === 'glucose' ? 'Blood Glucose'
+                    : insight.type === 'weight' ? 'Weight' : insight.type;
+
+            const severityColor = insight.severity === 'concern' ? BRAND.danger
+                : insight.severity === 'attention' ? BRAND.warning
+                    : insight.severity === 'positive' ? BRAND.success
+                        : BRAND.text;
+
+            const trendArrow = insight.data.trend === 'up' ? '↑'
+                : insight.data.trend === 'down' ? '↓'
+                    : '→';
+
+            trendTableBody.push([
+                { text: metricName, style: 'tableCell' },
+                { text: `${trendArrow} ${insight.title}`, style: 'tableCell', color: severityColor },
+                { text: insight.message, style: 'tableCell' },
+            ]);
+        });
+
+        content.push({
+            table: {
+                headerRows: 1,
+                widths: ['auto', 'auto', '*'],
+                body: trendTableBody,
+            },
+            layout: {
+                hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.5,
+                vLineWidth: () => 0,
+                hLineColor: (i) => i === 1 ? BRAND.primary : BRAND.border,
+                paddingTop: () => 8,
+                paddingBottom: () => 8,
+                paddingLeft: () => 8,
+                paddingRight: () => 8,
+            },
+            margin: [0, 0, 0, 20],
+        });
+    }
+
     // Active Medications Section
     content.push({ text: '', margin: [0, 10, 0, 0] });
     content.push({ text: 'Active Medications', style: 'sectionHeader' });
@@ -614,6 +669,16 @@ export async function generateProviderReport(
         days,
     });
 
+    // Run trend analysis on health logs
+    const logsForAnalysis = healthLogs.map(log => ({
+        type: log.type as string,
+        value: log.value as unknown as Record<string, unknown>,
+        createdAt: log.createdAt.toDate(),
+    }));
+    const trendInsights = analyzeTrends(logsForAnalysis);
+
+    functions.logger.info(`[PDF] Trend analysis found ${trendInsights.length} insights`);
+
     // Build report data
     const reportData: ReportData = {
         reportPeriod: `${days} days`,
@@ -624,6 +689,7 @@ export async function generateProviderReport(
         }),
         healthLogs,
         medications,
+        trendInsights,
     };
 
     // Generate PDF
