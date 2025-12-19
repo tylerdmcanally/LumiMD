@@ -353,6 +353,20 @@ function createApiClient(config) {
         }
         return response.blob();
       }
+    },
+    medicationReminders: {
+      list: () => apiRequest("/v1/medication-reminders"),
+      create: (data) => apiRequest("/v1/medication-reminders", {
+        method: "POST",
+        body: JSON.stringify(data)
+      }),
+      update: (id, data) => apiRequest(`/v1/medication-reminders/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data)
+      }),
+      delete: (id) => apiRequest(`/v1/medication-reminders/${id}`, {
+        method: "DELETE"
+      })
     }
   };
 }

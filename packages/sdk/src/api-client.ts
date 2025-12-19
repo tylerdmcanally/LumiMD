@@ -13,6 +13,9 @@ import type {
   UpdateNudgeRequest,
   RespondToNudgeRequest,
   NudgeUpdateResponse,
+  MedicationReminder,
+  CreateMedicationReminderRequest,
+  UpdateMedicationReminderRequest,
 } from './models/lumibot';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -473,6 +476,25 @@ export function createApiClient(config: ApiClientConfig) {
         }
         return response.blob();
       },
+    },
+
+    medicationReminders: {
+      list: () =>
+        apiRequest<{ reminders: MedicationReminder[] }>('/v1/medication-reminders'),
+      create: (data: CreateMedicationReminderRequest) =>
+        apiRequest<MedicationReminder>('/v1/medication-reminders', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: UpdateMedicationReminderRequest) =>
+        apiRequest<MedicationReminder>(`/v1/medication-reminders/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        }),
+      delete: (id: string) =>
+        apiRequest<void>(`/v1/medication-reminders/${id}`, {
+          method: 'DELETE',
+        }),
     },
 
   };

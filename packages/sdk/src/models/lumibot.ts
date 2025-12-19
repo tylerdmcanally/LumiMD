@@ -130,3 +130,34 @@ export interface NudgeUpdateResponse {
     status: string;
     message: string;
 }
+
+// =============================================================================
+// Medication Reminder Types
+// =============================================================================
+
+export interface MedicationReminder {
+    id: string;
+    userId: string;
+    medicationId: string;
+    medicationName: string;
+    medicationDose?: string;
+    times: string[];  // HH:MM format in 24-hour
+    enabled: boolean;
+    lastSentAt?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CreateMedicationReminderRequest {
+    medicationId: string;
+    times: string[];  // HH:MM format
+}
+
+export interface UpdateMedicationReminderRequest {
+    times?: string[];
+    enabled?: boolean;
+}
+
+export interface MedicationRemindersResponse {
+    reminders: MedicationReminder[];
+}

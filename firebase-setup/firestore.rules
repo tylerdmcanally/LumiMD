@@ -117,6 +117,23 @@ service cloud.firestore {
       allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
     }
 
+    match /medicationReminders/{reminderId} {
+      // Owner can read their reminders
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      
+      // Owner can create reminders - enforce userId matches auth
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Owner can update their reminders - prevent userId modification
+      allow update: if isAuthenticated()
+        && isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+      
+      // Owner can delete their reminders
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+
     match /shares/{shareId} {
       // shareId format: {ownerId}_{caregiverUserId}
       // Owner and caregiver can both read their share relationship

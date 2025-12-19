@@ -15,12 +15,14 @@ import { sharesRouter } from './routes/shares';
 import { nudgesRouter } from './routes/nudges';
 import { nudgesDebugRouter } from './routes/nudgesDebug';
 import { healthLogsRouter } from './routes/healthLogs';
+import { medicationRemindersRouter } from './routes/medicationReminders';
 import { apiLimiter } from './middlewares/rateLimit';
 import { requireHttps } from './middlewares/httpsOnly';
 import { errorHandler } from './middlewares/errorHandler';
 import { corsConfig } from './config';
 import { initSentry, sentryRequestHandler, setupSentryErrorHandler } from './utils/sentry';
 import { processAndNotifyDueNudges } from './services/nudgeNotificationService';
+import { processAndNotifyMedicationReminders } from './services/medicationReminderService';
 
 export { processVisitAudio } from './triggers/processVisitAudio';
 export { checkPendingTranscriptions } from './triggers/checkPendingTranscriptions';
@@ -154,6 +156,7 @@ app.use('/v1/shares', sharesRouter);
 app.use('/v1/nudges', nudgesRouter);
 app.use('/v1/nudges', nudgesDebugRouter); // Debug endpoints under same path
 app.use('/v1/health-logs', healthLogsRouter);
+app.use('/v1/medication-reminders', medicationRemindersRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -192,7 +195,28 @@ export const processNudgeNotifications = onSchedule(
       functions.logger.info('[Scheduler] Nudge processing complete', result);
     } catch (error) {
       functions.logger.error('[Scheduler] Error processing nudges:', error);
-      throw error; // Re-throw to mark the invocation as failed
+      throw error;
+    }
+  }
+);
+
+// Scheduled function to process medication reminders every 15 minutes
+export const processMedicationReminders = onSchedule(
+  {
+    schedule: 'every 15 minutes',
+    timeZone: 'America/Chicago',
+    memory: '256MiB',
+    timeoutSeconds: 60,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running medication reminder processor');
+
+    try {
+      const result = await processAndNotifyMedicationReminders();
+      functions.logger.info('[Scheduler] Med reminder processing complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error processing med reminders:', error);
+      throw error;
     }
   }
 );

@@ -296,6 +296,29 @@ interface NudgeUpdateResponse {
     status: string;
     message: string;
 }
+interface MedicationReminder {
+    id: string;
+    userId: string;
+    medicationId: string;
+    medicationName: string;
+    medicationDose?: string;
+    times: string[];
+    enabled: boolean;
+    lastSentAt?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+interface CreateMedicationReminderRequest {
+    medicationId: string;
+    times: string[];
+}
+interface UpdateMedicationReminderRequest {
+    times?: string[];
+    enabled?: boolean;
+}
+interface MedicationRemindersResponse {
+    reminders: MedicationReminder[];
+}
 
 /**
  * Shared API Client
@@ -382,6 +405,14 @@ declare function createApiClient(config: ApiClientConfig): {
         export: (days?: number) => Promise<any>;
         providerReport: () => Promise<Blob>;
     };
+    medicationReminders: {
+        list: () => Promise<{
+            reminders: MedicationReminder[];
+        }>;
+        create: (data: CreateMedicationReminderRequest) => Promise<MedicationReminder>;
+        update: (id: string, data: UpdateMedicationReminderRequest) => Promise<MedicationReminder>;
+        delete: (id: string) => Promise<void>;
+    };
 };
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -456,4 +487,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type GlucoseValue, type HealthLog, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type RespondToNudgeRequest, type Share, type ShareInvite, type SymptomCheckValue, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type GlucoseValue, type HealthLog, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type RespondToNudgeRequest, type Share, type ShareInvite, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
