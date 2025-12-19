@@ -5,8 +5,6 @@ import {
     TouchableOpacity,
     StyleSheet,
     Modal,
-    ActionSheetIOS,
-    Platform,
     Pressable,
     Alert,
 } from 'react-native';
@@ -29,33 +27,16 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
     const [showBPModal, setShowBPModal] = useState(false);
     const [showGlucoseModal, setShowGlucoseModal] = useState(false);
     const [showWeightModal, setShowWeightModal] = useState(false);
-    const [showAndroidMenu, setShowAndroidMenu] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handlePress = () => {
-        if (Platform.OS === 'ios') {
-            ActionSheetIOS.showActionSheetWithOptions(
-                {
-                    options: ['Cancel', 'Blood Pressure', 'Blood Glucose', 'Weight'],
-                    cancelButtonIndex: 0,
-                },
-                (buttonIndex) => {
-                    if (buttonIndex === 1) {
-                        setShowBPModal(true);
-                    } else if (buttonIndex === 2) {
-                        setShowGlucoseModal(true);
-                    } else if (buttonIndex === 3) {
-                        setShowWeightModal(true);
-                    }
-                }
-            );
-        } else {
-            setShowAndroidMenu(true);
-        }
+        // Toggle the menu
+        setShowMenu(prev => !prev);
     };
 
-    const handleAndroidOption = (option: 'bp' | 'glucose' | 'weight') => {
-        setShowAndroidMenu(false);
+    const handleMenuOption = (option: 'bp' | 'glucose' | 'weight') => {
+        setShowMenu(false);
         if (option === 'bp') {
             setShowBPModal(true);
         } else if (option === 'glucose') {
@@ -64,6 +45,7 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
             setShowWeightModal(true);
         }
     };
+
 
     // Handler for BP submission
     const handleBPSubmit = useCallback(async (value: BloodPressureValue): Promise<{
@@ -200,51 +182,49 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
                 isSubmitting={isSubmitting}
             />
 
-            {/* Android Menu Modal */}
-            {Platform.OS === 'android' && (
-                <Modal
-                    visible={showAndroidMenu}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setShowAndroidMenu(false)}
+            {/* Menu Modal */}
+            <Modal
+                visible={showMenu}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowMenu(false)}
+            >
+                <Pressable
+                    style={styles.menuOverlay}
+                    onPress={() => setShowMenu(false)}
                 >
-                    <Pressable
-                        style={styles.androidOverlay}
-                        onPress={() => setShowAndroidMenu(false)}
-                    >
-                        <View style={styles.androidMenu}>
-                            <Text style={styles.androidMenuTitle}>Log Reading</Text>
-                            <TouchableOpacity
-                                style={styles.androidMenuItem}
-                                onPress={() => handleAndroidOption('bp')}
-                            >
-                                <Ionicons name="heart-outline" size={20} color={Colors.error} />
-                                <Text style={styles.androidMenuItemText}>Blood Pressure</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.androidMenuItem}
-                                onPress={() => handleAndroidOption('glucose')}
-                            >
-                                <Ionicons name="water-outline" size={20} color={Colors.primary} />
-                                <Text style={styles.androidMenuItemText}>Blood Glucose</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.androidMenuItem}
-                                onPress={() => handleAndroidOption('weight')}
-                            >
-                                <Ionicons name="scale-outline" size={20} color={Colors.success} />
-                                <Text style={styles.androidMenuItemText}>Weight</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.androidMenuItem, styles.androidCancelItem]}
-                                onPress={() => setShowAndroidMenu(false)}
-                            >
-                                <Text style={styles.androidCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </Pressable>
-                </Modal>
-            )}
+                    <View style={styles.menuContainer}>
+                        <Text style={styles.menuTitle}>Log Reading</Text>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => handleMenuOption('bp')}
+                        >
+                            <Ionicons name="heart-outline" size={28} color={Colors.error} />
+                            <Text style={styles.menuItemText}>Blood Pressure</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => handleMenuOption('glucose')}
+                        >
+                            <Ionicons name="water-outline" size={28} color={Colors.primary} />
+                            <Text style={styles.menuItemText}>Blood Glucose</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => handleMenuOption('weight')}
+                        >
+                            <Ionicons name="scale-outline" size={28} color={Colors.success} />
+                            <Text style={styles.menuItemText}>Weight</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.menuItem, styles.cancelItem]}
+                            onPress={() => setShowMenu(false)}
+                        >
+                            <Text style={styles.cancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                    </View>
+                </Pressable>
+            </Modal>
         </>
     );
 }
@@ -264,46 +244,47 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
     },
-    // Android menu styles
-    androidOverlay: {
+    // Menu styles
+    menuOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    androidMenu: {
+    menuContainer: {
         backgroundColor: Colors.surface,
         borderRadius: Radius.lg,
         width: '80%',
         maxWidth: 320,
         paddingVertical: spacing(4),
     },
-    androidMenuTitle: {
+    menuTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: Colors.text,
         textAlign: 'center',
         marginBottom: spacing(4),
     },
-    androidMenuItem: {
+    menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: spacing(3),
+        paddingVertical: spacing(4),
         paddingHorizontal: spacing(5),
         gap: spacing(3),
     },
-    androidMenuItemText: {
-        fontSize: 16,
+    menuItemText: {
+        fontSize: 18,
+        fontWeight: '500',
         color: Colors.text,
     },
-    androidCancelItem: {
+    cancelItem: {
         marginTop: spacing(2),
         borderTopWidth: 1,
         borderTopColor: Colors.border,
         paddingTop: spacing(4),
         justifyContent: 'center',
     },
-    androidCancelText: {
+    cancelText: {
         fontSize: 16,
         color: Colors.textMuted,
         textAlign: 'center',

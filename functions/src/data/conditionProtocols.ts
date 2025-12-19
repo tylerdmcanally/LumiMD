@@ -372,6 +372,263 @@ export const heartFailureProtocol: ConditionProtocol = {
 };
 
 // =============================================================================
+// COPD Protocol (GOLD Guidelines)
+// =============================================================================
+
+export const copdProtocol: ConditionProtocol = {
+    id: 'copd',
+    name: 'COPD',
+    aliases: [
+        'copd',
+        'chronic obstructive pulmonary disease',
+        'emphysema',
+        'chronic bronchitis',
+        'lung disease',
+        'breathing problems',
+        'pulmonary disease',
+        'obstructive lung',
+    ],
+    source: 'GOLD Guidelines',
+
+    tracking: [
+        {
+            type: 'symptom_check',
+            suggestedFrequency: 'daily',
+        },
+        {
+            type: 'peak_flow',
+            suggestedFrequency: 'daily',
+            unit: 'L/min',
+        },
+    ],
+
+    thresholds: {},
+
+    emergencySymptoms: [
+        'severe shortness of breath',
+        'can\'t catch breath',
+        'gasping for air',
+        'blue lips',
+        'blue fingernails',
+        'confusion',
+        'drowsiness',
+        'chest pain',
+        'rapid heartbeat',
+        'high fever',
+        'coughing up blood',
+    ],
+
+    nudgeSchedule: [
+        {
+            day: 1,
+            message: 'Welcome! Tracking your breathing symptoms daily helps catch flare-ups early. Let\'s start with how you\'re feeling today.',
+        },
+        {
+            day: 3,
+            message: 'How\'s your breathing today? Any increase in cough, sputum, or shortness of breath?',
+        },
+        {
+            day: 7,
+            message: 'Weekly check-in: Rate your breathing this week. Have you needed your rescue inhaler more than usual?',
+        },
+        {
+            day: 14,
+            recurring: true,
+            interval: 7,
+            message: 'Time for your COPD check-in. How are your breathing symptoms? Any changes in sputum color or amount?',
+        },
+    ],
+
+    responseTemplates: {
+        normal: 'Breathing symptoms are stable. Keep up the good work with your management!',
+        caution: 'You\'re reporting increased symptoms. Start your action plan if you have one, and watch for further changes.',
+        warning: 'Your symptoms have worsened significantly. Contact your doctor\'s office today to discuss whether you need to adjust your medications.',
+        emergency: 'These symptoms need immediate attention. Please call 911 or go to the emergency room now.',
+    },
+};
+
+// =============================================================================
+// Atrial Fibrillation Protocol (ACC/AHA Guidelines)
+// =============================================================================
+
+export const afibProtocol: ConditionProtocol = {
+    id: 'afib',
+    name: 'Atrial Fibrillation',
+    aliases: [
+        'atrial fibrillation',
+        'afib',
+        'a-fib',
+        'a fib',
+        'af',
+        'irregular heartbeat',
+        'arrhythmia',
+        'irregular rhythm',
+        'heart flutter',
+        'atrial flutter',
+    ],
+    source: 'ACC/AHA AFib Guidelines',
+
+    tracking: [
+        {
+            type: 'symptom_check',
+            suggestedFrequency: 'daily',
+        },
+        {
+            type: 'bp',
+            suggestedFrequency: 'daily',
+            unit: 'mmHg',
+        },
+    ],
+
+    thresholds: {
+        bp: {
+            normal: {
+                systolic: { max: 129 },
+                diastolic: { max: 79 },
+            },
+            caution: {
+                systolic: { min: 130, max: 159 },
+                diastolic: { min: 80, max: 99 },
+            },
+            warning: {
+                systolic: { min: 160 },
+                diastolic: { min: 100 },
+            },
+        },
+    },
+
+    emergencySymptoms: [
+        'chest pain',
+        'chest pressure',
+        'severe shortness of breath',
+        'fainting',
+        'loss of consciousness',
+        'difficulty speaking',
+        'slurred speech',
+        'face drooping',
+        'arm weakness',
+        'sudden numbness',
+        'sudden confusion',
+        'severe dizziness',
+        'racing heart that won\'t slow',
+    ],
+
+    nudgeSchedule: [
+        {
+            day: 1,
+            message: 'Welcome! For AFib, we\'ll track your heart rhythm symptoms and help you watch for warning signs.',
+        },
+        {
+            day: 3,
+            message: 'How\'s your heart rhythm feeling? Any palpitations, racing heart, or irregular beats?',
+        },
+        {
+            day: 7,
+            message: 'Weekly AFib check: Rate your energy level and any episodes of irregular heartbeat this week.',
+        },
+        {
+            day: 14,
+            recurring: true,
+            interval: 7,
+            message: 'Time for your rhythm check-in. How often have you noticed your heart fluttering or racing?',
+        },
+    ],
+
+    responseTemplates: {
+        normal: 'Rhythm symptoms are stable. Great job monitoring!',
+        caution: 'You\'re reporting more episodes than usual. Keep track and mention this at your next appointment.',
+        warning: 'Your symptoms suggest your AFib may not be well-controlled. Please contact your doctor\'s office to discuss your medications.',
+        emergency: 'These symptoms could indicate a stroke or serious heart issue. Call 911 immediately.',
+    },
+};
+
+// =============================================================================
+// Anticoagulation Protocol (CHEST Guidelines)
+// =============================================================================
+
+export const anticoagulationProtocol: ConditionProtocol = {
+    id: 'anticoagulation',
+    name: 'Blood Thinner Therapy',
+    aliases: [
+        'anticoagulation',
+        'blood thinner',
+        'blood thinners',
+        'warfarin',
+        'coumadin',
+        'eliquis',
+        'apixaban',
+        'xarelto',
+        'rivaroxaban',
+        'pradaxa',
+        'dabigatran',
+        'lovenox',
+        'enoxaparin',
+        'heparin',
+        'dvt',
+        'deep vein thrombosis',
+        'pulmonary embolism',
+        'pe',
+        'blood clot',
+        'clot prevention',
+    ],
+    source: 'CHEST Antithrombotic Guidelines',
+
+    tracking: [
+        {
+            type: 'symptom_check',
+            suggestedFrequency: 'daily',
+        },
+    ],
+
+    thresholds: {},
+
+    emergencySymptoms: [
+        'bleeding that won\'t stop',
+        'uncontrolled bleeding',
+        'coughing up blood',
+        'vomiting blood',
+        'blood in urine',
+        'blood in stool',
+        'black tarry stool',
+        'severe headache',
+        'worst headache of life',
+        'confusion',
+        'difficulty speaking',
+        'vision changes',
+        'severe bruising',
+        'fall with head injury',
+    ],
+
+    nudgeSchedule: [
+        {
+            day: 1,
+            message: 'Welcome! Blood thinners require careful monitoring. We\'ll help you watch for any concerning bleeding or bruising.',
+        },
+        {
+            day: 3,
+            message: 'Quick check: Any unusual bleeding, bruising, or blood in your stool/urine? These are important to track.',
+        },
+        {
+            day: 7,
+            message: 'Weekly blood thinner check: How are you doing? Any bleeding, bruising, or missed doses this week?',
+        },
+        {
+            day: 14,
+            recurring: true,
+            interval: 7,
+            message: 'Time for your anticoagulation check-in. Any bleeding symptoms or bruising to report?',
+        },
+    ],
+
+    responseTemplates: {
+        normal: 'No concerning symptoms. Keep taking your medication as prescribed!',
+        caution: 'Minor bleeding/bruising is common, but monitor it closely. Apply pressure to cuts for longer than usual.',
+        warning: 'You\'re reporting concerning bleeding symptoms. Please contact your doctor\'s office today.',
+        emergency: 'Uncontrolled bleeding or signs of internal bleeding need immediate attention. Call 911 or go to the ER now.',
+    },
+};
+
+// =============================================================================
 // Protocol Registry
 // =============================================================================
 
@@ -379,6 +636,9 @@ export const conditionProtocols: ConditionProtocol[] = [
     hypertensionProtocol,
     diabetesProtocol,
     heartFailureProtocol,
+    copdProtocol,
+    afibProtocol,
+    anticoagulationProtocol,
 ];
 
 /**

@@ -48,11 +48,11 @@ export interface SymptomCheckModalProps {
 // =============================================================================
 
 const BREATHING_LABELS = [
-    'Normal',
-    'Slightly short',
+    'Breathing easy',
+    'A little winded',
     'Short of breath',
-    'Very short',
-    'Severe'
+    'Hard to catch breath',
+    "Can't catch breath"
 ];
 
 const ENERGY_LABELS = [
