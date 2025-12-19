@@ -196,6 +196,108 @@ interface ShareInvite {
 }
 
 /**
+ * LumiBot Models
+ *
+ * Types for nudges, health logs, and health tracking.
+ */
+type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction';
+type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
+type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'confirm_yes_no' | 'medication_check' | 'symptom_check' | 'acknowledge';
+interface Nudge {
+    id: string;
+    userId: string;
+    visitId: string;
+    type: NudgeType;
+    conditionId?: string;
+    medicationId?: string;
+    medicationName?: string;
+    title: string;
+    message: string;
+    actionType: NudgeActionType;
+    scheduledFor: string;
+    sequenceDay: number;
+    status: NudgeStatus;
+    createdAt: string;
+}
+type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check';
+type AlertLevel = 'normal' | 'caution' | 'warning' | 'emergency';
+interface BloodPressureValue {
+    systolic: number;
+    diastolic: number;
+    pulse?: number;
+}
+interface GlucoseValue {
+    reading: number;
+    timing?: 'fasting' | 'before_meal' | 'after_meal' | 'bedtime' | 'random';
+}
+interface WeightValue {
+    weight: number;
+    unit: 'lbs' | 'kg';
+}
+interface MedComplianceValue {
+    medicationId?: string;
+    medicationName: string;
+    response: 'yes' | 'no' | 'having_issues';
+    note?: string;
+}
+interface SymptomCheckValue {
+    symptoms: string[];
+    severity?: 'mild' | 'moderate' | 'severe';
+    note?: string;
+}
+type HealthLogValue = BloodPressureValue | GlucoseValue | WeightValue | MedComplianceValue | SymptomCheckValue;
+interface HealthLog {
+    id: string;
+    userId: string;
+    type: HealthLogType;
+    value: HealthLogValue;
+    alertLevel?: AlertLevel;
+    alertMessage?: string;
+    createdAt: string;
+    source: 'manual' | 'nudge' | 'quick_log';
+}
+interface HealthLogSummary {
+    type: HealthLogType;
+    count: number;
+    lastReading?: HealthLogValue;
+    lastReadingAt?: string;
+    averages?: Record<string, number>;
+    trend?: 'improving' | 'stable' | 'worsening';
+}
+interface HealthLogSummaryResponse {
+    period: string;
+    startDate: string;
+    endDate: string;
+    summaries: HealthLogSummary[];
+}
+interface CreateHealthLogRequest {
+    type: HealthLogType;
+    value: HealthLogValue;
+    nudgeId?: string;
+    visitId?: string;
+    source?: 'manual' | 'nudge' | 'quick_log';
+    symptoms?: string[];
+}
+interface CreateHealthLogResponse extends HealthLog {
+    shouldShowAlert?: boolean;
+}
+interface UpdateNudgeRequest {
+    status: 'completed' | 'snoozed' | 'dismissed';
+    snoozeDays?: number;
+    responseValue?: string | Record<string, unknown>;
+}
+interface RespondToNudgeRequest {
+    response: 'yes' | 'no' | 'good' | 'having_issues';
+    note?: string;
+    sideEffects?: string[];
+}
+interface NudgeUpdateResponse {
+    id: string;
+    status: string;
+    message: string;
+}
+
+/**
  * Shared API Client
  * Unified HTTP client with retry logic, timeout handling, and error mapping
  */
@@ -261,6 +363,24 @@ declare function createApiClient(config: ApiClientConfig): {
         getInvites: () => Promise<ShareInvite[]>;
         cancelInvite: (inviteId: string) => Promise<ShareInvite>;
     };
+    nudges: {
+        list: () => Promise<Nudge[]>;
+        history: (limit?: number) => Promise<Nudge[]>;
+        update: (id: string, data: UpdateNudgeRequest) => Promise<NudgeUpdateResponse>;
+        respond: (id: string, data: RespondToNudgeRequest) => Promise<NudgeUpdateResponse>;
+    };
+    healthLogs: {
+        list: (params?: {
+            type?: string;
+            limit?: number;
+            startDate?: string;
+            endDate?: string;
+        }) => Promise<HealthLog[]>;
+        create: (data: CreateHealthLogRequest) => Promise<CreateHealthLogResponse>;
+        delete: (id: string) => Promise<void>;
+        summary: (days?: number) => Promise<HealthLogSummaryResponse>;
+        export: (days?: number) => Promise<any>;
+    };
 };
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -275,6 +395,9 @@ declare const queryKeys: {
     medications: readonly ["medications"];
     medication: (id: string) => readonly ["medications", string];
     profile: readonly ["profile"];
+    nudges: readonly ["nudges"];
+    healthLogs: readonly ["healthLogs"];
+    healthLogsSummary: readonly ["healthLogs", "summary"];
 };
 declare function createApiHooks(api: ApiClient): {
     useVisits: (options?: Omit<UseQueryOptions<Visit[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Visit[], Error>;
@@ -285,6 +408,21 @@ declare function createApiHooks(api: ApiClient): {
     useMedications: (options?: Omit<UseQueryOptions<Medication[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
     useActiveMedications: (options?: Omit<UseQueryOptions<Medication[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
     useUserProfile: (options?: Omit<UseQueryOptions<UserProfile, Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<UserProfile, Error>;
+    useNudges: (options?: Omit<UseQueryOptions<Nudge[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Nudge[], Error>;
+    useHealthLogs: (params?: {
+        type?: string;
+        limit?: number;
+    }, options?: Omit<UseQueryOptions<HealthLog[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<HealthLog[], Error>;
+    useHealthLogsSummary: (days?: number, options?: Omit<UseQueryOptions<HealthLogSummaryResponse, Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<HealthLogSummaryResponse, Error>;
+    useUpdateNudge: () => _tanstack_react_query.UseMutationResult<NudgeUpdateResponse, Error, {
+        id: string;
+        data: UpdateNudgeRequest;
+    }, unknown>;
+    useRespondToNudge: () => _tanstack_react_query.UseMutationResult<NudgeUpdateResponse, Error, {
+        id: string;
+        data: RespondToNudgeRequest;
+    }, unknown>;
+    useCreateHealthLog: () => _tanstack_react_query.UseMutationResult<CreateHealthLogResponse, Error, CreateHealthLogRequest, unknown>;
 };
 
 type FirestoreModule = typeof firebase_firestore;
@@ -317,4 +455,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type ApiClient, type ApiClientConfig, type ApiError, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type Medication, type MedicationChanges, type MedicationEntry, type MedicationWarning, type Share, type ShareInvite, type UserProfile, type Visit, type VisitEducation, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type GlucoseValue, type HealthLog, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type RespondToNudgeRequest, type Share, type ShareInvite, type SymptomCheckValue, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

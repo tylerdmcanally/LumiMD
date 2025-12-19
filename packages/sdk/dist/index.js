@@ -308,6 +308,40 @@ function createApiClient(config) {
       cancelInvite: (inviteId) => apiRequest(`/v1/shares/invites/${inviteId}`, {
         method: "PATCH"
       })
+    },
+    // LumiBot Nudges
+    nudges: {
+      list: () => apiRequest("/v1/nudges"),
+      history: (limit) => apiRequest(`/v1/nudges/history${limit ? `?limit=${limit}` : ""}`),
+      update: (id, data) => apiRequest(`/v1/nudges/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data)
+      }),
+      respond: (id, data) => apiRequest(`/v1/nudges/${id}/respond`, {
+        method: "POST",
+        body: JSON.stringify(data)
+      })
+    },
+    // LumiBot Health Logs
+    healthLogs: {
+      list: (params) => {
+        const searchParams = new URLSearchParams();
+        if (params?.type) searchParams.append("type", params.type);
+        if (params?.limit) searchParams.append("limit", String(params.limit));
+        if (params?.startDate) searchParams.append("startDate", params.startDate);
+        if (params?.endDate) searchParams.append("endDate", params.endDate);
+        const query = searchParams.toString();
+        return apiRequest(`/v1/health-logs${query ? `?${query}` : ""}`);
+      },
+      create: (data) => apiRequest("/v1/health-logs", {
+        method: "POST",
+        body: JSON.stringify(data)
+      }),
+      delete: (id) => apiRequest(`/v1/health-logs/${id}`, {
+        method: "DELETE"
+      }),
+      summary: (days) => apiRequest(`/v1/health-logs/summary${days ? `?days=${days}` : ""}`),
+      export: (days) => apiRequest(`/v1/health-logs/export${days ? `?days=${days}` : ""}`)
     }
   };
 }
@@ -318,7 +352,10 @@ var queryKeys = {
   action: (id) => ["actions", id],
   medications: ["medications"],
   medication: (id) => ["medications", id],
-  profile: ["profile"]
+  profile: ["profile"],
+  nudges: ["nudges"],
+  healthLogs: ["healthLogs"],
+  healthLogsSummary: ["healthLogs", "summary"]
 };
 function createApiHooks(api) {
   function useVisits(options) {
@@ -396,6 +433,61 @@ function createApiHooks(api) {
       ...options
     });
   }
+  function useNudges(options) {
+    return reactQuery.useQuery({
+      queryKey: queryKeys.nudges,
+      queryFn: () => api.nudges.list(),
+      staleTime: 30 * 1e3,
+      // 30 seconds
+      ...options
+    });
+  }
+  function useHealthLogs(params, options) {
+    return reactQuery.useQuery({
+      queryKey: [...queryKeys.healthLogs, params],
+      queryFn: () => api.healthLogs.list(params),
+      staleTime: 60 * 1e3,
+      // 1 minute
+      ...options
+    });
+  }
+  function useHealthLogsSummary(days, options) {
+    return reactQuery.useQuery({
+      queryKey: [...queryKeys.healthLogsSummary, days],
+      queryFn: () => api.healthLogs.summary(days),
+      staleTime: 5 * 60 * 1e3,
+      // 5 minutes
+      ...options
+    });
+  }
+  function useUpdateNudge() {
+    const queryClient = reactQuery.useQueryClient();
+    return reactQuery.useMutation({
+      mutationFn: ({ id, data }) => api.nudges.update(id, data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+      }
+    });
+  }
+  function useRespondToNudge() {
+    const queryClient = reactQuery.useQueryClient();
+    return reactQuery.useMutation({
+      mutationFn: ({ id, data }) => api.nudges.respond(id, data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+      }
+    });
+  }
+  function useCreateHealthLog() {
+    const queryClient = reactQuery.useQueryClient();
+    return reactQuery.useMutation({
+      mutationFn: (data) => api.healthLogs.create(data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.healthLogs });
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+      }
+    });
+  }
   return {
     useVisits,
     useVisit,
@@ -404,7 +496,14 @@ function createApiHooks(api) {
     usePendingActions,
     useMedications,
     useActiveMedications,
-    useUserProfile
+    useUserProfile,
+    // LumiBot
+    useNudges,
+    useHealthLogs,
+    useHealthLogsSummary,
+    useUpdateNudge,
+    useRespondToNudge,
+    useCreateHealthLog
   };
 }
 var firestoreModule = null;

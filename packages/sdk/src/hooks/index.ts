@@ -3,9 +3,17 @@
  * Platform-agnostic data fetching hooks with caching and optimistic updates
  */
 
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { useQuery, useMutation, UseQueryOptions, useQueryClient } from '@tanstack/react-query';
 import type { ApiClient } from '../api-client';
 import type { Visit, Medication, ActionItem, UserProfile } from '../models';
+import type {
+  Nudge,
+  HealthLog,
+  HealthLogSummaryResponse,
+  CreateHealthLogRequest,
+  UpdateNudgeRequest,
+  RespondToNudgeRequest,
+} from '../models/lumibot';
 
 /**
  * Query Keys for cache management
@@ -18,6 +26,9 @@ export const queryKeys = {
   medications: ['medications'] as const,
   medication: (id: string) => ['medications', id] as const,
   profile: ['profile'] as const,
+  nudges: ['nudges'] as const,
+  healthLogs: ['healthLogs'] as const,
+  healthLogsSummary: ['healthLogs', 'summary'] as const,
 };
 
 export function createApiHooks(api: ApiClient) {
@@ -143,6 +154,97 @@ export function createApiHooks(api: ApiClient) {
     });
   }
 
+  // ==========================================================================
+  // LumiBot Hooks
+  // ==========================================================================
+
+  /**
+   * Fetch active nudges
+   */
+  function useNudges(
+    options?: Omit<UseQueryOptions<Nudge[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: queryKeys.nudges,
+      queryFn: () => api.nudges.list(),
+      staleTime: 30 * 1000, // 30 seconds
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch health logs
+   */
+  function useHealthLogs(
+    params?: { type?: string; limit?: number },
+    options?: Omit<UseQueryOptions<HealthLog[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: [...queryKeys.healthLogs, params],
+      queryFn: () => api.healthLogs.list(params),
+      staleTime: 60 * 1000, // 1 minute
+      ...options,
+    });
+  }
+
+  /**
+   * Fetch health logs summary
+   */
+  function useHealthLogsSummary(
+    days?: number,
+    options?: Omit<UseQueryOptions<HealthLogSummaryResponse, Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: [...queryKeys.healthLogsSummary, days],
+      queryFn: () => api.healthLogs.summary(days),
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      ...options,
+    });
+  }
+
+  /**
+   * Mutation for updating nudge status
+   */
+  function useUpdateNudge() {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: ({ id, data }: { id: string; data: UpdateNudgeRequest }) =>
+        api.nudges.update(id, data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+      },
+    });
+  }
+
+  /**
+   * Mutation for responding to nudge
+   */
+  function useRespondToNudge() {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: ({ id, data }: { id: string; data: RespondToNudgeRequest }) =>
+        api.nudges.respond(id, data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+      },
+    });
+  }
+
+  /**
+   * Mutation for creating health log
+   */
+  function useCreateHealthLog() {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: (data: CreateHealthLogRequest) =>
+        api.healthLogs.create(data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.healthLogs });
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+      },
+    });
+  }
+
   return {
     useVisits,
     useVisit,
@@ -152,6 +254,13 @@ export function createApiHooks(api: ApiClient) {
     useMedications,
     useActiveMedications,
     useUserProfile,
+    // LumiBot
+    useNudges,
+    useHealthLogs,
+    useHealthLogsSummary,
+    useUpdateNudge,
+    useRespondToNudge,
+    useCreateHealthLog,
   };
 }
 

@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy-load Resend client to avoid build-time initialization
+let resend: Resend | null = null;
+function getResendClient(): Resend {
+  if (!resend) {
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY not configured');
+    }
+    resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resend;
+}
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://portal.lumimd.app';
 
@@ -100,7 +110,7 @@ If you didn't expect this invitation, you can safely ignore this email.
     `.trim();
 
     // Send email via Resend
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'LumiMD <no-reply@lumimd.app>',
       to: inviteeEmail,
       subject: `${ownerName} wants to share their health information with you`,

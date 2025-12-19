@@ -1,30 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
+import { getAuth, Auth } from 'firebase-admin/auth';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
 
-// Initialize Firebase Admin if not already initialized
-if (!getApps().length) {
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+// Lazy initialization to avoid build-time errors
+let firebaseApp: App | null = null;
+let adminAuth: Auth | null = null;
+let adminDb: Firestore | null = null;
+let resend: Resend | null = null;
 
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID?.trim(),
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim(),
-      // Handle both escaped (\n) and literal newlines
-      privateKey: privateKey?.includes('\\n')
-        ? privateKey.replace(/\\n/g, '\n')
-        : privateKey,
-    }),
-  });
+function initializeFirebaseAdmin() {
+  if (!firebaseApp && !getApps().length) {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (!process.env.FIREBASE_PROJECT_ID) {
+      throw new Error('FIREBASE_PROJECT_ID not configured');
+    }
+    firebaseApp = initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID.trim(),
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim(),
+        privateKey: privateKey?.includes('\\n')
+          ? privateKey.replace(/\\n/g, '\n')
+          : privateKey,
+      }),
+    });
+  }
+  return firebaseApp || getApps()[0];
 }
 
-const adminAuth = getAuth();
-const adminDb = getFirestore();
+function getAdminAuth(): Auth {
+  if (!adminAuth) {
+    initializeFirebaseAdmin();
+    adminAuth = getAuth();
+  }
+  return adminAuth;
+}
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getAdminDb(): Firestore {
+  if (!adminDb) {
+    initializeFirebaseAdmin();
+    adminDb = getFirestore();
+  }
+  return adminDb;
+}
+
+function getResendClient(): Resend {
+  if (!resend) {
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY not configured');
+    }
+    resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resend;
+}
 
 const requestSchema = z.object({
   userId: z.string(),
@@ -48,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(token);
+    const decodedToken = await getAdminAuth().verifyIdToken(token);
 
     const body = await request.json();
     const { userId, email } = requestSchema.parse(body);
@@ -63,7 +93,7 @@ export async function POST(request: NextRequest) {
     const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
     // Store verification token in Firestore
-    await adminDb.collection('emailVerifications').doc(userId).set({
+    await getAdminDb().collection('emailVerifications').doc(userId).set({
       email,
       token: verificationToken,
       expiresAt,
@@ -76,7 +106,7 @@ export async function POST(request: NextRequest) {
     const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
 
     // Send email via Resend
-    const { data, error: resendError } = await resend.emails.send({
+    const { data, error: resendError } = await getResendClient().emails.send({
       from: 'LumiMD <no-reply@lumimd.app>',
       to: email,
       subject: 'Verify your LumiMD email address',

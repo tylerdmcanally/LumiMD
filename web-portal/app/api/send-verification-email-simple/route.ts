@@ -2,47 +2,57 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy-load Resend client to avoid build-time initialization
+let resend: Resend | null = null;
+function getResendClient(): Resend {
+  if (!resend) {
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY not configured');
+    }
+    resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resend;
+}
 
 const requestSchema = z.object({
-    userId: z.string(),
-    email: z.string().email(),
+  userId: z.string(),
+  email: z.string().email(),
 });
 
 export async function POST(request: NextRequest) {
-    try {
-        console.log('[send-verification-email] Request received');
+  try {
+    console.log('[send-verification-email] Request received');
 
-        // Check if Resend is configured
-        if (!process.env.RESEND_API_KEY) {
-            console.error('[send-verification-email] RESEND_API_KEY not configured');
-            return NextResponse.json(
-                { error: 'Email service not configured' },
-                { status: 500 }
-            );
-        }
+    // Check if Resend is configured
+    if (!process.env.RESEND_API_KEY) {
+      console.error('[send-verification-email] RESEND_API_KEY not configured');
+      return NextResponse.json(
+        { error: 'Email service not configured' },
+        { status: 500 }
+      );
+    }
 
-        // Parse and validate request
-        const body = await request.json();
-        console.log('[send-verification-email] Body parsed:', { userId: body.userId, email: body.email });
+    // Parse and validate request
+    const body = await request.json();
+    console.log('[send-verification-email] Body parsed:', { userId: body.userId, email: body.email });
 
-        const { userId, email } = requestSchema.parse(body);
+    const { userId, email } = requestSchema.parse(body);
 
-        // Generate simple verification token
-        const verificationToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    // Generate simple verification token
+    const verificationToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
 
-        // Get app URL
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'https://portal.lumimd.app';
-        const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
+    // Get app URL
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'https://portal.lumimd.app';
+    const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
 
-        console.log('[send-verification-email] Sending email to:', email);
+    console.log('[send-verification-email] Sending email to:', email);
 
-        // Send email via Resend
-        const { data, error: resendError } = await resend.emails.send({
-            from: 'LumiMD <no-reply@lumimd.app>',
-            to: email,
-            subject: 'Verify your LumiMD email address',
-            html: `
+    // Send email via Resend
+    const { data, error: resendError } = await getResendClient().emails.send({
+      from: 'LumiMD <no-reply@lumimd.app>',
+      to: email,
+      subject: 'Verify your LumiMD email address',
+      html: `
         <!DOCTYPE html>
         <html>
           <head>
@@ -111,34 +121,34 @@ export async function POST(request: NextRequest) {
 </body>
         </html>
       `,
-        });
+    });
 
-        if (resendError) {
-            console.error('[send-verification-email] Resend error:', resendError);
-            return NextResponse.json(
-                { error: 'Failed to send verification email', details: resendError },
-                { status: 500 }
-            );
-        }
-
-        console.log('[send-verification-email] Email sent successfully:', data);
-
-        // For now, just return success - we'll handle verification via Firebase directly
-        // The email is sent to remind users, actual verification happens through Firebase
-        return NextResponse.json({ success: true, messageId: data?.id });
-    } catch (error: any) {
-        console.error('[send-verification-email] Error:', error);
-
-        if (error instanceof z.ZodError) {
-            return NextResponse.json(
-                { error: 'Invalid request data', details: error.issues },
-                { status: 400 }
-            );
-        }
-
-        return NextResponse.json(
-            { error: error.message || 'Internal server error' },
-            { status: 500 }
-        );
+    if (resendError) {
+      console.error('[send-verification-email] Resend error:', resendError);
+      return NextResponse.json(
+        { error: 'Failed to send verification email', details: resendError },
+        { status: 500 }
+      );
     }
+
+    console.log('[send-verification-email] Email sent successfully:', data);
+
+    // For now, just return success - we'll handle verification via Firebase directly
+    // The email is sent to remind users, actual verification happens through Firebase
+    return NextResponse.json({ success: true, messageId: data?.id });
+  } catch (error: any) {
+    console.error('[send-verification-email] Error:', error);
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Invalid request data', details: error.issues },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }

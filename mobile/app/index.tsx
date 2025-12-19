@@ -16,6 +16,8 @@ import {
   useUserProfile,
 } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { LumiBotContainer } from '../components/lumibot';
+import { HealthLogButton } from '../components/HealthLogButton';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
 
@@ -222,80 +224,88 @@ export default function HomeScreen() {
   return (
     <ErrorBoundary title="Unable to load your dashboard" description="Try refreshing the home screen. If this keeps happening, please force close and reopen the app.">
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-          <HeroBanner />
+        <View style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+            <HeroBanner />
 
-          {/* Primary CTA */}
-          <View style={styles.ctaSection}>
-            <StartVisitCTA onPress={() => router.push('/record-visit')} />
-          </View>
+            {/* LumiBot - Only shows when there are active nudges */}
+            <LumiBotContainer userId={user?.uid} enabled={isAuthenticated} />
 
-          {/* Glanceable Stats Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Quick Overview</Text>
+            {/* Primary CTA */}
+            <View style={styles.ctaSection}>
+              <StartVisitCTA onPress={() => router.push('/record-visit')} />
+            </View>
 
-            {isLoadingData ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={Colors.primary} />
-                <Text style={styles.loadingText}>Loading your data...</Text>
+            {/* Glanceable Stats Section */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Quick Overview</Text>
+                <HealthLogButton />
               </View>
-            ) : hasErrors ? (
-              <View style={styles.loadingContainer}>
-                <Text style={styles.loadingText}>Unable to load data. Please check your connection.</Text>
-              </View>
-            ) : (
-              <>
-                <GlanceableCard
-                  title="Action Items"
-                  count={stats.openActions}
-                  countLabel="pending"
-                  icon="checkmark-circle-outline"
-                  onPress={() => router.push('/actions')}
-                />
 
-                <GlanceableCard
-                  title="Recent Visits"
-                  count={stats.recentVisits}
-                  countLabel="visits"
-                  statusBadge={latestVisitBadge}
-                  icon="document-text-outline"
-                  onPress={handleRecentVisitsPress}
-                />
+              {isLoadingData ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.loadingText}>Loading your data...</Text>
+                </View>
+              ) : hasErrors ? (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.loadingText}>Unable to load data. Please check your connection.</Text>
+                </View>
+              ) : (
+                <>
+                  <GlanceableCard
+                    title="Action Items"
+                    count={stats.openActions}
+                    countLabel="pending"
+                    icon="checkmark-circle-outline"
+                    onPress={() => router.push('/actions')}
+                  />
 
-                <GlanceableCard
-                  title="Medications"
-                  count={stats.medications}
-                  countLabel="active"
-                  icon="medkit-outline"
-                  onPress={() => router.push('/medications')}
+                  <GlanceableCard
+                    title="Recent Visits"
+                    count={stats.recentVisits}
+                    countLabel="visits"
+                    statusBadge={latestVisitBadge}
+                    icon="document-text-outline"
+                    onPress={handleRecentVisitsPress}
+                  />
+
+                  <GlanceableCard
+                    title="Medications"
+                    count={stats.medications}
+                    countLabel="active"
+                    icon="medkit-outline"
+                    onPress={() => router.push('/medications')}
+                  />
+                </>
+              )}
+            </View>
+
+            {/* Web Portal Banner or Need Help button - below Quick Overview */}
+            <View style={styles.webPortalSection}>
+              {webBannerDismissed ? (
+                <NeedHelpButton onPress={restoreWebBanner} />
+              ) : (
+                <WebPortalBanner
+                  isDismissed={webBannerDismissed}
+                  onDismiss={dismissWebBanner}
+                  onRestore={restoreWebBanner}
                 />
-              </>
+              )}
+            </View>
+
+            {/* Helper text */}
+            {!isLoadingData && (
+              <Text style={styles.helperText}>
+                Tap any card above to view details
+              </Text>
             )}
-          </View>
-
-          {/* Web Portal Banner or Need Help button - below Quick Overview */}
-          <View style={styles.webPortalSection}>
-            {webBannerDismissed ? (
-              <NeedHelpButton onPress={restoreWebBanner} />
-            ) : (
-              <WebPortalBanner
-                isDismissed={webBannerDismissed}
-                onDismiss={dismissWebBanner}
-                onRestore={restoreWebBanner}
-              />
-            )}
-          </View>
-
-          {/* Helper text */}
-          {!isLoadingData && (
-            <Text style={styles.helperText}>
-              Tap any card above to view details
-            </Text>
-          )}
 
 
 
-        </ScrollView>
+          </ScrollView>
+        </View>
       </SafeAreaView>
     </ErrorBoundary>
   );
@@ -313,11 +323,16 @@ const styles = StyleSheet.create({
   section: {
     marginTop: spacing(5),
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing(3),
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: Colors.text,
-    marginBottom: spacing(3),
   },
   helperText: {
     fontSize: 13,

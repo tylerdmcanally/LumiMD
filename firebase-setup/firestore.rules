@@ -107,6 +107,16 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isOwner(resource.data.userId);
     }
 
+    match /nudges/{nudgeId} {
+      // Owner can read (direct check to avoid complexity)
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    match /healthLogs/{logId} {
+      // Owner can read (direct check to avoid complexity)
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
     match /shares/{shareId} {
       // shareId format: {ownerId}_{caregiverUserId}
       // Owner and caregiver can both read their share relationship

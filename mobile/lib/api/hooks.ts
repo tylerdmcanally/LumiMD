@@ -3,7 +3,7 @@
  * Uses React Native Firebase for realtime listeners
  */
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 
@@ -24,6 +24,13 @@ export const {
   useMedications,
   useActiveMedications,
   useUserProfile,
+  // LumiBot hooks
+  useNudges,
+  useHealthLogs,
+  useHealthLogsSummary,
+  useUpdateNudge,
+  useRespondToNudge,
+  useCreateHealthLog,
 } = hooks;
 
 // Export query keys for cache management
@@ -225,5 +232,96 @@ export function useRealtimePendingActions(
   });
 }
 
+// Import Nudge type
+import type { Nudge } from '@lumimd/sdk';
+
+// Add nudges to realtime query keys
+export const realtimeNudgesKey = (userId?: string | null) =>
+  ['realtime', 'nudges', userId ?? 'anonymous'] as const;
+
+/**
+ * Realtime nudges hook - automatically updates when nudges are created/modified
+ */
+export function useRealtimeNudges(
+  userId?: string | null,
+  options?: QueryEnabledOptions<Nudge[]>,
+) {
+  const queryClient = useQueryClient();
+  const key = useMemo(() => realtimeNudgesKey(userId), [userId]);
+  const rawDocsRef = useRef<Nudge[]>([]); // Store raw docs for periodic re-evaluation
+  const enabled = Boolean(userId);
+
+  // Filter for active/pending nudges that are due
+  const filterActiveNudges = useCallback((nudges: Nudge[]) => {
+    const now = Date.now();
+    return nudges
+      .filter((nudge) => {
+        // Only show pending/active nudges that are scheduled for now or past
+        if (nudge.status !== 'pending' && nudge.status !== 'active') return false;
+        const scheduledTime = nudge.scheduledFor ? Date.parse(nudge.scheduledFor) : 0;
+        return scheduledTime <= now;
+      })
+      .sort((a, b) => {
+        // Sort by scheduledFor ascending (oldest first)
+        const aTime = a.scheduledFor ? Date.parse(a.scheduledFor) : 0;
+        const bTime = b.scheduledFor ? Date.parse(b.scheduledFor) : 0;
+        return aTime - bTime;
+      })
+      .slice(0, 10); // Limit to 10
+  }, []);
+
+  // Set up realtime listener
+  useEffect(() => {
+    if (!userId || !enabled) return;
+
+    const unsubscribe = firestore()
+      .collection('nudges')
+      .where('userId', '==', userId)
+      .onSnapshot(
+        (snapshot) => {
+          const docs = snapshot.docs.map(doc => serializeDoc<Nudge>(doc));
+          rawDocsRef.current = docs; // Store raw docs for periodic re-evaluation
+          queryClient.setQueryData(key, filterActiveNudges(docs));
+        },
+        (error) => {
+          console.error('[Realtime] Nudges listener error', error);
+        }
+      );
+
+    return () => unsubscribe();
+  }, [userId, enabled, key, queryClient, filterActiveNudges]);
+
+  // Periodic check for scheduled nudges becoming active
+  useEffect(() => {
+    if (!userId || !enabled) return;
+
+    const intervalId = setInterval(() => {
+      // Re-run filter on RAW docs to catch any that just became due
+      if (rawDocsRef.current.length > 0) {
+        queryClient.setQueryData(key, filterActiveNudges(rawDocsRef.current));
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, [userId, enabled, key, queryClient, filterActiveNudges]);
+
+  return useQuery<Nudge[]>({
+    queryKey: key,
+    staleTime: 10_000, // Short stale time for nudges
+    enabled,
+    ...options,
+    queryFn: async () => {
+      if (!userId) return [];
+      const snapshot = await firestore()
+        .collection('nudges')
+        .where('userId', '==', userId)
+        .get();
+      const docs = snapshot.docs.map(doc => serializeDoc<Nudge>(doc));
+      return filterActiveNudges(docs);
+    },
+  });
+}
+
 // Export types
-export type { Visit, Medication, ActionItem, UserProfile };
+export type { Visit, Medication, ActionItem, UserProfile, Nudge };
+

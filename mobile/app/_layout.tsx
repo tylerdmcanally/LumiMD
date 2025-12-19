@@ -90,13 +90,22 @@ function NotificationHandler() {
       const data = response.notification.request.content.data;
       console.log('[Notifications] Notification tapped:', data);
 
+      if (!isAuthenticated) {
+        console.log('[Notifications] User not authenticated, ignoring tap');
+        return;
+      }
+
       if (data?.type === 'visit-ready' && data?.visitId) {
-        // Navigate to visit detail if authenticated
-        if (isAuthenticated) {
-          router.push(`/visit-detail?id=${data.visitId}`);
-        }
+        // Navigate to visit detail
+        router.push(`/visit-detail?id=${data.visitId}`);
+      } else if (data?.type === 'nudge') {
+        // Navigate to home screen where LumiBot section will show the nudge
+        // The nudge will be visible because it's now due
+        console.log('[Notifications] Navigating to home for nudge:', data.nudgeId);
+        router.replace('/(tabs)');
       }
     });
+
 
     return () => {
       if (responseListener.current) {

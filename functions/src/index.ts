@@ -1,4 +1,5 @@
 import { onRequest } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import express from 'express';
@@ -11,11 +12,16 @@ import { medicationsRouter } from './routes/medications';
 import { webhooksRouter } from './routes/webhooks';
 import { usersRouter } from './routes/users';
 import { sharesRouter } from './routes/shares';
+import { nudgesRouter } from './routes/nudges';
+import { nudgesDebugRouter } from './routes/nudgesDebug';
+import { healthLogsRouter } from './routes/healthLogs';
 import { apiLimiter } from './middlewares/rateLimit';
 import { requireHttps } from './middlewares/httpsOnly';
 import { errorHandler } from './middlewares/errorHandler';
 import { corsConfig } from './config';
 import { initSentry, sentryRequestHandler, setupSentryErrorHandler } from './utils/sentry';
+import { processAndNotifyDueNudges } from './services/nudgeNotificationService';
+
 export { processVisitAudio } from './triggers/processVisitAudio';
 export { checkPendingTranscriptions } from './triggers/checkPendingTranscriptions';
 export { summarizeVisitTrigger } from './triggers/summarizeVisit';
@@ -23,6 +29,7 @@ export { autoAcceptShareInvites } from './triggers/autoAcceptShareInvites';
 export { analyzeMedicationSafety } from './callables/medicationSafety';
 export { privacyDataSweeper } from './triggers/privacySweeper';
 export { staleVisitSweeper } from './triggers/staleVisitSweeper';
+
 
 // Initialize Sentry BEFORE other initializations
 initSentry();
@@ -144,6 +151,9 @@ app.use('/v1/meds', medicationsRouter);
 app.use('/v1/webhooks', webhooksRouter);
 app.use('/v1/users', usersRouter);
 app.use('/v1/shares', sharesRouter);
+app.use('/v1/nudges', nudgesRouter);
+app.use('/v1/nudges', nudgesDebugRouter); // Debug endpoints under same path
+app.use('/v1/health-logs', healthLogsRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -166,3 +176,23 @@ export const api = onRequest(
   app
 );
 
+// Scheduled function to process nudge notifications every 15 minutes
+export const processNudgeNotifications = onSchedule(
+  {
+    schedule: 'every 15 minutes',
+    timeZone: 'America/Chicago',
+    memory: '256MiB',
+    timeoutSeconds: 60,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running nudge notification processor');
+
+    try {
+      const result = await processAndNotifyDueNudges();
+      functions.logger.info('[Scheduler] Nudge processing complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error processing nudges:', error);
+      throw error; // Re-throw to mark the invocation as failed
+    }
+  }
+);

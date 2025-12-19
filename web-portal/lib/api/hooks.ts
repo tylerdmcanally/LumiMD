@@ -282,7 +282,10 @@ export const queryKeys = {
     ['actions', userId ?? 'anonymous'] as const,
   userProfile: (userId?: string | null) =>
     ['user-profile', userId ?? 'anonymous'] as const,
+  healthLogs: (userId?: string | null) =>
+    ['health-logs', userId ?? 'anonymous'] as const,
 };
+
 
 type QueryEnabledOptions<TData> = Omit<
   UseQueryOptions<TData, Error, TData, QueryKey>,
@@ -484,5 +487,52 @@ export function useHasPatientData(userId?: string | null) {
       );
       return !medsSnap.empty;
     },
+  });
+}
+
+export type HealthLog = {
+  id: string;
+  userId: string;
+  type: 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check';
+  value: {
+    systolic?: number;
+    diastolic?: number;
+    reading?: number;
+    timing?: string;
+    weight?: number;
+    unit?: string;
+    taken?: boolean;
+    symptoms?: string[];
+    severity?: string;
+    note?: string;
+  };
+  alertLevel?: 'normal' | 'caution' | 'warning';
+  createdAt?: string | null;
+  source?: string;
+};
+
+export function useHealthLogs(
+  userId?: string | null,
+  options?: QueryEnabledOptions<HealthLog[]>,
+) {
+  const viewing = useViewingSafe();
+  const effectiveUserId = userId ?? viewing?.viewingUserId ?? null;
+  const key = useMemo(() => queryKeys.healthLogs(effectiveUserId), [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+  const handleSnapshotError = useRealtimeErrorHandler();
+
+  const healthLogsQueryRef = useMemo(() => {
+    if (!effectiveUserId) return null;
+    return query(
+      collection(db, 'healthLogs'),
+      where('userId', '==', effectiveUserId),
+    );
+  }, [effectiveUserId]);
+
+  return useFirestoreCollection<HealthLog>(healthLogsQueryRef, key, {
+    transform: sortByTimestampDescending,
+    enabled,
+    onError: handleSnapshotError,
+    queryOptions: options,
   });
 }

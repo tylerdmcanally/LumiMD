@@ -15,6 +15,7 @@ import {
     User,
     ChevronDown,
     Menu,
+    Activity,
 } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
@@ -36,9 +37,11 @@ const NAV_ITEMS: NavItem[] = [
     { label: 'Home', href: '/dashboard', icon: Home, exact: true },
     { label: 'Visits', href: '/visits', icon: Stethoscope },
     { label: 'Medications', href: '/medications', icon: Pill },
+    { label: 'Health', href: '/health', icon: Activity },
     { label: 'Action Items', href: '/actions', icon: CheckSquare },
     { label: 'Sharing', href: '/sharing', icon: Users },
 ];
+
 
 interface TopNavigationProps {
     onMobileMenuClick?: () => void;

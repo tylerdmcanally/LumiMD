@@ -4,6 +4,7 @@ import { getOpenAIService } from './openai';
 import { normalizeMedicationSummary, syncMedicationsFromSummary } from './medicationSync';
 import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 import { getAssemblyAIService } from './assemblyai';
+import { analyzeVisitForNudges } from './lumibotAnalyzer';
 
 
 const db = () => admin.firestore();
@@ -137,6 +138,35 @@ export async function summarizeVisit({
     functions.logger.info(
       `[visitProcessor] Visit ${visitRef.id} summarized successfully. Actions created: ${summary.nextSteps.length}`,
     );
+
+    // LumiBot: Analyze visit for condition tracking and medication nudges
+    try {
+      const visitDate = visitData.visitDate?.toDate?.() || processedAt.toDate();
+      const lumibotResult = await analyzeVisitForNudges(
+        visitData.userId,
+        visitRef.id,
+        summary,
+        visitDate
+      );
+
+      if (lumibotResult.conditionNudges > 0 || lumibotResult.medicationNudges > 0) {
+        functions.logger.info(
+          `[LumiBot] Created nudges for visit ${visitRef.id}`,
+          {
+            conditionNudges: lumibotResult.conditionNudges,
+            medicationNudges: lumibotResult.medicationNudges,
+            matchedConditions: lumibotResult.matchedConditions,
+          }
+        );
+      }
+    } catch (lumibotError) {
+      // Log but don't fail the visit processing if LumiBot analysis fails
+      functions.logger.warn(
+        `[LumiBot] Failed to analyze visit ${visitRef.id} for nudges:`,
+        lumibotError
+      );
+    }
+
 
   } catch (error) {
     const errorMessage = getSafeErrorMessage(error);

@@ -4,6 +4,16 @@
  */
 
 import type { Visit, Medication, ActionItem, UserProfile, Share, ShareInvite, ApiError } from './models';
+import type {
+  Nudge,
+  HealthLog,
+  HealthLogSummaryResponse,
+  CreateHealthLogRequest,
+  CreateHealthLogResponse,
+  UpdateNudgeRequest,
+  RespondToNudgeRequest,
+  NudgeUpdateResponse,
+} from './models/lumibot';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 500, 502, 503, 504]); // Note: 429 removed - don't retry rate limits
@@ -283,7 +293,7 @@ export function createApiClient(config: ApiClientConfig) {
       apiRequest<{ status: string }>('/health', { requireAuth: false }),
 
     // Visits
-      visits: {
+    visits: {
       list: (params?: { limit?: number; sort?: 'asc' | 'desc' }) => {
         if (params) {
           const searchParams = new URLSearchParams();
@@ -408,6 +418,50 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'PATCH',
         }),
     },
+
+    // LumiBot Nudges
+    nudges: {
+      list: () => apiRequest<Nudge[]>('/v1/nudges'),
+      history: (limit?: number) =>
+        apiRequest<Nudge[]>(`/v1/nudges/history${limit ? `?limit=${limit}` : ''}`),
+      update: (id: string, data: UpdateNudgeRequest) =>
+        apiRequest<NudgeUpdateResponse>(`/v1/nudges/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      respond: (id: string, data: RespondToNudgeRequest) =>
+        apiRequest<NudgeUpdateResponse>(`/v1/nudges/${id}/respond`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+    },
+
+    // LumiBot Health Logs
+    healthLogs: {
+      list: (params?: { type?: string; limit?: number; startDate?: string; endDate?: string }) => {
+        const searchParams = new URLSearchParams();
+        if (params?.type) searchParams.append('type', params.type);
+        if (params?.limit) searchParams.append('limit', String(params.limit));
+        if (params?.startDate) searchParams.append('startDate', params.startDate);
+        if (params?.endDate) searchParams.append('endDate', params.endDate);
+        const query = searchParams.toString();
+        return apiRequest<HealthLog[]>(`/v1/health-logs${query ? `?${query}` : ''}`);
+      },
+      create: (data: CreateHealthLogRequest) =>
+        apiRequest<CreateHealthLogResponse>('/v1/health-logs', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      delete: (id: string) =>
+        apiRequest<void>(`/v1/health-logs/${id}`, {
+          method: 'DELETE',
+        }),
+      summary: (days?: number) =>
+        apiRequest<HealthLogSummaryResponse>(`/v1/health-logs/summary${days ? `?days=${days}` : ''}`),
+      export: (days?: number) =>
+        apiRequest<any>(`/v1/health-logs/export${days ? `?days=${days}` : ''}`),
+    },
+
   };
 }
 
