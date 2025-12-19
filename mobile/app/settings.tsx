@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -157,25 +157,34 @@ export default function SettingsScreen() {
     }
     setIsExportingReport(true);
     try {
-      // Fetch the PDF blob from the API
-      const blob = await api.healthLogs.providerReport();
+      // Get auth token
+      const token = await user.getIdToken();
 
-      // Convert blob to base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      const base64Data = await base64Promise;
+      // Fetch the PDF from API
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE_URL}/v1/health-logs/provider-report`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-      // Save to temporary file
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      // Convert response to base64
+      const arrayBuffer = await response.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+
+      // Save to file
       const fileName = `LumiMD-Health-Report-${new Date().toISOString().slice(0, 10)}.pdf`;
       const fileUri = FileSystem.documentDirectory + fileName;
-      await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+      await FileSystem.writeAsStringAsync(fileUri, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
 

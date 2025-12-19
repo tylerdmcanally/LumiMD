@@ -79,19 +79,20 @@ const fonts = {
 const printer = new PdfPrinter(fonts);
 
 // =============================================================================
-// Brand Colors
+// Brand Colors - LumiMD Teal Palette
 // =============================================================================
 
 const BRAND = {
-    primary: '#667eea',
-    primaryDark: '#5a67d8',
+    primary: '#40c9d0',        // LumiMD teal
+    primaryDark: '#078a94',    // Darker teal
+    primaryLight: '#e1f9fa',   // Pale teal for backgrounds
     text: '#1a202c',
     textSecondary: '#4a5568',
     border: '#e2e8f0',
     success: '#48bb78',
     warning: '#ed8936',
     danger: '#f56565',
-    background: '#f7fafc',
+    background: '#e1f9fa',     // Use pale teal for card backgrounds
 };
 
 // =============================================================================
