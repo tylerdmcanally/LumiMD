@@ -10,6 +10,7 @@ import {
     BloodPressureValue,
     GlucoseValue,
     WeightValue,
+    SymptomCheckValue,
     HealthLogValue,
     HealthLogType,
     SafetyCheckResult,
@@ -208,6 +209,77 @@ export function checkWeight(value: WeightValue): SafetyCheckResult {
     };
 }
 
+// =============================================================================
+// Symptom Check (Heart Failure)
+// =============================================================================
+
+/**
+ * Evaluate HF symptom check for concerning patterns
+ * Triggers alerts for severe symptoms or worsening combinations
+ */
+export function checkSymptomCheck(value: SymptomCheckValue): SafetyCheckResult {
+    const { breathingDifficulty, swelling, energyLevel, cough } = value;
+
+    // EMERGENCY: Severe breathing difficulty (4-5) - call provider immediately
+    if (breathingDifficulty >= 4) {
+        return {
+            alertLevel: 'warning',
+            message: 'Severe shortness of breath needs prompt attention. Please call your doctor\'s office today, or go to the ER if you\'re struggling to breathe at rest.',
+            shouldShowAlert: true,
+        };
+    }
+
+    // WARNING: Severe swelling - contact provider
+    if (swelling === 'severe') {
+        return {
+            alertLevel: 'warning',
+            message: 'Severe swelling can be a sign of fluid buildup. Please contact your doctor\'s office today to discuss your symptoms.',
+            shouldShowAlert: true,
+        };
+    }
+
+    // CAUTION: Combination of concerning symptoms
+    const concerningFactors = [
+        breathingDifficulty >= 3,
+        swelling === 'moderate',
+        energyLevel <= 2,
+        cough,
+    ].filter(Boolean).length;
+
+    if (concerningFactors >= 3) {
+        return {
+            alertLevel: 'caution',
+            message: 'You\'re reporting multiple symptoms that may indicate worsening heart failure. Consider calling your care team to discuss how you\'re feeling.',
+            shouldShowAlert: true,
+        };
+    }
+
+    // CAUTION: Moderate swelling with other symptoms
+    if (swelling === 'moderate' && (breathingDifficulty >= 3 || energyLevel <= 2)) {
+        return {
+            alertLevel: 'caution',
+            message: 'Moderate swelling combined with other symptoms is worth monitoring. If it gets worse, contact your doctor.',
+            shouldShowAlert: true,
+        };
+    }
+
+    // Normal - positive reinforcement
+    if (breathingDifficulty <= 2 && swelling === 'none' && energyLevel >= 4) {
+        return {
+            alertLevel: 'normal',
+            message: 'Great check-in! Your symptoms are well-controlled. Keep up the good work! 🎉',
+            shouldShowAlert: false,
+        };
+    }
+
+    // Default - no major concerns
+    return {
+        alertLevel: undefined,
+        message: 'Check-in logged. ✓',
+        shouldShowAlert: false,
+    };
+}
+
 /**
  * Check weight change for Heart Failure monitoring
  * Call this with previous weights to detect fluid retention
@@ -301,9 +373,12 @@ export function checkHealthValue(
             // Otherwise, just log without alert
             return checkWeight(value as WeightValue);
 
-        case 'med_compliance':
         case 'symptom_check':
-            // These don't have numerical thresholds
+            // HF symptom check with safety evaluation
+            return checkSymptomCheck(value as SymptomCheckValue);
+
+        case 'med_compliance':
+            // Med compliance doesn't have numerical thresholds
             return {
                 alertLevel: 'normal',
                 message: 'Response logged. ✓',

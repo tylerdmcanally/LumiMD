@@ -10,6 +10,8 @@ import { Alert } from 'react-native';
 import { LumiBotBanner } from './LumiBotBanner';
 import { BPLogModal } from './BPLogModal';
 import { GlucoseLogModal } from './GlucoseLogModal';
+import { WeightLogModal } from './WeightLogModal';
+import type { WeightValue } from './WeightLogModal';
 import { SideEffectsModal } from './SideEffectsModal';
 import { SymptomCheckModal } from './SymptomCheckModal';
 import type { SymptomCheckValue } from './SymptomCheckModal';
@@ -33,6 +35,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
     // State
     const [activeBPNudge, setActiveBPNudge] = useState<Nudge | null>(null);
     const [activeGlucoseNudge, setActiveGlucoseNudge] = useState<Nudge | null>(null);
+    const [activeWeightNudge, setActiveWeightNudge] = useState<Nudge | null>(null);
     const [activeSideEffectsNudge, setActiveSideEffectsNudge] = useState<Nudge | null>(null);
     const [activeSymptomCheckNudge, setActiveSymptomCheckNudge] = useState<Nudge | null>(null);
     const [safetyAlert, setSafetyAlert] = useState<{
@@ -89,6 +92,8 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             setActiveBPNudge(nudge);
         } else if (nudge.actionType === 'log_glucose') {
             setActiveGlucoseNudge(nudge);
+        } else if (nudge.actionType === 'log_weight') {
+            setActiveWeightNudge(nudge);
         } else if (nudge.actionType === 'log_symptom_check') {
             setActiveSymptomCheckNudge(nudge);
         } else {
@@ -166,6 +171,38 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         setSafetyAlert({ visible: false, level: 'normal', message: '' });
     }, []);
 
+    const handleWeightSubmit = useCallback(async (value: WeightValue) => {
+        try {
+            const result = await createHealthLog.mutateAsync({
+                type: 'weight',
+                value,
+                nudgeId: activeWeightNudge?.id,
+                source: activeWeightNudge ? 'nudge' : 'manual',
+            });
+
+            // Check for safety alert
+            if (result.shouldShowAlert && result.alertLevel && result.alertMessage) {
+                setSafetyAlert({
+                    visible: true,
+                    level: result.alertLevel,
+                    message: result.alertMessage,
+                });
+            }
+
+            setActiveWeightNudge(null);
+
+            return {
+                alertLevel: result.alertLevel,
+                alertMessage: result.alertMessage,
+                shouldShowAlert: result.shouldShowAlert,
+            };
+        } catch (err) {
+            console.error('[LumiBot] Weight log error:', err);
+            Alert.alert('Error', 'Failed to save reading. Please try again.');
+            return { shouldShowAlert: false };
+        }
+    }, [activeWeightNudge, createHealthLog]);
+
     const handleSymptomCheckSubmit = useCallback(async (value: SymptomCheckValue) => {
         try {
             const result = await createHealthLog.mutateAsync({
@@ -227,6 +264,13 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 onSubmit={handleGlucoseSubmit}
                 isSubmitting={createHealthLog.isPending}
                 nudgeId={activeGlucoseNudge?.id}
+            />
+
+            <WeightLogModal
+                visible={activeWeightNudge !== null}
+                onClose={() => setActiveWeightNudge(null)}
+                onSubmit={handleWeightSubmit}
+                isSubmitting={createHealthLog.isPending}
             />
 
             <SideEffectsModal

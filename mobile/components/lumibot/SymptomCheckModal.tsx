@@ -15,7 +15,7 @@ import {
     ScrollView,
     ActivityIndicator,
 } from 'react-native';
-import Slider from '@react-native-community/slider';
+import Slider from '@react-native-assets/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 
@@ -381,16 +381,17 @@ const styles = StyleSheet.create({
     sliderContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: spacing(2),
+        paddingHorizontal: spacing(1),
     },
     slider: {
         flex: 1,
         height: 40,
+        marginHorizontal: spacing(2),
     },
     sliderEndLabel: {
         fontSize: 12,
         color: Colors.textMuted,
-        width: 36,
+        width: 32,
         textAlign: 'center',
     },
     optionsRow: {

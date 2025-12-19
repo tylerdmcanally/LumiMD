@@ -118,8 +118,7 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
             userId,
             type: data.type as HealthLogType,
             value: data.value,
-            alertLevel: safetyResult.alertLevel,
-            alertShown: safetyResult.shouldShowAlert,
+            alertShown: safetyResult.shouldShowAlert ?? false,
             createdAt: now,
             source: data.source,
         };
@@ -127,6 +126,7 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
         // Only add optional fields if they have values
         if (data.nudgeId) healthLogData.nudgeId = data.nudgeId;
         if (data.visitId) healthLogData.visitId = data.visitId;
+        if (safetyResult.alertLevel) healthLogData.alertLevel = safetyResult.alertLevel;
         if (safetyResult.message) healthLogData.alertMessage = safetyResult.message;
 
         const docRef = await getHealthLogsCollection().add(healthLogData);
