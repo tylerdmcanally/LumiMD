@@ -739,19 +739,19 @@ function MedicationRow({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant={hasReminder ? 'outline' : 'ghost'}
+                      variant="ghost"
                       size="sm"
-                      className={hasReminder ? 'text-brand-primary border-brand-primary/30' : 'text-text-secondary'}
+                      className={hasReminder ? 'text-brand-primary' : 'text-text-tertiary hover:text-brand-primary'}
                       onClick={(event) => {
                         event.stopPropagation();
                         onSetReminder();
                       }}
                     >
-                      {hasReminder ? 'Reminder set' : 'Remind'}
+                      {hasReminder ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {hasReminder ? 'Click to edit reminder times' : 'Set a daily reminder'}
+                    {hasReminder ? 'Edit reminder' : 'Set reminder'}
                   </TooltipContent>
                 </Tooltip>
               )}

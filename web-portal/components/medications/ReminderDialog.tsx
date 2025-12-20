@@ -252,16 +252,14 @@ export function ReminderDialog({
                     </div>
 
                     {times.length < 4 && (
-                        <Button
+                        <button
                             type="button"
-                            variant="outline"
-                            size="sm"
-                            className="w-full flex items-center justify-center gap-2"
+                            className="w-full h-9 px-4 py-2 inline-flex flex-row items-center justify-center gap-2 rounded-md border border-border-light bg-background text-sm font-medium text-text-primary hover:bg-background-subtle transition-colors"
                             onClick={handleAddTime}
                         >
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-4 w-4 shrink-0" />
                             <span>Add another time</span>
-                        </Button>
+                        </button>
                     )}
 
                     {/* Disclaimer */}
