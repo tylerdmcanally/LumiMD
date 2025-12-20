@@ -52,12 +52,12 @@ const getSourceBadge = (source?: string) => {
 const buildDetails = (med: any) => {
   const dose = med.dose || med.dosage;
   const freq = med.frequency;
-  const notes = med.notes;
 
+  // Only include dose and frequency for clean, glanceable display
+  // Notes often contain verbose doctor quotes from the transcript
   const lines: string[] = [];
   if (dose) lines.push(dose);
   if (freq) lines.push(freq);
-  if (notes && notes !== dose && notes !== freq) lines.push(notes);
 
   return lines;
 };
