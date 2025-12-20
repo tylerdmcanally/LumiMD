@@ -724,13 +724,20 @@ const styles = StyleSheet.create({
   },
   // Glanceable card styles
   glanceRow: {
-    marginTop: spacing(1),
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing(2),
     marginBottom: spacing(2),
+    paddingVertical: spacing(2),
+    paddingHorizontal: spacing(3),
+    backgroundColor: 'rgba(64,201,208,0.08)',
+    borderRadius: Radius.sm,
   },
   glanceText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: Colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+    letterSpacing: 0.2,
   },
   cardFooter: {
     flexDirection: 'row',
