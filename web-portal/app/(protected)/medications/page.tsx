@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pill as PillIcon, Trash2, Info, Loader2, AlertTriangle, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Plus, Pill as PillIcon, Trash2, Info, Loader2, AlertTriangle, AlertCircle, ShieldAlert, Bell, BellOff } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
@@ -11,7 +11,8 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
-import { useMedications, queryKeys } from '@/lib/api/hooks';
+import { useMedications, useMedicationReminders, queryKeys } from '@/lib/api/hooks';
+import { ReminderDialog } from '@/components/medications/ReminderDialog';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
 import { deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
@@ -34,8 +35,17 @@ export default function MedicationsPage() {
   const [medToDelete, setMedToDelete] = React.useState<any | null>(null);
   const [viewMedication, setViewMedication] = React.useState<any | null>(null);
   const [medicationWarnings, setMedicationWarnings] = React.useState<any | null>(null);
+  const [reminderMedication, setReminderMedication] = React.useState<any | null>(null);
   const { isViewingShared } = useViewing();
   const isReadOnly = isViewingShared;
+
+  // Fetch medication reminders
+  const { data: reminders = [] } = useMedicationReminders();
+
+  // Helper to get reminder for a medication
+  const getReminderForMed = React.useCallback((medicationId: string) => {
+    return reminders.find((r) => r.medicationId === medicationId);
+  }, [reminders]);
 
   // Don't pass userId - let useMedications use ViewingContext
   const { data: medications = [], isLoading } = useMedications();
@@ -209,6 +219,8 @@ export default function MedicationsPage() {
           onEdit={(med) => setEditingMedication(med)}
           onDelete={setMedToDelete}
           onShowWarnings={(med) => setMedicationWarnings({ medicationName: med.name, warnings: med.medicationWarning })}
+          onSetReminder={(med) => setReminderMedication(med)}
+          getReminderForMed={getReminderForMed}
           isReadOnly={isReadOnly}
         />
 
@@ -276,6 +288,17 @@ export default function MedicationsPage() {
           data={medicationWarnings}
           onClose={() => setMedicationWarnings(null)}
         />
+
+        {!isReadOnly && (
+          <ReminderDialog
+            open={Boolean(reminderMedication)}
+            onOpenChange={(open) => {
+              if (!open) setReminderMedication(null);
+            }}
+            medication={reminderMedication}
+            existingReminder={reminderMedication ? getReminderForMed(reminderMedication.id) : null}
+          />
+        )}
       </div>
     </PageContainer>
   );
@@ -306,6 +329,8 @@ type MedicationGroupProps = {
   onEdit: (med: any) => void;
   onDelete: (med: any) => void;
   onShowWarnings: (med: any) => void;
+  onSetReminder?: (med: any) => void;
+  getReminderForMed?: (medicationId: string) => any | undefined;
   isReadOnly?: boolean;
 };
 
@@ -319,6 +344,8 @@ function MedicationGroup({
   onEdit,
   onDelete,
   onShowWarnings,
+  onSetReminder,
+  getReminderForMed,
   isReadOnly = false,
 }: MedicationGroupProps) {
   return (
@@ -356,6 +383,8 @@ function MedicationGroup({
                   onEdit={() => onEdit(medication)}
                   onDelete={() => onDelete(medication)}
                   onShowWarnings={() => onShowWarnings(medication)}
+                  onSetReminder={onSetReminder ? () => onSetReminder(medication) : undefined}
+                  hasReminder={getReminderForMed ? Boolean(getReminderForMed(medication.id)) : false}
                   isReadOnly={isReadOnly}
                 />
               ))}
@@ -494,6 +523,8 @@ function MedicationRow({
   onEdit,
   onDelete,
   onShowWarnings,
+  onSetReminder,
+  hasReminder = false,
   isReadOnly = false,
 }: {
   medication: any;
@@ -501,6 +532,8 @@ function MedicationRow({
   onEdit: () => void;
   onDelete: () => void;
   onShowWarnings: () => void;
+  onSetReminder?: () => void;
+  hasReminder?: boolean;
   isReadOnly?: boolean;
 }) {
   const isActive = medication.active !== false && !medication.stoppedAt;
@@ -702,6 +735,26 @@ function MedicationRow({
         <div className="flex items-center justify-end gap-2">
           {!isReadOnly && (
             <>
+              {isActive && onSetReminder && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={hasReminder ? 'text-brand-primary' : 'text-text-tertiary hover:text-brand-primary'}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSetReminder();
+                      }}
+                    >
+                      {hasReminder ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {hasReminder ? 'Edit reminder' : 'Set reminder'}
+                  </TooltipContent>
+                </Tooltip>
+              )}
               <Button
                 variant="outline"
                 size="sm"

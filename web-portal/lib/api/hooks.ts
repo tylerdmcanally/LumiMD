@@ -536,3 +536,46 @@ export function useHealthLogs(
     queryOptions: options,
   });
 }
+
+// =============================================================================
+// Medication Reminders
+// =============================================================================
+
+export type MedicationReminder = {
+  id: string;
+  userId: string;
+  medicationId: string;
+  medicationName: string;
+  medicationDose?: string;
+  times: string[]; // HH:MM format
+  enabled: boolean;
+  lastSentAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export function useMedicationReminders(
+  userId?: string | null,
+  options?: QueryEnabledOptions<MedicationReminder[]>,
+) {
+  const viewing = useViewingSafe();
+  const effectiveUserId = userId ?? viewing?.viewingUserId ?? null;
+  const key = useMemo(() => ['medication-reminders', effectiveUserId ?? 'anonymous'] as const, [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+  const handleSnapshotError = useRealtimeErrorHandler();
+
+  const remindersQueryRef = useMemo(() => {
+    if (!effectiveUserId) return null;
+    return query(
+      collection(db, 'medicationReminders'),
+      where('userId', '==', effectiveUserId),
+    );
+  }, [effectiveUserId]);
+
+  return useFirestoreCollection<MedicationReminder>(remindersQueryRef, key, {
+    transform: sortByTimestampDescending,
+    enabled,
+    onError: handleSnapshotError,
+    queryOptions: options,
+  });
+}
