@@ -156,12 +156,15 @@ export function ReminderTimePickerModal({
                         {times.map((time, index) => (
                             <View key={index} style={styles.timeRow}>
                                 <Pressable
-                                    style={styles.timeButton}
+                                    style={[
+                                        styles.timeButton,
+                                        editingIndex === index && styles.timeButtonActive
+                                    ]}
                                     onPress={() => handleTimePress(index)}
                                 >
                                     <Ionicons name="alarm-outline" size={20} color={Colors.primary} />
                                     <Text style={styles.timeText}>{formatTimeDisplay(time)}</Text>
-                                    <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                                    <Text style={styles.tapToEdit}>Tap to change</Text>
                                 </Pressable>
 
                                 {times.length > 1 && (
@@ -183,17 +186,12 @@ export function ReminderTimePickerModal({
                         )}
                     </View>
 
-                    {/* Info text */}
-                    <Text style={styles.infoText}>
-                        You'll receive a push notification at each time to remind you to take your medication.
-                    </Text>
-
-                    {/* Native time picker (iOS) */}
+                    {/* Native time picker (iOS) - always show when editing */}
                     {showPicker && Platform.OS === 'ios' && editingIndex !== null && (
                         <View style={styles.pickerContainer}>
                             <View style={styles.pickerHeader}>
                                 <Text style={styles.pickerTitle}>Select Time</Text>
-                                <Pressable onPress={handleDone}>
+                                <Pressable onPress={handleDone} style={styles.doneButton}>
                                     <Text style={styles.doneText}>Done</Text>
                                 </Pressable>
                             </View>
@@ -204,9 +202,15 @@ export function ReminderTimePickerModal({
                                 onChange={handleTimeChange}
                                 style={styles.picker}
                                 themeVariant="light"
-                                textColor={Colors.text}
                             />
                         </View>
+                    )}
+
+                    {/* Info text - only show when not picking */}
+                    {!showPicker && (
+                        <Text style={styles.infoText}>
+                            Tap a time above to change it. You'll receive a push notification at each time.
+                        </Text>
                     )}
 
                     {/* Android time picker */}
@@ -329,6 +333,7 @@ const styles = StyleSheet.create({
         color: Colors.textMuted,
         lineHeight: 20,
         paddingHorizontal: spacing(4),
+        paddingVertical: spacing(4),
         textAlign: 'center',
     },
     pickerContainer: {
@@ -350,6 +355,12 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         color: Colors.text,
     },
+    doneButton: {
+        paddingVertical: spacing(2),
+        paddingHorizontal: spacing(4),
+        backgroundColor: Colors.accent,
+        borderRadius: Radius.md,
+    },
     doneText: {
         fontSize: 16,
         fontWeight: '600',
@@ -357,5 +368,15 @@ const styles = StyleSheet.create({
     },
     picker: {
         height: 200,
+        backgroundColor: Colors.surface,
+    },
+    timeButtonActive: {
+        borderWidth: 2,
+        borderColor: Colors.primary,
+    },
+    tapToEdit: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        fontStyle: 'italic',
     },
 });
