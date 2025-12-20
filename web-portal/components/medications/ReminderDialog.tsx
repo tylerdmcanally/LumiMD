@@ -256,11 +256,11 @@ export function ReminderDialog({
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="w-full"
+                            className="w-full flex items-center justify-center gap-2"
                             onClick={handleAddTime}
                         >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add another time
+                            <Plus className="h-4 w-4" />
+                            <span>Add another time</span>
                         </Button>
                     )}
 
