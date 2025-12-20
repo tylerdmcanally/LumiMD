@@ -345,6 +345,10 @@ export function ReminderTimePickerModal({
                         <Text style={styles.infoText}>
                             Tap a time to change it. You'll receive a push notification at each time.
                         </Text>
+                        <Text style={styles.disclaimerText}>
+                            ⚠️ Reminders are for convenience only and are not a substitute for medical advice.
+                            Always follow your healthcare provider's instructions.
+                        </Text>
                     </ScrollView>
                 </View>
             </View>
@@ -518,5 +522,17 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.08,
         shadowRadius: 4,
         elevation: 2,
+    },
+    disclaimerText: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        lineHeight: 18,
+        paddingHorizontal: spacing(4),
+        paddingVertical: spacing(3),
+        textAlign: 'center',
+        backgroundColor: Colors.accent,
+        marginTop: spacing(3),
+        borderRadius: Radius.md,
+        marginHorizontal: spacing(4),
     },
 });
