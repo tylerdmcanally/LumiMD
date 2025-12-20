@@ -2,19 +2,19 @@
  * ReminderTimePickerModal
  * 
  * Allows users to set medication reminder times.
+ * Uses a pure JS time picker to avoid native module issues.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
     Modal,
     View,
     Text,
     Pressable,
     StyleSheet,
-    Platform,
     ActivityIndicator,
+    ScrollView,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from './ui';
 
@@ -34,18 +34,155 @@ function formatTimeDisplay(time: string): string {
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
 }
 
-function dateToTimeString(date: Date): string {
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${hours}:${minutes}`;
+// Time picker wheel component
+function TimePickerWheel({
+    value,
+    onChange
+}: {
+    value: string;
+    onChange: (time: string) => void;
+}) {
+    const [hours, minutes] = value.split(':').map(Number);
+    const isPM = hours >= 12;
+    const displayHour = hours % 12 || 12;
+
+    const hourOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const minuteOptions = [0, 15, 30, 45];
+    const periodOptions = ['AM', 'PM'];
+
+    const handleHourChange = (newHour: number) => {
+        let h = newHour;
+        if (isPM && newHour !== 12) h = newHour + 12;
+        else if (!isPM && newHour === 12) h = 0;
+        onChange(`${h.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`);
+    };
+
+    const handleMinuteChange = (newMinute: number) => {
+        onChange(`${hours.toString().padStart(2, '0')}:${newMinute.toString().padStart(2, '0')}`);
+    };
+
+    const handlePeriodChange = (newPeriod: string) => {
+        let h = displayHour;
+        if (newPeriod === 'PM' && displayHour !== 12) h = displayHour + 12;
+        else if (newPeriod === 'AM' && displayHour === 12) h = 0;
+        else if (newPeriod === 'AM') h = displayHour;
+        onChange(`${h.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`);
+    };
+
+    return (
+        <View style={pickerStyles.container}>
+            {/* Hour */}
+            <View style={pickerStyles.column}>
+                <Text style={pickerStyles.columnLabel}>Hour</Text>
+                <ScrollView style={pickerStyles.scrollColumn} showsVerticalScrollIndicator={false}>
+                    {hourOptions.map(h => (
+                        <Pressable
+                            key={h}
+                            style={[pickerStyles.option, displayHour === h && pickerStyles.optionSelected]}
+                            onPress={() => handleHourChange(h)}
+                        >
+                            <Text style={[pickerStyles.optionText, displayHour === h && pickerStyles.optionTextSelected]}>
+                                {h}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </ScrollView>
+            </View>
+
+            {/* Separator */}
+            <Text style={pickerStyles.separator}>:</Text>
+
+            {/* Minute */}
+            <View style={pickerStyles.column}>
+                <Text style={pickerStyles.columnLabel}>Min</Text>
+                <ScrollView style={pickerStyles.scrollColumn} showsVerticalScrollIndicator={false}>
+                    {minuteOptions.map(m => (
+                        <Pressable
+                            key={m}
+                            style={[pickerStyles.option, minutes === m && pickerStyles.optionSelected]}
+                            onPress={() => handleMinuteChange(m)}
+                        >
+                            <Text style={[pickerStyles.optionText, minutes === m && pickerStyles.optionTextSelected]}>
+                                {m.toString().padStart(2, '0')}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </ScrollView>
+            </View>
+
+            {/* AM/PM */}
+            <View style={pickerStyles.column}>
+                <Text style={pickerStyles.columnLabel}></Text>
+                <View style={pickerStyles.periodColumn}>
+                    {periodOptions.map(p => (
+                        <Pressable
+                            key={p}
+                            style={[pickerStyles.periodOption, (isPM ? 'PM' : 'AM') === p && pickerStyles.optionSelected]}
+                            onPress={() => handlePeriodChange(p)}
+                        >
+                            <Text style={[pickerStyles.optionText, (isPM ? 'PM' : 'AM') === p && pickerStyles.optionTextSelected]}>
+                                {p}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </View>
+            </View>
+        </View>
+    );
 }
 
-function timeStringToDate(time: string): Date {
-    const [hours, minutes] = time.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours, minutes, 0, 0);
-    return date;
-}
+const pickerStyles = StyleSheet.create({
+    container: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingVertical: spacing(4),
+        gap: spacing(2),
+    },
+    column: {
+        alignItems: 'center',
+    },
+    columnLabel: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        marginBottom: spacing(2),
+        fontWeight: '500',
+    },
+    scrollColumn: {
+        maxHeight: 180,
+    },
+    periodColumn: {
+        gap: spacing(2),
+    },
+    option: {
+        paddingVertical: spacing(3),
+        paddingHorizontal: spacing(5),
+        borderRadius: Radius.md,
+        marginVertical: spacing(1),
+    },
+    optionSelected: {
+        backgroundColor: Colors.primary,
+    },
+    periodOption: {
+        paddingVertical: spacing(3),
+        paddingHorizontal: spacing(4),
+        borderRadius: Radius.md,
+    },
+    optionText: {
+        fontSize: 20,
+        fontWeight: '500',
+        color: Colors.text,
+    },
+    optionTextSelected: {
+        color: '#fff',
+    },
+    separator: {
+        fontSize: 24,
+        fontWeight: '600',
+        color: Colors.text,
+        marginTop: spacing(7),
+    },
+});
 
 export function ReminderTimePickerModal({
     visible,
@@ -57,19 +194,16 @@ export function ReminderTimePickerModal({
 }: ReminderTimePickerModalProps) {
     const [times, setTimes] = useState<string[]>(['08:00']);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
-    const [showPicker, setShowPicker] = useState(false);
 
     // Reset state when modal opens
     useEffect(() => {
         if (visible) {
             setTimes(existingTimes.length > 0 ? [...existingTimes] : ['08:00']);
-            setShowPicker(false);
             setEditingIndex(null);
         }
     }, [visible, existingTimes]);
 
     const handleAddTime = useCallback(() => {
-        // Add a new time 12 hours after the last one
         const lastTime = times[times.length - 1] || '08:00';
         const [hours] = lastTime.split(':').map(Number);
         const newHours = (hours + 12) % 24;
@@ -78,38 +212,26 @@ export function ReminderTimePickerModal({
     }, [times]);
 
     const handleRemoveTime = useCallback((index: number) => {
-        if (times.length <= 1) return; // Keep at least one time
+        if (times.length <= 1) return;
         setTimes(times.filter((_, i) => i !== index));
-    }, [times]);
-
-    const handleTimePress = useCallback((index: number) => {
-        setEditingIndex(index);
-        setShowPicker(true);
-    }, []);
-
-    const handleTimeChange = useCallback((_event: any, selectedDate?: Date) => {
-        if (Platform.OS === 'android') {
-            setShowPicker(false);
-        }
-
-        if (selectedDate && editingIndex !== null) {
-            const newTime = dateToTimeString(selectedDate);
-            const newTimes = [...times];
-            newTimes[editingIndex] = newTime;
-            // Sort times chronologically
-            newTimes.sort((a, b) => {
-                const [aH, aM] = a.split(':').map(Number);
-                const [bH, bM] = b.split(':').map(Number);
-                return (aH * 60 + aM) - (bH * 60 + bM);
-            });
-            setTimes(newTimes);
-        }
+        if (editingIndex === index) setEditingIndex(null);
     }, [times, editingIndex]);
 
-    const handleDone = useCallback(() => {
-        setShowPicker(false);
-        setEditingIndex(null);
-    }, []);
+    const handleTimePress = useCallback((index: number) => {
+        setEditingIndex(editingIndex === index ? null : index);
+    }, [editingIndex]);
+
+    const handleTimeChange = useCallback((newTime: string) => {
+        if (editingIndex === null) return;
+        const newTimes = [...times];
+        newTimes[editingIndex] = newTime;
+        newTimes.sort((a, b) => {
+            const [aH, aM] = a.split(':').map(Number);
+            const [bH, bM] = b.split(':').map(Number);
+            return (aH * 60 + aM) - (bH * 60 + bM);
+        });
+        setTimes(newTimes);
+    }, [times, editingIndex]);
 
     const handleSave = useCallback(() => {
         onSave(times);
@@ -149,79 +271,65 @@ export function ReminderTimePickerModal({
                         <Text style={styles.medName}>{medicationName}</Text>
                     </View>
 
-                    {/* Time slots */}
-                    <View style={styles.timesContainer}>
-                        <Text style={styles.sectionLabel}>Reminder Times</Text>
+                    <ScrollView style={styles.scrollContent}>
+                        {/* Time slots */}
+                        <View style={styles.timesContainer}>
+                            <Text style={styles.sectionLabel}>Reminder Times</Text>
 
-                        {times.map((time, index) => (
-                            <View key={index} style={styles.timeRow}>
-                                <Pressable
-                                    style={[
-                                        styles.timeButton,
-                                        editingIndex === index && styles.timeButtonActive
-                                    ]}
-                                    onPress={() => handleTimePress(index)}
-                                >
-                                    <Ionicons name="alarm-outline" size={20} color={Colors.primary} />
-                                    <Text style={styles.timeText}>{formatTimeDisplay(time)}</Text>
-                                    <Text style={styles.tapToEdit}>Tap to change</Text>
+                            {times.map((time, index) => (
+                                <View key={index}>
+                                    <View style={styles.timeRow}>
+                                        <Pressable
+                                            style={[
+                                                styles.timeButton,
+                                                editingIndex === index && styles.timeButtonActive
+                                            ]}
+                                            onPress={() => handleTimePress(index)}
+                                        >
+                                            <Ionicons name="alarm-outline" size={20} color={Colors.primary} />
+                                            <Text style={styles.timeText}>{formatTimeDisplay(time)}</Text>
+                                            <Ionicons
+                                                name={editingIndex === index ? "chevron-up" : "chevron-down"}
+                                                size={18}
+                                                color={Colors.primary}
+                                            />
+                                        </Pressable>
+
+                                        {times.length > 1 && (
+                                            <Pressable
+                                                style={styles.removeButton}
+                                                onPress={() => handleRemoveTime(index)}
+                                            >
+                                                <Ionicons name="close-circle" size={24} color={Colors.error} />
+                                            </Pressable>
+                                        )}
+                                    </View>
+
+                                    {/* Inline time picker when editing this slot */}
+                                    {editingIndex === index && (
+                                        <View style={styles.inlinePicker}>
+                                            <TimePickerWheel
+                                                value={time}
+                                                onChange={handleTimeChange}
+                                            />
+                                        </View>
+                                    )}
+                                </View>
+                            ))}
+
+                            {times.length < 4 && (
+                                <Pressable style={styles.addButton} onPress={handleAddTime}>
+                                    <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />
+                                    <Text style={styles.addButtonText}>Add another time</Text>
                                 </Pressable>
-
-                                {times.length > 1 && (
-                                    <Pressable
-                                        style={styles.removeButton}
-                                        onPress={() => handleRemoveTime(index)}
-                                    >
-                                        <Ionicons name="close-circle" size={24} color={Colors.error} />
-                                    </Pressable>
-                                )}
-                            </View>
-                        ))}
-
-                        {times.length < 4 && (
-                            <Pressable style={styles.addButton} onPress={handleAddTime}>
-                                <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />
-                                <Text style={styles.addButtonText}>Add another time</Text>
-                            </Pressable>
-                        )}
-                    </View>
-
-                    {/* Native time picker (iOS) - always show when editing */}
-                    {showPicker && Platform.OS === 'ios' && editingIndex !== null && (
-                        <View style={styles.pickerContainer}>
-                            <View style={styles.pickerHeader}>
-                                <Text style={styles.pickerTitle}>Select Time</Text>
-                                <Pressable onPress={handleDone} style={styles.doneButton}>
-                                    <Text style={styles.doneText}>Done</Text>
-                                </Pressable>
-                            </View>
-                            <DateTimePicker
-                                value={timeStringToDate(times[editingIndex])}
-                                mode="time"
-                                display="spinner"
-                                onChange={handleTimeChange}
-                                style={styles.picker}
-                                themeVariant="light"
-                            />
+                            )}
                         </View>
-                    )}
 
-                    {/* Info text - only show when not picking */}
-                    {!showPicker && (
+                        {/* Info text */}
                         <Text style={styles.infoText}>
-                            Tap a time above to change it. You'll receive a push notification at each time.
+                            Tap a time to change it. You'll receive a push notification at each time.
                         </Text>
-                    )}
-
-                    {/* Android time picker */}
-                    {showPicker && Platform.OS === 'android' && editingIndex !== null && (
-                        <DateTimePicker
-                            value={timeStringToDate(times[editingIndex])}
-                            mode="time"
-                            display="default"
-                            onChange={handleTimeChange}
-                        />
-                    )}
+                    </ScrollView>
                 </View>
             </View>
         </Modal>
@@ -378,5 +486,14 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: Colors.textMuted,
         fontStyle: 'italic',
+    },
+    scrollContent: {
+        maxHeight: 450,
+    },
+    inlinePicker: {
+        backgroundColor: Colors.accent,
+        borderRadius: Radius.md,
+        marginBottom: spacing(3),
+        marginTop: spacing(1),
     },
 });
