@@ -200,40 +200,36 @@ export default function MedicationsScreen() {
         onPress={() => handleOpenMedication(med)}
       >
         <Card style={styles.medCard}>
+          {/* Topline: Name + Status Badge */}
           <View style={styles.medHeader}>
             <View style={styles.medIcon}>
               <Ionicons name={isActive ? 'medkit' : 'medkit-outline'} size={20} color={Colors.primary} />
               {med.medicationWarning && med.medicationWarning.length > 0 && (
                 <View style={styles.warningIndicator}>
-                  <Ionicons name="warning" size={12} color="#fff" />
+                  <Ionicons name="warning" size={10} color="#fff" />
                 </View>
               )}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.medName}>{med.name || 'Medication'}</Text>
-              {details.length > 0 ? (
-                <Text style={styles.medDose}>{details[0]}</Text>
-              ) : (
-                <Text style={styles.medDose}>No additional details</Text>
-              )}
-            </View>
-            <View style={styles.badgeContainer}>
-              {med.medicationWarning && med.medicationWarning.length > 0 && (
-                <View style={styles.warningBadge}>
-                  <Ionicons name="warning-outline" size={14} color={Colors.error} />
-                  <Text style={styles.warningBadgeText}>{med.medicationWarning.length}</Text>
-                </View>
-              )}
-              <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(52,211,153,0.15)' : 'rgba(255,107,107,0.12)' }]}>
-                <Text style={[styles.statusLabel, { color: isActive ? Colors.success : Colors.error }]}>
-                  {isActive ? 'Active' : 'Stopped'}
-                </Text>
-              </View>
+            <Text style={styles.medName} numberOfLines={1}>{med.name || 'Medication'}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(52,211,153,0.15)' : 'rgba(255,107,107,0.12)' }]}>
+              <Text style={[styles.statusLabel, { color: isActive ? Colors.success : Colors.error }]}>
+                {isActive ? 'Active' : 'Stopped'}
+              </Text>
             </View>
           </View>
 
+          {/* Glanceable Details Row: Dose • Frequency */}
+          {(details.length > 0) && (
+            <View style={styles.glanceRow}>
+              <Text style={styles.glanceText} numberOfLines={1}>
+                {details.join(' • ')}
+              </Text>
+            </View>
+          )}
+
+          {/* Warning Banner */}
           {med.medicationWarning && med.medicationWarning.length > 0 && (
-            <View style={{ marginBottom: spacing(3) }}>
+            <View style={{ marginTop: spacing(2) }}>
               <MedicationWarningBanner warnings={med.medicationWarning} />
             </View>
           )}
@@ -275,35 +271,23 @@ export default function MedicationsScreen() {
             </View>
           )}
 
-          <View style={styles.medMeta}>
-            <View style={[styles.sourceBadge, { backgroundColor: badge.background }]}>
-              <Ionicons name="sparkles-outline" size={12} color={badge.color} />
-              <Text style={[styles.sourceLabel, { color: badge.color }]}>{badge.label}</Text>
-            </View>
-            {updatedLabel && (
-              <Text style={styles.syncedText}>Updated {updatedLabel}</Text>
-            )}
-          </View>
-
-          {details.slice(1).map((line, idx) => (
-            <View key={idx} style={styles.detailRow}>
-              <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
-              <Text style={styles.detailText}>{line}</Text>
-            </View>
-          ))}
-
-          <View style={styles.timeline}>
-            {startedLabel && (
-              <View style={styles.timelineItem}>
-                <Ionicons name="play-outline" size={14} color={Colors.textMuted} />
-                <Text style={styles.timelineText}>Started {startedLabel}</Text>
+          {/* Compact Footer: Source + Date */}
+          <View style={styles.cardFooter}>
+            {med.source === 'visit' && med.sourceVisitId ? (
+              <View style={styles.visitLink}>
+                <Ionicons name="link-outline" size={12} color={Colors.primary} />
+                <Text style={styles.visitLinkText}>From visit</Text>
+              </View>
+            ) : (
+              <View style={styles.visitLink}>
+                <Ionicons name="create-outline" size={12} color={Colors.textMuted} />
+                <Text style={[styles.visitLinkText, { color: Colors.textMuted }]}>Added manually</Text>
               </View>
             )}
-            {!isActive && stoppedLabel && (
-              <View style={styles.timelineItem}>
-                <Ionicons name="stop-outline" size={14} color={Colors.textMuted} />
-                <Text style={styles.timelineText}>Stopped {stoppedLabel}</Text>
-              </View>
+            {(startedLabel || stoppedLabel) && (
+              <Text style={styles.footerDate}>
+                {isActive ? (startedLabel ? `Started ${startedLabel}` : '') : (stoppedLabel ? `Stopped ${stoppedLabel}` : '')}
+              </Text>
             )}
           </View>
         </Card>
@@ -538,9 +522,11 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   medName: {
-    fontSize: 18,
+    flex: 1,
+    fontSize: 17,
     fontWeight: '600',
     color: Colors.text,
+    marginHorizontal: spacing(2),
   },
   medDose: {
     fontSize: 14,
@@ -735,5 +721,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: Colors.primary,
+  },
+  // Glanceable card styles
+  glanceRow: {
+    marginTop: spacing(1),
+    marginBottom: spacing(2),
+  },
+  glanceText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.textMuted,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing(3),
+    paddingTop: spacing(3),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  visitLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+  },
+  visitLinkText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.primary,
+  },
+  footerDate: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
 });
