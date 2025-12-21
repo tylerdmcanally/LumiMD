@@ -10,7 +10,7 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits } from '../lib/api/hooks';
-import { setBadgeCount } from '../lib/notifications';
+import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -69,6 +69,26 @@ function NotificationHandler() {
 
     updateBadge();
   }, [isAuthenticated, pendingActions, visits]);
+
+  // Auto-register push token when authenticated
+  // This ensures new builds (e.g., TestFlight) get fresh tokens registered
+  useEffect(() => {
+    const autoRegisterPushToken = async () => {
+      if (!isAuthenticated || !user) return;
+
+      try {
+        const token = await getExpoPushToken();
+        if (token) {
+          await registerPushToken(token);
+          console.log('[Notifications] Auto-registered push token on app launch');
+        }
+      } catch (error) {
+        console.error('[Notifications] Error auto-registering push token:', error);
+      }
+    };
+
+    autoRegisterPushToken();
+  }, [isAuthenticated, user]);
 
   // Handle notification received while app is foregrounded
   useEffect(() => {
