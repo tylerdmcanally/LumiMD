@@ -102,13 +102,24 @@ export async function processAndNotifyMedicationReminders(): Promise<{
     for (const doc of remindersSnapshot.docs) {
         const reminder = doc.data() as MedicationReminderDoc;
 
+        // Log all reminders and their times for debugging
+        functions.logger.info(`[MedReminders] Checking reminder ${doc.id}`, {
+            medication: reminder.medicationName,
+            times: reminder.times,
+            currentTime,
+            lastSentAt: reminder.lastSentAt?.toDate?.()?.toISOString() || 'never',
+        });
+
         // Check if any reminder time matches current window
         const matchingTime = reminder.times.find(time => isTimeWithinWindow(time, currentTime));
-        if (!matchingTime) continue;
+        if (!matchingTime) {
+            functions.logger.debug(`[MedReminders] No matching time for ${doc.id} - times: ${reminder.times.join(', ')}`);
+            continue;
+        }
 
         // Skip if recently sent
         if (wasRecentlySent(reminder.lastSentAt)) {
-            functions.logger.debug(`[MedReminders] Skipping ${doc.id} - recently sent`);
+            functions.logger.info(`[MedReminders] Skipping ${doc.id} - recently sent at ${reminder.lastSentAt?.toDate?.()?.toISOString()}`);
             continue;
         }
 
@@ -134,8 +145,17 @@ export async function processAndNotifyMedicationReminders(): Promise<{
         try {
             const tokens = await notificationService.getUserPushTokens(userId);
 
+            // Log tokens for debugging
+            functions.logger.info(`[MedReminders] User ${userId} has ${tokens.length} push tokens`, {
+                tokens: tokens.map(t => ({
+                    token: t.token.substring(0, 30) + '...',
+                    platform: t.platform,
+                    isExpoToken: t.token.startsWith('ExponentPushToken['),
+                })),
+            });
+
             if (tokens.length === 0) {
-                functions.logger.debug(`[MedReminders] No tokens for user ${userId}`);
+                functions.logger.info(`[MedReminders] No tokens for user ${userId} - skipping`);
                 // Mark as processed but skipped
                 for (const reminder of reminders) {
                     batch.update(getRemindersCollection().doc(reminder.id), { lastSentAt: now });
