@@ -16,6 +16,7 @@ import { nudgesRouter } from './routes/nudges';
 import { nudgesDebugRouter } from './routes/nudgesDebug';
 import { healthLogsRouter } from './routes/healthLogs';
 import { medicationRemindersRouter } from './routes/medicationReminders';
+import medicationLogsRouter from './routes/medicationLogs';
 import { apiLimiter } from './middlewares/rateLimit';
 import { requireHttps } from './middlewares/httpsOnly';
 import { errorHandler } from './middlewares/errorHandler';
@@ -157,6 +158,7 @@ app.use('/v1/nudges', nudgesRouter);
 app.use('/v1/nudges', nudgesDebugRouter); // Debug endpoints under same path
 app.use('/v1/health-logs', healthLogsRouter);
 app.use('/v1/medication-reminders', medicationRemindersRouter);
+app.use('/v1/medication-logs', medicationLogsRouter);
 
 // Health check
 app.get('/health', (req, res) => {

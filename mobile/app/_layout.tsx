@@ -1,16 +1,18 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Alert } from 'react-native';
 import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits } from '../lib/api/hooks';
 import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
+import { MedicationActionModal, MedicationActionData } from '../components/MedicationActionModal';
+import { logMedicationAction } from '../lib/api/medicationLogs';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -29,7 +31,7 @@ function RootFallback({ reset }: { reset: () => void }) {
       <View style={styles.fallbackContent}>
         <Text style={styles.fallbackTitle}>Something went wrong</Text>
         <Text style={styles.fallbackSubtitle}>
-          We ran into an unexpected issue. You can restart the app and we’ll reset things for you.
+          We ran into an unexpected issue. You can restart the app and we'll reset things for you.
         </Text>
         <Pressable style={styles.fallbackButton} onPress={reset}>
           <Text style={styles.fallbackButtonText}>Restart App</Text>
@@ -45,6 +47,10 @@ function NotificationHandler() {
   const { isAuthenticated, user } = useAuth();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
+
+  // Medication action modal state
+  const [medicationModalVisible, setMedicationModalVisible] = useState(false);
+  const [pendingMedication, setPendingMedication] = useState<MedicationActionData | null>(null);
 
   // Only fetch data when authenticated to prevent SDK errors
   const { data: pendingActions } = usePendingActions({ enabled: isAuthenticated && !!user });
@@ -115,17 +121,26 @@ function NotificationHandler() {
         return;
       }
 
-      if (data?.type === 'visit-ready' && data?.visitId) {
+      if (data?.type === 'medication_reminder') {
+        // Show medication action modal instead of navigating
+        console.log('[Notifications] Opening medication action modal');
+        setPendingMedication({
+          reminderId: data.reminderId as string,
+          medicationId: data.medicationId as string,
+          medicationName: data.medicationName as string,
+          medicationDose: data.medicationDose as string | undefined,
+          scheduledTime: getCurrentTimeHHMM(), // Use current time as scheduled time
+        });
+        setMedicationModalVisible(true);
+      } else if (data?.type === 'visit-ready' && data?.visitId) {
         // Navigate to visit detail
         router.push(`/visit-detail?id=${data.visitId}`);
       } else if (data?.type === 'nudge') {
         // Navigate to home screen where LumiBot section will show the nudge
-        // The nudge will be visible because it's now due
         console.log('[Notifications] Navigating to home for nudge:', data.nudgeId);
         router.replace('/(tabs)');
       }
     });
-
 
     return () => {
       if (responseListener.current) {
@@ -134,7 +149,54 @@ function NotificationHandler() {
     };
   }, [isAuthenticated, router]);
 
-  return null;
+  // Handle medication action (taken/skipped/snoozed)
+  const handleMedicationAction = useCallback(async (action: 'taken' | 'skipped' | 'snoozed') => {
+    if (!pendingMedication) return;
+
+    try {
+      await logMedicationAction({
+        medicationId: pendingMedication.medicationId,
+        medicationName: pendingMedication.medicationName,
+        reminderId: pendingMedication.reminderId,
+        action,
+        scheduledTime: pendingMedication.scheduledTime,
+      });
+
+      console.log(`[Notifications] Logged medication action: ${action}`);
+
+      if (action === 'snoozed') {
+        // TODO: Schedule a local notification for 30 minutes from now
+        // For now, just show a confirmation
+        Alert.alert('Reminder Set', "We'll remind you again in 30 minutes.");
+      }
+    } catch (error) {
+      console.error('[Notifications] Error logging medication action:', error);
+      Alert.alert('Error', 'Failed to log action. Please try again.');
+      throw error;
+    }
+  }, [pendingMedication]);
+
+  const handleCloseModal = useCallback(() => {
+    setMedicationModalVisible(false);
+    setPendingMedication(null);
+  }, []);
+
+  return (
+    <MedicationActionModal
+      visible={medicationModalVisible}
+      medication={pendingMedication}
+      onAction={handleMedicationAction}
+      onClose={handleCloseModal}
+    />
+  );
+}
+
+// Helper to get current time in HH:MM format
+function getCurrentTimeHHMM(): string {
+  const now = new Date();
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 export default function RootLayout() {
