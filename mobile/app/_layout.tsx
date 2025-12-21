@@ -10,7 +10,7 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits } from '../lib/api/hooks';
-import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
+import { setBadgeCount, getExpoPushToken, registerPushToken, scheduleLocalMedicationReminder } from '../lib/notifications';
 import { MedicationActionModal, MedicationActionData } from '../components/MedicationActionModal';
 import { logMedicationAction } from '../lib/api/medicationLogs';
 
@@ -165,8 +165,14 @@ function NotificationHandler() {
       console.log(`[Notifications] Logged medication action: ${action}`);
 
       if (action === 'snoozed') {
-        // TODO: Schedule a local notification for 30 minutes from now
-        // For now, just show a confirmation
+        // Schedule a local notification for 30 minutes from now
+        await scheduleLocalMedicationReminder({
+          medicationId: pendingMedication.medicationId,
+          medicationName: pendingMedication.medicationName,
+          medicationDose: pendingMedication.medicationDose,
+          reminderId: pendingMedication.reminderId,
+          delayMinutes: 30,
+        });
         Alert.alert('Reminder Set', "We'll remind you again in 30 minutes.");
       }
     } catch (error) {

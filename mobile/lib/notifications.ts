@@ -127,3 +127,58 @@ export async function clearBadge(): Promise<void> {
   await setBadgeCount(0);
 }
 
+export interface ScheduleReminderOptions {
+  medicationId: string;
+  medicationName: string;
+  medicationDose?: string;
+  reminderId?: string;
+  delayMinutes: number;
+}
+
+/**
+ * Schedule a local notification for medication reminder snooze
+ */
+export async function scheduleLocalMedicationReminder(
+  options: ScheduleReminderOptions
+): Promise<string> {
+  try {
+    const doseText = options.medicationDose ? ` (${options.medicationDose})` : '';
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '💊 Medication Reminder',
+        body: `Time to take your ${options.medicationName}${doseText}`,
+        data: {
+          type: 'medication_reminder',
+          medicationId: options.medicationId,
+          medicationName: options.medicationName,
+          medicationDose: options.medicationDose,
+          reminderId: options.reminderId,
+        },
+        sound: 'default',
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: options.delayMinutes * 60,
+      },
+    });
+
+    console.log(`[Notifications] Scheduled local reminder in ${options.delayMinutes} min:`, notificationId);
+    return notificationId;
+  } catch (error) {
+    console.error('[Notifications] Error scheduling local notification:', error);
+    throw error;
+  }
+}
+
+/**
+ * Cancel a scheduled notification
+ */
+export async function cancelScheduledNotification(notificationId: string): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(notificationId);
+    console.log('[Notifications] Cancelled scheduled notification:', notificationId);
+  } catch (error) {
+    console.error('[Notifications] Error cancelling notification:', error);
+  }
+}
