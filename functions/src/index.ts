@@ -200,10 +200,10 @@ export const processNudgeNotifications = onSchedule(
   }
 );
 
-// Scheduled function to process medication reminders every 15 minutes
+// Scheduled function to process medication reminders every 5 minutes
 export const processMedicationReminders = onSchedule(
   {
-    schedule: 'every 15 minutes',
+    schedule: 'every 5 minutes',
     timeZone: 'America/Chicago',
     memory: '256MiB',
     timeoutSeconds: 60,
