@@ -286,3 +286,75 @@ medicationRemindersRouter.delete('/:id', requireAuth, async (req: AuthRequest, r
         });
     }
 });
+
+// =============================================================================
+// POST /v1/medication-reminders/debug/test-notify - Send test notification
+// =============================================================================
+
+medicationRemindersRouter.post('/debug/test-notify', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+        const { medicationName = 'Test Medication', medicationDose = '10mg' } = req.body;
+
+        // Get user's push tokens
+        const tokensSnapshot = await getDb()
+            .collection('users')
+            .doc(userId)
+            .collection('pushTokens')
+            .get();
+
+        if (tokensSnapshot.empty) {
+            res.status(400).json({
+                code: 'no_tokens',
+                message: 'No push tokens registered for this user',
+            });
+            return;
+        }
+
+        const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
+
+        // Send test notification via Expo Push API
+        const messages = tokens.map(token => ({
+            to: token,
+            title: '💊 Medication Reminder (Test)',
+            body: `Time to take your ${medicationName} (${medicationDose})`,
+            data: {
+                type: 'medication_reminder',
+                medicationId: 'test-med-id',
+                medicationName,
+                medicationDose,
+                reminderId: 'test-reminder-id',
+            },
+            sound: 'default' as const,
+            priority: 'high' as const,
+        }));
+
+        const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(messages),
+        });
+
+        const result = await response.json();
+
+        functions.logger.info('[medicationReminders] Test notification sent', {
+            userId,
+            tokenCount: tokens.length,
+            result
+        });
+
+        res.json({
+            success: true,
+            message: `Sent test notification to ${tokens.length} device(s)`,
+            result,
+        });
+    } catch (error) {
+        functions.logger.error('[medicationReminders] Test notify failed:', error);
+        res.status(500).json({
+            code: 'internal_error',
+            message: 'Failed to send test notification',
+        });
+    }
+});
