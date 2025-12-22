@@ -18,7 +18,6 @@ import {
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
 import { HealthLogButton } from '../components/HealthLogButton';
-import { ComplianceWidget } from '../components/ComplianceWidget';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
 
@@ -279,9 +278,6 @@ export default function HomeScreen() {
                     icon="medkit-outline"
                     onPress={() => router.push('/medications')}
                   />
-
-                  {/* Medication Adherence Widget - only shows if user has logged data */}
-                  <ComplianceWidget />
                 </>
               )}
             </View>

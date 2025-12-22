@@ -146,7 +146,7 @@ export async function scheduleLocalMedicationReminder(
 
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: '💊 Medication Reminder',
+        title: 'Medication Reminder',
         body: `Time to take your ${options.medicationName}${doseText}`,
         data: {
           type: 'medication_reminder',

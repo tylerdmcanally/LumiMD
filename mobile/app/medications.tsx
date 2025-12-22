@@ -27,6 +27,7 @@ import {
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
 import { ReminderTimePickerModal } from '../components/ReminderTimePickerModal';
+import { TodayDoseHistory } from '../components/TodayDoseHistory';
 import type { MedicationReminder } from '@lumimd/sdk';
 
 
@@ -397,6 +398,9 @@ export default function MedicationsScreen() {
                   <Text style={styles.sectionSubtitle}>
                     Active medications automatically update as your visit summaries note changes.
                   </Text>
+
+                  {/* Today's dose history - collapsible */}
+                  <TodayDoseHistory />
 
                   <View style={styles.section}>
                     {activeMeds.length === 0 ? (

@@ -171,7 +171,7 @@ export async function processAndNotifyMedicationReminders(): Promise<{
 
                 const payloads: PushNotificationPayload[] = tokens.map(({ token }) => ({
                     to: token,
-                    title: '💊 Medication Reminder',
+                    title: 'Medication Reminder',
                     body: notificationBody,
                     data: {
                         type: 'medication_reminder',

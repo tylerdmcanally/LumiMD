@@ -316,7 +316,7 @@ medicationRemindersRouter.post('/debug/test-notify', requireAuth, async (req: Au
         // Send test notification via Expo Push API
         const messages = tokens.map(token => ({
             to: token,
-            title: '💊 Medication Reminder (Test)',
+            title: 'Medication Reminder (Test)',
             body: `Time to take your ${medicationName} (${medicationDose})`,
             data: {
                 type: 'medication_reminder',
