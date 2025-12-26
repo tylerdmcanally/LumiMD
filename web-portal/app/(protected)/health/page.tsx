@@ -938,9 +938,23 @@ export default function HealthDashboardPage() {
                 {healthLogs.length > 0 && (
                     <section>
                         <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-lg font-semibold text-text-primary">
-                                Recent Readings
-                            </h2>
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-lg font-semibold text-text-primary">
+                                    Recent Readings
+                                </h2>
+                                {!isViewingShared && selectedIds.size > 0 && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brand-primary/10 text-brand-primary text-sm font-medium">
+                                        {selectedIds.size} selected
+                                        <button
+                                            onClick={() => setSelectedIds(new Set())}
+                                            className="ml-1 hover:text-brand-primary-dark"
+                                            title="Clear selection"
+                                        >
+                                            ×
+                                        </button>
+                                    </span>
+                                )}
+                            </div>
                             {!isViewingShared && selectedIds.size > 0 && (
                                 <Button
                                     variant="danger"
@@ -948,7 +962,7 @@ export default function HealthDashboardPage() {
                                     disabled={isBulkDeleting}
                                     leftIcon={<Trash2 className="h-4 w-4" />}
                                 >
-                                    {isBulkDeleting ? 'Deleting...' : `Delete (${selectedIds.size})`}
+                                    {isBulkDeleting ? 'Deleting...' : `Delete Selected`}
                                 </Button>
                             )}
                         </div>
@@ -964,6 +978,7 @@ export default function HealthDashboardPage() {
                                                         checked={allVisibleSelected}
                                                         onChange={toggleSelectAll}
                                                         className="h-4 w-4 rounded border-border-light text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                        title={allVisibleSelected ? "Deselect all" : "Select all"}
                                                     />
                                                 </th>
                                             )}
