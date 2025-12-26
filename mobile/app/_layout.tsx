@@ -255,6 +255,13 @@ export default function RootLayout() {
                 }}
               />
               <Stack.Screen
+                name="medication-schedule"
+                options={{
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                }}
+              />
+              <Stack.Screen
                 name="record-visit"
                 options={{
                   headerShown: false,

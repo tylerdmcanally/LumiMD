@@ -73,6 +73,11 @@ async function createNudge(input: NudgeCreateInput): Promise<string> {
     if (input.medicationId) nudge.medicationId = input.medicationId;
     if (input.medicationName) nudge.medicationName = input.medicationName;
 
+    // AI-generated content fields
+    if (input.aiGenerated) nudge.aiGenerated = true;
+    if (input.diagnosisExplanation) nudge.diagnosisExplanation = input.diagnosisExplanation;
+    if (input.personalizedContext) nudge.personalizedContext = input.personalizedContext;
+
     const docRef = await getNudgesCollection().add(nudge);
 
     functions.logger.info(`[LumibotAnalyzer] Created nudge ${docRef.id}`, {
@@ -80,11 +85,11 @@ async function createNudge(input: NudgeCreateInput): Promise<string> {
         type: input.type,
         title: input.title,
         scheduledFor: input.scheduledFor.toISOString(),
+        aiGenerated: input.aiGenerated || false,
     });
 
     return docRef.id;
 }
-
 // =============================================================================
 // Introduction Nudge (Immediate)
 // =============================================================================
@@ -95,34 +100,71 @@ interface IntroNudgeParams {
     conditionName?: string;
     medicationName?: string;
     isNewMedication?: boolean;
+    medications?: string[];  // All medications from visit for context
 }
 
 async function createIntroductionNudge(params: IntroNudgeParams): Promise<string> {
-    const { userId, visitId, conditionName, medicationName, isNewMedication } = params;
+    const { userId, visitId, conditionName, medicationName, isNewMedication, medications } = params;
 
-    let title: string;
-    let message: string;
+    // Initialize with defaults to satisfy TypeScript
+    let title = 'LumiBot is Here to Help';
+    let message = 'I noticed some updates from your recent visit. I\'ll be checking in to help you track your progress. 💙';
+    let diagnosisExplanation: string | undefined;
+    let aiGenerated = false;
 
-    if (conditionName && medicationName) {
-        // Both condition and medication
-        title = 'LumiBot is Here to Help';
-        message = `I noticed your provider discussed ${conditionName} and started you on ${medicationName}. I'll be checking in periodically to see how things are going and help you track your progress. 💙`;
-    } else if (conditionName) {
-        // Condition only
-        title = 'LumiBot is Here to Help';
-        message = `I see your provider discussed ${conditionName} during your visit. I'll be checking in to help you monitor and track your progress. 💙`;
-    } else if (medicationName && isNewMedication) {
-        // New medication only
-        title = 'New Medication Started';
-        message = `I noticed your provider started you on ${medicationName}. I'll be checking in over the next few weeks to see how it's working for you. 💙`;
-    } else if (medicationName) {
-        // Changed medication
-        title = 'Medication Update';
-        message = `I see your provider made a change to your ${medicationName}. I'll check in to see how the adjustment is going. 💙`;
-    } else {
-        // Generic fallback
-        title = 'LumiBot is Here to Help';
-        message = 'I noticed some updates from your recent visit. I\'ll be checking in to help you track your progress. 💙';
+    // Try AI generation first for diagnoses
+    if (conditionName) {
+        try {
+            // Dynamic import to avoid circular dependencies
+            const { getLumiBotAIService } = await import('./lumibotAI');
+            const { getPatientContextLight } = await import('./patientContextAggregator');
+
+            const [aiService, patientContext] = await Promise.all([
+                Promise.resolve(getLumiBotAIService()),
+                getPatientContextLight(userId).catch(() => undefined),
+            ]);
+
+            const aiResult = await aiService.generateDiagnosisIntroduction({
+                diagnosis: conditionName,
+                medications: medications || (medicationName ? [medicationName] : undefined),
+                patientContext,
+            });
+
+            title = aiResult.title;
+            message = aiResult.message;
+            diagnosisExplanation = aiResult.explanation || undefined;
+            aiGenerated = true;
+
+            functions.logger.info(`[LumibotAnalyzer] AI generated intro nudge for ${conditionName}`);
+        } catch (error) {
+            functions.logger.warn(`[LumibotAnalyzer] AI generation failed, using template:`, error);
+            // Fall through to template generation below
+        }
+    }
+
+    // Template fallback if AI didn't generate
+    if (!aiGenerated) {
+        if (conditionName && medicationName) {
+            // Both condition and medication
+            title = 'LumiBot is Here to Help';
+            message = `I noticed your provider discussed ${conditionName} and started you on ${medicationName}. I'll be checking in periodically to see how things are going and help you track your progress. 💙`;
+        } else if (conditionName) {
+            // Condition only
+            title = 'LumiBot is Here to Help';
+            message = `I see your provider discussed ${conditionName} during your visit. I'll be checking in to help you monitor and track your progress. 💙`;
+        } else if (medicationName && isNewMedication) {
+            // New medication only
+            title = 'New Medication Started';
+            message = `I noticed your provider started you on ${medicationName}. I'll be checking in over the next few weeks to see how it's working for you. 💙`;
+        } else if (medicationName) {
+            // Changed medication
+            title = 'Medication Update';
+            message = `I see your provider made a change to your ${medicationName}. I'll check in to see how the adjustment is going. 💙`;
+        } else {
+            // Generic fallback
+            title = 'LumiBot is Here to Help';
+            message = 'I noticed some updates from your recent visit. I\'ll be checking in to help you track your progress. 💙';
+        }
     }
 
     // Schedule for "now" (immediate) - 10 seconds from now to ensure processing completes
@@ -139,6 +181,8 @@ async function createIntroductionNudge(params: IntroNudgeParams): Promise<string
         scheduledFor,
         sequenceDay: 0,
         sequenceId: `intro_${visitId}`,
+        aiGenerated,
+        diagnosisExplanation,
     });
 }
 
@@ -762,5 +806,195 @@ export async function createInsightNudge(input: CreateInsightNudgeInput): Promis
     } catch (error) {
         functions.logger.error(`[LumibotAnalyzer] Failed to create insight nudge:`, error);
         return null;
+    }
+}
+
+// =============================================================================
+// AI-Powered Delta Analysis (New)
+// =============================================================================
+
+export interface DeltaAnalysisResult {
+    nudgesCreated: number;
+    reasoning: string;
+    conditionsAdded: string[];
+    trackingEnabled: string[];
+}
+
+/**
+ * Analyze a visit using AI delta analysis.
+ * 
+ * This is the new intelligent approach that:
+ * 1. Fetches patient's existing medical context
+ * 2. Uses AI to compare with new visit data
+ * 3. Creates only nudges for genuinely new/changed items
+ */
+export async function analyzeVisitWithDelta(
+    userId: string,
+    visitId: string,
+    summary: VisitSummaryResult,
+    visitDate?: Date
+): Promise<DeltaAnalysisResult> {
+    const effectiveVisitDate = visitDate || new Date();
+
+    functions.logger.info(`[LumibotAnalyzer] Starting delta analysis for visit ${visitId}`);
+
+    try {
+        // Dynamic import to avoid circular dependencies
+        const { getDeltaAnalyzer } = await import('./deltaAnalyzer');
+
+        // Build visit data for analysis
+        const visitForAnalysis = {
+            visitId,
+            visitDate: effectiveVisitDate,
+            summaryText: summary.summary || '',
+            diagnoses: summary.diagnoses || [],
+            medicationsStarted: (summary.medications?.started || []).map(m => ({
+                name: typeof m === 'string' ? m : m.name,
+                dose: typeof m === 'string' ? undefined : m.dose,
+                frequency: typeof m === 'string' ? undefined : m.frequency,
+            })),
+            medicationsChanged: (summary.medications?.changed || []).map(m => ({
+                name: typeof m === 'string' ? m : m.name,
+                change: typeof m === 'string' ? undefined : m.note,
+            })),
+            medicationsStopped: (summary.medications?.stopped || []).map(m =>
+                typeof m === 'string' ? m : m.name
+            ),
+        };
+
+        // Run delta analysis
+        const analyzer = getDeltaAnalyzer();
+        const { analysis } = await analyzer.analyzeAndUpdateContext(
+            userId,
+            visitForAnalysis
+        );
+
+        // Create nudges based on AI recommendations
+        let nudgesCreated = 0;
+
+        for (const rec of analysis.nudgesToCreate) {
+            try {
+                // Determine scheduled date based on urgency
+                const scheduledFor = new Date(effectiveVisitDate);
+                switch (rec.urgency) {
+                    case 'immediate':
+                        scheduledFor.setSeconds(scheduledFor.getSeconds() + 10);
+                        break;
+                    case 'day1':
+                        scheduledFor.setDate(scheduledFor.getDate() + 1);
+                        break;
+                    case 'day3':
+                        scheduledFor.setDate(scheduledFor.getDate() + 3);
+                        break;
+                    case 'week1':
+                        scheduledFor.setDate(scheduledFor.getDate() + 7);
+                        break;
+                }
+
+                // Create the nudge
+                await createNudge({
+                    userId,
+                    visitId,
+                    type: rec.type,
+                    conditionId: rec.conditionId,
+                    medicationName: rec.medicationName,
+                    title: getNudgeTitle(rec),
+                    message: getNudgeMessage(rec),
+                    actionType: getActionTypeForNudge(rec),
+                    scheduledFor,
+                    sequenceDay: 0,
+                    sequenceId: `delta_${visitId}_${nudgesCreated}`,
+                    aiGenerated: true,
+                    personalizedContext: rec.reason,
+                });
+
+                nudgesCreated++;
+            } catch (error) {
+                functions.logger.error(`[LumibotAnalyzer] Failed to create nudge from delta:`, error);
+            }
+        }
+
+        functions.logger.info(`[LumibotAnalyzer] Delta analysis complete`, {
+            userId,
+            visitId,
+            nudgesCreated,
+            reasoning: analysis.reasoning,
+        });
+
+        return {
+            nudgesCreated,
+            reasoning: analysis.reasoning,
+            conditionsAdded: analysis.contextUpdates.newConditions,
+            trackingEnabled: analysis.contextUpdates.trackingToEnable,
+        };
+
+    } catch (error) {
+        functions.logger.error(`[LumibotAnalyzer] Delta analysis failed, falling back to legacy:`, error);
+
+        // Fall back to legacy analysis
+        const legacyResult = await analyzeVisitForNudges(userId, visitId, summary, visitDate);
+
+        return {
+            nudgesCreated: legacyResult.conditionNudges + legacyResult.medicationNudges,
+            reasoning: 'Fallback to legacy analysis',
+            conditionsAdded: legacyResult.matchedConditions,
+            trackingEnabled: [],
+        };
+    }
+}
+
+// Helper functions for delta-based nudge creation
+
+function getNudgeTitle(rec: { type: string; medicationName?: string; conditionId?: string }): string {
+    switch (rec.type) {
+        case 'introduction':
+            return 'LumiBot is Here to Help';
+        case 'medication_checkin':
+            return rec.medicationName ? `${rec.medicationName} Check-in` : 'Medication Check';
+        case 'condition_tracking':
+            return 'Time to Log';
+        case 'followup':
+            return 'Follow-up Check';
+        default:
+            return 'Health Check-in';
+    }
+}
+
+function getNudgeMessage(rec: { type: string; reason: string; medicationName?: string }): string {
+    switch (rec.type) {
+        case 'introduction':
+            return "I noticed some changes from your visit. I'll be checking in to help you track your progress. 💙";
+        case 'medication_checkin':
+            return rec.medicationName
+                ? `How's it going with ${rec.medicationName}? Let us know how you're feeling. 💙`
+                : "Let's check in on your medications. 💙";
+        case 'condition_tracking':
+            return "Time to log a reading to track your progress. 💙";
+        case 'followup':
+            return "Checking back in - how are things going? 💙";
+        default:
+            return rec.reason || "Time for a health check-in. 💙";
+    }
+}
+
+function getActionTypeForNudge(rec: { type: string; trackingType?: string }): NudgeActionType {
+    if (rec.trackingType) {
+        switch (rec.trackingType) {
+            case 'bp': return 'log_bp';
+            case 'glucose': return 'log_glucose';
+            case 'weight': return 'log_weight';
+            case 'symptoms': return 'symptom_check';
+        }
+    }
+
+    switch (rec.type) {
+        case 'introduction':
+            return 'acknowledge';
+        case 'medication_checkin':
+            return 'medication_check';
+        case 'condition_tracking':
+            return 'symptom_check';
+        default:
+            return 'acknowledge';
     }
 }

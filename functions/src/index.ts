@@ -43,8 +43,10 @@ admin.initializeApp();
 // Create Express app
 const app = express();
 
-// Trust proxy - required for rate limiting behind Cloud Functions/Load Balancer
-app.set('trust proxy', true);
+// Trust proxy - Firebase Functions/Cloud Run runs behind Google's Cloud Load Balancer.
+// Setting to 1 means "trust only the first proxy hop" which is the load balancer.
+// This is more secure than 'true' and properly extracts client IP from X-Forwarded-For.
+app.set('trust proxy', 1);
 
 // Configure CORS with whitelist
 const allowedOrigins = corsConfig.allowedOrigins

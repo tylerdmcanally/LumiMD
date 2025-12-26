@@ -384,3 +384,110 @@ export function useDeleteMedicationReminder() {
     },
   });
 }
+
+// =============================================================================
+// Medication Schedule Hook (Today's Doses)
+// =============================================================================
+
+export interface ScheduledDose {
+  medicationId: string;
+  reminderId: string;
+  name: string;
+  dose: string;
+  scheduledTime: string;
+  status: 'taken' | 'skipped' | 'pending';
+  logId: string | null;
+}
+
+export interface MedicationScheduleResponse {
+  scheduledDoses: ScheduledDose[];
+  summary: { taken: number; skipped: number; pending: number; total: number };
+  nextDue: { name: string; time: string } | null;
+}
+
+export const medicationScheduleKey = ['medicationSchedule'] as const;
+
+// Helper to make API calls directly with auth
+async function fetchWithAuth<T>(path: string, options?: RequestInit): Promise<T> {
+  const { getIdToken } = await import('../auth');
+  const token = await getIdToken();
+  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export function useMedicationSchedule(options?: QueryEnabledOptions<MedicationScheduleResponse>) {
+  return useQuery<MedicationScheduleResponse>({
+    queryKey: medicationScheduleKey,
+    staleTime: 30_000,
+    ...options,
+    queryFn: async () => {
+      return fetchWithAuth<MedicationScheduleResponse>('/v1/meds/schedule/today');
+    },
+  });
+}
+
+export function useMarkDose() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { medicationId: string; scheduledTime: string; action: 'taken' | 'skipped' }) =>
+      fetchWithAuth('/v1/meds/schedule/mark', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+    },
+  });
+}
+
+export function useMarkBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      doses: Array<{ medicationId: string; scheduledTime: string }>;
+      action: 'taken' | 'skipped';
+    }) =>
+      fetchWithAuth('/v1/meds/schedule/mark-batch', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+    },
+  });
+}
+
+export function useSnoozeDose() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      medicationId: string;
+      scheduledTime: string;
+      snoozeMinutes: '15' | '30' | '60';
+    }) =>
+      fetchWithAuth('/v1/meds/schedule/snooze', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+    },
+  });
+}

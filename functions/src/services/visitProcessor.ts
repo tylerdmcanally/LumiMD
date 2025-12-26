@@ -4,7 +4,7 @@ import { getOpenAIService } from './openai';
 import { normalizeMedicationSummary, syncMedicationsFromSummary } from './medicationSync';
 import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 import { getAssemblyAIService } from './assemblyai';
-import { analyzeVisitForNudges } from './lumibotAnalyzer';
+import { analyzeVisitWithDelta } from './lumibotAnalyzer';
 
 
 const db = () => admin.firestore();
@@ -139,26 +139,25 @@ export async function summarizeVisit({
       `[visitProcessor] Visit ${visitRef.id} summarized successfully. Actions created: ${summary.nextSteps.length}`,
     );
 
-    // LumiBot: Analyze visit for condition tracking and medication nudges
+    // LumiBot: AI Delta Analysis for intelligent nudge creation
     try {
       const visitDate = visitData.visitDate?.toDate?.() || processedAt.toDate();
-      const lumibotResult = await analyzeVisitForNudges(
+      const lumibotResult = await analyzeVisitWithDelta(
         visitData.userId,
         visitRef.id,
         summary,
         visitDate
       );
 
-      if (lumibotResult.conditionNudges > 0 || lumibotResult.medicationNudges > 0) {
-        functions.logger.info(
-          `[LumiBot] Created nudges for visit ${visitRef.id}`,
-          {
-            conditionNudges: lumibotResult.conditionNudges,
-            medicationNudges: lumibotResult.medicationNudges,
-            matchedConditions: lumibotResult.matchedConditions,
-          }
-        );
-      }
+      functions.logger.info(
+        `[LumiBot] Delta analysis complete for visit ${visitRef.id}`,
+        {
+          nudgesCreated: lumibotResult.nudgesCreated,
+          reasoning: lumibotResult.reasoning,
+          conditionsAdded: lumibotResult.conditionsAdded,
+          trackingEnabled: lumibotResult.trackingEnabled,
+        }
+      );
     } catch (lumibotError) {
       // Log but don't fail the visit processing if LumiBot analysis fails
       functions.logger.warn(

@@ -221,6 +221,211 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
 });
 
 // =============================================================================
+// POST /v1/nudges/:id/respond-text - AI-interpreted free-text response
+// =============================================================================
+
+import { getLumiBotAIService, PatientTrendContext, FollowUpUrgency } from '../services/lumibotAI';
+import { getPatientContext } from '../services/patientContextAggregator';
+
+const freeTextResponseSchema = z.object({
+    text: z.string().min(1).max(2000),
+});
+
+nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+        const nudgeId = req.params.id;
+
+        // Validate request body
+        const data = freeTextResponseSchema.parse(req.body);
+
+        // Verify nudge belongs to user
+        const nudgeRef = getDb().collection('nudges').doc(nudgeId);
+        const nudgeDoc = await nudgeRef.get();
+
+        if (!nudgeDoc.exists) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Nudge not found',
+            });
+            return;
+        }
+
+        const nudge = nudgeDoc.data()!;
+        if (nudge.userId !== userId) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this nudge',
+            });
+            return;
+        }
+
+        // Get patient context for trends
+        let trendContext: PatientTrendContext | undefined;
+        try {
+            const patientContext = await getPatientContext(userId);
+            if (patientContext) {
+                // Extract trends
+                const bpTrend = patientContext.healthLogTrends?.find(t => t.type === 'bp');
+                const glucoseTrend = patientContext.healthLogTrends?.find(t => t.type === 'glucose');
+
+                // Calculate engagement level
+                const metrics = patientContext.nudgeMetrics;
+                let engagementLevel: 'high' | 'medium' | 'low' = 'medium';
+                if (metrics) {
+                    const total = metrics.completedLast30Days + metrics.dismissedLast30Days;
+                    if (total > 0) {
+                        const completionRate = metrics.completedLast30Days / total;
+                        engagementLevel = completionRate > 0.7 ? 'high' : completionRate > 0.4 ? 'medium' : 'low';
+                    }
+                }
+
+                trendContext = {
+                    bpTrend: bpTrend?.trend,
+                    glucoseTrend: glucoseTrend?.trend,
+                    engagementLevel,
+                };
+            }
+        } catch (ctxError) {
+            functions.logger.warn('[nudges] Could not fetch patient context for AI:', ctxError);
+        }
+
+        // Interpret response with AI
+        const aiService = getLumiBotAIService();
+        const interpretation = await aiService.interpretUserResponse({
+            nudgeContext: {
+                nudgeType: nudge.type,
+                conditionId: nudge.conditionId,
+                medicationName: nudge.medicationName,
+                originalMessage: nudge.message,
+            },
+            userResponse: data.text,
+            trendContext,
+        });
+
+        // Complete the nudge with the response
+        await completeNudge(nudgeId, {
+            freeTextResponse: data.text,
+            aiInterpretation: interpretation,
+        });
+
+        functions.logger.info(`[nudges] Free-text response for nudge ${nudgeId}`, {
+            sentiment: interpretation.sentiment,
+            followUpNeeded: interpretation.followUpNeeded,
+            summary: interpretation.summary,
+        });
+
+        // Create follow-up nudge if needed
+        let followUpCreated = false;
+        if (interpretation.followUpNeeded && interpretation.followUp) {
+            try {
+                const followUp = interpretation.followUp;
+                const scheduledFor = calculateFollowUpDate(followUp.urgency);
+
+                await getDb().collection('nudges').add({
+                    userId,
+                    visitId: nudge.visitId,
+                    type: 'followup',
+                    conditionId: nudge.conditionId,
+                    medicationName: nudge.medicationName,
+                    title: 'Follow-up Check',
+                    message: followUp.suggestedMessage ||
+                        `Checking back in on you. ${followUp.focusArea ? `Let's talk about ${followUp.focusArea}.` : ''} 💙`,
+                    actionType: 'confirm_yes_no',
+                    scheduledFor: admin.firestore.Timestamp.fromDate(scheduledFor),
+                    sequenceDay: 0,
+                    sequenceId: `followup_${nudgeId}_${Date.now()}`,
+                    status: 'pending',
+                    notificationSent: false,
+                    aiGenerated: true,
+                    personalizedContext: followUp.reason,
+                    sourceNudgeId: nudgeId,
+                    createdAt: admin.firestore.Timestamp.now(),
+                    updatedAt: admin.firestore.Timestamp.now(),
+                });
+
+                followUpCreated = true;
+                functions.logger.info(`[nudges] Created AI-driven follow-up for nudge ${nudgeId}`, {
+                    urgency: followUp.urgency,
+                    reason: followUp.reason,
+                });
+            } catch (followUpError) {
+                functions.logger.error('[nudges] Failed to create follow-up nudge:', followUpError);
+            }
+        }
+
+        // Build response message based on interpretation
+        let message = 'Thanks for sharing! 💙';
+        if (interpretation.sentiment === 'positive') {
+            message = "That's great to hear! Keep up the good work. 💙";
+        } else if (interpretation.sentiment === 'negative') {
+            message = "Thanks for letting us know. We'll check back in to see how things are going.";
+        } else if (interpretation.sentiment === 'concerning') {
+            message = "Thank you for sharing. Please consider reaching out to your doctor's office if you have concerns.";
+        }
+
+        res.json({
+            id: nudgeId,
+            status: 'completed',
+            message,
+            interpretation: {
+                sentiment: interpretation.sentiment,
+                summary: interpretation.summary,
+            },
+            followUpScheduled: followUpCreated,
+        });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            res.status(400).json({
+                code: 'validation_failed',
+                message: 'Invalid request body',
+                details: error.errors,
+            });
+            return;
+        }
+
+        functions.logger.error('[nudges] Error processing free-text response:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to process response',
+        });
+    }
+});
+
+/**
+ * Calculate follow-up date based on urgency level.
+ */
+function calculateFollowUpDate(urgency: FollowUpUrgency): Date {
+    const now = new Date();
+    switch (urgency) {
+        case 'immediate':
+            // 30 minutes from now
+            now.setMinutes(now.getMinutes() + 30);
+            return now;
+        case 'same_day':
+            // 4 hours from now
+            now.setHours(now.getHours() + 4);
+            return now;
+        case 'next_day':
+            now.setDate(now.getDate() + 1);
+            now.setHours(10, 0, 0, 0); // 10 AM next day
+            return now;
+        case '3_days':
+            now.setDate(now.getDate() + 3);
+            now.setHours(10, 0, 0, 0);
+            return now;
+        case '1_week':
+            now.setDate(now.getDate() + 7);
+            now.setHours(10, 0, 0, 0);
+            return now;
+        default:
+            now.setDate(now.getDate() + 1);
+            return now;
+    }
+}
+
+
+// =============================================================================
 // GET /v1/nudges/history - Get completed nudges history
 // =============================================================================
 

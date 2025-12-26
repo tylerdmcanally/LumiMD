@@ -5,7 +5,7 @@
  * Uses a pure JS time picker to avoid native module issues.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
     Modal,
     View,
@@ -34,8 +34,8 @@ function formatTimeDisplay(time: string): string {
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
 }
 
-// Time picker wheel component
-function TimePickerWheel({
+// Compact time picker with preset options
+function TimePicker({
     value,
     onChange
 }: {
@@ -48,7 +48,6 @@ function TimePickerWheel({
 
     const hourOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     const minuteOptions = [0, 15, 30, 45];
-    const periodOptions = ['AM', 'PM'];
 
     const handleHourChange = (newHour: number) => {
         let h = newHour;
@@ -61,7 +60,8 @@ function TimePickerWheel({
         onChange(`${hours.toString().padStart(2, '0')}:${newMinute.toString().padStart(2, '0')}`);
     };
 
-    const handlePeriodChange = (newPeriod: string) => {
+    const togglePeriod = () => {
+        const newPeriod = isPM ? 'AM' : 'PM';
         let h = displayHour;
         if (newPeriod === 'PM' && displayHour !== 12) h = displayHour + 12;
         else if (newPeriod === 'AM' && displayHour === 12) h = 0;
@@ -71,60 +71,54 @@ function TimePickerWheel({
 
     return (
         <View style={pickerStyles.container}>
-            {/* Hour */}
-            <View style={pickerStyles.column}>
-                <Text style={pickerStyles.columnLabel}>Hour</Text>
-                <ScrollView style={pickerStyles.scrollColumn} showsVerticalScrollIndicator={false}>
-                    {hourOptions.map(h => (
-                        <Pressable
-                            key={h}
-                            style={[pickerStyles.option, displayHour === h && pickerStyles.optionSelected]}
-                            onPress={() => handleHourChange(h)}
-                        >
-                            <Text style={[pickerStyles.optionText, displayHour === h && pickerStyles.optionTextSelected]}>
-                                {h}
-                            </Text>
-                        </Pressable>
-                    ))}
-                </ScrollView>
-            </View>
+            <View style={pickerStyles.row}>
+                {/* Hours */}
+                <View style={pickerStyles.section}>
+                    <Text style={pickerStyles.label}>Hour</Text>
+                    <View style={pickerStyles.optionsGrid}>
+                        {hourOptions.map(h => (
+                            <Pressable
+                                key={h}
+                                style={[pickerStyles.option, displayHour === h && pickerStyles.optionSelected]}
+                                onPress={() => handleHourChange(h)}
+                            >
+                                <Text style={[pickerStyles.optionText, displayHour === h && pickerStyles.optionTextSelected]}>
+                                    {h}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
 
-            {/* Separator */}
-            <Text style={pickerStyles.separator}>:</Text>
+                {/* Minutes */}
+                <View style={pickerStyles.section}>
+                    <Text style={pickerStyles.label}>Minutes</Text>
+                    <View style={pickerStyles.optionsRow}>
+                        {minuteOptions.map(m => (
+                            <Pressable
+                                key={m}
+                                style={[pickerStyles.option, minutes === m && pickerStyles.optionSelected]}
+                                onPress={() => handleMinuteChange(m)}
+                            >
+                                <Text style={[pickerStyles.optionText, minutes === m && pickerStyles.optionTextSelected]}>
+                                    :{m.toString().padStart(2, '0')}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
 
-            {/* Minute */}
-            <View style={pickerStyles.column}>
-                <Text style={pickerStyles.columnLabel}>Min</Text>
-                <ScrollView style={pickerStyles.scrollColumn} showsVerticalScrollIndicator={false}>
-                    {minuteOptions.map(m => (
-                        <Pressable
-                            key={m}
-                            style={[pickerStyles.option, minutes === m && pickerStyles.optionSelected]}
-                            onPress={() => handleMinuteChange(m)}
-                        >
-                            <Text style={[pickerStyles.optionText, minutes === m && pickerStyles.optionTextSelected]}>
-                                {m.toString().padStart(2, '0')}
-                            </Text>
-                        </Pressable>
-                    ))}
-                </ScrollView>
-            </View>
-
-            {/* AM/PM */}
-            <View style={pickerStyles.column}>
-                <Text style={pickerStyles.columnLabel}></Text>
-                <View style={pickerStyles.periodColumn}>
-                    {periodOptions.map(p => (
-                        <Pressable
-                            key={p}
-                            style={[pickerStyles.periodOption, (isPM ? 'PM' : 'AM') === p && pickerStyles.optionSelected]}
-                            onPress={() => handlePeriodChange(p)}
-                        >
-                            <Text style={[pickerStyles.optionText, (isPM ? 'PM' : 'AM') === p && pickerStyles.optionTextSelected]}>
-                                {p}
-                            </Text>
-                        </Pressable>
-                    ))}
+                {/* AM/PM Toggle */}
+                <View style={pickerStyles.section}>
+                    <Text style={pickerStyles.label}>Period</Text>
+                    <Pressable style={pickerStyles.periodToggle} onPress={togglePeriod}>
+                        <View style={[pickerStyles.periodOption, !isPM && pickerStyles.periodActive]}>
+                            <Text style={[pickerStyles.periodText, !isPM && pickerStyles.periodTextActive]}>AM</Text>
+                        </View>
+                        <View style={[pickerStyles.periodOption, isPM && pickerStyles.periodActive]}>
+                            <Text style={[pickerStyles.periodText, isPM && pickerStyles.periodTextActive]}>PM</Text>
+                        </View>
+                    </Pressable>
                 </View>
             </View>
         </View>
@@ -133,70 +127,74 @@ function TimePickerWheel({
 
 const pickerStyles = StyleSheet.create({
     container: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        paddingVertical: spacing(5),
-        paddingHorizontal: spacing(3),
+        padding: spacing(3),
+        backgroundColor: Colors.surface,
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    row: {
         gap: spacing(4),
     },
-    column: {
-        alignItems: 'center',
-        minWidth: 70,
+    section: {
+        gap: spacing(2),
     },
-    columnLabel: {
+    label: {
         fontSize: 11,
-        color: Colors.primary,
-        marginBottom: spacing(2),
-        fontWeight: '700',
+        fontWeight: '600',
+        color: Colors.textMuted,
         textTransform: 'uppercase',
-        letterSpacing: 1,
+        letterSpacing: 0.5,
     },
-    scrollColumn: {
-        maxHeight: 200,
+    optionsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing(1.5),
     },
-    periodColumn: {
+    optionsRow: {
+        flexDirection: 'row',
         gap: spacing(2),
     },
     option: {
-        paddingVertical: spacing(3),
-        paddingHorizontal: spacing(4),
-        borderRadius: Radius.md,
-        marginVertical: spacing(1),
+        paddingVertical: spacing(2),
+        paddingHorizontal: spacing(3),
+        borderRadius: Radius.sm,
         backgroundColor: Colors.background,
-        borderWidth: 2,
-        borderColor: 'transparent',
-        minWidth: 60,
+        minWidth: 44,
         alignItems: 'center',
     },
     optionSelected: {
         backgroundColor: Colors.primary,
-        borderColor: Colors.primary,
-    },
-    periodOption: {
-        paddingVertical: spacing(3),
-        paddingHorizontal: spacing(4),
-        borderRadius: Radius.md,
-        backgroundColor: Colors.background,
-        borderWidth: 2,
-        borderColor: 'transparent',
-        minWidth: 60,
-        alignItems: 'center',
     },
     optionText: {
-        fontSize: 18,
+        fontSize: 15,
         fontWeight: '600',
         color: Colors.text,
     },
     optionTextSelected: {
         color: '#FFFFFF',
-        fontWeight: '700',
     },
-    separator: {
-        fontSize: 28,
-        fontWeight: '700',
-        color: Colors.primary,
-        marginTop: spacing(7),
+    periodToggle: {
+        flexDirection: 'row',
+        backgroundColor: Colors.background,
+        borderRadius: Radius.sm,
+        padding: 2,
+    },
+    periodOption: {
+        paddingVertical: spacing(2),
+        paddingHorizontal: spacing(4),
+        borderRadius: Radius.sm - 2,
+    },
+    periodActive: {
+        backgroundColor: Colors.primary,
+    },
+    periodText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: Colors.textMuted,
+    },
+    periodTextActive: {
+        color: '#FFFFFF',
     },
 });
 
@@ -225,6 +223,7 @@ export function ReminderTimePickerModal({
         const newHours = (hours + 12) % 24;
         const newTime = `${newHours.toString().padStart(2, '0')}:00`;
         setTimes([...times, newTime]);
+        setEditingIndex(times.length); // Auto-expand new time
     }, [times]);
 
     const handleRemoveTime = useCallback((index: number) => {
@@ -265,66 +264,64 @@ export function ReminderTimePickerModal({
                     {/* Header */}
                     <View style={styles.header}>
                         <Pressable onPress={onCancel} style={styles.headerButton}>
-                            <Text style={styles.cancelText}>Cancel</Text>
+                            <Ionicons name="close" size={24} color={Colors.textMuted} />
                         </Pressable>
-                        <Text style={styles.title}>Set Reminder</Text>
+                        <View style={styles.headerCenter}>
+                            <Text style={styles.title}>Set Reminder</Text>
+                            <Text style={styles.subtitle} numberOfLines={1}>{medicationName}</Text>
+                        </View>
                         <Pressable
                             onPress={handleSave}
-                            style={styles.headerButton}
+                            style={[styles.headerButton, styles.saveButton]}
                             disabled={isLoading}
                         >
                             {isLoading ? (
-                                <ActivityIndicator size="small" color={Colors.primary} />
+                                <ActivityIndicator size="small" color="#fff" />
                             ) : (
                                 <Text style={styles.saveText}>Save</Text>
                             )}
                         </Pressable>
                     </View>
 
-                    {/* Medication name */}
-                    <View style={styles.medInfo}>
-                        <Ionicons name="medkit" size={24} color={Colors.primary} />
-                        <Text style={styles.medName}>{medicationName}</Text>
-                    </View>
-
-                    <ScrollView style={styles.scrollContent}>
+                    <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
                         {/* Time slots */}
                         <View style={styles.timesContainer}>
-                            <Text style={styles.sectionLabel}>Reminder Times</Text>
-
                             {times.map((time, index) => (
-                                <View key={index}>
-                                    <View style={styles.timeRow}>
-                                        <Pressable
-                                            style={[
-                                                styles.timeButton,
-                                                editingIndex === index && styles.timeButtonActive
-                                            ]}
-                                            onPress={() => handleTimePress(index)}
-                                        >
-                                            <Ionicons name="alarm-outline" size={20} color={Colors.primary} />
+                                <View key={index} style={styles.timeSlot}>
+                                    <Pressable
+                                        style={[
+                                            styles.timeButton,
+                                            editingIndex === index && styles.timeButtonActive
+                                        ]}
+                                        onPress={() => handleTimePress(index)}
+                                    >
+                                        <View style={styles.timeIcon}>
+                                            <Ionicons name="notifications" size={20} color={Colors.primary} />
+                                        </View>
+                                        <View style={styles.timeInfo}>
+                                            <Text style={styles.timeLabel}>Reminder {index + 1}</Text>
                                             <Text style={styles.timeText}>{formatTimeDisplay(time)}</Text>
-                                            <Ionicons
-                                                name={editingIndex === index ? "chevron-up" : "chevron-down"}
-                                                size={18}
-                                                color={Colors.primary}
-                                            />
-                                        </Pressable>
-
+                                        </View>
+                                        <Ionicons
+                                            name={editingIndex === index ? "chevron-up" : "chevron-down"}
+                                            size={20}
+                                            color={Colors.textMuted}
+                                        />
                                         {times.length > 1 && (
                                             <Pressable
                                                 style={styles.removeButton}
                                                 onPress={() => handleRemoveTime(index)}
+                                                hitSlop={8}
                                             >
-                                                <Ionicons name="close-circle" size={24} color={Colors.error} />
+                                                <Ionicons name="trash-outline" size={18} color={Colors.error} />
                                             </Pressable>
                                         )}
-                                    </View>
+                                    </Pressable>
 
                                     {/* Inline time picker when editing this slot */}
                                     {editingIndex === index && (
                                         <View style={styles.inlinePicker}>
-                                            <TimePickerWheel
+                                            <TimePicker
                                                 value={time}
                                                 onChange={handleTimeChange}
                                             />
@@ -335,20 +332,21 @@ export function ReminderTimePickerModal({
 
                             {times.length < 4 && (
                                 <Pressable style={styles.addButton} onPress={handleAddTime}>
-                                    <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />
-                                    <Text style={styles.addButtonText}>Add another time</Text>
+                                    <View style={styles.addIcon}>
+                                        <Ionicons name="add" size={20} color={Colors.primary} />
+                                    </View>
+                                    <Text style={styles.addButtonText}>Add another reminder</Text>
                                 </Pressable>
                             )}
                         </View>
 
-                        {/* Info text */}
-                        <Text style={styles.infoText}>
-                            Tap a time to change it. You'll receive a push notification at each time.
-                        </Text>
-                        <Text style={styles.disclaimerText}>
-                            ⚠️ Reminders are for convenience only and are not a substitute for medical advice.
-                            Always follow your healthcare provider's instructions.
-                        </Text>
+                        {/* Minimal disclaimer */}
+                        <View style={styles.footer}>
+                            <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+                            <Text style={styles.footerText}>
+                                Reminders are for convenience only. Always follow your provider's instructions.
+                            </Text>
+                        </View>
                     </ScrollView>
                 </View>
             </View>
@@ -364,84 +362,98 @@ const styles = StyleSheet.create({
     },
     container: {
         backgroundColor: Colors.surface,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
         paddingBottom: 40,
+        maxHeight: '85%',
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: spacing(4),
-        paddingVertical: spacing(4),
-        borderBottomWidth: 1,
+        paddingVertical: spacing(3),
+        borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: Colors.border,
     },
     headerButton: {
-        minWidth: 60,
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 22,
+    },
+    headerCenter: {
+        flex: 1,
+        alignItems: 'center',
+        paddingHorizontal: spacing(2),
     },
     title: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: '600',
         color: Colors.text,
     },
-    cancelText: {
-        fontSize: 16,
+    subtitle: {
+        fontSize: 14,
         color: Colors.textMuted,
+        marginTop: 2,
+    },
+    saveButton: {
+        backgroundColor: Colors.primary,
+        paddingHorizontal: spacing(4),
+        width: 'auto',
     },
     saveText: {
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '600',
-        color: Colors.primary,
-        textAlign: 'right',
+        color: '#fff',
     },
-    medInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing(3),
-        paddingHorizontal: spacing(4),
-        paddingVertical: spacing(4),
-        backgroundColor: Colors.accent,
-    },
-    medName: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: Colors.text,
+    scrollContent: {
+        maxHeight: 500,
     },
     timesContainer: {
         padding: spacing(4),
+        gap: spacing(3),
     },
-    sectionLabel: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: Colors.textMuted,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-        marginBottom: spacing(3),
-    },
-    timeRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: spacing(2),
+    timeSlot: {
+        gap: spacing(2),
     },
     timeButton: {
-        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: spacing(3),
         backgroundColor: Colors.background,
-        padding: spacing(4),
+        padding: spacing(3),
         borderRadius: Radius.md,
+        gap: spacing(3),
+    },
+    timeButtonActive: {
+        backgroundColor: 'rgba(64,201,208,0.1)',
+        borderWidth: 1,
+        borderColor: Colors.primary,
+    },
+    timeIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(64,201,208,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    timeInfo: {
+        flex: 1,
+    },
+    timeLabel: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        marginBottom: 2,
     },
     timeText: {
-        flex: 1,
         fontSize: 18,
-        fontWeight: '500',
+        fontWeight: '600',
         color: Colors.text,
     },
     removeButton: {
         padding: spacing(2),
-        marginLeft: spacing(2),
     },
     addButton: {
         flexDirection: 'row',
@@ -449,90 +461,39 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: spacing(2),
         paddingVertical: spacing(3),
-        marginTop: spacing(2),
-    },
-    addButtonText: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: Colors.primary,
-    },
-    infoText: {
-        fontSize: 14,
-        color: Colors.textMuted,
-        lineHeight: 20,
-        paddingHorizontal: spacing(4),
-        paddingVertical: spacing(4),
-        textAlign: 'center',
-    },
-    pickerContainer: {
-        borderTopWidth: 1,
-        borderTopColor: Colors.border,
-        backgroundColor: Colors.surface,
-    },
-    pickerHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: spacing(4),
-        paddingVertical: spacing(3),
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    pickerTitle: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: Colors.text,
-    },
-    doneButton: {
-        paddingVertical: spacing(2),
-        paddingHorizontal: spacing(4),
-        backgroundColor: Colors.accent,
-        borderRadius: Radius.md,
-    },
-    doneText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: Colors.primary,
-    },
-    picker: {
-        height: 200,
-        backgroundColor: Colors.surface,
-    },
-    timeButtonActive: {
-        borderWidth: 2,
-        borderColor: Colors.primary,
-    },
-    tapToEdit: {
-        fontSize: 12,
-        color: Colors.textMuted,
-        fontStyle: 'italic',
-    },
-    scrollContent: {
-        maxHeight: 500,
-    },
-    inlinePicker: {
-        backgroundColor: Colors.surface,
-        borderRadius: Radius.lg,
-        marginBottom: spacing(3),
-        marginTop: spacing(2),
         borderWidth: 1,
         borderColor: Colors.border,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-        elevation: 2,
+        borderStyle: 'dashed',
+        borderRadius: Radius.md,
     },
-    disclaimerText: {
+    addIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(64,201,208,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    addButtonText: {
+        fontSize: 15,
+        fontWeight: '500',
+        color: Colors.primary,
+    },
+    inlinePicker: {
+        marginTop: spacing(1),
+    },
+    footer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: spacing(2),
+        paddingHorizontal: spacing(5),
+        paddingVertical: spacing(4),
+        marginTop: spacing(2),
+    },
+    footerText: {
+        flex: 1,
         fontSize: 12,
         color: Colors.textMuted,
-        lineHeight: 18,
-        paddingHorizontal: spacing(4),
-        paddingVertical: spacing(3),
-        textAlign: 'center',
-        backgroundColor: Colors.accent,
-        marginTop: spacing(3),
-        borderRadius: Radius.md,
-        marginHorizontal: spacing(4),
+        lineHeight: 16,
     },
 });

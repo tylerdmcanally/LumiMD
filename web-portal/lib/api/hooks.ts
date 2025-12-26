@@ -579,3 +579,72 @@ export function useMedicationReminders(
     queryOptions: options,
   });
 }
+
+// =============================================================================
+// Medication Compliance
+// =============================================================================
+
+export type MedicationCompliance = {
+  hasReminders: boolean;
+  period: number;
+  adherence: number;
+  takenCount: number;
+  expectedCount: number;
+  byMedication: Array<{
+    medicationId: string;
+    name: string;
+    adherence: number;
+    taken: number;
+    expected: number;
+  }>;
+  dailyData: Array<{
+    date: string;
+    adherence: number;
+    taken: number;
+    expected: number;
+  }>;
+};
+
+export function useMedicationCompliance(
+  days: number = 7,
+  options?: QueryEnabledOptions<MedicationCompliance>,
+) {
+  const viewing = useViewingSafe();
+  const effectiveUserId = viewing?.viewingUserId ?? null;
+  const key = useMemo(() => ['medication-compliance', effectiveUserId ?? 'anonymous', days] as const, [effectiveUserId, days]);
+  const enabled = Boolean(effectiveUserId);
+
+  return useQuery<MedicationCompliance>({
+    queryKey: key,
+    staleTime: 60_000, // 1 minute
+    enabled,
+    ...options,
+    queryFn: async () => {
+      if (!effectiveUserId) {
+        return {
+          hasReminders: false,
+          period: days,
+          adherence: 0,
+          takenCount: 0,
+          expectedCount: 0,
+          byMedication: [],
+          dailyData: [],
+        };
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/meds/compliance?days=${days}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch compliance data');
+      }
+
+      return response.json();
+    },
+  });
+}

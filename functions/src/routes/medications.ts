@@ -49,14 +49,14 @@ const safetyCheckSchema = z.object({
 medicationsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    
+
     // Query medications collection for this user
     const medsSnapshot = await getDb()
       .collection('medications')
       .where('userId', '==', userId)
       .orderBy('name', 'asc')
       .get();
-    
+
     const medications = medsSnapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -75,7 +75,7 @@ medicationsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
         medicationStatus: data.medicationStatus || null,
       };
     });
-    
+
     functions.logger.info(`[medications] Listed ${medications.length} medications for user ${userId}`);
     res.json(medications);
   } catch (error) {
@@ -95,9 +95,9 @@ medicationsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const medId = req.params.id;
-    
+
     const medDoc = await getDb().collection('medications').doc(medId).get();
-    
+
     if (!medDoc.exists) {
       res.status(404).json({
         code: 'not_found',
@@ -105,9 +105,9 @@ medicationsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     const medication = medDoc.data()!;
-    
+
     // Verify ownership
     if (medication.userId !== userId) {
       res.status(403).json({
@@ -116,7 +116,7 @@ medicationsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     res.json({
       id: medDoc.id,
       ...medication,
@@ -330,10 +330,10 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (data.notes !== undefined) updates.notes = data.notes;
     if (data.active !== undefined) updates.active = data.active;
     if (data.source !== undefined) updates.source = data.source;
-      if (data.sourceVisitId !== undefined) {
-        updates.sourceVisitId =
-          (data.source ?? medication.source) === 'visit' ? data.sourceVisitId ?? null : null;
-      }
+    if (data.sourceVisitId !== undefined) {
+      updates.sourceVisitId =
+        (data.source ?? medication.source) === 'visit' ? data.sourceVisitId ?? null : null;
+    }
 
     // Update safety warning fields if medication details changed
     if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
@@ -456,10 +456,10 @@ medicationsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const medId = req.params.id;
-    
+
     const medRef = getDb().collection('medications').doc(medId);
     const medDoc = await medRef.get();
-    
+
     if (!medDoc.exists) {
       res.status(404).json({
         code: 'not_found',
@@ -467,9 +467,9 @@ medicationsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     const medication = medDoc.data()!;
-    
+
     // Verify ownership
     if (medication.userId !== userId) {
       res.status(403).json({
@@ -478,14 +478,14 @@ medicationsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
       });
       return;
     }
-    
+
     // Delete medication
     await medRef.delete();
 
     await clearMedicationSafetyCacheForUser(userId);
-    
+
     functions.logger.info(`[medications] Deleted medication ${medId} for user ${userId}`);
-    
+
     res.status(204).send();
   } catch (error) {
     functions.logger.error('[medications] Error deleting medication:', error);
@@ -496,3 +496,496 @@ medicationsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * GET /v1/meds/schedule
+ * Get today's medication schedule with taken status
+ */
+medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    // Get start and end of today (00:00:00 to 23:59:59)
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Get all medication reminders for this user
+    const remindersSnapshot = await getDb()
+      .collection('medicationReminders')
+      .where('userId', '==', userId)
+      .where('enabled', '==', true)
+      .get();
+
+    // Get today's medication logs
+    const logsSnapshot = await getDb()
+      .collection('medicationLogs')
+      .where('userId', '==', userId)
+      .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(startOfDay))
+      .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
+      .get();
+
+    // Build a map of logged doses: medicationId_time -> log
+    const loggedDoses = new Map<string, any>();
+    logsSnapshot.docs.forEach(doc => {
+      const log = doc.data();
+      const key = `${log.medicationId}_${log.scheduledTime || 'any'}`;
+      loggedDoses.set(key, { id: doc.id, ...log });
+    });
+
+    // Get medication details for each reminder
+    const medicationIds = new Set<string>();
+    remindersSnapshot.docs.forEach(doc => {
+      const reminder = doc.data();
+      if (reminder.medicationId) {
+        medicationIds.add(reminder.medicationId);
+      }
+    });
+
+    // Fetch medication details
+    const medicationsMap = new Map<string, any>();
+    for (const medId of medicationIds) {
+      const medDoc = await getDb().collection('medications').doc(medId).get();
+      if (medDoc.exists) {
+        const med = medDoc.data()!;
+        if (med.active !== false) {
+          medicationsMap.set(medId, { id: medId, ...med });
+        }
+      }
+    }
+
+    // Build scheduled doses array
+    const scheduledDoses: any[] = [];
+
+    remindersSnapshot.docs.forEach(doc => {
+      const reminder = doc.data();
+      const medication = medicationsMap.get(reminder.medicationId);
+
+      if (!medication) return;
+
+      // Each reminder can have multiple times
+      const times = reminder.times || [];
+      times.forEach((time: string) => {
+        const logKey = `${reminder.medicationId}_${time}`;
+        const log = loggedDoses.get(logKey);
+
+        scheduledDoses.push({
+          medicationId: reminder.medicationId,
+          reminderId: doc.id,
+          name: medication.name,
+          dose: medication.dose || '',
+          scheduledTime: time,
+          status: log ? log.action : 'pending',
+          logId: log?.id || null,
+        });
+      });
+    });
+
+    // Sort by scheduled time
+    scheduledDoses.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+
+    // Calculate summary
+    const taken = scheduledDoses.filter(d => d.status === 'taken').length;
+    const skipped = scheduledDoses.filter(d => d.status === 'skipped').length;
+    const pending = scheduledDoses.filter(d => d.status === 'pending').length;
+    const total = scheduledDoses.length;
+
+    // Find next due dose
+    const currentTimeHHMM = now.toTimeString().slice(0, 5);
+    const nextDue = scheduledDoses.find(
+      d => d.status === 'pending' && d.scheduledTime >= currentTimeHHMM
+    );
+
+    functions.logger.info(`[medications] Retrieved schedule for user ${userId}`, {
+      total,
+      taken,
+      pending,
+      skipped,
+    });
+
+    res.json({
+      scheduledDoses,
+      summary: { taken, skipped, pending, total },
+      nextDue: nextDue ? { name: nextDue.name, time: nextDue.scheduledTime } : null,
+    });
+  } catch (error) {
+    functions.logger.error('[medications] Error fetching schedule:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch medication schedule',
+    });
+  }
+});
+
+/**
+ * POST /v1/meds/schedule/mark
+ * Quick mark a scheduled dose as taken/skipped
+ */
+medicationsRouter.post('/schedule/mark', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    const schema = z.object({
+      medicationId: z.string().min(1),
+      scheduledTime: z.string().regex(/^\d{2}:\d{2}$/),
+      action: z.enum(['taken', 'skipped']),
+    });
+
+    const data = schema.parse(req.body);
+
+    // Get medication info
+    const medDoc = await getDb().collection('medications').doc(data.medicationId).get();
+    if (!medDoc.exists) {
+      res.status(404).json({ code: 'not_found', message: 'Medication not found' });
+      return;
+    }
+
+    const medication = medDoc.data()!;
+    if (medication.userId !== userId) {
+      res.status(403).json({ code: 'forbidden', message: 'Not your medication' });
+      return;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+
+    // Create medication log
+    const logRef = await getDb().collection('medicationLogs').add({
+      userId,
+      medicationId: data.medicationId,
+      medicationName: medication.name,
+      action: data.action,
+      scheduledTime: data.scheduledTime,
+      loggedAt: now,
+      createdAt: now,
+    });
+
+    functions.logger.info(`[medications] Logged ${data.action} for ${medication.name} at ${data.scheduledTime}`);
+
+    res.status(201).json({
+      id: logRef.id,
+      medicationId: data.medicationId,
+      action: data.action,
+      scheduledTime: data.scheduledTime,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[medications] Error marking dose:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to mark dose',
+    });
+  }
+});
+
+/**
+ * POST /v1/meds/schedule/mark-batch
+ * Mark multiple scheduled doses at once (Mark All feature)
+ */
+medicationsRouter.post('/schedule/mark-batch', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    const schema = z.object({
+      doses: z.array(z.object({
+        medicationId: z.string().min(1),
+        scheduledTime: z.string().regex(/^\d{2}:\d{2}$/),
+      })).min(1).max(20),
+      action: z.enum(['taken', 'skipped']),
+    });
+
+    const data = schema.parse(req.body);
+    const now = admin.firestore.Timestamp.now();
+    const results: any[] = [];
+    const errors: any[] = [];
+
+    // Process each dose
+    for (const dose of data.doses) {
+      try {
+        const medDoc = await getDb().collection('medications').doc(dose.medicationId).get();
+        if (!medDoc.exists) {
+          errors.push({ medicationId: dose.medicationId, error: 'not_found' });
+          continue;
+        }
+
+        const medication = medDoc.data()!;
+        if (medication.userId !== userId) {
+          errors.push({ medicationId: dose.medicationId, error: 'forbidden' });
+          continue;
+        }
+
+        const logRef = await getDb().collection('medicationLogs').add({
+          userId,
+          medicationId: dose.medicationId,
+          medicationName: medication.name,
+          action: data.action,
+          scheduledTime: dose.scheduledTime,
+          loggedAt: now,
+          createdAt: now,
+        });
+
+        results.push({
+          id: logRef.id,
+          medicationId: dose.medicationId,
+          medicationName: medication.name,
+          scheduledTime: dose.scheduledTime,
+          action: data.action,
+        });
+      } catch (err) {
+        errors.push({ medicationId: dose.medicationId, error: 'failed' });
+      }
+    }
+
+    functions.logger.info(`[medications] Batch marked ${results.length} doses as ${data.action}`, {
+      success: results.length,
+      errors: errors.length,
+    });
+
+    res.status(201).json({ results, errors });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[medications] Error batch marking doses:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to batch mark doses',
+    });
+  }
+});
+
+/**
+ * POST /v1/meds/schedule/snooze
+ * Snooze a medication reminder for a specified duration
+ */
+medicationsRouter.post('/schedule/snooze', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    const schema = z.object({
+      medicationId: z.string().min(1),
+      scheduledTime: z.string().regex(/^\d{2}:\d{2}$/),
+      snoozeMinutes: z.enum(['15', '30', '60']),
+    });
+
+    const data = schema.parse(req.body);
+
+    // Get medication info
+    const medDoc = await getDb().collection('medications').doc(data.medicationId).get();
+    if (!medDoc.exists) {
+      res.status(404).json({ code: 'not_found', message: 'Medication not found' });
+      return;
+    }
+
+    const medication = medDoc.data()!;
+    if (medication.userId !== userId) {
+      res.status(403).json({ code: 'forbidden', message: 'Not your medication' });
+      return;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    const snoozeUntil = new Date(Date.now() + parseInt(data.snoozeMinutes) * 60 * 1000);
+
+    // Create snooze log
+    const logRef = await getDb().collection('medicationLogs').add({
+      userId,
+      medicationId: data.medicationId,
+      medicationName: medication.name,
+      action: 'snoozed',
+      scheduledTime: data.scheduledTime,
+      snoozeMinutes: parseInt(data.snoozeMinutes),
+      snoozeUntil: admin.firestore.Timestamp.fromDate(snoozeUntil),
+      loggedAt: now,
+      createdAt: now,
+    });
+
+    functions.logger.info(`[medications] Snoozed ${medication.name} for ${data.snoozeMinutes} minutes`);
+
+    res.status(201).json({
+      id: logRef.id,
+      medicationId: data.medicationId,
+      medicationName: medication.name,
+      snoozeMinutes: parseInt(data.snoozeMinutes),
+      snoozeUntil: snoozeUntil.toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[medications] Error snoozing dose:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to snooze dose',
+    });
+  }
+});
+
+/**
+ * GET /v1/meds/compliance
+ * Get medication compliance summary for the past 7/30 days
+ */
+medicationsRouter.get('/compliance', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const days = parseInt(req.query.days as string) || 7;
+
+    // Get date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Get all medication reminders for this user
+    const remindersSnapshot = await getDb()
+      .collection('medicationReminders')
+      .where('userId', '==', userId)
+      .where('enabled', '==', true)
+      .get();
+
+    if (remindersSnapshot.empty) {
+      res.json({
+        hasReminders: false,
+        period: days,
+        adherence: 0,
+        takenCount: 0,
+        expectedCount: 0,
+        byMedication: [],
+        dailyData: [],
+      });
+      return;
+    }
+
+    // Get all medication logs in the date range
+    const logsSnapshot = await getDb()
+      .collection('medicationLogs')
+      .where('userId', '==', userId)
+      .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+      .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(endDate))
+      .get();
+
+    // Build map of logs by date and med
+    const logsByDateAndMed = new Map<string, Set<string>>();
+    logsSnapshot.docs.forEach(doc => {
+      const log = doc.data();
+      if (log.action !== 'taken') return;
+
+      const logDate = log.loggedAt?.toDate();
+      if (!logDate) return;
+
+      const dateKey = logDate.toISOString().slice(0, 10);
+      const key = `${dateKey}_${log.medicationId}`;
+
+      if (!logsByDateAndMed.has(key)) {
+        logsByDateAndMed.set(key, new Set());
+      }
+      logsByDateAndMed.get(key)!.add(log.scheduledTime || 'any');
+    });
+
+    // Calculate expected doses per medication
+    const medicationExpected = new Map<string, { name: string; dosesPerDay: number }>();
+    remindersSnapshot.docs.forEach(doc => {
+      const reminder = doc.data();
+      const times = reminder.times || [];
+      medicationExpected.set(reminder.medicationId, {
+        name: reminder.medicationName || 'Unknown',
+        dosesPerDay: times.length,
+      });
+    });
+
+    // Calculate daily adherence
+    const dailyData: Array<{ date: string; adherence: number; taken: number; expected: number }> = [];
+    let totalTaken = 0;
+    let totalExpected = 0;
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dateKey = d.toISOString().slice(0, 10);
+      let dayTaken = 0;
+      let dayExpected = 0;
+
+      medicationExpected.forEach((med, medId) => {
+        const key = `${dateKey}_${medId}`;
+        const takenTimes = logsByDateAndMed.get(key);
+        const taken = takenTimes ? takenTimes.size : 0;
+        dayTaken += Math.min(taken, med.dosesPerDay);
+        dayExpected += med.dosesPerDay;
+      });
+
+      dailyData.push({
+        date: dateKey,
+        adherence: dayExpected > 0 ? Math.round((dayTaken / dayExpected) * 100) : 0,
+        taken: dayTaken,
+        expected: dayExpected,
+      });
+
+      totalTaken += dayTaken;
+      totalExpected += dayExpected;
+    }
+
+    // Calculate per-medication adherence
+    const byMedication: Array<{ medicationId: string; name: string; adherence: number; taken: number; expected: number }> = [];
+    medicationExpected.forEach((med, medId) => {
+      let medTaken = 0;
+      const medExpected = med.dosesPerDay * days;
+
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const dateKey = d.toISOString().slice(0, 10);
+        const key = `${dateKey}_${medId}`;
+        const takenTimes = logsByDateAndMed.get(key);
+        medTaken += takenTimes ? Math.min(takenTimes.size, med.dosesPerDay) : 0;
+      }
+
+      byMedication.push({
+        medicationId: medId,
+        name: med.name,
+        adherence: medExpected > 0 ? Math.round((medTaken / medExpected) * 100) : 0,
+        taken: medTaken,
+        expected: medExpected,
+      });
+    });
+
+    const overallAdherence = totalExpected > 0 ? Math.round((totalTaken / totalExpected) * 100) : 0;
+
+    functions.logger.info(`[medications] Compliance for user ${userId}`, {
+      period: days,
+      adherence: overallAdherence,
+      totalTaken,
+      totalExpected,
+    });
+
+    res.json({
+      hasReminders: true,
+      period: days,
+      adherence: overallAdherence,
+      takenCount: totalTaken,
+      expectedCount: totalExpected,
+      byMedication,
+      dailyData,
+    });
+  } catch (error) {
+    functions.logger.error('[medications] Error fetching compliance:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch compliance data',
+    });
+  }
+});

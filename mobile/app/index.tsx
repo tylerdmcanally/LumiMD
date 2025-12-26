@@ -14,6 +14,7 @@ import {
   useRealtimeActiveMedications,
   useRealtimeVisits,
   useUserProfile,
+  useMedicationSchedule,
 } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
@@ -51,6 +52,12 @@ export default function HomeScreen() {
     isLoading: medsLoading,
     error: medsError,
   } = useRealtimeActiveMedications(user?.uid);
+
+  // Medication schedule for today's dose status
+  const {
+    data: schedule,
+    isLoading: scheduleLoading,
+  } = useMedicationSchedule({ enabled: isAuthenticated });
 
   // Web portal banner state - for placing "Need help?" button below cards
   const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();
@@ -278,6 +285,24 @@ export default function HomeScreen() {
                     icon="medkit-outline"
                     onPress={() => router.push('/medications')}
                   />
+
+                  {/* Today's Schedule - only show if user has medication reminders */}
+                  {schedule && schedule.summary && schedule.summary.total > 0 && (
+                    <GlanceableCard
+                      title="Today's Schedule"
+                      count={schedule.summary.taken}
+                      countLabel={`of ${schedule.summary.total} taken`}
+                      statusBadge={
+                        schedule.summary.taken === schedule.summary.total
+                          ? { text: 'All done!', color: Colors.success }
+                          : schedule.summary.pending > 0
+                            ? { text: `${schedule.summary.pending} pending`, color: Colors.primary }
+                            : undefined
+                      }
+                      icon="today-outline"
+                      onPress={() => router.push('/medication-schedule')}
+                    />
+                  )}
                 </>
               )}
             </View>

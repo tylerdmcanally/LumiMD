@@ -10,7 +10,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 // Nudge Types
 // =============================================================================
 
-export type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight';
+export type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight' | 'followup';
 
 export type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
 
@@ -40,6 +40,11 @@ export interface Nudge {
     title: string;
     message: string;
     actionType: NudgeActionType;
+
+    // AI-Generated Content
+    aiGenerated?: boolean;
+    diagnosisExplanation?: string;  // Brief explanation of diagnosis for intro nudges
+    personalizedContext?: string;   // Additional AI context for the message
 
     // Scheduling
     scheduledFor: Timestamp;
@@ -71,6 +76,10 @@ export interface NudgeCreateInput {
     scheduledFor: Date;
     sequenceDay: number;
     sequenceId: string;
+    // AI-Generated Content
+    aiGenerated?: boolean;
+    diagnosisExplanation?: string;
+    personalizedContext?: string;
 }
 
 // =============================================================================

@@ -13,6 +13,7 @@ import {
     Trash2,
     Scale,
     Download,
+    Pill,
 } from 'lucide-react';
 import {
     LineChart,
@@ -28,7 +29,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/layout/PageContainer';
-import { useHealthLogs, HealthLog } from '@/lib/api/hooks';
+import { useHealthLogs, HealthLog, useMedicationCompliance } from '@/lib/api/hooks';
 import { useViewing } from '@/lib/contexts/ViewingContext';
 import { useApiClient } from '@/lib/hooks/useApiClient';
 import { cn } from '@/lib/utils';
@@ -305,6 +306,11 @@ export default function HealthDashboardPage() {
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [deletingId, setDeletingId] = React.useState<string | null>(null);
     const [isExporting, setIsExporting] = React.useState(false);
+    const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+    const [isBulkDeleting, setIsBulkDeleting] = React.useState(false);
+
+    // Medication compliance data
+    const { data: compliance } = useMedicationCompliance(7);
 
     // Handle provider report export
     const handleExportReport = async () => {
@@ -361,6 +367,48 @@ export default function HealthDashboardPage() {
             console.error('[health] Error deleting reading:', error);
         } finally {
             setDeletingId(null);
+        }
+    };
+
+    // Handle bulk delete
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Are you sure you want to delete ${selectedIds.size} reading(s)?`)) return;
+
+        setIsBulkDeleting(true);
+        try {
+            const deletePromises = Array.from(selectedIds).map(id => apiClient.healthLogs.delete(id));
+            await Promise.all(deletePromises);
+            toast.success(`${selectedIds.size} reading(s) deleted`);
+            setSelectedIds(new Set());
+            queryClient.invalidateQueries({ queryKey: ['health-logs'] });
+        } catch (error) {
+            toast.error('Failed to delete some readings');
+            console.error('[health] Error bulk deleting:', error);
+        } finally {
+            setIsBulkDeleting(false);
+        }
+    };
+
+    // Toggle individual selection
+    const toggleSelect = (id: string) => {
+        const newSelected = new Set(selectedIds);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedIds(newSelected);
+    };
+
+    // Toggle select all (visible items)
+    const visibleLogs = healthLogs.slice(0, 20);
+    const allVisibleSelected = visibleLogs.length > 0 && visibleLogs.every(log => selectedIds.has(log.id));
+    const toggleSelectAll = () => {
+        if (allVisibleSelected) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(visibleLogs.map(log => log.id)));
         }
     };
 
@@ -588,6 +636,36 @@ export default function HealthDashboardPage() {
                                 </div>
                             </Card>
                         )}
+
+                        {/* Medication Compliance Summary */}
+                        {compliance?.hasReminders && (
+                            <Card variant="elevated" padding="lg">
+                                <div className="flex items-start gap-4">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+                                        <Pill className="h-6 w-6" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-text-secondary">Medication Adherence</p>
+                                        <p className="text-2xl font-bold text-text-primary">
+                                            {compliance.adherence}%
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className={cn(
+                                                'text-sm',
+                                                compliance.adherence >= 80 ? 'text-success-dark' :
+                                                    compliance.adherence >= 50 ? 'text-warning-dark' : 'text-error-dark'
+                                            )}>
+                                                {compliance.adherence >= 80 ? 'On track' :
+                                                    compliance.adherence >= 50 ? 'Needs improvement' : 'Low adherence'}
+                                            </span>
+                                            <span className="text-sm text-text-muted">
+                                                • {compliance.takenCount}/{compliance.expectedCount} doses (7 days)
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+                        )}
                     </div>
                 )}
 
@@ -621,8 +699,27 @@ export default function HealthDashboardPage() {
                                                 boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
                                             }}
                                             labelStyle={{ fontWeight: 600 }}
+                                            formatter={(value: any, name: any) => [
+                                                `${value} mmHg`,
+                                                name
+                                            ]}
+                                            itemSorter={() => -1}
                                         />
-                                        <ReferenceLine y={120} stroke="#fbbf24" strokeDasharray="5 5" label="Target" />
+                                        {/* Healthy systolic range (90-120) */}
+                                        <ReferenceLine
+                                            y={120}
+                                            stroke="#22c55e"
+                                            strokeDasharray="5 5"
+                                            label={{ value: 'Systolic target (120)', position: 'insideTopRight', fill: '#22c55e', fontSize: 11 }}
+                                        />
+                                        {/* Healthy diastolic (80) */}
+                                        <ReferenceLine
+                                            y={80}
+                                            stroke="#3b82f6"
+                                            strokeDasharray="5 5"
+                                            label={{ value: 'Diastolic target (80)', position: 'insideBottomRight', fill: '#3b82f6', fontSize: 11 }}
+                                        />
+                                        {/* Systolic line - render first so shows first in tooltip */}
                                         <Line
                                             type="monotone"
                                             dataKey="systolic"
@@ -631,6 +728,7 @@ export default function HealthDashboardPage() {
                                             dot={{ fill: '#f43f5e', strokeWidth: 0, r: 4 }}
                                             name="Systolic"
                                         />
+                                        {/* Diastolic line */}
                                         <Line
                                             type="monotone"
                                             dataKey="diastolic"
@@ -641,6 +739,17 @@ export default function HealthDashboardPage() {
                                         />
                                     </LineChart>
                                 </ResponsiveContainer>
+                            </div>
+                            {/* Legend */}
+                            <div className="flex items-center justify-center gap-6 mt-4 text-sm">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-rose-500" />
+                                    <span className="text-text-secondary">Systolic (top number)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full bg-blue-500" />
+                                    <span className="text-text-secondary">Diastolic (bottom number)</span>
+                                </div>
                             </div>
                         </Card>
                     </section>
@@ -741,17 +850,123 @@ export default function HealthDashboardPage() {
                     </section>
                 )}
 
+                {/* Medication Adherence Chart */}
+                {compliance?.hasReminders && compliance.dailyData.length > 0 && (
+                    <section>
+                        <h2 className="text-lg font-semibold text-text-primary mb-4">
+                            Medication Adherence (7 Days)
+                        </h2>
+                        <Card variant="elevated" padding="lg">
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={compliance.dailyData.map(d => ({
+                                        ...d,
+                                        dateLabel: format(new Date(d.date), 'MMM d'),
+                                    }))} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                        <XAxis
+                                            dataKey="dateLabel"
+                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tickLine={false}
+                                        />
+                                        <YAxis
+                                            domain={[0, 100]}
+                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickFormatter={(v) => `${v}%`}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#fff',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '8px',
+                                                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                            }}
+                                            labelStyle={{ fontWeight: 600 }}
+                                            formatter={(value: any, _name: any, props: any) => [
+                                                `${value}% (${props.payload.taken}/${props.payload.expected} doses)`,
+                                                'Adherence'
+                                            ]}
+                                        />
+                                        <ReferenceLine y={80} stroke="#22c55e" strokeDasharray="5 5" label={{ value: '80% target', fill: '#22c55e', fontSize: 11 }} />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="adherence"
+                                            stroke="#a855f7"
+                                            strokeWidth={2}
+                                            dot={{ fill: '#a855f7', strokeWidth: 0, r: 4 }}
+                                            name="Adherence"
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            {/* Per-medication breakdown */}
+                            {compliance.byMedication.length > 0 && (
+                                <div className="mt-6 pt-4 border-t border-border-light">
+                                    <h3 className="text-sm font-medium text-text-secondary mb-3">By Medication</h3>
+                                    <div className="space-y-2">
+                                        {compliance.byMedication.map(med => (
+                                            <div key={med.medicationId} className="flex items-center gap-3">
+                                                <div className="flex-1">
+                                                    <span className="text-sm text-text-primary">{med.name}</span>
+                                                </div>
+                                                <div className="w-32 bg-background-subtle rounded-full h-2 overflow-hidden">
+                                                    <div
+                                                        className={cn(
+                                                            "h-full rounded-full transition-all",
+                                                            med.adherence >= 80 ? "bg-success" :
+                                                                med.adherence >= 50 ? "bg-warning" : "bg-error"
+                                                        )}
+                                                        style={{ width: `${med.adherence}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-sm font-medium text-text-primary w-12 text-right">
+                                                    {med.adherence}%
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    </section>
+                )}
+
                 {/* Recent Logs Table */}
                 {healthLogs.length > 0 && (
                     <section>
-                        <h2 className="text-lg font-semibold text-text-primary mb-4">
-                            Recent Readings
-                        </h2>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-text-primary">
+                                Recent Readings
+                            </h2>
+                            {!isViewingShared && selectedIds.size > 0 && (
+                                <Button
+                                    variant="danger"
+                                    onClick={handleBulkDelete}
+                                    disabled={isBulkDeleting}
+                                    leftIcon={<Trash2 className="h-4 w-4" />}
+                                >
+                                    {isBulkDeleting ? 'Deleting...' : `Delete (${selectedIds.size})`}
+                                </Button>
+                            )}
+                        </div>
                         <Card variant="elevated" padding="none">
                             <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead>
                                         <tr className="border-b border-border-light">
+                                            {!isViewingShared && (
+                                                <th className="px-4 py-3 w-10">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={allVisibleSelected}
+                                                        onChange={toggleSelectAll}
+                                                        className="h-4 w-4 rounded border-border-light text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                    />
+                                                </th>
+                                            )}
                                             <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Date</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Type</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Value</th>
@@ -762,8 +977,21 @@ export default function HealthDashboardPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {healthLogs.slice(0, 20).map((log) => (
-                                            <tr key={log.id} className="border-b border-border-light last:border-0">
+                                        {visibleLogs.map((log) => (
+                                            <tr key={log.id} className={cn(
+                                                "border-b border-border-light last:border-0",
+                                                selectedIds.has(log.id) && "bg-brand-primary/5"
+                                            )}>
+                                                {!isViewingShared && (
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedIds.has(log.id)}
+                                                            onChange={() => toggleSelect(log.id)}
+                                                            className="h-4 w-4 rounded border-border-light text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                        />
+                                                    </td>
+                                                )}
                                                 <td className="px-4 py-3 text-sm text-text-primary">
                                                     {log.createdAt ? format(new Date(log.createdAt), 'MMM d, h:mm a') : '-'}
                                                 </td>

@@ -11,7 +11,7 @@ You must use a development build with the native iOS simulator.
 
 1. Navigate to the mobile directory:
    ```bash
-   cd /Users/tylermcanally/Desktop/LumiMD/mobile
+   cd /Users/tylermcanally/LumiMD/Codebase/mobile
    ```
 
 2. Start the Metro bundler with dev-client mode:
@@ -21,7 +21,7 @@ You must use a development build with the native iOS simulator.
 
 3. In a separate terminal, run the iOS app (or press `i` in Metro):
    ```bash
-   cd /Users/tylermcanally/Desktop/LumiMD/ios
+   cd /Users/tylermcanally/LumiMD/Codebase/mobile/ios
    npx pod-install  # if needed
    npx react-native run-ios
    ```
@@ -33,7 +33,7 @@ You must use a development build with the native iOS simulator.
 
 ## Alternative: Direct Xcode Build
 
-1. Open `/Users/tylermcanally/Desktop/LumiMD/ios/LumiMD.xcworkspace` in Xcode
+1. Open `/Users/tylermcanally/LumiMD/Codebase/mobile/ios/LumiMD.xcworkspace` in Xcode
 2. Select an iOS simulator target
 3. Press Cmd+R to build and run
 
@@ -41,7 +41,7 @@ You must use a development build with the native iOS simulator.
 
 Run a clean prebuild:
 ```bash
-cd /Users/tylermcanally/Desktop/LumiMD/mobile
+cd /Users/tylermcanally/LumiMD/Codebase/mobile
 npx expo prebuild --clean
 cd ../ios
 pod install
