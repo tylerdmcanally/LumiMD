@@ -23,7 +23,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Configure SDK realtime helpers - use type assertion due to minor Firebase version differences
+// Configure SDK realtime helpers
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 configureFirestoreRealtime(Firestore as any);
 
