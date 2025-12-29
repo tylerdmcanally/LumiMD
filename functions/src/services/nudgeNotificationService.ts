@@ -1,6 +1,10 @@
 /**
  * Nudge Notification Service
  * Processes due nudges and sends push notifications
+ * 
+ * Rate limiting:
+ * - Max 3 nudges per user per day
+ * - Follow-ups prioritized over check-ins
  */
 
 import * as admin from 'firebase-admin';
@@ -10,6 +14,9 @@ import { getNotificationService, PushNotificationPayload } from './notifications
 const getDb = () => admin.firestore();
 const getNudgesCollection = () => getDb().collection('nudges');
 
+// Max nudges to send per user per day
+const MAX_DAILY_NUDGES = 3;
+
 interface DueNudge {
     id: string;
     userId: string;
@@ -18,6 +25,45 @@ interface DueNudge {
     medicationName?: string;
     conditionId?: string;
     actionType?: string;
+    type?: string;
+}
+
+// Priority order for nudge types (higher = more important)
+const NUDGE_TYPE_PRIORITY: Record<string, number> = {
+    'follow_up': 3,
+    'medication_checkin': 2,
+    'condition_tracking': 1,
+};
+
+/**
+ * Get count of nudges already sent to user today
+ */
+async function getDailyNudgeCount(userId: string): Promise<number> {
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const snapshot = await getNudgesCollection()
+        .where('userId', '==', userId)
+        .where('notificationSentAt', '>=', admin.firestore.Timestamp.fromDate(startOfDay))
+        .where('notificationSentAt', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
+        .get();
+
+    return snapshot.size;
+}
+
+/**
+ * Sort nudges by priority (follow-ups first, then medication, then condition)
+ */
+function sortNudgesByPriority(nudges: DueNudge[]): DueNudge[] {
+    return [...nudges].sort((a, b) => {
+        const priorityA = NUDGE_TYPE_PRIORITY[a.type || ''] || 0;
+        const priorityB = NUDGE_TYPE_PRIORITY[b.type || ''] || 0;
+        return priorityB - priorityA;
+    });
 }
 
 /**
@@ -28,9 +74,10 @@ export async function processAndNotifyDueNudges(): Promise<{
     processed: number;
     notified: number;
     errors: number;
+    skippedDailyLimit: number;
 }> {
     const now = admin.firestore.Timestamp.now();
-    const stats = { processed: 0, notified: 0, errors: 0 };
+    const stats = { processed: 0, notified: 0, errors: 0, skippedDailyLimit: 0 };
 
     try {
         // Find nudges that are due and haven't been notified yet
@@ -67,6 +114,7 @@ export async function processAndNotifyDueNudges(): Promise<{
                 medicationName: data.medicationName as string | undefined,
                 conditionId: data.conditionId as string | undefined,
                 actionType: data.actionType as string | undefined,
+                type: data.type as string | undefined,
             });
         });
 
@@ -76,13 +124,35 @@ export async function processAndNotifyDueNudges(): Promise<{
         // Process each user's nudges
         for (const [userId, nudges] of nudgesByUser) {
             try {
+                // Check daily limit
+                const dailyCount = await getDailyNudgeCount(userId);
+                const remaining = MAX_DAILY_NUDGES - dailyCount;
+
+                if (remaining <= 0) {
+                    functions.logger.info(`[NudgeNotifications] User ${userId} at daily limit, skipping ${nudges.length} nudges`);
+                    // Mark as skipped but don't send - will retry tomorrow
+                    stats.skippedDailyLimit += nudges.length;
+                    continue;
+                }
+
+                // Sort by priority and take only up to remaining limit
+                const sortedNudges = sortNudgesByPriority(nudges);
+                const nudgesToSend = sortedNudges.slice(0, remaining);
+                const nudgesToSkip = sortedNudges.slice(remaining);
+
+                // Log skipped nudges
+                if (nudgesToSkip.length > 0) {
+                    functions.logger.info(`[NudgeNotifications] Skipping ${nudgesToSkip.length} lower-priority nudges for user ${userId} due to daily limit`);
+                    stats.skippedDailyLimit += nudgesToSkip.length;
+                }
+
                 // Get user's push tokens
                 const tokens = await notificationService.getUserPushTokens(userId);
 
                 if (tokens.length === 0) {
                     functions.logger.info(`[NudgeNotifications] No push tokens for user ${userId}`);
                     // Still mark as processed, just not notified
-                    for (const nudge of nudges) {
+                    for (const nudge of nudgesToSend) {
                         batch.update(getNudgesCollection().doc(nudge.id), {
                             notificationSent: true,
                             notificationSkipped: 'no_push_tokens',
@@ -94,7 +164,7 @@ export async function processAndNotifyDueNudges(): Promise<{
                 }
 
                 // Send notification for each nudge
-                for (const nudge of nudges) {
+                for (const nudge of nudgesToSend) {
                     const payloads: PushNotificationPayload[] = tokens.map(({ token }) => ({
                         to: token,
                         title: nudge.title,
@@ -182,3 +252,4 @@ export async function backfillNotificationSentField(): Promise<number> {
 
     return updated;
 }
+

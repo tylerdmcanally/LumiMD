@@ -44,6 +44,84 @@ const db = () => admin.firestore();
 const getNudgesCollection = () => db().collection('nudges');
 
 // =============================================================================
+// Rate Limiting & Deduplication Helpers
+// =============================================================================
+
+const MIN_HOURS_BETWEEN_NUDGES = 4;
+
+/**
+ * Check if user already has pending/active nudges for this condition
+ */
+async function hasExistingConditionNudges(userId: string, conditionId: string): Promise<boolean> {
+    const snapshot = await getNudgesCollection()
+        .where('userId', '==', userId)
+        .where('conditionId', '==', conditionId)
+        .where('status', 'in', ['pending', 'active'])
+        .limit(1)
+        .get();
+
+    return !snapshot.empty;
+}
+
+/**
+ * Find a suitable time slot that's at least 4 hours from existing nudges
+ */
+async function findAvailableTimeSlot(userId: string, preferredDate: Date): Promise<Date> {
+    // Get all pending nudges for this user in the next 48 hours
+    const startDate = new Date(preferredDate);
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(preferredDate);
+    endDate.setDate(endDate.getDate() + 2);
+
+    const snapshot = await getNudgesCollection()
+        .where('userId', '==', userId)
+        .where('status', 'in', ['pending', 'active'])
+        .where('scheduledFor', '>=', admin.firestore.Timestamp.fromDate(startDate))
+        .where('scheduledFor', '<=', admin.firestore.Timestamp.fromDate(endDate))
+        .get();
+
+    const existingTimes: Date[] = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return (data.scheduledFor as admin.firestore.Timestamp).toDate();
+    });
+
+    // Check if preferredDate is far enough from existing nudges
+    let candidateDate = new Date(preferredDate);
+
+    for (let attempt = 0; attempt < 6; attempt++) { // Try up to 6 shifts (24 hours)
+        const tooClose = existingTimes.some(existingTime => {
+            const diffHours = Math.abs(candidateDate.getTime() - existingTime.getTime()) / (1000 * 60 * 60);
+            return diffHours < MIN_HOURS_BETWEEN_NUDGES;
+        });
+
+        if (!tooClose) {
+            return candidateDate;
+        }
+
+        // Shift by 4 hours and try again
+        candidateDate = new Date(candidateDate.getTime() + MIN_HOURS_BETWEEN_NUDGES * 60 * 60 * 1000);
+    }
+
+    // If no good slot found, return original (rare edge case)
+    return preferredDate;
+}
+
+/**
+ * Check if user already has pending/active nudges for this medication
+ */
+async function hasExistingMedicationNudges(userId: string, medicationName: string): Promise<boolean> {
+    const snapshot = await getNudgesCollection()
+        .where('userId', '==', userId)
+        .where('medicationName', '==', medicationName)
+        .where('status', 'in', ['pending', 'active'])
+        .limit(1)
+        .get();
+
+    return !snapshot.empty;
+}
+
+// =============================================================================
 // Nudge Creation
 // =============================================================================
 
@@ -211,6 +289,13 @@ async function createConditionNudges(
     protocol: ConditionProtocol,
     visitDate: Date
 ): Promise<number> {
+    // Deduplication: Check if user already has pending nudges for this condition
+    const hasExisting = await hasExistingConditionNudges(userId, protocol.id);
+    if (hasExisting) {
+        functions.logger.info(`[LumibotAnalyzer] Skipping condition ${protocol.id} - user already has pending nudges`);
+        return 0;
+    }
+
     const sequenceId = `${protocol.id}_${visitId}_${generateShortId()}`;
     let nudgesCreated = 0;
 
@@ -220,11 +305,14 @@ async function createConditionNudges(
 
     for (const scheduleItem of protocol.nudgeSchedule) {
         // Calculate scheduled date
-        const scheduledDate = new Date(visitDate);
+        let scheduledDate = new Date(visitDate);
         scheduledDate.setDate(scheduledDate.getDate() + scheduleItem.day);
 
         // Only create nudge if it's in the future
         if (scheduledDate > new Date()) {
+            // Smart scheduling: Find time slot 4+ hours from other nudges
+            scheduledDate = await findAvailableTimeSlot(userId, scheduledDate);
+
             await createNudge({
                 userId,
                 visitId,
@@ -243,10 +331,13 @@ async function createConditionNudges(
         // Handle recurring nudges - create next 4 occurrences
         if (scheduleItem.recurring && scheduleItem.interval) {
             for (let i = 1; i <= 4; i++) {
-                const recurringDate = new Date(scheduledDate);
+                let recurringDate = new Date(scheduledDate);
                 recurringDate.setDate(recurringDate.getDate() + (scheduleItem.interval * i));
 
                 if (recurringDate > new Date()) {
+                    // Smart scheduling for recurring nudges too
+                    recurringDate = await findAvailableTimeSlot(userId, recurringDate);
+
                     await createNudge({
                         userId,
                         visitId,
@@ -294,6 +385,13 @@ async function createMedicationNudges(
     const medicationName = typeof medication === 'string'
         ? medication
         : medication.name;
+
+    // Deduplication: Check if user already has pending nudges for this medication
+    const hasExisting = await hasExistingMedicationNudges(userId, medicationName);
+    if (hasExisting) {
+        functions.logger.info(`[LumibotAnalyzer] Skipping medication ${medicationName} - user already has pending nudges`);
+        return 0;
+    }
 
     const sequenceId = `${sequence.id}_${visitId}_${generateShortId()}`;
     let nudgesCreated = 0;
