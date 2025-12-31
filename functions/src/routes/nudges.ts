@@ -32,7 +32,15 @@ const updateNudgeSchema = z.object({
 });
 
 const respondToNudgeSchema = z.object({
-    response: z.enum(['yes', 'no', 'good', 'having_issues']),
+    response: z.enum([
+        // Pickup check
+        'got_it', 'not_yet',
+        // Started check
+        'taking_it', 'having_trouble',
+        // Feeling/side effects
+        'good', 'okay', 'issues',
+        'none', 'mild', 'concerning',
+    ]),
     note: z.string().optional(),
     sideEffects: z.array(z.string()).optional(), // Side effect IDs when having_issues
 });
@@ -189,12 +197,86 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
 
         functions.logger.info(`[nudges] Nudge ${nudgeId} responded with ${data.response}`);
 
+        // =========================================================================
+        // SMART TIMING: Adjust future nudges based on response
+        // =========================================================================
+
+        // Positive response on key milestones → patient is doing well, skip remaining check-ins
+        const positiveResponses = ['taking_it', 'good', 'none'];
+        const concerningResponses = ['having_trouble', 'issues', 'concerning'];
+
+        if (positiveResponses.includes(data.response) && nudge.sequenceId && nudge.medicationName) {
+            // Skip remaining pending nudges in this sequence - patient confirmed they're on track
+            try {
+                const pendingNudges = await getDb()
+                    .collection('nudges')
+                    .where('userId', '==', userId)
+                    .where('sequenceId', '==', nudge.sequenceId)
+                    .where('status', 'in', ['pending', 'snoozed'])
+                    .get();
+
+                if (!pendingNudges.empty) {
+                    const batch = getDb().batch();
+                    const now = admin.firestore.Timestamp.now();
+                    pendingNudges.docs.forEach(doc => {
+                        batch.update(doc.ref, {
+                            status: 'dismissed',
+                            dismissedAt: now,
+                            updatedAt: now,
+                        });
+                    });
+                    await batch.commit();
+                    functions.logger.info(
+                        `[nudges] Smart skip: dismissed ${pendingNudges.size} remaining nudges for ${nudge.medicationName} after positive response`
+                    );
+                }
+            } catch (skipErr) {
+                functions.logger.error('[nudges] Error skipping remaining nudges:', skipErr);
+            }
+        } else if (concerningResponses.includes(data.response) && nudge.medicationName) {
+            // Concerning response → schedule a follow-up check in 3 days
+            try {
+                const followUpDate = new Date();
+                followUpDate.setDate(followUpDate.getDate() + 3);
+
+                await getDb().collection('nudges').add({
+                    userId,
+                    visitId: nudge.visitId,
+                    type: 'followup',
+                    medicationName: nudge.medicationName,
+                    medicationId: nudge.medicationId || null,
+                    title: `Following up on ${nudge.medicationName}`,
+                    message: `How are things going with ${nudge.medicationName}? Any updates since you mentioned having some issues?`,
+                    actionType: 'feeling_check',
+                    scheduledFor: admin.firestore.Timestamp.fromDate(followUpDate),
+                    sequenceDay: 0,
+                    sequenceId: `followup_${nudgeId}`,
+                    status: 'pending',
+                    createdAt: admin.firestore.Timestamp.now(),
+                    updatedAt: admin.firestore.Timestamp.now(),
+                });
+                functions.logger.info(
+                    `[nudges] Smart follow-up: created 3-day check-in for ${nudge.medicationName} after concerning response`
+                );
+            } catch (followUpErr) {
+                functions.logger.error('[nudges] Error creating follow-up nudge:', followUpErr);
+            }
+        }
+
         // Return appropriate message based on response
         let message = 'Thanks for letting us know!';
-        if (data.response === 'yes' || data.response === 'good') {
-            message = 'Great! Thanks for the update. 💙';
-        } else if (data.response === 'having_issues') {
-            message = 'Thanks for sharing. This is worth mentioning to your doctor at your next visit.';
+        // Positive responses
+        if (['got_it', 'taking_it', 'good', 'none'].includes(data.response)) {
+            message = 'Great! Thanks for the update.';
+            // Not yet responses
+        } else if (data.response === 'not_yet') {
+            message = 'No worries! We\'ll check in again soon.';
+            // Neutral responses
+        } else if (['okay', 'mild'].includes(data.response)) {
+            message = 'Thanks for the update. Let us know if anything changes.';
+            // Concerning responses
+        } else if (['having_trouble', 'issues', 'concerning'].includes(data.response)) {
+            message = 'This is worth mentioning to your doctor at your next visit. We\'ll check in again soon.';
         }
 
         res.json({
@@ -330,8 +412,8 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
                     medicationName: nudge.medicationName,
                     title: 'Follow-up Check',
                     message: followUp.suggestedMessage ||
-                        `Checking back in on you. ${followUp.focusArea ? `Let's talk about ${followUp.focusArea}.` : ''} 💙`,
-                    actionType: 'confirm_yes_no',
+                        `Checking back in on you. ${followUp.focusArea ? `Let's talk about ${followUp.focusArea}.` : ''}`,
+                    actionType: 'feeling_check',
                     scheduledFor: admin.firestore.Timestamp.fromDate(scheduledFor),
                     sequenceDay: 0,
                     sequenceId: `followup_${nudgeId}_${Date.now()}`,
@@ -355,9 +437,9 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
         }
 
         // Build response message based on interpretation
-        let message = 'Thanks for sharing! 💙';
+        let message = 'Thanks for sharing!';
         if (interpretation.sentiment === 'positive') {
-            message = "That's great to hear! Keep up the good work. 💙";
+            message = "That's great to hear! Keep up the good work.";
         } else if (interpretation.sentiment === 'negative') {
             message = "Thanks for letting us know. We'll check back in to see how things are going.";
         } else if (interpretation.sentiment === 'concerning') {
@@ -510,6 +592,88 @@ nudgesRouter.post('/process-due', async (req, res) => {
         res.status(500).json({
             code: 'server_error',
             message: 'Failed to process due nudges',
+        });
+    }
+});
+
+// =============================================================================
+// POST /v1/nudges/cleanup-orphans - Delete nudges for discontinued medications
+// =============================================================================
+
+nudgesRouter.post('/cleanup-orphans', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+
+        // Get all pending/active nudges with medication references for this user
+        const snapshot = await getDb()
+            .collection('nudges')
+            .where('userId', '==', userId)
+            .where('status', 'in', ['pending', 'active', 'snoozed'])
+            .get();
+
+        if (snapshot.empty) {
+            res.json({ success: true, message: 'No pending nudges found', deleted: 0 });
+            return;
+        }
+
+        // Get all active medications for this user
+        const medsSnapshot = await getDb()
+            .collection('medications')
+            .where('userId', '==', userId)
+            .where('active', '==', true)
+            .get();
+
+        const activeMedNames = new Set(
+            medsSnapshot.docs.map(doc => doc.data().name?.toLowerCase())
+        );
+
+        // Find nudges that reference discontinued medications
+        const orphans: string[] = [];
+        for (const doc of snapshot.docs) {
+            const nudge = doc.data();
+
+            // Only check nudges that have a medicationName
+            if (nudge.medicationName) {
+                const medNameLower = nudge.medicationName.toLowerCase();
+                if (!activeMedNames.has(medNameLower)) {
+                    orphans.push(doc.id);
+                }
+            }
+        }
+
+        if (orphans.length === 0) {
+            res.json({ success: true, message: 'No orphaned nudges found', deleted: 0 });
+            return;
+        }
+
+        // Delete orphaned nudges
+        const batch = getDb().batch();
+        const now = admin.firestore.Timestamp.now();
+        orphans.forEach(id => {
+            batch.update(getDb().collection('nudges').doc(id), {
+                status: 'dismissed',
+                dismissedAt: now,
+                dismissalReason: 'medication_discontinued',
+                updatedAt: now,
+            });
+        });
+        await batch.commit();
+
+        functions.logger.info(`[nudges] Cleaned up ${orphans.length} orphaned nudges`, {
+            userId,
+            orphanedIds: orphans,
+        });
+
+        res.json({
+            success: true,
+            message: `Dismissed ${orphans.length} nudge(s) for discontinued medications`,
+            deleted: orphans.length,
+        });
+    } catch (error) {
+        functions.logger.error('[nudges] Cleanup failed:', error);
+        res.status(500).json({
+            code: 'internal_error',
+            message: 'Failed to cleanup orphaned nudges',
         });
     }
 });

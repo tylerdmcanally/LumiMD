@@ -10,8 +10,10 @@ export type NudgeActionType =
     | 'log_bp'
     | 'log_glucose'
     | 'log_weight'
-    | 'confirm_yes_no'
-    | 'medication_check'
+    | 'pickup_check'      // Got it / Not yet
+    | 'started_check'     // Taking it / Not yet / Trouble
+    | 'feeling_check'     // Good / Okay / Issues
+    | 'side_effects'      // None / Mild / Concerning
     | 'symptom_check'
     | 'acknowledge'
     | 'view_insight';
@@ -60,9 +62,13 @@ export interface MedComplianceValue {
 }
 
 export interface SymptomCheckValue {
-    symptoms: string[];
-    severity?: 'mild' | 'moderate' | 'severe';
-    note?: string;
+    breathingDifficulty: number;  // 1-5 scale
+    swelling: 'none' | 'mild' | 'moderate' | 'severe';
+    swellingLocations?: string[];
+    energyLevel: number;  // 1-5 scale
+    cough: boolean;
+    orthopnea?: boolean;  // Needed extra pillows / woken up short of breath
+    otherSymptoms?: string;
 }
 
 export type HealthLogValue =
@@ -120,7 +126,7 @@ export interface UpdateNudgeRequest {
 }
 
 export interface RespondToNudgeRequest {
-    response: 'yes' | 'no' | 'good' | 'having_issues';
+    response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning';
     note?: string;
     sideEffects?: string[]; // Side effect IDs when reporting issues
 }

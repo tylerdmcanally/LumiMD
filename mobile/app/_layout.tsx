@@ -1,18 +1,16 @@
-import { Stack, useRouter, useSegments } from 'expo-router';
-import { useColorScheme, Alert } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { useColorScheme } from 'react-native';
 import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits } from '../lib/api/hooks';
-import { setBadgeCount, getExpoPushToken, registerPushToken, scheduleLocalMedicationReminder } from '../lib/notifications';
-import { MedicationActionModal, MedicationActionData } from '../components/MedicationActionModal';
-import { logMedicationAction } from '../lib/api/medicationLogs';
+import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -43,14 +41,9 @@ function RootFallback({ reset }: { reset: () => void }) {
 
 function NotificationHandler() {
   const router = useRouter();
-  const segments = useSegments();
   const { isAuthenticated, user } = useAuth();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
-
-  // Medication action modal state
-  const [medicationModalVisible, setMedicationModalVisible] = useState(false);
-  const [pendingMedication, setPendingMedication] = useState<MedicationActionData | null>(null);
 
   // Only fetch data when authenticated to prevent SDK errors
   const { data: pendingActions } = usePendingActions({ enabled: isAuthenticated && !!user });
@@ -122,16 +115,9 @@ function NotificationHandler() {
       }
 
       if (data?.type === 'medication_reminder') {
-        // Show medication action modal instead of navigating
-        console.log('[Notifications] Opening medication action modal');
-        setPendingMedication({
-          reminderId: data.reminderId as string,
-          medicationId: data.medicationId as string,
-          medicationName: data.medicationName as string,
-          medicationDose: data.medicationDose as string | undefined,
-          scheduledTime: getCurrentTimeHHMM(), // Use current time as scheduled time
-        });
-        setMedicationModalVisible(true);
+        // Navigate to medication schedule screen
+        console.log('[Notifications] Navigating to medication schedule');
+        router.push('/medication-schedule');
       } else if (data?.type === 'visit-ready' && data?.visitId) {
         // Navigate to visit detail
         router.push(`/visit-detail?id=${data.visitId}`);
@@ -149,60 +135,7 @@ function NotificationHandler() {
     };
   }, [isAuthenticated, router]);
 
-  // Handle medication action (taken/skipped/snoozed)
-  const handleMedicationAction = useCallback(async (action: 'taken' | 'skipped' | 'snoozed') => {
-    if (!pendingMedication) return;
-
-    try {
-      await logMedicationAction({
-        medicationId: pendingMedication.medicationId,
-        medicationName: pendingMedication.medicationName,
-        reminderId: pendingMedication.reminderId,
-        action,
-        scheduledTime: pendingMedication.scheduledTime,
-      });
-
-      console.log(`[Notifications] Logged medication action: ${action}`);
-
-      if (action === 'snoozed') {
-        // Schedule a local notification for 30 minutes from now
-        await scheduleLocalMedicationReminder({
-          medicationId: pendingMedication.medicationId,
-          medicationName: pendingMedication.medicationName,
-          medicationDose: pendingMedication.medicationDose,
-          reminderId: pendingMedication.reminderId,
-          delayMinutes: 30,
-        });
-        Alert.alert('Reminder Set', "We'll remind you again in 30 minutes.");
-      }
-    } catch (error) {
-      console.error('[Notifications] Error logging medication action:', error);
-      Alert.alert('Error', 'Failed to log action. Please try again.');
-      throw error;
-    }
-  }, [pendingMedication]);
-
-  const handleCloseModal = useCallback(() => {
-    setMedicationModalVisible(false);
-    setPendingMedication(null);
-  }, []);
-
-  return (
-    <MedicationActionModal
-      visible={medicationModalVisible}
-      medication={pendingMedication}
-      onAction={handleMedicationAction}
-      onClose={handleCloseModal}
-    />
-  );
-}
-
-// Helper to get current time in HH:MM format
-function getCurrentTimeHHMM(): string {
-  const now = new Date();
-  const hours = now.getHours().toString().padStart(2, '0');
-  const minutes = now.getMinutes().toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
+  return null;
 }
 
 export default function RootLayout() {

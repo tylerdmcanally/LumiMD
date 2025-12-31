@@ -74,7 +74,7 @@ const LUMIBOT_PERSONA = `You are LumiBot, a friendly and supportive healthcare a
 Tone guidelines:
 - Warm, empathetic, and encouraging
 - Use simple, patient-friendly language (6th-8th grade reading level)
-- Include appropriate emoji sparingly (💙, ✓, 📊) for warmth
+- Include appropriate emoji sparingly (, ,) for warmth
 - Never be alarmist; be reassuring while still conveying important information
 - Keep messages concise (2-3 sentences max for check-ins)
 - Use "your doctor" instead of specific provider names
@@ -232,7 +232,7 @@ export class LumiBotAIService {
             const parsed = JSON.parse(content);
             return {
                 title: parsed.title || 'LumiBot is Here to Help',
-                message: parsed.message || `I noticed your provider discussed ${diagnosis}. I'll be checking in to help you track your progress. 💙`,
+                message: parsed.message || `I noticed your provider discussed ${diagnosis}. I'll be checking in to help you track your progress.`,
                 explanation: parsed.explanation || '',
             };
         } catch (error) {
@@ -240,7 +240,7 @@ export class LumiBotAIService {
             // Return fallback template
             return {
                 title: 'LumiBot is Here to Help',
-                message: `I see your provider discussed ${diagnosis} during your visit. I'll be checking in to help you monitor and track your progress. 💙`,
+                message: `I see your provider discussed ${diagnosis} during your visit. I'll be checking in to help you monitor and track your progress.`,
                 explanation: '',
             };
         }
@@ -299,7 +299,7 @@ export class LumiBotAIService {
             const parsed = JSON.parse(content);
             return {
                 title: parsed.title || 'Time to Check In',
-                message: parsed.message || "Let's see how things are going. 💙",
+                message: parsed.message || "Let's see how things are going.",
             };
         } catch (error) {
             functions.logger.error('[LumiBotAI] Failed to generate check-in message:', error);
@@ -495,7 +495,7 @@ export class LumiBotAIService {
         if (nudgeType === 'medication_checkin' && medicationName) {
             return {
                 title: 'Medication Check',
-                message: `How's it going with ${medicationName}? Let us know how you're feeling. 💙`,
+                message: `How's it going with ${medicationName}? Let us know how you're feeling.`,
             };
         }
 
@@ -503,20 +503,20 @@ export class LumiBotAIService {
             if (conditionId === 'hypertension' || conditionId === 'bp') {
                 return {
                     title: 'Blood Pressure Check',
-                    message: "Time to log your blood pressure. A quick reading helps track your progress! 💙",
+                    message: "Time to log your blood pressure. A quick reading helps track your progress!",
                 };
             }
             if (conditionId === 'diabetes' || conditionId === 'glucose') {
                 return {
                     title: 'Blood Sugar Check',
-                    message: "Let's check in on your blood sugar. How are things looking? 💙",
+                    message: "Let's check in on your blood sugar. How are things looking?",
                 };
             }
         }
 
         return {
             title: 'Time to Check In',
-            message: "How are things going? Take a moment to log how you're feeling. 💙",
+            message: "How are things going? Take a moment to log how you're feeling.",
         };
     }
 

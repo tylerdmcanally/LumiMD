@@ -81,13 +81,16 @@ export async function getExpoPushToken(): Promise<string | null> {
 }
 
 /**
- * Register push token with backend
+ * Register push token with backend (includes device timezone for quiet hours)
  */
 export async function registerPushToken(token: string): Promise<void> {
   try {
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
-    await api.user.registerPushToken({ token, platform });
-    console.log('[Notifications] Push token registered successfully');
+    // Get device's current timezone (e.g., 'America/New_York')
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    await api.user.registerPushToken({ token, platform, timezone });
+    console.log('[Notifications] Push token registered with timezone:', timezone);
   } catch (error) {
     console.error('[Notifications] Error registering push token:', error);
     throw error;

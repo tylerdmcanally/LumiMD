@@ -23,6 +23,7 @@ import {
 } from '../services/safetyChecker';
 import { completeNudge, createFollowUpNudge, createInsightNudge } from '../services/lumibotAnalyzer';
 import { getPrimaryInsight } from '../services/trendAnalyzer';
+import { checkAndCelebrateStreak } from '../services/streakService';
 
 
 export const healthLogsRouter = Router();
@@ -63,6 +64,7 @@ const symptomCheckValueSchema = z.object({
     swellingLocations: z.array(z.string()).optional(),
     energyLevel: z.number().min(1).max(5),
     cough: z.boolean(),
+    orthopnea: z.boolean().optional(), // Needed extra pillows / woken up short of breath
     otherSymptoms: z.string().optional(),
 });
 
@@ -223,6 +225,11 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
         // Run asynchronously so we don't slow down the response
         checkForTrendInsights(userId, data.type).catch(err => {
             functions.logger.error('[healthLogs] Trend analysis failed:', err);
+        });
+
+        // STREAK RECOGNITION: Check for milestone and celebrate
+        checkAndCelebrateStreak(userId).catch(err => {
+            functions.logger.error('[healthLogs] Streak check failed:', err);
         });
 
 

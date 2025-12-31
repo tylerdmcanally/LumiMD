@@ -13,10 +13,12 @@ import { webhooksRouter } from './routes/webhooks';
 import { usersRouter } from './routes/users';
 import { sharesRouter } from './routes/shares';
 import { nudgesRouter } from './routes/nudges';
+import { insightsRouter } from './routes/insights';
 import { nudgesDebugRouter } from './routes/nudgesDebug';
 import { healthLogsRouter } from './routes/healthLogs';
 import { medicationRemindersRouter } from './routes/medicationReminders';
 import medicationLogsRouter from './routes/medicationLogs';
+import { medicalContextRouter } from './routes/medicalContext';
 import { apiLimiter } from './middlewares/rateLimit';
 import { requireHttps } from './middlewares/httpsOnly';
 import { errorHandler } from './middlewares/errorHandler';
@@ -161,6 +163,8 @@ app.use('/v1/nudges', nudgesDebugRouter); // Debug endpoints under same path
 app.use('/v1/health-logs', healthLogsRouter);
 app.use('/v1/medication-reminders', medicationRemindersRouter);
 app.use('/v1/medication-logs', medicationLogsRouter);
+app.use('/v1/insights', insightsRouter);
+app.use('/v1/medical-context', medicalContextRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -220,6 +224,30 @@ export const processMedicationReminders = onSchedule(
       functions.logger.info('[Scheduler] Med reminder processing complete', result);
     } catch (error) {
       functions.logger.error('[Scheduler] Error processing med reminders:', error);
+      throw error;
+    }
+  }
+);
+
+// Scheduled function to create recurring condition check-in nudges (daily at 9 AM)
+export const processConditionReminders = onSchedule(
+  {
+    schedule: 'every day 09:00',
+    timeZone: 'America/Chicago',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running condition reminder processor');
+
+    // Import dynamically to avoid circular dependencies
+    const { processConditionReminders: runReminders } = await import('./services/conditionReminderService');
+
+    try {
+      const result = await runReminders();
+      functions.logger.info('[Scheduler] Condition reminder processing complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error processing condition reminders:', error);
       throw error;
     }
   }

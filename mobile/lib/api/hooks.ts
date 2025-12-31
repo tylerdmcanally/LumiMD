@@ -145,6 +145,11 @@ export function useRealtimeActiveMedications(
         (snapshot) => {
           const docs = snapshot.docs.map(doc => serializeDoc<Medication>(doc));
           queryClient.setQueryData(key, filterActiveMeds(docs));
+
+          // Also invalidate medication schedule and reminders
+          // This ensures Today's Schedule updates when meds are synced from a visit
+          queryClient.invalidateQueries({ queryKey: ['medicationSchedule'] });
+          queryClient.invalidateQueries({ queryKey: ['medicationReminders'] });
         },
         (error) => {
           console.error('[Realtime] Medications listener error', error);
@@ -358,6 +363,7 @@ export function useCreateMedicationReminder() {
       api.medicationReminders.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
+      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
     },
   });
 }
@@ -370,6 +376,7 @@ export function useUpdateMedicationReminder() {
       api.medicationReminders.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
+      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
     },
   });
 }
@@ -381,6 +388,7 @@ export function useDeleteMedicationReminder() {
     mutationFn: (id: string) => api.medicationReminders.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
+      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
     },
   });
 }
@@ -490,4 +498,50 @@ export function useSnoozeDose() {
       queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
     },
   });
+}
+
+// =============================================================================
+// Silent Orphan Cleanup
+// =============================================================================
+
+/**
+ * Silently cleans up orphaned medication reminders (ones pointing to deleted meds).
+ * Safe to call on every app launch - it's idempotent.
+ */
+export async function cleanupOrphanedReminders(): Promise<{ deleted: number } | null> {
+  try {
+    const result = await fetchWithAuth<{ deleted: number; success: boolean }>(
+      '/v1/medication-reminders/cleanup-orphans',
+      { method: 'POST' }
+    );
+    if (result.deleted > 0) {
+      console.log(`[MedReminders] Cleaned up ${result.deleted} orphaned reminder(s)`);
+    }
+    return { deleted: result.deleted };
+  } catch (error) {
+    // Silently fail - this is a best-effort cleanup
+    console.warn('[MedReminders] Orphan cleanup failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Silently cleans up orphaned nudges (ones referencing discontinued medications).
+ * Safe to call on every app launch - it's idempotent.
+ */
+export async function cleanupOrphanedNudges(): Promise<{ deleted: number } | null> {
+  try {
+    const result = await fetchWithAuth<{ deleted: number; success: boolean }>(
+      '/v1/nudges/cleanup-orphans',
+      { method: 'POST' }
+    );
+    if (result.deleted > 0) {
+      console.log(`[Nudges] Cleaned up ${result.deleted} orphaned nudge(s)`);
+    }
+    return { deleted: result.deleted };
+  } catch (error) {
+    // Silently fail - this is a best-effort cleanup
+    console.warn('[Nudges] Orphan cleanup failed:', error);
+    return null;
+  }
 }

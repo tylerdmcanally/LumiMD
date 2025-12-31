@@ -99,7 +99,14 @@ export const processVisitAudio = onObjectFinalized(
       }
 
       const assemblyAI = getAssemblyAIService();
-      const transcriptionId = await assemblyAI.submitTranscription(signedUrl);
+
+      // Construct webhook URL for instant transcription completion callbacks
+      // Falls back to polling if webhook fails
+      const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || 'lumimd-dev';
+      const region = 'us-central1';
+      const webhookUrl = `https://${region}-${projectId}.cloudfunctions.net/api/v1/webhooks/assemblyai/transcription-complete`;
+
+      const transcriptionId = await assemblyAI.submitTranscription(signedUrl, webhookUrl);
       const now = admin.firestore.Timestamp.now();
 
       const updatePayload: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
@@ -129,7 +136,7 @@ export const processVisitAudio = onObjectFinalized(
       // NOTE: This runs AFTER the transcript has been received and processed.
       // Since this function (processVisitAudio) only SUBMITS the job, we can't delete yet.
       // Deletion must happen in the webhook handler (when job is done) or the sweeper.
-      
+
       logger.info(
         `[processVisitAudio] Visit ${visitRef.id} submitted to AssemblyAI. transcriptionId=${transcriptionId}`,
       );

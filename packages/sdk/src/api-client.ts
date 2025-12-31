@@ -376,7 +376,7 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'PATCH',
           body: JSON.stringify(data),
         }),
-      registerPushToken: (data: { token: string; platform: string }) =>
+      registerPushToken: (data: { token: string; platform: string; timezone?: string }) =>
         apiRequest<void>('/v1/users/push-tokens', {
           method: 'POST',
           body: JSON.stringify(data),

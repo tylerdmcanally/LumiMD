@@ -31,6 +31,7 @@ export const storageConfig = {
 
 export const webhookConfig = {
   visitProcessingSecret: process.env.VISIT_PROCESSING_WEBHOOK_SECRET || '',
+  assemblyaiWebhookSecret: process.env.ASSEMBLYAI_WEBHOOK_SECRET || '',
 };
 
 export const corsConfig = {

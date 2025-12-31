@@ -14,6 +14,7 @@ import {
     Scale,
     Download,
     Pill,
+    Sparkles,
 } from 'lucide-react';
 import {
     LineChart,
@@ -29,7 +30,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/layout/PageContainer';
-import { useHealthLogs, HealthLog, useMedicationCompliance } from '@/lib/api/hooks';
+import { useHealthLogs, HealthLog, useMedicationCompliance, useHealthInsights } from '@/lib/api/hooks';
 import { useViewing } from '@/lib/contexts/ViewingContext';
 import { useApiClient } from '@/lib/hooks/useApiClient';
 import { cn } from '@/lib/utils';
@@ -311,6 +312,9 @@ export default function HealthDashboardPage() {
 
     // Medication compliance data
     const { data: compliance } = useMedicationCompliance(7);
+
+    // AI-generated insights
+    const { data: insights = [], isLoading: insightsLoading } = useHealthInsights();
 
     // Handle provider report export
     const handleExportReport = async () => {
@@ -667,6 +671,53 @@ export default function HealthDashboardPage() {
                             </Card>
                         )}
                     </div>
+                )}
+
+                {/* LumiBot Insights */}
+                {insights.length > 0 && (
+                    <section>
+                        <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+                            <Sparkles className="h-5 w-5 text-brand-primary" />
+                            LumiBot Insights
+                        </h2>
+                        <Card variant="elevated" padding="lg">
+                            <div className="space-y-3">
+                                {insights.map((insight) => (
+                                    <div
+                                        key={insight.id}
+                                        className={cn(
+                                            'flex items-start gap-3 p-3 rounded-lg',
+                                            insight.type === 'positive' && 'bg-success-light/30',
+                                            insight.type === 'attention' && 'bg-warning-light/30',
+                                            insight.type === 'tip' && 'bg-brand-primary-light/30',
+                                            insight.type === 'neutral' && 'bg-background-subtle',
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm',
+                                            insight.type === 'positive' && 'bg-success-light text-success-dark',
+                                            insight.type === 'attention' && 'bg-warning-light text-warning-dark',
+                                            insight.type === 'tip' && 'bg-brand-primary-light text-brand-primary',
+                                            insight.type === 'neutral' && 'bg-gray-100 text-gray-600',
+                                        )}>
+                                            {insight.type === 'positive' && '✓'}
+                                            {insight.type === 'attention' && '!'}
+                                            {insight.type === 'tip' && '💡'}
+                                            {insight.type === 'neutral' && '📊'}
+                                        </div>
+                                        <p className="text-text-primary text-sm leading-relaxed">
+                                            {insight.text}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                            {insights[0]?.generatedAt && (
+                                <p className="text-xs text-text-muted mt-4 text-right">
+                                    Last updated: {new Date(insights[0].generatedAt).toLocaleDateString()}
+                                </p>
+                            )}
+                        </Card>
+                    </section>
                 )}
 
                 {/* BP Chart */}

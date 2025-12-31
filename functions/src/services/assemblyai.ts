@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { assemblyAIConfig } from '../config';
+import { assemblyAIConfig, webhookConfig } from '../config';
 
 import { withRetry } from '../utils/retryUtils';
 
@@ -44,10 +44,11 @@ export class AssemblyAIService {
     });
   }
 
-  async submitTranscription(audioUrl: string): Promise<string> {
+  async submitTranscription(audioUrl: string, webhookUrl?: string): Promise<string> {
     return withRetry(async () => {
       try {
-        const response = await this.client.post<AssemblyAITranscript>('/transcript', {
+        // Build request payload
+        const requestPayload: Record<string, unknown> = {
           audio_url: audioUrl,
           speaker_labels: true,
           punctuate: true,
@@ -55,7 +56,18 @@ export class AssemblyAIService {
           language_code: 'en_us',
           disfluencies: true,
           auto_chapters: false,
-        });
+        };
+
+        // Add webhook URL if provided (for instant callbacks)
+        // The secret is passed as a query param on the webhook URL for validation
+        if (webhookUrl) {
+          const secret = webhookConfig.assemblyaiWebhookSecret;
+          requestPayload.webhook_url = secret
+            ? `${webhookUrl}?secret=${encodeURIComponent(secret)}`
+            : webhookUrl;
+        }
+
+        const response = await this.client.post<AssemblyAITranscript>('/transcript', requestPayload);
 
         return response.data.id;
       } catch (error: unknown) {

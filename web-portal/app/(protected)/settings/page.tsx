@@ -23,7 +23,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { queryKeys, useUserProfile } from '@/lib/api/hooks';
+import { queryKeys, useUserProfile, usePatientConditions, useUpdateConditionStatus, type PatientCondition } from '@/lib/api/hooks';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { cn } from '@/lib/utils';
 import { auth, db } from '@/lib/firebase';
@@ -404,6 +404,9 @@ export default function SettingsPage() {
                     )}
                 </Card>
 
+                {/* AI-Detected Conditions */}
+                <AIDetectedConditionsCard />
+
                 {/* Medical History */}
                 <Card variant="elevated" padding="lg" className="space-y-6">
                     <div className="space-y-2">
@@ -640,5 +643,88 @@ function RemovableChipList({
                 </button>
             ))}
         </div>
+    );
+}
+
+function AIDetectedConditionsCard() {
+    const { data: conditions = [], isLoading } = usePatientConditions();
+    const updateStatus = useUpdateConditionStatus();
+
+    const handleStatusChange = (conditionId: string, newStatus: 'active' | 'resolved' | 'monitoring') => {
+        updateStatus.mutate({ conditionId, status: newStatus });
+    };
+
+    const statusColors = {
+        active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        resolved: 'bg-gray-100 text-gray-600 border-gray-200',
+        monitoring: 'bg-amber-100 text-amber-700 border-amber-200',
+    };
+
+    if (isLoading) {
+        return (
+            <Card variant="elevated" padding="lg" className="space-y-6">
+                <div className="space-y-2">
+                    <Skeleton className="h-6 w-48 rounded-lg bg-brand-primary/10" />
+                    <Skeleton className="h-4 w-96 rounded-lg bg-brand-primary/10" />
+                </div>
+                <Skeleton className="h-16 w-full rounded-lg bg-brand-primary/10" />
+            </Card>
+        );
+    }
+
+    if (conditions.length === 0) {
+        return null; // Don't show card if no AI-detected conditions
+    }
+
+    return (
+        <Card variant="elevated" padding="lg" className="space-y-6">
+            <div className="space-y-2">
+                <h2 className="text-xl font-semibold text-text-primary">AI-Detected Conditions</h2>
+                <p className="text-sm text-text-secondary">
+                    Conditions identified from your visit summaries. Mark as resolved or incorrect if no longer applicable.
+                </p>
+            </div>
+
+            <div className="space-y-3">
+                {conditions.map((condition) => (
+                    <div
+                        key={condition.id}
+                        className="flex flex-col gap-2 rounded-xl border border-border-light bg-background-subtle/60 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <div className="flex-1">
+                            <p className={cn(
+                                'font-medium text-text-primary',
+                                condition.status === 'resolved' && 'line-through text-text-muted'
+                            )}>
+                                {condition.name}
+                            </p>
+                            {condition.diagnosedAt && (
+                                <p className="text-sm text-text-muted">
+                                    Since {new Date(condition.diagnosedAt).toLocaleDateString()}
+                                </p>
+                            )}
+                        </div>
+                        <select
+                            value={condition.status}
+                            onChange={(e) => handleStatusChange(condition.id, e.target.value as 'active' | 'resolved' | 'monitoring')}
+                            disabled={updateStatus.isPending}
+                            className={cn(
+                                'rounded-lg border px-3 py-2 text-sm font-medium cursor-pointer',
+                                statusColors[condition.status],
+                                updateStatus.isPending && 'opacity-50 cursor-not-allowed'
+                            )}
+                        >
+                            <option value="active">🟢 Active</option>
+                            <option value="resolved">⚪ Resolved</option>
+                            <option value="monitoring">🟡 Monitoring</option>
+                        </select>
+                    </div>
+                ))}
+            </div>
+
+            <p className="text-sm text-text-muted">
+                Marking a condition as resolved or monitoring helps LumiBot provide more relevant nudges.
+            </p>
+        </Card>
     );
 }

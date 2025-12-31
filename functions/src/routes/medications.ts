@@ -15,6 +15,61 @@ export const medicationsRouter = Router();
 // Getter function to access Firestore after initialization
 const getDb = () => admin.firestore();
 
+/**
+ * Map medication frequency string to default reminder times.
+ * Returns null if frequency doesn't warrant a reminder (PRN, as needed, etc.)
+ */
+function getDefaultReminderTimes(frequency?: string): string[] | null {
+  if (!frequency) return ['08:00']; // Default morning if no frequency specified
+
+  const freq = frequency.toLowerCase().trim();
+
+  // PRN / as needed - no automatic reminder
+  if (freq.includes('prn') || freq.includes('as needed') || freq.includes('when needed')) {
+    return null;
+  }
+
+  // Once daily patterns
+  if (freq.includes('once daily') || freq.includes('once a day') || freq.includes('qd') ||
+    freq.includes('daily') || freq === 'qday') {
+    // Check for timing hints
+    if (freq.includes('morning') || freq.includes('am') || freq.includes('breakfast')) {
+      return ['08:00'];
+    }
+    if (freq.includes('evening') || freq.includes('pm') || freq.includes('night') ||
+      freq.includes('bedtime') || freq.includes('dinner')) {
+      return ['20:00'];
+    }
+    return ['08:00']; // Default morning for once daily
+  }
+
+  // Twice daily patterns
+  if (freq.includes('twice') || freq.includes('bid') || freq.includes('2x') ||
+    freq.includes('two times') || freq.includes('every 12')) {
+    return ['08:00', '20:00'];
+  }
+
+  // Three times daily patterns
+  if (freq.includes('three times') || freq.includes('tid') || freq.includes('3x') ||
+    freq.includes('every 8')) {
+    return ['08:00', '14:00', '20:00'];
+  }
+
+  // Four times daily
+  if (freq.includes('four times') || freq.includes('qid') || freq.includes('4x') ||
+    freq.includes('every 6')) {
+    return ['08:00', '12:00', '16:00', '20:00'];
+  }
+
+  // Weekly - just one reminder
+  if (freq.includes('weekly') || freq.includes('once a week')) {
+    return ['08:00'];
+  }
+
+  // Default: single morning reminder
+  return ['08:00'];
+}
+
 // Validation schemas
 const createMedicationSchema = z.object({
   name: z.string().min(1),
@@ -216,6 +271,42 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
 
     await clearMedicationSafetyCacheForUser(userId);
 
+    // Auto-create medication reminder with smart defaults based on frequency
+    const defaultTimes = getDefaultReminderTimes(data.frequency);
+    let autoCreatedReminder = null;
+
+    if (defaultTimes && data.active !== false) {
+      try {
+        const reminderRef = await getDb().collection('medicationReminders').add({
+          userId,
+          medicationId: medRef.id,
+          medicationName: data.name,
+          medicationDose: data.dose || undefined,
+          times: defaultTimes,
+          enabled: true,
+          createdAt: admin.firestore.Timestamp.now(),
+          updatedAt: admin.firestore.Timestamp.now(),
+        });
+
+        autoCreatedReminder = {
+          id: reminderRef.id,
+          times: defaultTimes,
+          enabled: true,
+        };
+
+        functions.logger.info(
+          `[medications] Auto-created reminder ${reminderRef.id} for medication ${medRef.id} with times: ${defaultTimes.join(', ')}`
+        );
+      } catch (reminderError) {
+        // Don't fail medication creation if reminder fails - just log
+        functions.logger.error('[medications] Failed to auto-create reminder:', reminderError);
+      }
+    } else if (!defaultTimes) {
+      functions.logger.info(
+        `[medications] Skipped auto-reminder for ${data.name} - PRN/as-needed frequency`
+      );
+    }
+
     functions.logger.info(
       `[medications] Created medication ${medRef.id} for user ${userId} with ${warnings.length} warnings (critical/high: ${hasCriticalWarnings})`
     );
@@ -235,6 +326,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       medicationWarning: medication.medicationWarning || null,
       needsConfirmation: medication.needsConfirmation || false,
       medicationStatus: medication.medicationStatus || null,
+      autoCreatedReminder: autoCreatedReminder,
     };
 
     functions.logger.info(
@@ -367,6 +459,23 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     await clearMedicationSafetyCacheForUser(userId);
 
+    // If medication was stopped (active changed to false), clear pending nudges
+    if (data.active === false && medication.active !== false) {
+      const nudgesSnapshot = await getDb()
+        .collection('nudges')
+        .where('userId', '==', userId)
+        .where('medicationId', '==', medId)
+        .where('status', 'in', ['pending', 'active', 'snoozed'])
+        .get();
+
+      if (!nudgesSnapshot.empty) {
+        const batch = getDb().batch();
+        nudgesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        functions.logger.info(`[medications] Cleared ${nudgesSnapshot.size} pending nudge(s) for stopped medication ${medId}`);
+      }
+    }
+
     functions.logger.info(
       `[medications] Updated medication ${medId} for user ${userId} with ${warnings.length} warnings (critical/high: ${hasCriticalWarnings})`
     );
@@ -481,6 +590,34 @@ medicationsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     // Delete medication
     await medRef.delete();
+
+    // Cascade delete: Remove any reminders for this medication
+    const remindersSnapshot = await getDb()
+      .collection('medicationReminders')
+      .where('userId', '==', userId)
+      .where('medicationId', '==', medId)
+      .get();
+
+    if (!remindersSnapshot.empty) {
+      const batch = getDb().batch();
+      remindersSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      functions.logger.info(`[medications] Cascade deleted ${remindersSnapshot.size} reminder(s) for medication ${medId}`);
+    }
+
+    // Cascade delete: Remove any nudges for this medication
+    const nudgesSnapshot = await getDb()
+      .collection('nudges')
+      .where('userId', '==', userId)
+      .where('medicationId', '==', medId)
+      .get();
+
+    if (!nudgesSnapshot.empty) {
+      const nudgeBatch = getDb().batch();
+      nudgesSnapshot.docs.forEach(doc => nudgeBatch.delete(doc.ref));
+      await nudgeBatch.commit();
+      functions.logger.info(`[medications] Cascade deleted ${nudgesSnapshot.size} nudge(s) for medication ${medId}`);
+    }
 
     await clearMedicationSafetyCacheForUser(userId);
 

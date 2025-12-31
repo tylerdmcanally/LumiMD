@@ -39,7 +39,7 @@ const createTestNudgeSchema = z.object({
     type: z.enum(['condition_tracking', 'medication_checkin', 'introduction']),
     conditionId: z.enum(['hypertension', 'diabetes']).optional(),
     medicationName: z.string().optional(),
-    actionType: z.enum(['log_bp', 'log_glucose', 'log_weight', 'confirm_yes_no', 'medication_check', 'symptom_check', 'acknowledge']).optional(),
+    actionType: z.enum(['log_bp', 'log_glucose', 'log_weight', 'pickup_check', 'started_check', 'feeling_check', 'side_effects', 'symptom_check', 'acknowledge']).optional(),
     // NEW: Allow scheduling for future (in seconds from now)
     scheduledInSeconds: z.number().min(0).max(86400).optional(), // Max 24 hours
 });
@@ -112,7 +112,7 @@ nudgesDebugRouter.post('/debug/create', requireAuth, async (req: AuthRequest, re
                 medicationName: medName,
                 title: `[TEST] How is ${medName} going?`,
                 message: `Just checking in - how are you feeling on ${medName}? Any side effects or concerns?`,
-                actionType: data.actionType || 'medication_check',
+                actionType: data.actionType || 'feeling_check',
                 scheduledFor,
                 sequenceDay: 1,
                 sequenceId: `debug_med_${Date.now()}`,
@@ -190,10 +190,10 @@ nudgesDebugRouter.post('/debug/create-sequence', requireAuth, async (req: AuthRe
 
         // Compressed medication sequence (normally Day 1, 4, 10, 28)
         const steps = [
-            { day: 1, title: 'Prescription Pickup', message: `Have you been able to pick up ${medName} from the pharmacy?`, actionType: 'confirm_yes_no' },
-            { day: 4, title: 'Getting Started', message: `How's it going with ${medName}? Have you been able to start taking it?`, actionType: 'confirm_yes_no' },
-            { day: 10, title: 'Side Effects Check', message: `You've been on ${medName} for a bit now. Any side effects or concerns?`, actionType: 'medication_check' },
-            { day: 28, title: 'Monthly Check-in', message: `It's been a while on ${medName}. How are things going overall?`, actionType: 'medication_check' },
+            { day: 1, title: 'Prescription Pickup', message: `Have you picked up ${medName} from the pharmacy?`, actionType: 'pickup_check' },
+            { day: 4, title: 'Getting Started', message: `Have you started taking ${medName}?`, actionType: 'started_check' },
+            { day: 10, title: 'Side Effects Check', message: `Any side effects from ${medName}?`, actionType: 'side_effects' },
+            { day: 28, title: 'Monthly Check-in', message: `How's ${medName} working overall?`, actionType: 'feeling_check' },
         ];
 
         const createdNudges: Array<{ id: string; title: string; scheduledIn: string }> = [];

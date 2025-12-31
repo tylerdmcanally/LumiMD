@@ -22,6 +22,7 @@ const updateProfileSchema = z.object({
 const registerPushTokenSchema = z.object({
   token: z.string().min(1, 'Push token is required'),
   platform: z.enum(['ios', 'android']),
+  timezone: z.string().optional(), // e.g., 'America/New_York'
 });
 
 const unregisterPushTokenSchema = z.object({
@@ -189,9 +190,10 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const payload = registerPushTokenSchema.parse(req.body);
-    const { token, platform } = payload;
+    const { token, platform, timezone } = payload;
 
-    const tokensRef = getDb().collection('users').doc(userId).collection('pushTokens');
+    const userRef = getDb().collection('users').doc(userId);
+    const tokensRef = userRef.collection('pushTokens');
 
     // Check if token already exists
     const existingTokenQuery = await tokensRef.where('token', '==', token).limit(1).get();
@@ -203,6 +205,7 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
       const existingDoc = existingTokenQuery.docs[0];
       await existingDoc.ref.update({
         platform,
+        timezone: timezone || null,
         updatedAt: now,
         lastActive: now,
       });
@@ -213,12 +216,19 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
       await tokensRef.add({
         token,
         platform,
+        timezone: timezone || null,
         createdAt: now,
         updatedAt: now,
         lastActive: now,
       });
 
       functions.logger.info(`[users] Registered new push token for user ${userId}`);
+    }
+
+    // Always update user's timezone on their profile (reflects current device location)
+    if (timezone) {
+      await userRef.set({ timezone, updatedAt: now }, { merge: true });
+      functions.logger.info(`[users] Updated timezone for user ${userId}: ${timezone}`);
     }
 
     res.status(204).send();

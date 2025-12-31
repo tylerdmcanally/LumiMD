@@ -8,12 +8,20 @@
 
 export type TrackingType = 'bp' | 'glucose' | 'weight' | null;
 
+export interface SymptomCheckConfig {
+    dayStart: number;            // Day after medication start to begin symptom check
+    dayEnd: number;              // Day to end symptom check sequence
+    symptomType: string;         // Type of symptom to monitor (muscle_pain, bleeding, etc.)
+    question: string;            // Question to ask the user
+}
+
 export interface MedicationClass {
     id: string;
     name: string;
     conditionId: string;           // Links to condition protocol
     trackingType: TrackingType;    // What to log
     patterns: string[];            // Medication name patterns (lowercase)
+    symptomCheck?: SymptomCheckConfig; // Optional symptom monitoring
 }
 
 // =============================================================================
@@ -80,12 +88,45 @@ export const antidiabeticClass: MedicationClass = {
 };
 
 // =============================================================================
+// Statin Medications (Cholesterol)
+// =============================================================================
+
+const statinPatterns = [
+    // Statins
+    'atorvastatin', 'lipitor',
+    'rosuvastatin', 'crestor',
+    'simvastatin', 'zocor',
+    'pravastatin', 'pravachol',
+    'lovastatin', 'mevacor', 'altoprev',
+    'fluvastatin', 'lescol',
+    'pitavastatin', 'livalo', 'zypitamag',
+    // Combination products
+    'vytorin', 'ezetimibe-simvastatin',
+    'caduet', 'amlodipine-atorvastatin',
+];
+
+export const statinClass: MedicationClass = {
+    id: 'statin',
+    name: 'Cholesterol Medications',
+    conditionId: 'hyperlipidemia',
+    trackingType: null, // No routine logging, but symptom checks
+    patterns: statinPatterns,
+    symptomCheck: {
+        dayStart: 14,
+        dayEnd: 30,
+        symptomType: 'muscle_pain',
+        question: 'Have you noticed any unusual muscle pain, weakness, or cramping?',
+    },
+};
+
+// =============================================================================
 // Registry & Helpers
 // =============================================================================
 
 export const medicationClasses: MedicationClass[] = [
     antihypertensiveClass,
     antidiabeticClass,
+    statinClass,
 ];
 
 /**

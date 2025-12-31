@@ -19,6 +19,7 @@ export interface MedicationInfo {
     dose?: string;
     frequency?: string;
     startedAt?: Date;
+    daysOnMedication?: number;  // How long user has been on this med
     active: boolean;
 }
 
@@ -27,6 +28,7 @@ export interface HealthLogTrend {
     trend: 'improving' | 'stable' | 'worsening' | 'insufficient_data';
     lastValue?: unknown;
     lastLoggedAt?: Date;
+    daysSinceLastLog?: number;  // For AI to reference stale data
     averageValue?: number;
     dataPoints: number;
 }
@@ -60,6 +62,7 @@ export interface PatientContext {
         activeCount: number;
         completedLast30Days: number;
         dismissedLast30Days: number;
+        concerningResponsesLast30Days: number;  // For AI to detect patterns
         averageResponseTimeHours?: number;
     };
 
@@ -171,11 +174,18 @@ async function getHealthLogTrends(userId: string, daysBack: number = 30): Promis
             ? numericValues.reduce((sum, v) => sum + v.value, 0) / numericValues.length
             : undefined;
 
+        // Calculate days since last log
+        const lastLogDate = mostRecent?.createdAt?.toDate();
+        const daysSinceLastLog = lastLogDate
+            ? Math.floor((Date.now() - lastLogDate.getTime()) / (1000 * 60 * 60 * 24))
+            : undefined;
+
         trends.push({
             type,
             trend,
             lastValue: mostRecent?.value,
-            lastLoggedAt: mostRecent?.createdAt?.toDate(),
+            lastLoggedAt: lastLogDate,
+            daysSinceLastLog,
             averageValue: avgValue,
             dataPoints: logs.length,
         });
@@ -227,12 +237,17 @@ async function getActiveMedications(userId: string): Promise<MedicationInfo[]> {
 
     return snapshot.docs.map(doc => {
         const data = doc.data();
+        const startedAt = data.createdAt?.toDate();
+        const daysOnMedication = startedAt
+            ? Math.floor((Date.now() - startedAt.getTime()) / (1000 * 60 * 60 * 24))
+            : undefined;
         return {
             id: doc.id,
             name: data.name,
             dose: data.dose,
             frequency: data.frequency,
-            startedAt: data.createdAt?.toDate(),
+            startedAt,
+            daysOnMedication,
             active: true,
         };
     });
@@ -255,6 +270,7 @@ async function getNudgeMetrics(userId: string): Promise<PatientContext['nudgeMet
     let activeCount = 0;
     let completedLast30Days = 0;
     let dismissedLast30Days = 0;
+    let concerningResponsesLast30Days = 0;
     const responseTimes: number[] = [];
 
     snapshot.docs.forEach(doc => {
@@ -262,6 +278,7 @@ async function getNudgeMetrics(userId: string): Promise<PatientContext['nudgeMet
         const status = data.status as string;
         const completedAt = data.completedAt as admin.firestore.Timestamp | undefined;
         const scheduledFor = data.scheduledFor as admin.firestore.Timestamp | undefined;
+        const responseValue = data.responseValue as Record<string, unknown> | undefined;
 
         if (status === 'active' || status === 'pending') {
             activeCount++;
@@ -270,6 +287,12 @@ async function getNudgeMetrics(userId: string): Promise<PatientContext['nudgeMet
         if (completedAt && completedAt.toDate() > thirtyDaysAgo) {
             if (status === 'completed') {
                 completedLast30Days++;
+
+                // Track concerning responses
+                const response = responseValue?.response as string | undefined;
+                if (response && ['having_trouble', 'issues', 'concerning'].includes(response)) {
+                    concerningResponsesLast30Days++;
+                }
 
                 // Calculate response time
                 if (scheduledFor) {
@@ -292,6 +315,7 @@ async function getNudgeMetrics(userId: string): Promise<PatientContext['nudgeMet
         activeCount,
         completedLast30Days,
         dismissedLast30Days,
+        concerningResponsesLast30Days,
         averageResponseTimeHours,
     };
 }

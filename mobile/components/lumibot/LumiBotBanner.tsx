@@ -32,7 +32,7 @@ export interface LumiBotBannerProps {
     nudges: Nudge[];
     isLoading: boolean;
     onUpdateNudge: (id: string, data: { status: 'snoozed' | 'dismissed'; snoozeDays?: number }) => void;
-    onRespondToNudge: (id: string, data: { response: 'yes' | 'no' | 'good' | 'having_issues'; note?: string }) => void;
+    onRespondToNudge: (id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning'; note?: string }) => void;
     onOpenLogModal: (nudge: Nudge) => void;
     onOpenSideEffectsModal: (nudge: Nudge) => void;
 }
@@ -76,35 +76,83 @@ export function LumiBotBanner({
         if (nudge.actionType === 'acknowledge' || nudge.actionType === 'view_insight') {
             // Introduction/insight nudge - just dismiss it after acknowledging
             onUpdateNudge(nudge.id, { status: 'dismissed' });
-        } else if (nudge.actionType === 'confirm_yes_no') {
+        } else if (nudge.actionType === 'pickup_check') {
+            // Pickup check: Got it / Not yet
             Alert.alert(
                 nudge.title,
                 nudge.message,
                 [
                     {
-                        text: 'Not Yet',
+                        text: '⏰ Not yet',
                         style: 'cancel',
-                        onPress: () => onRespondToNudge(nudge.id, { response: 'no' }),
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'not_yet' }),
                     },
                     {
-                        text: 'Yes',
-                        onPress: () => onRespondToNudge(nudge.id, { response: 'yes' }),
+                        text: '✓ Got it',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'got_it' }),
                     },
                 ],
             );
-        } else if (nudge.actionType === 'medication_check') {
+        } else if (nudge.actionType === 'started_check') {
+            // Started check: Taking it / Not yet / Trouble
             Alert.alert(
                 nudge.title,
                 nudge.message,
                 [
                     {
-                        text: 'Having Issues',
+                        text: 'Having Trouble',
+                        style: 'destructive',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'having_trouble' }),
+                    },
+                    {
+                        text: 'Not yet',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'not_yet' }),
+                    },
+                    {
+                        text: 'Taking it',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'taking_it' }),
+                    },
+                ],
+            );
+        } else if (nudge.actionType === 'feeling_check') {
+            // Feeling check: Good / Okay / Issues
+            Alert.alert(
+                nudge.title,
+                nudge.message,
+                [
+                    {
+                        text: '👎 Issues',
                         style: 'destructive',
                         onPress: () => onOpenSideEffectsModal(nudge),
                     },
                     {
-                        text: 'Going Well',
+                        text: '😐 Okay',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'okay' }),
+                    },
+                    {
+                        text: '👍 Good',
                         onPress: () => onRespondToNudge(nudge.id, { response: 'good' }),
+                    },
+                ],
+            );
+        } else if (nudge.actionType === 'side_effects') {
+            // Side effects: None / Mild / Concerning
+            Alert.alert(
+                nudge.title,
+                nudge.message,
+                [
+                    {
+                        text: '👎 Concerning',
+                        style: 'destructive',
+                        onPress: () => onOpenSideEffectsModal(nudge),
+                    },
+                    {
+                        text: '😐 Mild',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'mild' }),
+                    },
+                    {
+                        text: '👍 None',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'none' }),
                     },
                 ],
             );

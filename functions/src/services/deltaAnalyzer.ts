@@ -36,6 +36,7 @@ export interface NudgeRecommendation {
     medicationName?: string;
     trackingType?: TrackingType;
     urgency: NudgeUrgency;
+    isNewDiagnosis?: boolean;
 }
 
 export interface ContextUpdateRecommendation {
@@ -65,16 +66,25 @@ export interface VisitSummaryForAnalysis {
 
 const DELTA_ANALYSIS_PROMPT = `You are analyzing a patient visit to determine what health nudges to create.
 
-RULES:
-1. Only recommend nudges for things that are GENUINELY NEW or CHANGED
-2. Don't recommend nudges for existing conditions/medications that haven't changed
-3. Be conservative - when in doubt, don't create a nudge
-4. Never provide medical advice or dosage recommendations
+CORE PHILOSOPHY: Less is more. Only create nudges for ESSENTIAL follow-up. Do NOT overwhelm the patient.
+
+STRICT RULES:
+1. MAX 2 NUDGES per visit - prioritize what matters most
+2. For NEW diagnoses: create ONE "introduction" nudge that mentions ALL new conditions together
+3. For NEW diagnoses: do NOT create condition_tracking nudges yet - wait for day3/week1
+4. For CHANGED medications: create ONE "followup" nudge about the change
+5. For EXISTING conditions with new meds: can create condition_tracking for that condition
+6. 24-HOUR COOL-DOWN: Do NOT create tracking nudges for types already logged today (see recentlyLogged)
+7. ONBOARDING TIMELINE: For conditions diagnosed less than 7 days ago, no tracking nudges - just education
+8. Never provide medical advice or dosage recommendations
+9. When in doubt, create FEWER nudges
 
 PATIENT'S EXISTING CONTEXT:
 - Known conditions: {existingConditions}
 - Current medications: {currentMedications}
 - Already tracking: {activeTracking}
+- Recently logged (skip for 24h): {recentlyLogged}
+- Condition age: {conditionDiagnosedDates}
 
 THIS VISIT'S SUMMARY:
 {visitSummary}
@@ -85,10 +95,17 @@ CHANGES IN THIS VISIT:
 - Medications changed: {medicationsChanged}
 - Medications stopped: {medicationsStopped}
 
-ANALYZE and determine:
-1. What is GENUINELY NEW (wasn't in existing context)?
-2. What CHANGES warrant follow-up?
-3. What TRACKING should be initiated (that isn't already active)?
+DECISION TREE:
+1. Are there NEW conditions not in existing context?
+   → Create ONE introduction nudge (immediate) mentioning ALL new conditions
+   → Add new conditions to trackingToEnable, but schedule tracking for week1
+   
+2. Are there CHANGED medications for EXISTING conditions (>7 days old)?
+   → Create ONE medication_checkin or condition_tracking nudge (day1-day3)
+   → But SKIP if that tracking type was logged today (in recentlyLogged)
+   
+3. Nothing new or changed, or patient already logged today?
+   → Return empty arrays
 
 Return ONLY valid JSON:
 {
@@ -99,7 +116,8 @@ Return ONLY valid JSON:
       "conditionId": "optional - hypertension|diabetes|heart_failure|copd|afib|anticoagulation",
       "medicationName": "optional - medication name if relevant",
       "trackingType": "bp" | "glucose" | "weight" | "symptoms" | null,
-      "urgency": "immediate" | "day1" | "day3" | "week1"
+      "urgency": "immediate" | "day1" | "day3" | "week1",
+      "isNewDiagnosis": true | false
     }
   ],
   "contextUpdates": {
@@ -109,7 +127,7 @@ Return ONLY valid JSON:
   "reasoning": "Brief explanation of analysis"
 }
 
-If nothing new or actionable, return empty arrays.`;
+REMEMBER: Maximum 2 nudges. Respect 24h cool-down. Prioritize quality over quantity.`;
 
 // =============================================================================
 // Delta Analyzer Service
@@ -149,7 +167,7 @@ export class DeltaAnalyzerService {
         let context = await getPatientMedicalContext(userId);
         const contextSummary = context
             ? getContextSummaryForAI(context)
-            : { existingConditions: [], currentMedications: [], activeTracking: [] };
+            : { existingConditions: [], currentMedications: [], activeTracking: [], recentlyLogged: [], conditionDiagnosedDates: {} };
 
         // Build the prompt
         const prompt = this.buildPrompt(contextSummary, visit);
@@ -225,10 +243,17 @@ export class DeltaAnalyzerService {
         context: ReturnType<typeof getContextSummaryForAI>,
         visit: VisitSummaryForAnalysis
     ): string {
+        // Format condition ages for the prompt
+        const conditionAges = Object.entries(context.conditionDiagnosedDates || {})
+            .map(([id, age]) => `${id}: ${age}`)
+            .join(', ') || 'None';
+
         return [
             `Existing conditions: ${context.existingConditions.join(', ') || 'None known'}`,
             `Current medications: ${context.currentMedications.join(', ') || 'None known'}`,
             `Already tracking: ${context.activeTracking.join(', ') || 'Nothing'}`,
+            `Recently logged (24h cool-down): ${context.recentlyLogged?.join(', ') || 'None'}`,
+            `Condition diagnosed dates: ${conditionAges}`,
             '',
             `Visit summary:`,
             visit.summaryText,
@@ -244,7 +269,7 @@ export class DeltaAnalyzerService {
         const result = parsed as Record<string, unknown>;
 
         // Validate and normalize nudgesToCreate
-        const nudgesToCreate: NudgeRecommendation[] = [];
+        let nudgesToCreate: NudgeRecommendation[] = [];
         if (Array.isArray(result.nudgesToCreate)) {
             for (const nudge of result.nudgesToCreate) {
                 if (this.isValidNudgeRecommendation(nudge)) {
@@ -255,10 +280,29 @@ export class DeltaAnalyzerService {
                         medicationName: nudge.medicationName,
                         trackingType: nudge.trackingType,
                         urgency: nudge.urgency || 'day1',
+                        isNewDiagnosis: nudge.isNewDiagnosis === true,
                     });
                 }
             }
         }
+
+        // ENFORCE: Maximum 2 nudges per visit
+        // Priority: introduction > medication_checkin > condition_tracking > followup
+        if (nudgesToCreate.length > 2) {
+            const originalCount = nudgesToCreate.length;
+            const priorityOrder = ['introduction', 'medication_checkin', 'condition_tracking', 'followup'];
+            nudgesToCreate.sort((a, b) => priorityOrder.indexOf(a.type) - priorityOrder.indexOf(b.type));
+            nudgesToCreate = nudgesToCreate.slice(0, 2);
+            functions.logger.info(`[DeltaAnalyzer] Limited nudges to 2 (was ${originalCount})`);
+        }
+
+        // ENFORCE: No immediate tracking nudges for new diagnoses
+        nudgesToCreate = nudgesToCreate.map(nudge => {
+            if (nudge.type === 'condition_tracking' && nudge.isNewDiagnosis && nudge.urgency === 'immediate') {
+                return { ...nudge, urgency: 'day3' as NudgeUrgency };
+            }
+            return nudge;
+        });
 
         // Validate contextUpdates
         const contextUpdates: ContextUpdateRecommendation = {

@@ -25,8 +25,10 @@ function getIconForActionType(actionType: NudgeActionType): keyof typeof Ionicon
             return 'water-outline';
         case 'log_weight':
             return 'scale-outline';
-        case 'confirm_yes_no':
-        case 'medication_check':
+        case 'pickup_check':
+        case 'started_check':
+        case 'feeling_check':
+        case 'side_effects':
             return 'medical-outline';
         case 'symptom_check':
             return 'pulse-outline';
@@ -81,7 +83,7 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                             onPress={() => onAction(nudge)}
                         >
                             <Text style={styles.primaryButtonText}>
-                                {nudge.actionType === 'confirm_yes_no' ? 'Respond' :
+                                {['pickup_check', 'started_check', 'feeling_check', 'side_effects'].includes(nudge.actionType) ? 'Respond' :
                                     nudge.actionType === 'acknowledge' ? 'Got it' :
                                         nudge.actionType === 'view_insight' ? 'Got it' : 'Log'}
                             </Text>

@@ -60,8 +60,12 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         });
     }, [updateNudge]);
 
-    const handleRespondToNudge = useCallback((id: string, data: { response: 'yes' | 'no' | 'good' | 'having_issues'; note?: string; sideEffects?: string[] }) => {
+    const handleRespondToNudge = useCallback((id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning'; note?: string; sideEffects?: string[] }) => {
         respondToNudge.mutate({ id, data }, {
+            onSuccess: (result) => {
+                // Show confirmation with context-specific message from API
+                Alert.alert('✓ Response Recorded', result.message);
+            },
             onError: (err) => {
                 Alert.alert('Error', 'Failed to save response. Please try again.');
                 console.error('[LumiBot] Respond to nudge error:', err);
@@ -79,7 +83,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         if (!activeSideEffectsNudge) return;
 
         handleRespondToNudge(activeSideEffectsNudge.id, {
-            response: 'having_issues',
+            response: 'issues',
             sideEffects: response.sideEffects,
             note: response.notes,
         });
@@ -94,7 +98,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             setActiveGlucoseNudge(nudge);
         } else if (nudge.actionType === 'log_weight') {
             setActiveWeightNudge(nudge);
-        } else if (nudge.actionType === 'log_symptom_check') {
+        } else if (nudge.actionType === 'symptom_check') {
             setActiveSymptomCheckNudge(nudge);
         } else {
             // Fallback for other action types

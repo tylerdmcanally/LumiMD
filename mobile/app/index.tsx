@@ -15,6 +15,8 @@ import {
   useRealtimeVisits,
   useUserProfile,
   useMedicationSchedule,
+  cleanupOrphanedReminders,
+  cleanupOrphanedNudges,
 } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
@@ -141,6 +143,14 @@ export default function HomeScreen() {
       router.replace('/onboarding');
     }
   }, [authLoading, profileLoading, isAuthenticated, profile, router]);
+
+  // Silently cleanup orphaned reminders and nudges on authenticated launch
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      cleanupOrphanedReminders();
+      cleanupOrphanedNudges();
+    }
+  }, [isAuthenticated, authLoading]);
 
 
 

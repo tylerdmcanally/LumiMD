@@ -186,7 +186,7 @@ async function createIntroductionNudge(params: IntroNudgeParams): Promise<string
 
     // Initialize with defaults to satisfy TypeScript
     let title = 'LumiBot is Here to Help';
-    let message = 'I noticed some updates from your recent visit. I\'ll be checking in to help you track your progress. 💙';
+    let message = 'I noticed some updates from your recent visit. I\'ll be checking in to help you track your progress.';
     let diagnosisExplanation: string | undefined;
     let aiGenerated = false;
 
@@ -225,23 +225,23 @@ async function createIntroductionNudge(params: IntroNudgeParams): Promise<string
         if (conditionName && medicationName) {
             // Both condition and medication
             title = 'LumiBot is Here to Help';
-            message = `I noticed your provider discussed ${conditionName} and started you on ${medicationName}. I'll be checking in periodically to see how things are going and help you track your progress. 💙`;
+            message = `I noticed your provider discussed ${conditionName} and started you on ${medicationName}. I'll be checking in periodically to see how things are going and help you track your progress.`;
         } else if (conditionName) {
             // Condition only
             title = 'LumiBot is Here to Help';
-            message = `I see your provider discussed ${conditionName} during your visit. I'll be checking in to help you monitor and track your progress. 💙`;
+            message = `I see your provider discussed ${conditionName} during your visit. I'll be checking in to help you monitor and track your progress.`;
         } else if (medicationName && isNewMedication) {
             // New medication only
             title = 'New Medication Started';
-            message = `I noticed your provider started you on ${medicationName}. I'll be checking in over the next few weeks to see how it's working for you. 💙`;
+            message = `I noticed your provider started you on ${medicationName}. I'll be checking in over the next few weeks to see how it's working for you.`;
         } else if (medicationName) {
             // Changed medication
             title = 'Medication Update';
-            message = `I see your provider made a change to your ${medicationName}. I'll check in to see how the adjustment is going. 💙`;
+            message = `I see your provider made a change to your ${medicationName}. I'll check in to see how the adjustment is going.`;
         } else {
             // Generic fallback
             title = 'LumiBot is Here to Help';
-            message = 'I noticed some updates from your recent visit. I\'ll be checking in to help you track your progress. 💙';
+            message = 'I noticed some updates from your recent visit. I\'ll be checking in to help you track your progress.';
         }
     }
 
@@ -277,9 +277,9 @@ function getActionTypeForTracking(trackingType: string): NudgeActionType {
         case 'weight':
             return 'log_weight';
         case 'symptom_check':
-            return 'log_symptom_check';
+            return 'symptom_check';
         default:
-            return 'log_symptom_check';
+            return 'symptom_check';
     }
 }
 
@@ -308,6 +308,26 @@ async function createConditionNudges(
         let scheduledDate = new Date(visitDate);
         scheduledDate.setDate(scheduledDate.getDate() + scheduleItem.day);
 
+        // Try AI-generated message once per schedule item, fall back to template
+        let title = protocol.name;
+        let message = scheduleItem.message;
+        let aiGenerated = false;
+
+        try {
+            const { getIntelligentNudgeGenerator } = await import('./intelligentNudgeGenerator');
+            const generator = getIntelligentNudgeGenerator();
+            const aiNudge = await generator.generateNudge(userId, {
+                type: 'condition_tracking',
+                trigger: 'log_reading',
+                conditionId: protocol.id,
+            });
+            title = aiNudge.title;
+            message = aiNudge.message;
+            aiGenerated = true;
+        } catch (error) {
+            functions.logger.warn(`[LumibotAnalyzer] AI condition nudge failed, using template:`, error);
+        }
+
         // Only create nudge if it's in the future
         if (scheduledDate > new Date()) {
             // Smart scheduling: Find time slot 4+ hours from other nudges
@@ -318,12 +338,13 @@ async function createConditionNudges(
                 visitId,
                 type: 'condition_tracking',
                 conditionId: protocol.id,
-                title: protocol.name,
-                message: scheduleItem.message,
+                title,
+                message,
                 actionType,
                 scheduledFor: scheduledDate,
                 sequenceDay: scheduleItem.day,
                 sequenceId,
+                aiGenerated,
             });
             nudgesCreated++;
         }
@@ -338,17 +359,19 @@ async function createConditionNudges(
                     // Smart scheduling for recurring nudges too
                     recurringDate = await findAvailableTimeSlot(userId, recurringDate);
 
+                    // Use same AI-generated content for recurring (avoid multiple API calls)
                     await createNudge({
                         userId,
                         visitId,
                         type: 'condition_tracking',
                         conditionId: protocol.id,
-                        title: protocol.name,
-                        message: scheduleItem.message,
+                        title,
+                        message,
                         actionType,
                         scheduledFor: recurringDate,
                         sequenceDay: scheduleItem.day + (scheduleItem.interval * i),
                         sequenceId,
+                        aiGenerated,
                     });
                     nudgesCreated++;
                 }
@@ -374,14 +397,9 @@ async function createMedicationNudges(
     visitId: string,
     medication: MedicationChangeEntry,
     trigger: 'medication_started' | 'medication_changed',
-    visitDate: Date
+    visitDate: Date,
+    abbreviated: boolean = false // Reduced sequence for subsequent meds in same visit
 ): Promise<number> {
-    const sequence = getMedicationSequence(trigger);
-    if (!sequence) {
-        functions.logger.warn(`[LumibotAnalyzer] No sequence found for trigger: ${trigger}`);
-        return 0;
-    }
-
     const medicationName = typeof medication === 'string'
         ? medication
         : medication.name;
@@ -393,15 +411,30 @@ async function createMedicationNudges(
         return 0;
     }
 
+    // Get tracking type for this medication (if any)
+    const trackingType = getTrackingTypeForMedication(medicationName);
+
+    // Get appropriate sequence (generic for meds without trackable types)
+    const sequence = getMedicationSequence(trigger, !!trackingType);
+    if (!sequence) {
+        functions.logger.warn(`[LumibotAnalyzer] No sequence found for trigger: ${trigger}`);
+        return 0;
+    }
+
     const sequenceId = `${sequence.id}_${visitId}_${generateShortId()}`;
     let nudgesCreated = 0;
 
-    // Get tracking type for this medication (if any)
-    const trackingType = getTrackingTypeForMedication(medicationName);
+    // For abbreviated sequence (subsequent meds), only include first and last check
+    const allowedStepsForAbbreviated = ['pickup_check', 'side_effects'];
 
     for (const step of sequence.steps) {
         // Skip log_reading steps if medication doesn't have a tracking type
         if (step.type === 'log_reading' && !trackingType) {
+            continue;
+        }
+
+        // For abbreviated sequence, skip mid-sequence steps
+        if (abbreviated && !allowedStepsForAbbreviated.includes(step.type)) {
             continue;
         }
 
@@ -420,17 +453,38 @@ async function createMedicationNudges(
                 actionType = step.type as NudgeActionType;
             }
 
+            // Try AI-generated message, fall back to template
+            let title = step.title;
+            let message = formatMedicationMessage(step.messageTemplate, medicationName);
+            let aiGenerated = false;
+
+            try {
+                const { getIntelligentNudgeGenerator } = await import('./intelligentNudgeGenerator');
+                const generator = getIntelligentNudgeGenerator();
+                const aiNudge = await generator.generateNudge(userId, {
+                    type: 'medication_checkin',
+                    trigger: step.type as 'pickup_check' | 'started_check' | 'side_effects' | 'feeling_check' | 'log_reading',
+                    medicationName,
+                });
+                title = aiNudge.title;
+                message = aiNudge.message;
+                aiGenerated = true;
+            } catch (error) {
+                functions.logger.warn(`[LumibotAnalyzer] AI nudge generation failed, using template:`, error);
+            }
+
             await createNudge({
                 userId,
                 visitId,
                 type: 'medication_checkin',
                 medicationName,
-                title: step.title,
-                message: formatMedicationMessage(step.messageTemplate, medicationName),
+                title,
+                message,
                 actionType,
                 scheduledFor: scheduledDate,
                 sequenceDay: step.day,
                 sequenceId,
+                aiGenerated,
             });
             nudgesCreated++;
 
@@ -467,6 +521,34 @@ async function createMedicationNudges(
         medicationName,
         trackingType,
     });
+
+    // Create symptom check nudge if medication has symptom monitoring
+    const { findMedicationClass } = await import('../data/medicationClasses');
+    const medClass = findMedicationClass(medicationName);
+
+    if (medClass?.symptomCheck && !abbreviated) {
+        const symptomConfig = medClass.symptomCheck;
+        const symptomDate = new Date(visitDate);
+        symptomDate.setDate(symptomDate.getDate() + symptomConfig.dayStart);
+
+        if (symptomDate > new Date()) {
+            await createNudge({
+                userId,
+                visitId,
+                type: 'medication_checkin',
+                medicationName,
+                title: `Check-in: ${medicationName}`,
+                message: symptomConfig.question,
+                actionType: 'symptom_check',
+                scheduledFor: symptomDate,
+                sequenceDay: symptomConfig.dayStart,
+                sequenceId: `${sequenceId}_symptom`,
+            });
+            nudgesCreated++;
+
+            functions.logger.info(`[LumibotAnalyzer] Created symptom check for ${medicationName} on day ${symptomConfig.dayStart}`);
+        }
+    }
 
     return nudgesCreated;
 }
@@ -510,34 +592,44 @@ export async function analyzeVisitForNudges(
     // CONSOLIDATION: Process medications FIRST to determine which conditions are covered
     // ==========================================================================
 
-    // 1. Process new medications
+    // 1. Process new medications (first gets full sequence, rest abbreviated)
     const startedMeds = summary.medications?.started || [];
-    for (const med of startedMeds) {
+    for (let i = 0; i < startedMeds.length; i++) {
+        const med = startedMeds[i];
         const medName = typeof med === 'string' ? med : med.name;
         result.newMedications.push(medName);
+
+        // First medication gets full sequence, subsequent get abbreviated to reduce noise
+        const abbreviated = i > 0;
 
         const nudgesCreated = await createMedicationNudges(
             userId,
             visitId,
             med,
             'medication_started',
-            effectiveVisitDate
+            effectiveVisitDate,
+            abbreviated
         );
         result.medicationNudges += nudgesCreated;
     }
 
-    // 2. Process changed medications
+    // 2. Process changed medications (all abbreviated if there were new meds)
     const changedMeds = summary.medications?.changed || [];
-    for (const med of changedMeds) {
+    for (let i = 0; i < changedMeds.length; i++) {
+        const med = changedMeds[i];
         const medName = typeof med === 'string' ? med : med.name;
         result.changedMedications.push(medName);
+
+        // Abbreviate if there were started meds, or if this isn't the first changed med
+        const abbreviated = startedMeds.length > 0 || i > 0;
 
         const nudgesCreated = await createMedicationNudges(
             userId,
             visitId,
             med,
             'medication_changed',
-            effectiveVisitDate
+            effectiveVisitDate,
+            abbreviated
         );
         result.medicationNudges += nudgesCreated;
     }
@@ -804,8 +896,8 @@ export async function createFollowUpNudge(input: CreateFollowUpNudgeInput): Prom
         : 'Blood Sugar Recheck';
 
     const message = alertLevel === 'warning'
-        ? `Your last reading was elevated. Let's check again today to see how things are looking. 📊`
-        : `Your last reading was a bit high. Time for a follow-up check. 💙`;
+        ? `Your last reading was elevated. Let's check again today to see how things are looking.`
+        : `Your last reading was a bit high. Time for a follow-up check.`;
 
     try {
         const nudgeId = await createNudge({
@@ -1061,17 +1153,17 @@ function getNudgeTitle(rec: { type: string; medicationName?: string; conditionId
 function getNudgeMessage(rec: { type: string; reason: string; medicationName?: string }): string {
     switch (rec.type) {
         case 'introduction':
-            return "I noticed some changes from your visit. I'll be checking in to help you track your progress. 💙";
+            return "I noticed some changes from your visit. I'll be checking in to help you track your progress.";
         case 'medication_checkin':
             return rec.medicationName
-                ? `How's it going with ${rec.medicationName}? Let us know how you're feeling. 💙`
-                : "Let's check in on your medications. 💙";
+                ? `How's it going with ${rec.medicationName}? Let us know how you're feeling.`
+                : "Let's check in on your medications.";
         case 'condition_tracking':
-            return "Time to log a reading to track your progress. 💙";
+            return "Time to log a reading to track your progress.";
         case 'followup':
-            return "Checking back in - how are things going? 💙";
+            return "Checking back in - how are things going?";
         default:
-            return rec.reason || "Time for a health check-in. 💙";
+            return rec.reason || "Time for a health check-in.";
     }
 }
 
@@ -1089,7 +1181,7 @@ function getActionTypeForNudge(rec: { type: string; trackingType?: string }): Nu
         case 'introduction':
             return 'acknowledge';
         case 'medication_checkin':
-            return 'medication_check';
+            return 'feeling_check';
         case 'condition_tracking':
             return 'symptom_check';
         default:

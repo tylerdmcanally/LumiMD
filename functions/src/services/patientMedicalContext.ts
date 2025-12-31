@@ -319,7 +319,39 @@ export function getContextSummaryForAI(context: PatientMedicalContext): {
     existingConditions: string[];
     currentMedications: string[];
     activeTracking: string[];
+    recentlyLogged: string[];  // Tracking types logged in last 24h
+    conditionDiagnosedDates: Record<string, string>; // conditionId -> "X days ago"
 } {
+    const now = Date.now();
+    const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+
+    // Find tracking types that were logged within last 24 hours
+    const recentlyLogged = context.activeTracking
+        .filter(t => {
+            if (!t.lastLoggedAt) return false;
+            return t.lastLoggedAt.toMillis() > twentyFourHoursAgo;
+        })
+        .map(t => t.type);
+
+    // Calculate how long ago each condition was diagnosed
+    const conditionDiagnosedDates: Record<string, string> = {};
+    for (const condition of context.conditions) {
+        if (condition.status !== 'active') continue;
+        const diagnosedMs = condition.diagnosedAt.toMillis();
+        const daysAgo = Math.floor((now - diagnosedMs) / (24 * 60 * 60 * 1000));
+        if (daysAgo === 0) {
+            conditionDiagnosedDates[condition.id] = 'today';
+        } else if (daysAgo === 1) {
+            conditionDiagnosedDates[condition.id] = '1 day ago';
+        } else if (daysAgo < 7) {
+            conditionDiagnosedDates[condition.id] = `${daysAgo} days ago`;
+        } else if (daysAgo < 30) {
+            conditionDiagnosedDates[condition.id] = `${Math.floor(daysAgo / 7)} weeks ago`;
+        } else {
+            conditionDiagnosedDates[condition.id] = `${Math.floor(daysAgo / 30)} months ago`;
+        }
+    }
+
     return {
         existingConditions: context.conditions
             .filter(c => c.status === 'active')
@@ -328,5 +360,7 @@ export function getContextSummaryForAI(context: PatientMedicalContext): {
             .filter(m => m.active)
             .map(m => [m.name, m.dose, m.frequency].filter(Boolean).join(' ')),
         activeTracking: context.activeTracking.map(t => t.type),
+        recentlyLogged,
+        conditionDiagnosedDates,
     };
 }

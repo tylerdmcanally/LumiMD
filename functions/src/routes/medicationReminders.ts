@@ -358,3 +358,62 @@ medicationRemindersRouter.post('/debug/test-notify', requireAuth, async (req: Au
         });
     }
 });
+
+// =============================================================================
+// POST /v1/medication-reminders/cleanup-orphans - Delete reminders for deleted meds
+// =============================================================================
+
+medicationRemindersRouter.post('/cleanup-orphans', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+
+        // Get all reminders for this user
+        const snapshot = await getRemindersCollection()
+            .where('userId', '==', userId)
+            .get();
+
+        if (snapshot.empty) {
+            res.json({ success: true, message: 'No reminders found', deleted: 0 });
+            return;
+        }
+
+        // Check each reminder's medication exists
+        const orphans: string[] = [];
+        for (const doc of snapshot.docs) {
+            const reminder = doc.data();
+            const medDoc = await getMedicationsCollection().doc(reminder.medicationId).get();
+
+            if (!medDoc.exists || medDoc.data()?.userId !== userId) {
+                orphans.push(doc.id);
+            }
+        }
+
+        if (orphans.length === 0) {
+            res.json({ success: true, message: 'No orphaned reminders found', deleted: 0 });
+            return;
+        }
+
+        // Delete orphaned reminders
+        const batch = getDb().batch();
+        orphans.forEach(id => batch.delete(getRemindersCollection().doc(id)));
+        await batch.commit();
+
+        functions.logger.info(`[medicationReminders] Cleaned up ${orphans.length} orphaned reminders`, {
+            userId,
+            orphanedIds: orphans,
+        });
+
+        res.json({
+            success: true,
+            message: `Deleted ${orphans.length} orphaned reminder(s)`,
+            deleted: orphans.length,
+            deletedIds: orphans,
+        });
+    } catch (error) {
+        functions.logger.error('[medicationReminders] Cleanup failed:', error);
+        res.status(500).json({
+            code: 'internal_error',
+            message: 'Failed to cleanup orphaned reminders',
+        });
+    }
+});

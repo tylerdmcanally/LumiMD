@@ -5,6 +5,7 @@ import { normalizeMedicationSummary, syncMedicationsFromSummary } from './medica
 import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 import { getAssemblyAIService } from './assemblyai';
 import { analyzeVisitWithDelta } from './lumibotAnalyzer';
+import { getNotificationService } from './notifications';
 
 
 const db = () => admin.firestore();
@@ -101,70 +102,75 @@ export async function summarizeVisit({
 
     await batch.commit();
 
-    await syncMedicationsFromSummary({
-      userId: visitData.userId,
-      visitId: visitRef.id,
-      medications: normalizedMedications,
-      processedAt,
-    });
-
-    // PRIVACY: Delete AssemblyAI transcript immediately after summarization
-    // This ensures we don't retain transcriptions longer than necessary
-    const transcriptionId = visitData.transcriptionId;
-    if (transcriptionId && typeof transcriptionId === 'string') {
-      try {
-        const assemblyAI = getAssemblyAIService();
-        await assemblyAI.deleteTranscript(transcriptionId);
-
-        // Clear the transcriptionId from the document
-        await visitRef.update({
-          transcriptionId: admin.firestore.FieldValue.delete(),
-          transcriptionDeletedAt: admin.firestore.Timestamp.now(),
-        });
-
-        functions.logger.info(
-          `[PrivacyAudit] Deleted AssemblyAI transcript ${transcriptionId} for visit ${visitRef.id}`,
-        );
-      } catch (deleteError) {
-        // Log but don't fail the whole operation if deletion doesn't work
-        // The privacySweeper will catch any orphaned transcripts
-        functions.logger.warn(
-          `[PrivacyAudit] Failed to delete AssemblyAI transcript ${transcriptionId} for visit ${visitRef.id}:`,
-          deleteError,
-        );
-      }
-    }
-
     functions.logger.info(
       `[visitProcessor] Visit ${visitRef.id} summarized successfully. Actions created: ${summary.nextSteps.length}`,
     );
 
-    // LumiBot: AI Delta Analysis for intelligent nudge creation
-    try {
-      const visitDate = visitData.visitDate?.toDate?.() || processedAt.toDate();
-      const lumibotResult = await analyzeVisitWithDelta(
-        visitData.userId,
-        visitRef.id,
-        summary,
-        visitDate
-      );
+    // Run post-commit operations in parallel for speed
+    // Using Promise.allSettled so failures don't block other operations
+    const visitDate = visitData.visitDate?.toDate?.() || processedAt.toDate();
+    const transcriptionId = visitData.transcriptionId;
 
-      functions.logger.info(
-        `[LumiBot] Delta analysis complete for visit ${visitRef.id}`,
-        {
-          nudgesCreated: lumibotResult.nudgesCreated,
-          reasoning: lumibotResult.reasoning,
-          conditionsAdded: lumibotResult.conditionsAdded,
-          trackingEnabled: lumibotResult.trackingEnabled,
+    const postCommitResults = await Promise.allSettled([
+      // 1. Sync medications to user's medication list
+      syncMedicationsFromSummary({
+        userId: visitData.userId,
+        visitId: visitRef.id,
+        medications: normalizedMedications,
+        processedAt,
+      }),
+
+      // 2. PRIVACY: Delete AssemblyAI transcript immediately
+      (async () => {
+        if (transcriptionId && typeof transcriptionId === 'string') {
+          const assemblyAI = getAssemblyAIService();
+          await assemblyAI.deleteTranscript(transcriptionId);
+          await visitRef.update({
+            transcriptionId: admin.firestore.FieldValue.delete(),
+            transcriptionDeletedAt: admin.firestore.Timestamp.now(),
+          });
+          functions.logger.info(
+            `[PrivacyAudit] Deleted AssemblyAI transcript ${transcriptionId} for visit ${visitRef.id}`,
+          );
         }
-      );
-    } catch (lumibotError) {
-      // Log but don't fail the visit processing if LumiBot analysis fails
-      functions.logger.warn(
-        `[LumiBot] Failed to analyze visit ${visitRef.id} for nudges:`,
-        lumibotError
-      );
-    }
+      })(),
+
+      // 3. LumiBot: AI Delta Analysis for intelligent nudge creation
+      (async () => {
+        const lumibotResult = await analyzeVisitWithDelta(
+          visitData.userId,
+          visitRef.id,
+          summary,
+          visitDate
+        );
+        functions.logger.info(
+          `[LumiBot] Delta analysis complete for visit ${visitRef.id}`,
+          {
+            nudgesCreated: lumibotResult.nudgesCreated,
+            reasoning: lumibotResult.reasoning,
+            conditionsAdded: lumibotResult.conditionsAdded,
+            trackingEnabled: lumibotResult.trackingEnabled,
+          }
+        );
+      })(),
+
+      // 4. Send push notification to user that visit is ready
+      (async () => {
+        const notificationService = getNotificationService();
+        await notificationService.notifyVisitReady(visitData.userId, visitRef.id);
+      })(),
+    ]);
+
+    // Log any failures (but don't fail the visit)
+    postCommitResults.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const opName = ['syncMedications', 'deleteTranscript', 'lumibotAnalysis', 'pushNotification'][index];
+        functions.logger.warn(
+          `[visitProcessor] Post-commit operation ${opName} failed for visit ${visitRef.id}:`,
+          result.reason
+        );
+      }
+    });
 
 
   } catch (error) {

@@ -218,13 +218,23 @@ export function checkWeight(value: WeightValue): SafetyCheckResult {
  * Triggers alerts for severe symptoms or worsening combinations
  */
 export function checkSymptomCheck(value: SymptomCheckValue): SafetyCheckResult {
-    const { breathingDifficulty, swelling, energyLevel, cough } = value;
+    const { breathingDifficulty, swelling, energyLevel, cough, orthopnea } = value;
 
     // EMERGENCY: Severe breathing difficulty (4-5) - call provider immediately
     if (breathingDifficulty >= 4) {
         return {
             alertLevel: 'warning',
             message: 'Severe shortness of breath needs prompt attention. Please call your doctor\'s office today, or go to the ER if you\'re struggling to breathe at rest.',
+            shouldShowAlert: true,
+        };
+    }
+
+    // WARNING: Orthopnea (waking up short of breath / extra pillows) with moderate breathing difficulty
+    // This is a classic HF decompensation sign
+    if (orthopnea && breathingDifficulty >= 3) {
+        return {
+            alertLevel: 'warning',
+            message: 'Waking up short of breath or needing extra pillows can be a sign of fluid buildup. Please contact your doctor\'s office today.',
             shouldShowAlert: true,
         };
     }
@@ -238,12 +248,13 @@ export function checkSymptomCheck(value: SymptomCheckValue): SafetyCheckResult {
         };
     }
 
-    // CAUTION: Combination of concerning symptoms
+    // CAUTION: Combination of concerning symptoms (now includes orthopnea)
     const concerningFactors = [
         breathingDifficulty >= 3,
         swelling === 'moderate',
         energyLevel <= 2,
         cough,
+        orthopnea, // Added orthopnea as a concerning factor
     ].filter(Boolean).length;
 
     if (concerningFactors >= 3) {
@@ -260,6 +271,15 @@ export function checkSymptomCheck(value: SymptomCheckValue): SafetyCheckResult {
             alertLevel: 'caution',
             message: 'Moderate swelling combined with other symptoms is worth monitoring. If it gets worse, contact your doctor.',
             shouldShowAlert: true,
+        };
+    }
+
+    // CAUTION: Orthopnea alone is still worth flagging
+    if (orthopnea) {
+        return {
+            alertLevel: 'caution',
+            message: 'Needing extra pillows or waking up short of breath is worth mentioning to your doctor at your next visit.',
+            shouldShowAlert: false,
         };
     }
 

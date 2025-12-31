@@ -148,7 +148,7 @@ export const hypertensionProtocol: ConditionProtocol = {
     nudgeSchedule: [
         {
             day: 3,
-            message: "Let's check in on your blood pressure. A quick reading helps us see how things are going. 💙",
+            message: "Let's check in on your blood pressure. A quick reading helps us see how things are going.",
         },
         {
             day: 7,
@@ -163,7 +163,7 @@ export const hypertensionProtocol: ConditionProtocol = {
     ],
 
     responseTemplates: {
-        normal: "Great reading! Your blood pressure is in a healthy range. ✓",
+        normal: "Great reading! Your blood pressure is in a healthy range. ",
         caution: "This reading is a bit elevated. Consider resting for a few minutes and checking again. If it stays high, mention it at your next visit.",
         warning: "This reading is concerning. Please rest for 5 minutes and retest. If still elevated, contact your doctor's office today.",
         emergency: "This reading combined with your symptoms needs immediate attention. Please call 911 or go to the ER immediately.",
@@ -241,7 +241,7 @@ export const diabetesProtocol: ConditionProtocol = {
         },
         {
             day: 7,
-            message: "Weekly check-in! A glucose reading helps us see how your management is going. 💙",
+            message: "Weekly check-in! A glucose reading helps us see how your management is going.",
         },
         {
             day: 14,
@@ -252,7 +252,7 @@ export const diabetesProtocol: ConditionProtocol = {
     ],
 
     responseTemplates: {
-        normal: "Good reading! Your blood sugar is in target range. ✓",
+        normal: "Good reading! Your blood sugar is in target range. ",
         caution_low: "This is a bit low. If you're feeling shaky or sweaty, try the 15-15 rule: 15g of fast carbs (juice, glucose tabs), wait 15 minutes, retest.",
         caution_high: "This reading is a bit elevated. Stay hydrated and monitor how you're feeling.",
         warning_low: "This is clinically low and needs attention. Please eat or drink something with sugar now. Retest in 15 minutes.",

@@ -5,6 +5,7 @@
  * Rate limiting:
  * - Max 3 nudges per user per day
  * - Follow-ups prioritized over check-ins
+ * - Quiet hours: 9pm-8am in user's local time
  */
 
 import * as admin from 'firebase-admin';
@@ -13,9 +14,15 @@ import { getNotificationService, PushNotificationPayload } from './notifications
 
 const getDb = () => admin.firestore();
 const getNudgesCollection = () => getDb().collection('nudges');
+const getUsersCollection = () => getDb().collection('users');
 
 // Max nudges to send per user per day
 const MAX_DAILY_NUDGES = 3;
+
+// Quiet hours config (in user's local time)
+const QUIET_HOURS_START = 21; // 9pm
+const QUIET_HOURS_END = 8;    // 8am
+const DEFAULT_TIMEZONE = 'America/Chicago';
 
 interface DueNudge {
     id: string;
@@ -34,6 +41,47 @@ const NUDGE_TYPE_PRIORITY: Record<string, number> = {
     'medication_checkin': 2,
     'condition_tracking': 1,
 };
+
+/**
+ * Get user's timezone from their profile
+ */
+async function getUserTimezone(userId: string): Promise<string> {
+    try {
+        const userDoc = await getUsersCollection().doc(userId).get();
+        if (userDoc.exists) {
+            const timezone = userDoc.data()?.timezone;
+            if (timezone && typeof timezone === 'string') {
+                return timezone;
+            }
+        }
+    } catch (error) {
+        functions.logger.warn(`[NudgeNotifications] Could not fetch timezone for user ${userId}:`, error);
+    }
+    return DEFAULT_TIMEZONE;
+}
+
+/**
+ * Check if it's currently quiet hours for a given timezone
+ */
+function isQuietHours(timezone: string): boolean {
+    try {
+        const now = new Date();
+        const options: Intl.DateTimeFormatOptions = {
+            hour: 'numeric',
+            hour12: false,
+            timeZone: timezone,
+        };
+        const localHour = parseInt(now.toLocaleTimeString('en-US', options), 10);
+
+        // Quiet hours: 9pm (21) to 8am (8)
+        // This means: hour >= 21 OR hour < 8
+        return localHour >= QUIET_HOURS_START || localHour < QUIET_HOURS_END;
+    } catch (error) {
+        // Invalid timezone, default to not quiet hours
+        functions.logger.warn(`[NudgeNotifications] Invalid timezone: ${timezone}`);
+        return false;
+    }
+}
 
 /**
  * Get count of nudges already sent to user today
@@ -75,9 +123,10 @@ export async function processAndNotifyDueNudges(): Promise<{
     notified: number;
     errors: number;
     skippedDailyLimit: number;
+    skippedQuietHours: number;
 }> {
     const now = admin.firestore.Timestamp.now();
-    const stats = { processed: 0, notified: 0, errors: 0, skippedDailyLimit: 0 };
+    const stats = { processed: 0, notified: 0, errors: 0, skippedDailyLimit: 0, skippedQuietHours: 0 };
 
     try {
         // Find nudges that are due and haven't been notified yet
@@ -124,6 +173,14 @@ export async function processAndNotifyDueNudges(): Promise<{
         // Process each user's nudges
         for (const [userId, nudges] of nudgesByUser) {
             try {
+                // Check quiet hours first
+                const timezone = await getUserTimezone(userId);
+                if (isQuietHours(timezone)) {
+                    functions.logger.info(`[NudgeNotifications] User ${userId} in quiet hours (${timezone}), skipping ${nudges.length} nudges`);
+                    stats.skippedQuietHours += nudges.length;
+                    continue;
+                }
+
                 // Check daily limit
                 const dailyCount = await getDailyNudgeCount(userId);
                 const remaining = MAX_DAILY_NUDGES - dailyCount;

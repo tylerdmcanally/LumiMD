@@ -202,7 +202,7 @@ interface ShareInvite {
  */
 type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight';
 type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
-type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'confirm_yes_no' | 'medication_check' | 'symptom_check' | 'acknowledge' | 'view_insight';
+type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'pickup_check' | 'started_check' | 'feeling_check' | 'side_effects' | 'symptom_check' | 'acknowledge' | 'view_insight';
 interface Nudge {
     id: string;
     userId: string;
@@ -241,9 +241,13 @@ interface MedComplianceValue {
     note?: string;
 }
 interface SymptomCheckValue {
-    symptoms: string[];
-    severity?: 'mild' | 'moderate' | 'severe';
-    note?: string;
+    breathingDifficulty: number;
+    swelling: 'none' | 'mild' | 'moderate' | 'severe';
+    swellingLocations?: string[];
+    energyLevel: number;
+    cough: boolean;
+    orthopnea?: boolean;
+    otherSymptoms?: string;
 }
 type HealthLogValue = BloodPressureValue | GlucoseValue | WeightValue | MedComplianceValue | SymptomCheckValue;
 interface HealthLog {
@@ -287,7 +291,7 @@ interface UpdateNudgeRequest {
     responseValue?: string | Record<string, unknown>;
 }
 interface RespondToNudgeRequest {
-    response: 'yes' | 'no' | 'good' | 'having_issues';
+    response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning';
     note?: string;
     sideEffects?: string[];
 }
@@ -365,6 +369,7 @@ declare function createApiClient(config: ApiClientConfig): {
         registerPushToken: (data: {
             token: string;
             platform: string;
+            timezone?: string;
         }) => Promise<void>;
         unregisterPushToken: (data: {
             token: string;

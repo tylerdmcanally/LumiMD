@@ -29,6 +29,7 @@ export interface SymptomCheckValue {
     swellingLocations?: string[];
     energyLevel: number;  // 1-5 scale
     cough: boolean;
+    orthopnea?: boolean;  // Needed extra pillows / woken up short of breath
     otherSymptoms?: string;
 }
 
@@ -92,6 +93,7 @@ export function SymptomCheckModal({
     const [swellingLocations, setSwellingLocations] = useState<string[]>([]);
     const [energyLevel, setEnergyLevel] = useState(3);
     const [cough, setCough] = useState(false);
+    const [orthopnea, setOrthopnea] = useState(false);
 
     const handleClose = useCallback(() => {
         // Reset state
@@ -100,6 +102,7 @@ export function SymptomCheckModal({
         setSwellingLocations([]);
         setEnergyLevel(3);
         setCough(false);
+        setOrthopnea(false);
         onClose();
     }, [onClose]);
 
@@ -118,12 +121,13 @@ export function SymptomCheckModal({
             swellingLocations: swelling !== 'none' ? swellingLocations : undefined,
             energyLevel,
             cough,
+            orthopnea,
         });
 
         if (!result.shouldShowAlert) {
             handleClose();
         }
-    }, [breathingDifficulty, swelling, swellingLocations, energyLevel, cough, onSubmit, handleClose]);
+    }, [breathingDifficulty, swelling, swellingLocations, energyLevel, cough, orthopnea, onSubmit, handleClose]);
 
     const getBreathingColor = () => {
         if (breathingDifficulty <= 2) return Colors.success;
@@ -298,6 +302,43 @@ export function SymptomCheckModal({
                         </View>
                     </View>
 
+                    {/* Orthopnea - Sleeping/Nighttime Breathing */}
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="bed" size={22} color={Colors.primary} />
+                            <Text style={styles.sectionTitle}>Sleep Breathing</Text>
+                        </View>
+                        <Text style={styles.helpText}>
+                            Needed extra pillows or woken up short of breath?
+                        </Text>
+                        <View style={styles.yesNoRow}>
+                            <Pressable
+                                style={[
+                                    styles.yesNoButton,
+                                    !orthopnea && styles.yesNoButtonSelected,
+                                ]}
+                                onPress={() => setOrthopnea(false)}
+                            >
+                                <Text style={[
+                                    styles.yesNoText,
+                                    !orthopnea && styles.yesNoTextSelected,
+                                ]}>No</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[
+                                    styles.yesNoButton,
+                                    orthopnea && styles.yesNoButtonSelected,
+                                ]}
+                                onPress={() => setOrthopnea(true)}
+                            >
+                                <Text style={[
+                                    styles.yesNoText,
+                                    orthopnea && styles.yesNoTextSelected,
+                                ]}>Yes</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+
                     <View style={{ height: spacing(8) }} />
                 </ScrollView>
 
@@ -453,6 +494,11 @@ const styles = StyleSheet.create({
     locationChipTextSelected: {
         color: Colors.primary,
         fontWeight: '600',
+    },
+    helpText: {
+        fontSize: 14,
+        color: Colors.textMuted,
+        marginBottom: spacing(2),
     },
     yesNoRow: {
         flexDirection: 'row',

@@ -18,9 +18,10 @@ export type NudgeActionType =
     | 'log_bp'
     | 'log_glucose'
     | 'log_weight'
-    | 'log_symptom_check'
-    | 'confirm_yes_no'
-    | 'medication_check'
+    | 'pickup_check'      // Got it / Not yet
+    | 'started_check'     // Taking it / Not yet / Trouble
+    | 'feeling_check'     // Good / Okay / Issues
+    | 'side_effects'      // None / Mild / Concerning
     | 'symptom_check'
     | 'acknowledge'
     | 'view_insight';
@@ -122,6 +123,7 @@ export interface SymptomCheckValue {
     swellingLocations?: string[];
     energyLevel: number;  // 1-5 scale
     cough: boolean;
+    orthopnea?: boolean;  // Needed extra pillows / woken up short of breath
     otherSymptoms?: string;
 }
 

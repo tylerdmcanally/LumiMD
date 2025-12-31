@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import * as functions from 'firebase-functions';
 import { MedicationChangeEntry } from './openai';
 import {
   runMedicationSafetyChecks,
@@ -9,6 +10,58 @@ import { clearMedicationSafetyCacheForUser } from './medicationSafetyAI';
 
 const db = () => admin.firestore();
 const getMedicationsCollection = () => db().collection('medications');
+const getRemindersCollection = () => db().collection('medicationReminders');
+
+/**
+ * Map medication frequency string to default reminder times.
+ * Returns null if frequency doesn't warrant a reminder (PRN, as needed, etc.)
+ */
+function getDefaultReminderTimes(frequency?: string | null): string[] | null {
+  if (!frequency) return ['08:00']; // Default morning if no frequency specified
+
+  const freq = frequency.toLowerCase().trim();
+
+  // PRN / as needed - no automatic reminder
+  if (freq.includes('prn') || freq.includes('as needed') || freq.includes('when needed')) {
+    return null;
+  }
+
+  // Once daily patterns
+  if (freq.includes('once daily') || freq.includes('once a day') || freq.includes('qd') ||
+    freq.includes('daily') || freq === 'qday') {
+    if (freq.includes('evening') || freq.includes('pm') || freq.includes('night') ||
+      freq.includes('bedtime') || freq.includes('dinner')) {
+      return ['20:00'];
+    }
+    return ['08:00']; // Default morning for once daily
+  }
+
+  // Twice daily patterns
+  if (freq.includes('twice') || freq.includes('bid') || freq.includes('2x') ||
+    freq.includes('two times') || freq.includes('every 12')) {
+    return ['08:00', '20:00'];
+  }
+
+  // Three times daily patterns
+  if (freq.includes('three times') || freq.includes('tid') || freq.includes('3x') ||
+    freq.includes('every 8')) {
+    return ['08:00', '14:00', '20:00'];
+  }
+
+  // Four times daily
+  if (freq.includes('four times') || freq.includes('qid') || freq.includes('4x') ||
+    freq.includes('every 6')) {
+    return ['08:00', '12:00', '16:00', '20:00'];
+  }
+
+  // Weekly - just one reminder  
+  if (freq.includes('weekly') || freq.includes('once a week')) {
+    return ['08:00'];
+  }
+
+  // Default: single morning reminder
+  return ['08:00'];
+}
 
 type MedicationEntryInput = MedicationChangeEntry | string;
 
@@ -317,15 +370,15 @@ function getCachedDoc(
 ): FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null | undefined {
   const cacheKey = getCacheKey(userId, key);
   const entry = medicationCache.get(cacheKey);
-  
+
   if (!entry) return undefined;
-  
+
   const age = Date.now() - entry.timestamp;
   if (age > CACHE_TTL) {
     medicationCache.delete(cacheKey);
     return undefined;
   }
-  
+
   return entry.doc;
 }
 
@@ -335,13 +388,13 @@ function setCachedDoc(
   doc: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null
 ): void {
   const cacheKey = getCacheKey(userId, key);
-  
+
   // Simple LRU: if cache is full, remove oldest entry
   if (medicationCache.size >= MAX_CACHE_SIZE) {
     const firstKey = medicationCache.keys().next().value;
     if (firstKey) medicationCache.delete(firstKey);
   }
-  
+
   medicationCache.set(cacheKey, {
     doc,
     timestamp: Date.now(),
@@ -392,8 +445,8 @@ const getMedicationDoc = async (
     const doc = exactSnapshot.docs[0];
     setCachedDoc(userId, `canonical:${canonicalName}`, doc);
     setCachedDoc(userId, `nameLower:${nameLower}`, doc);
-      return doc;
-    }
+    return doc;
+  }
 
   // No match found - cache the null result
   setCachedDoc(userId, `canonical:${canonicalName}`, null);
@@ -462,6 +515,29 @@ const upsertMedication = async ({
       if (!existingDoc.get('startedAt')) {
         updates.startedAt = processedAt;
       }
+
+      // Clear pending nudges for stopped medication
+      if (existingDoc.get('active') !== false) {
+        try {
+          const nudgesSnapshot = await db()
+            .collection('nudges')
+            .where('userId', '==', userId)
+            .where('medicationId', '==', existingDoc.id)
+            .where('status', 'in', ['pending', 'active', 'snoozed'])
+            .get();
+
+          if (!nudgesSnapshot.empty) {
+            const batch = db().batch();
+            nudgesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            functions.logger.info(
+              `[medicationSync] Cleared ${nudgesSnapshot.size} pending nudge(s) for stopped ${entry.name}`
+            );
+          }
+        } catch (nudgeError) {
+          functions.logger.error('[medicationSync] Failed to clear nudges for stopped med:', nudgeError);
+        }
+      }
     }
 
     if (status === 'changed') {
@@ -483,6 +559,44 @@ const upsertMedication = async ({
     updates.medicationWarning = entry.warning ?? null;
 
     await existingDoc.ref.update(updates);
+
+    // For started/changed meds that become active, ensure a reminder exists
+    if ((status === 'started' || status === 'changed') && updates.active !== false) {
+      try {
+        // Check if reminder already exists
+        const existingReminder = await getRemindersCollection()
+          .where('userId', '==', userId)
+          .where('medicationId', '==', existingDoc.id)
+          .limit(1)
+          .get();
+
+        if (existingReminder.empty) {
+          const defaultTimes = getDefaultReminderTimes(entry.frequency);
+          if (defaultTimes) {
+            await getRemindersCollection().add({
+              userId,
+              medicationId: existingDoc.id,
+              medicationName: entry.name,
+              medicationDose: entry.dose || undefined,
+              times: defaultTimes,
+              enabled: true,
+              createdAt: processedAt,
+              updatedAt: processedAt,
+            });
+
+            functions.logger.info(
+              `[medicationSync] Auto-created reminder for reactivated ${entry.name} with times: ${defaultTimes.join(', ')}`
+            );
+          }
+        } else {
+          functions.logger.info(
+            `[medicationSync] Reminder already exists for ${entry.name}, skipping auto-create`
+          );
+        }
+      } catch (reminderError) {
+        functions.logger.error('[medicationSync] Failed to auto-create reminder for updated med:', reminderError);
+      }
+    }
     return;
   }
 
@@ -498,6 +612,36 @@ const upsertMedication = async ({
   };
 
   await docRef.set(newDoc);
+
+  // Auto-create medication reminder for new active medications
+  if (status !== 'stopped') {
+    const defaultTimes = getDefaultReminderTimes(entry.frequency);
+    if (defaultTimes) {
+      try {
+        await getRemindersCollection().add({
+          userId,
+          medicationId: docRef.id,
+          medicationName: entry.name,
+          medicationDose: entry.dose || undefined,
+          times: defaultTimes,
+          enabled: true,
+          createdAt: processedAt,
+          updatedAt: processedAt,
+        });
+
+        functions.logger.info(
+          `[medicationSync] Auto-created reminder for ${entry.name} with times: ${defaultTimes.join(', ')}`
+        );
+      } catch (reminderError) {
+        // Don't fail medication sync if reminder creation fails
+        functions.logger.error('[medicationSync] Failed to auto-create reminder:', reminderError);
+      }
+    } else {
+      functions.logger.info(
+        `[medicationSync] Skipped auto-reminder for ${entry.name} - PRN/as-needed frequency`
+      );
+    }
+  }
 };
 
 export const syncMedicationsFromSummary = async ({
@@ -515,13 +659,13 @@ export const syncMedicationsFromSummary = async ({
   // Batch fetch all user medications once to warm the cache
   const medsCollection = getMedicationsCollection();
   const userMedsSnapshot = await medsCollection.where('userId', '==', userId).get();
-  
+
   // Warm the cache with all user medications
   userMedsSnapshot.docs.forEach((doc) => {
     const data = doc.data();
     const canonical = data?.canonicalName;
     const nameLower = data?.nameLower;
-    
+
     if (canonical) {
       setCachedDoc(userId, `canonical:${canonical}`, doc);
     }

@@ -648,3 +648,141 @@ export function useMedicationCompliance(
     },
   });
 }
+
+// =============================================================================
+// Health Insights (AI-generated)
+// =============================================================================
+
+export type HealthInsight = {
+  id: string;
+  text: string;
+  type: 'positive' | 'neutral' | 'attention' | 'tip';
+  category: 'medication' | 'vitals' | 'engagement' | 'general';
+  generatedAt: string | null;
+  expiresAt: string | null;
+};
+
+export function useHealthInsights(
+  options?: QueryEnabledOptions<HealthInsight[]>,
+) {
+  const viewing = useViewingSafe();
+  const effectiveUserId = viewing?.viewingUserId ?? null;
+  const key = useMemo(() => ['health-insights', effectiveUserId ?? 'anonymous'] as const, [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+
+  return useQuery<HealthInsight[]>({
+    queryKey: key,
+    staleTime: 5 * 60 * 1000, // 5 minutes (insights are cached for 24h server-side)
+    enabled,
+    ...options,
+    queryFn: async () => {
+      if (!effectiveUserId) {
+        return [];
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/insights`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch insights');
+      }
+
+      const data = await response.json();
+      return data.insights || [];
+    },
+  });
+}
+
+// =============================================================================
+// Patient Conditions (AI-detected from visits)
+// =============================================================================
+
+export type PatientCondition = {
+  id: string;
+  name: string;
+  status: 'active' | 'resolved' | 'monitoring';
+  diagnosedAt: string | null;
+  sourceVisitId: string;
+  notes?: string;
+};
+
+export function usePatientConditions(
+  options?: QueryEnabledOptions<PatientCondition[]>,
+) {
+  const viewing = useViewingSafe();
+  const effectiveUserId = viewing?.viewingUserId ?? null;
+  const key = useMemo(() => ['patient-conditions', effectiveUserId ?? 'anonymous'] as const, [effectiveUserId]);
+  const enabled = Boolean(effectiveUserId);
+
+  return useQuery<PatientCondition[]>({
+    queryKey: key,
+    staleTime: 60_000, // 1 minute
+    enabled,
+    ...options,
+    queryFn: async () => {
+      if (!effectiveUserId) {
+        return [];
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/medical-context/conditions`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch conditions');
+      }
+
+      const data = await response.json();
+      return data.conditions || [];
+    },
+  });
+}
+
+import { useMutation } from '@tanstack/react-query';
+
+export function useUpdateConditionStatus() {
+  const queryClient = useQueryClient();
+  const viewing = useViewingSafe();
+  const effectiveUserId = viewing?.viewingUserId ?? null;
+
+  return useMutation({
+    mutationFn: async ({ conditionId, status }: { conditionId: string; status: 'active' | 'resolved' | 'monitoring' }) => {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/medical-context/conditions/${conditionId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ status }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update condition status');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['patient-conditions', effectiveUserId ?? 'anonymous'],
+      });
+      toast.success('Condition updated');
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Failed to update condition';
+      toast.error(message);
+    },
+  });
+}
