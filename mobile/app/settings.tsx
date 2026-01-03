@@ -294,6 +294,24 @@ export default function SettingsScreen() {
                   thumbColor={pushEnabled ? Colors.primary : '#f3f4f6'}
                 />
               </View>
+
+              <View style={styles.divider} />
+
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => router.replace('/caregiver-sharing')}
+              >
+                <View style={styles.settingIcon}>
+                  <Ionicons name="people-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.linkLabel, { marginLeft: 0 }]}>Caregiver Sharing</Text>
+                  <Text style={styles.settingDescription}>
+                    Share your health info with family
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </Pressable>
             </Card>
           </View>
 

@@ -216,6 +216,13 @@ export default function RootLayout() {
                   animation: 'slide_from_right',
                 }}
               />
+              <Stack.Screen
+                name="caregiver-sharing"
+                options={{
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                }}
+              />
             </Stack>
           </ThemeProvider>
         </ErrorBoundary>
