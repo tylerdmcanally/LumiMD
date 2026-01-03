@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- SEO -->
+    <meta name="description"
+        content="Why allowing patients to record visits improves care without increasing risk. Evidence-based information for healthcare providers.">
+    <meta name="robots" content="noindex, nofollow">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap"
+        rel="stylesheet">
+
+    <title>Information for Providers | LumiMD</title>
+
+    <style>
+        :root {
+            --brand-cyan: #40C9D0;
+            --brand-mint: #89D8C6;
+            --brand-pale: #E8F8F8;
+            --brand-dark: #078A94;
+            --text-primary: #1E293B;
+            --text-secondary: #64748B;
+            --bg-warm: #FAFBFC;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            -webkit-font-smoothing: antialiased;
+            background: var(--bg-warm);
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Source Serif 4', Georgia, serif;
+            line-height: 1.2;
+            font-weight: 700;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Navigation */
+        nav {
+            background: white;
+            border-bottom: 1px solid #E2E8F0;
+            padding: 20px 0;
+        }
+
+        .logo {
+            text-decoration: none;
+        }
+
+        .logo-text {
+            font-family: 'Source Serif 4', serif;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .logo-text span {
+            color: var(--brand-cyan);
+        }
+
+        /* Header */
+        header {
+            padding: 80px 0 60px;
+            text-align: center;
+            background: white;
+        }
+
+        header h1 {
+            font-size: clamp(32px, 5vw, 48px);
+            margin: 0 0 24px;
+            color: var(--text-primary);
+        }
+
+        header p {
+            font-size: 20px;
+            color: var(--text-secondary);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        /* Main Content */
+        main {
+            padding: 60px 0;
+        }
+
+        .topic-section {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            margin-bottom: 40px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            border: 1px solid #E2E8F0;
+        }
+
+        .topic-section h2 {
+            font-size: 28px;
+            margin: 0 0 24px;
+            color: var(--brand-dark);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .topic-section h3 {
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            margin: 24px 0 12px;
+            color: var(--text-primary);
+        }
+
+        .topic-section p {
+            color: var(--text-secondary);
+            margin: 0 0 16px;
+            font-size: 16px;
+        }
+
+        .Stat-box {
+            background: var(--brand-pale);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+            border-left: 4px solid var(--brand-cyan);
+        }
+
+        .stat-box strong {
+            display: block;
+            font-size: 18px;
+            color: var(--brand-dark);
+            margin-bottom: 8px;
+        }
+
+        .citation-ref {
+            font-size: 12px;
+            vertical-align: super;
+            color: var(--brand-dark);
+            text-decoration: none;
+        }
+
+        /* References */
+        .references {
+            margin-top: 80px;
+            padding-top: 40px;
+            border-top: 1px solid #E2E8F0;
+        }
+
+        .references h4 {
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin: 0 0 20px;
+        }
+
+        .references ol {
+            padding-left: 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .references li {
+            margin-bottom: 12px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 0;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .btn-home {
+            display: inline-block;
+            margin-top: 20px;
+            text-decoration: none;
+            color: var(--brand-dark);
+            font-weight: 500;
+        }
+
+        .btn-home:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav>
+        <div class="container">
+            <a href="/" class="logo">
+                <div class="logo-text">Lumi<span>MD</span></div>
+            </a>
+        </div>
+    </nav>
+
+    <header>
+        <div class="container">
+            <h1>Information for Providers</h1>
+            <p>Why allowing patients to record visits improves care, outcomes, and efficiency—without increasing risk.
+            </p>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+
+            <!-- Liability -->
+            <section class="topic-section">
+                <h2>
+                    <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Liability Myth-Busting
+                </h2>
+                <p>A common concern among providers is that patient recordings will increase liability risk or lead to
+                    "gotcha" moments. However, the evidence suggests the opposite: recordings protect good medicine.</p>
+
+                <div class="stat-box">
+                    <strong>Zero Lawsuits in 3 Years</strong>
+                    <p>A major study followed 15,254 patients who recorded their clinic visits. Over a three-year
+                        period, there were <strong>zero lawsuits or paid claims</strong> related to the recordings.<a
+                            href="#refs" class="citation-ref">[1]</a></p>
+                </div>
+
+                <p>Recordings provide an objective record of the encounter, documenting that informed consent was
+                    obtained and that instructions were clearly communicated. In many cases, this documentation can be
+                    exculpatory.</p>
+            </section>
+
+            <!-- Patient Compliance -->
+            <section class="topic-section">
+                <h2>
+                    <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Improved Adherence & Outcomes
+                </h2>
+                <p>The primary barrier to adherence is often a lack of retention. Patients are overwhelmed by
+                    information during a visit.</p>
+
+                <h3>The Memory Gap</h3>
+                <p>Research shows that patients forget <strong>40-80% of medical information</strong> immediately after
+                    leaving the clinic. Of what they do remember, nearly half is incorrect.<a href="#refs"
+                        class="citation-ref">[2]</a></p>
+
+                <p>By allowing patients to record and receive an AI-generated summary, you ensure they have a permanent,
+                    accurate reference for your instructions. This leads to:</p>
+                <ul>
+                    <li>Better medication adherence</li>
+                    <li>Fewer errors in post-procedure care</li>
+                    <li>Increased patient engagement and trust<a href="#refs" class="citation-ref">[3]</a></li>
+                </ul>
+            </section>
+
+            <!-- Efficiency -->
+            <section class="topic-section">
+                <h2>
+                    <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Practice Efficiency
+                </h2>
+                <p>When patients have a recording or summary to refer back to, they are less likely to call the office
+                    for clarification on simple questions like "How many times a day do I take this?" or "When is my
+                    follow-up?"</p>
+                <p>LumiMD handles the note-taking for the patient, allowing them to be more present and focused during
+                    the consultation, rather than distracted by trying to write everything down.</p>
+            </section>
+
+            <!-- References -->
+            <div class="references" id="refs">
+                <h4>Clinical References</h4>
+                <ol>
+                    <li>Barrow, D.L., et al. (2019). "The utility of audio and video recording in an outpatient
+                        neurosurgical practice." <em>Journal of Neurosurgery</em>, 132(2), 595-599.</li>
+                    <li>Kessels, R.P.C. (2003). "Patients' memory for medical information." <em>Journal of the Royal
+                            Society of Medicine</em>, 96(5), 219-222.</li>
+                    <li>Tsulukidze, M., et al. (2014). "Patients' recording of medical consultation: a review of the
+                        literature and a meta-analysis." <em>Patient Education and Counseling</em>, 96(3), 271-280.</li>
+                </ol>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="/" class="btn-home">← Back to LumiMD Home</a>
+            </div>
+
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>© 2026 LumiMD Inc.</p>
+        </div>
+    </footer>
+
+</body>
+
+</html>

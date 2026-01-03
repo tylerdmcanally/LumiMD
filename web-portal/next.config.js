@@ -16,6 +16,11 @@ const nextConfig = {
           source: '/get-started',
           destination: '/get-started.html',
         },
+        // Provider page
+        {
+          source: '/providers',
+          destination: '/provider.html',
+        },
       ],
     };
   },
