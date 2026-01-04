@@ -330,6 +330,35 @@
       background: #40C9D0;
     }
 
+    .demo-audio-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 8px 16px;
+      background: rgba(64, 201, 208, 0.1);
+      border: 1px solid rgba(64, 201, 208, 0.3);
+      border-radius: 20px;
+      color: var(--brand-dark, #2A9D8F);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .demo-audio-btn:hover {
+      background: rgba(64, 201, 208, 0.2);
+      border-color: rgba(64, 201, 208, 0.5);
+    }
+
+    .demo-audio-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
     /* Trust badges */
     .trust-row {
       display: flex;
@@ -1003,6 +1032,16 @@
           <div class="demo-indicator" data-slide="3"></div>
           <div class="demo-indicator" data-slide="4"></div>
         </div>
+        <button class="demo-audio-btn" id="demoAudioBtn">
+          <svg id="audioIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+          </svg>
+          <span id="audioLabel">Unmute narration</span>
+        </button>
+        <audio id="demoAudio" loop>
+          <source src="/audio/narration.mp3" type="audio/mpeg">
+        </audio>
       </div>
     </div>
   </section>
@@ -1407,8 +1446,13 @@
       const slides = document.querySelectorAll('.demo-slide');
       const indicators = document.querySelectorAll('.demo-indicator');
       const captionEl = document.getElementById('demoCaption');
+      const audio = document.getElementById('demoAudio');
+      const audioBtn = document.getElementById('demoAudioBtn');
+      const audioLabel = document.getElementById('audioLabel');
+      const audioIcon = document.getElementById('audioIcon');
       let currentSlide = 0;
       const slideInterval = 5000; // 5 seconds per slide
+      let isMuted = true;
 
       const captions = [
         { title: 'Welcome to LumiMD', desc: 'Your health journey, organized and easy to find' },
@@ -1417,6 +1461,10 @@
         { title: 'Medications added automatically', desc: 'No manual entry, no missed prescriptions' },
         { title: 'Your schedule, your way', desc: 'Edit anytime to fit your routine' }
       ];
+
+      // Mute/unmute icons
+      const mutedIcon = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />';
+      const unmutedIcon = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15z" />';
 
       function goToSlide(index) {
         slides[currentSlide].classList.remove('active');
@@ -1432,6 +1480,10 @@
 
       function nextSlide() {
         goToSlide(currentSlide + 1);
+        // Reset audio when looping back to start
+        if (currentSlide === 0 && !isMuted) {
+          audio.currentTime = 0;
+        }
       }
 
       // Auto-advance
@@ -1444,6 +1496,21 @@
           goToSlide(index);
           autoPlay = setInterval(nextSlide, slideInterval);
         });
+      });
+
+      // Audio mute/unmute toggle
+      audioBtn.addEventListener('click', () => {
+        if (isMuted) {
+          audio.play();
+          audioLabel.textContent = 'Mute narration';
+          audioIcon.innerHTML = unmutedIcon;
+          isMuted = false;
+        } else {
+          audio.pause();
+          audioLabel.textContent = 'Unmute narration';
+          audioIcon.innerHTML = mutedIcon;
+          isMuted = true;
+        }
       });
     })();
   </script>
