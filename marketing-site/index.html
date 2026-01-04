@@ -261,6 +261,79 @@
       display: block;
     }
 
+    /* Animated Demo Slideshow */
+    .demo-slideshow {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 9/19.5;
+    }
+
+    .demo-slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transition: opacity 0.6s ease-in-out;
+    }
+
+    .demo-slide.active {
+      opacity: 1;
+    }
+
+    .demo-slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .demo-caption {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+      padding: 40px 16px 20px;
+      text-align: center;
+    }
+
+    .demo-caption h4 {
+      color: #fff;
+      font-family: 'Source Serif 4', serif;
+      font-size: 18px;
+      margin: 0 0 8px;
+      font-weight: 600;
+    }
+
+    .demo-caption p {
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 13px;
+      margin: 0;
+      line-height: 1.4;
+    }
+
+    .demo-indicators {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 16px;
+    }
+
+    .demo-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(64, 201, 208, 0.3);
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .demo-indicator.active {
+      background: #40C9D0;
+    }
+
     /* Trust badges */
     .trust-row {
       display: flex;
@@ -905,8 +978,65 @@
       <div class="hero-image">
         <div class="phone-frame">
           <div class="phone-screen">
-            <img src="/images/app-screen-1.png" alt="LumiMD App Dashboard">
+            <div class="demo-slideshow" id="demoSlideshow">
+              <!-- Slide 1: Dashboard -->
+              <div class="demo-slide active">
+                <img src="/images/app-screen-1.png" alt="LumiMD Dashboard">
+                <div class="demo-caption">
+                  <h4>Welcome to LumiMD</h4>
+                  <p>Your health journey, organized and easy to find</p>
+                </div>
+              </div>
+              <!-- Slide 2: Recording -->
+              <div class="demo-slide">
+                <img src="/images/app-screen-2.png" alt="Recording Screen">
+                <div class="demo-caption">
+                  <h4>One tap to record</h4>
+                  <p>Focus on the conversation, not on taking notes</p>
+                </div>
+              </div>
+              <!-- Slide 3: Processing -->
+              <div class="demo-slide">
+                <img src="/images/app-screen-3.png" alt="Processing">
+                <div class="demo-caption">
+                  <h4>We handle the details</h4>
+                  <p>Clear, concise summary in plain language</p>
+                </div>
+              </div>
+              <!-- Slide 4: Visit Summary -->
+              <div class="demo-slide">
+                <img src="/images/app-visit.png" alt="Visit Summary">
+                <div class="demo-caption">
+                  <h4>Your visit, summarized</h4>
+                  <p>Key points, action items, and next steps</p>
+                </div>
+              </div>
+              <!-- Slide 5: Medications -->
+              <div class="demo-slide">
+                <img src="/images/app-meds.png" alt="Medications">
+                <div class="demo-caption">
+                  <h4>Medications added automatically</h4>
+                  <p>No manual entry, no missed prescriptions</p>
+                </div>
+              </div>
+              <!-- Slide 6: Scheduler -->
+              <div class="demo-slide">
+                <img src="/images/app-schedule.png" alt="Medication Schedule">
+                <div class="demo-caption">
+                  <h4>Your schedule, your way</h4>
+                  <p>Edit anytime to fit your routine</p>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+        <div class="demo-indicators" id="demoIndicators">
+          <div class="demo-indicator active" data-slide="0"></div>
+          <div class="demo-indicator" data-slide="1"></div>
+          <div class="demo-indicator" data-slide="2"></div>
+          <div class="demo-indicator" data-slide="3"></div>
+          <div class="demo-indicator" data-slide="4"></div>
+          <div class="demo-indicator" data-slide="5"></div>
         </div>
       </div>
     </div>
@@ -1305,6 +1435,42 @@
   </footer>
 
   <script type="module" src="/src/main.ts"></script>
+
+  <!-- Demo Slideshow Script -->
+  <script>
+    (function () {
+      const slides = document.querySelectorAll('.demo-slide');
+      const indicators = document.querySelectorAll('.demo-indicator');
+      let currentSlide = 0;
+      const slideInterval = 5000; // 5 seconds per slide
+
+      function goToSlide(index) {
+        slides[currentSlide].classList.remove('active');
+        indicators[currentSlide].classList.remove('active');
+        currentSlide = index;
+        if (currentSlide >= slides.length) currentSlide = 0;
+        if (currentSlide < 0) currentSlide = slides.length - 1;
+        slides[currentSlide].classList.add('active');
+        indicators[currentSlide].classList.add('active');
+      }
+
+      function nextSlide() {
+        goToSlide(currentSlide + 1);
+      }
+
+      // Auto-advance
+      let autoPlay = setInterval(nextSlide, slideInterval);
+
+      // Click on indicators
+      indicators.forEach((indicator, index) => {
+        indicator.addEventListener('click', () => {
+          clearInterval(autoPlay);
+          goToSlide(index);
+          autoPlay = setInterval(nextSlide, slideInterval);
+        });
+      });
+    })();
+  </script>
 </body>
 
 </html>
