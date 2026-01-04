@@ -1040,7 +1040,7 @@
           </svg>
           <span id="audioLabel">Unmute narration</span>
         </button>
-        <audio id="demoAudio" loop>
+        <audio id="demoAudio">
           <source src="/audio/narration.mp3" type="audio/mpeg">
         </audio>
       </div>
@@ -1481,9 +1481,10 @@
 
       function nextSlide() {
         goToSlide(currentSlide + 1);
-        // Reset audio when looping back to start
+        // Restart audio when looping back to start
         if (currentSlide === 0 && !isMuted) {
           audio.currentTime = 0;
+          audio.play();
         }
       }
 
