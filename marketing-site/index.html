@@ -290,25 +290,21 @@
     }
 
     .demo-caption {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
-      padding: 40px 16px 20px;
       text-align: center;
+      padding: 16px 8px 0;
+      min-height: 60px;
     }
 
     .demo-caption h4 {
-      color: #fff;
+      color: var(--text-primary, #1E293B);
       font-family: 'Source Serif 4', serif;
-      font-size: 18px;
-      margin: 0 0 8px;
+      font-size: 16px;
+      margin: 0 0 4px;
       font-weight: 600;
     }
 
     .demo-caption p {
-      color: rgba(255, 255, 255, 0.85);
+      color: var(--text-secondary, #64748B);
       font-size: 13px;
       margin: 0;
       line-height: 1.4;
@@ -979,49 +975,27 @@
         <div class="phone-frame">
           <div class="phone-screen">
             <div class="demo-slideshow" id="demoSlideshow">
-              <!-- Slide 1: Dashboard -->
               <div class="demo-slide active">
                 <img src="/images/app-screen-1.png" alt="LumiMD Dashboard">
-                <div class="demo-caption">
-                  <h4>Welcome to LumiMD</h4>
-                  <p>Your health journey, organized and easy to find</p>
-                </div>
               </div>
-              <!-- Slide 2: Recording -->
               <div class="demo-slide">
                 <img src="/images/app-recording.png" alt="Recording Screen">
-                <div class="demo-caption">
-                  <h4>One tap to record</h4>
-                  <p>Focus on the conversation, not on taking notes</p>
-                </div>
               </div>
-              <!-- Slide 3: Processing -->
               <div class="demo-slide">
                 <img src="/images/app-screen-3.png" alt="Processing">
-                <div class="demo-caption">
-                  <h4>We handle the details</h4>
-                  <p>Clear, concise summary in plain language</p>
-                </div>
               </div>
-
-              <!-- Slide 5: Medications -->
               <div class="demo-slide">
                 <img src="/images/app-meds.png" alt="Medications">
-                <div class="demo-caption">
-                  <h4>Medications added automatically</h4>
-                  <p>No manual entry, no missed prescriptions</p>
-                </div>
               </div>
-              <!-- Slide 6: Scheduler -->
               <div class="demo-slide">
                 <img src="/images/app-schedule.png" alt="Medication Schedule">
-                <div class="demo-caption">
-                  <h4>Your schedule, your way</h4>
-                  <p>Edit anytime to fit your routine</p>
-                </div>
               </div>
             </div>
           </div>
+        </div>
+        <div class="demo-caption" id="demoCaption">
+          <h4>Welcome to LumiMD</h4>
+          <p>Your health journey, organized and easy to find</p>
         </div>
         <div class="demo-indicators" id="demoIndicators">
           <div class="demo-indicator active" data-slide="0"></div>
@@ -1433,8 +1407,17 @@
     (function () {
       const slides = document.querySelectorAll('.demo-slide');
       const indicators = document.querySelectorAll('.demo-indicator');
+      const captionEl = document.getElementById('demoCaption');
       let currentSlide = 0;
       const slideInterval = 5000; // 5 seconds per slide
+
+      const captions = [
+        { title: 'Welcome to LumiMD', desc: 'Your health journey, organized and easy to find' },
+        { title: 'One tap to record', desc: 'Focus on the conversation, not on taking notes' },
+        { title: 'We handle the details', desc: 'Clear, concise summary in plain language' },
+        { title: 'Medications added automatically', desc: 'No manual entry, no missed prescriptions' },
+        { title: 'Your schedule, your way', desc: 'Edit anytime to fit your routine' }
+      ];
 
       function goToSlide(index) {
         slides[currentSlide].classList.remove('active');
@@ -1444,6 +1427,8 @@
         if (currentSlide < 0) currentSlide = slides.length - 1;
         slides[currentSlide].classList.add('active');
         indicators[currentSlide].classList.add('active');
+        captionEl.querySelector('h4').textContent = captions[currentSlide].title;
+        captionEl.querySelector('p').textContent = captions[currentSlide].desc;
       }
 
       function nextSlide() {
