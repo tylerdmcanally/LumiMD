@@ -26,14 +26,45 @@ function getDefaultReminderTimes(frequency?: string | null): string[] | null {
     return null;
   }
 
+  // ===== MEALTIME PATTERNS =====
+  // "with meals" or "with food" (3x daily at mealtimes)
+  if (freq.includes('with meals') || freq.includes('with food') ||
+    freq.includes('at meals') || freq.includes('at mealtimes')) {
+    return ['08:00', '12:00', '18:00'];
+  }
+
+  // Breakfast / morning meal
+  if (freq.includes('breakfast') || freq.includes('morning meal') ||
+    (freq.includes('morning') && !freq.includes('every morning'))) {
+    return ['08:00'];
+  }
+
+  // Lunch / midday meal
+  if (freq.includes('lunch') || freq.includes('midday') || freq.includes('noon')) {
+    return ['12:00'];
+  }
+
+  // Dinner / evening meal (but not "bedtime" which is later)
+  if (freq.includes('dinner') || freq.includes('supper') ||
+    freq.includes('evening meal') || freq.includes('with evening')) {
+    return ['18:00'];
+  }
+
+  // ===== STANDARD TIME-OF-DAY PATTERNS =====
   // Once daily patterns
   if (freq.includes('once daily') || freq.includes('once a day') || freq.includes('qd') ||
     freq.includes('daily') || freq === 'qday') {
     if (freq.includes('evening') || freq.includes('pm') || freq.includes('night') ||
-      freq.includes('bedtime') || freq.includes('dinner')) {
+      freq.includes('bedtime') || freq.includes('hs')) {
       return ['20:00'];
     }
     return ['08:00']; // Default morning for once daily
+  }
+
+  // Bedtime / at night (after dinner, before sleep)
+  if (freq.includes('bedtime') || freq.includes('at night') ||
+    freq.includes('before bed') || freq.includes('hs') || freq.includes('nightly')) {
+    return ['21:00'];
   }
 
   // Twice daily patterns
