@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LumiMD Beta Testing - Healthcare Provider Preview</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        :root {
+            --brand-cyan: #40C9D0;
+            --brand-dark: #078A94;
+            --brand-pale: #F0F9FA;
+            --text-primary: #1E293B;
+            --text-secondary: #475569;
+            --border-light: #E2E8F0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        @page {
+            size: letter;
+            margin: 0.5in;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            color: var(--text-primary);
+            background: white;
+            padding: 48px 40px;
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
+        }
+
+        .flyer {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 36px;
+            padding-bottom: 24px;
+            border-bottom: 2px solid var(--brand-cyan);
+        }
+
+        .logo {
+            font-family: 'Source Serif 4', Georgia, serif;
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--brand-dark);
+        }
+
+        .logo span {
+            color: var(--brand-cyan);
+        }
+
+        .beta-badge {
+            background: var(--brand-pale);
+            color: var(--brand-dark);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            border: 1px solid var(--brand-cyan);
+        }
+
+        /* Intro */
+        .intro {
+            margin-bottom: 32px;
+        }
+
+        .intro h1 {
+            font-family: 'Source Serif 4', Georgia, serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .intro p {
+            font-size: 16px;
+            color: var(--text-secondary);
+            max-width: 600px;
+        }
+
+        /* How It Works */
+        .workflow-section {
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-family: 'Source Serif 4', Georgia, serif;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--brand-dark);
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .workflow {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .workflow-card {
+            background: var(--brand-pale);
+            border-radius: 10px;
+            padding: 20px;
+            border-left: 4px solid var(--brand-cyan);
+        }
+
+        .workflow-card h3 {
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .platform-tag {
+            background: white;
+            color: var(--brand-dark);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            border: 1px solid var(--border-light);
+        }
+
+        .workflow-card p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Sync Section */
+        .sync-section {
+            background: linear-gradient(135deg, var(--brand-pale) 0%, white 100%);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 32px;
+        }
+
+        .sync-section h3 {
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .sync-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .sync-item {
+            text-align: center;
+            padding: 16px 20px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid var(--border-light);
+            min-width: 140px;
+        }
+
+        .sync-item strong {
+            display: block;
+            font-size: 14px;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .sync-item span {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .sync-arrow {
+            color: var(--brand-cyan);
+            font-size: 24px;
+            font-weight: 300;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 28px;
+            align-items: center;
+            background: white;
+            border: 2px solid var(--brand-cyan);
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        .qr-code {
+            width: 110px;
+            height: 110px;
+        }
+
+        .qr-code img {
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+        }
+
+        .cta-content h2 {
+            font-family: 'Source Serif 4', Georgia, serif;
+            font-size: 20px;
+            color: var(--brand-dark);
+            margin-bottom: 8px;
+        }
+
+        .cta-content p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .link-box {
+            background: var(--brand-pale);
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: inline-block;
+        }
+
+        .link-box a {
+            color: var(--brand-dark);
+            font-weight: 600;
+            font-size: 13px;
+            text-decoration: none;
+            font-family: 'SF Mono', 'Monaco', monospace;
+        }
+
+        /* Footer */
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--text-secondary);
+            padding-top: 20px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .footer a {
+            color: var(--brand-dark);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                padding: 0;
+            }
+
+            .cta-section {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="flyer">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">Lumi<span>MD</span></div>
+            <span class="beta-badge">Beta Testing Program</span>
+        </div>
+
+        <!-- Intro -->
+        <div class="intro">
+            <h1>A Personal Health Assistant for Patient Engagement</h1>
+            <p>LumiMD helps patients capture, understand, and act on their healthcare information. Built by a PA who saw
+                firsthand how much gets lost between appointments.</p>
+        </div>
+
+        <!-- How It Works -->
+        <div class="workflow-section">
+            <div class="section-title">Core Functionality</div>
+            <div class="workflow">
+                <div class="workflow-card">
+                    <h3>Visit Recording <span class="platform-tag">Mobile</span></h3>
+                    <p>Patients record appointments in-app. Audio is transcribed and processed using AI to generate
+                        structured visit summaries.</p>
+                </div>
+                <div class="workflow-card">
+                    <h3>AI-Generated Summaries <span class="platform-tag">Mobile + Web</span></h3>
+                    <p>Each visit produces a summary with diagnosis, medications started/stopped, and actionable
+                        follow-up items.</p>
+                </div>
+                <div class="workflow-card">
+                    <h3>Medication Management <span class="platform-tag">Mobile + Web</span></h3>
+                    <p>Medications auto-sync from visit summaries. Smart reminders fire based on prescribed frequency
+                        and timing.</p>
+                </div>
+                <div class="workflow-card">
+                    <h3>Caregiver Access <span class="platform-tag">Web Portal</span></h3>
+                    <p>Patients can securely share records with family members or caregivers via the web portal for
+                        coordinated care.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync Section -->
+        <div class="sync-section">
+            <h3>Mobile App + Web Portal Sync</h3>
+            <div class="sync-flow">
+                <div class="sync-item">
+                    <strong>iOS App</strong>
+                    <span>Record & Review</span>
+                </div>
+                <span class="sync-arrow">⟷</span>
+                <div class="sync-item">
+                    <strong>Firebase Cloud</strong>
+                    <span>Real-time Sync</span>
+                </div>
+                <span class="sync-arrow">⟷</span>
+                <div class="sync-item">
+                    <strong>Web Portal</strong>
+                    <span>portal.lumimd.app</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA Section -->
+        <div class="cta-section">
+            <div class="qr-code">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://testflight.apple.com/join/GnMxymtP"
+                    alt="TestFlight QR Code">
+            </div>
+            <div class="cta-content">
+                <h2>Join the Beta via TestFlight</h2>
+                <p>I'm looking for feedback from fellow PAs and healthcare providers. Your clinical perspective will
+                    help shape the product.</p>
+                <div class="link-box">
+                    <a href="https://testflight.apple.com/join/GnMxymtP">testflight.apple.com/join/GnMxymtP</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <span>Built by Tyler McAnally, PA-C</span>
+            <a href="mailto:tyler@lumimd.app">tyler@lumimd.app</a>
+        </div>
+    </div>
+</body>
+
+</html>
