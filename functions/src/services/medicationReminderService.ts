@@ -10,6 +10,9 @@ import { getNotificationService, PushNotificationPayload } from './notifications
 
 const getDb = () => admin.firestore();
 const getRemindersCollection = () => getDb().collection('medicationReminders');
+const getUsersCollection = () => getDb().collection('users');
+
+const DEFAULT_TIMEZONE = 'America/Chicago';
 
 interface MedicationReminderDoc {
     userId: string;
@@ -22,9 +25,27 @@ interface MedicationReminderDoc {
 }
 
 /**
+ * Get user's timezone from their profile
+ */
+async function getUserTimezone(userId: string): Promise<string> {
+    try {
+        const userDoc = await getUsersCollection().doc(userId).get();
+        if (userDoc.exists) {
+            const timezone = userDoc.data()?.timezone;
+            if (timezone && typeof timezone === 'string') {
+                return timezone;
+            }
+        }
+    } catch (error) {
+        functions.logger.warn(`[MedReminders] Could not fetch timezone for user ${userId}:`, error);
+    }
+    return DEFAULT_TIMEZONE;
+}
+
+/**
  * Get current time in HH:MM format (24hr) for a given timezone
  */
-function getCurrentTimeHHMM(timezone: string = 'America/Chicago'): string {
+function getCurrentTimeHHMM(timezone: string = DEFAULT_TIMEZONE): string {
     const now = new Date();
     const options: Intl.DateTimeFormatOptions = {
         hour: '2-digit',
@@ -70,12 +91,9 @@ export async function processAndNotifyMedicationReminders(): Promise<{
     sent: number;
     errors: number;
 }> {
-    const currentTime = getCurrentTimeHHMM();
     const stats = { processed: 0, sent: 0, errors: 0 };
 
-    functions.logger.info('[MedReminders] Starting notification processor', {
-        currentTime,
-    });
+    functions.logger.info('[MedReminders] Starting notification processor');
 
     // Get all enabled reminders
     const remindersSnapshot = await getRemindersCollection()
@@ -99,14 +117,28 @@ export async function processAndNotifyMedicationReminders(): Promise<{
         medicationId: string;
     }>>();
 
+    // Cache user timezones to avoid repeated Firestore calls
+    const userTimezoneCache = new Map<string, string>();
+
     for (const doc of remindersSnapshot.docs) {
         const reminder = doc.data() as MedicationReminderDoc;
+
+        // Get user's timezone (cached)
+        let userTimezone = userTimezoneCache.get(reminder.userId);
+        if (!userTimezone) {
+            userTimezone = await getUserTimezone(reminder.userId);
+            userTimezoneCache.set(reminder.userId, userTimezone);
+        }
+
+        // Get current time in user's timezone
+        const currentTime = getCurrentTimeHHMM(userTimezone);
 
         // Log all reminders and their times for debugging
         functions.logger.info(`[MedReminders] Checking reminder ${doc.id}`, {
             medication: reminder.medicationName,
             times: reminder.times,
             currentTime,
+            userTimezone,
             lastSentAt: reminder.lastSentAt?.toDate?.()?.toISOString() || 'never',
         });
 
