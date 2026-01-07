@@ -6,6 +6,7 @@
 
 | If you want to... | Read this |
 |-------------------|-----------|
+| **Understand the codebase** | [CODEBASE-REFERENCE.md](CODEBASE-REFERENCE.md) |
 | **Get started quickly** | [QUICK-START.md](guides/QUICK-START.md) |
 | **Build the workspace** | [BUILDING.md](BUILDING.md) |
 | **Set up Firebase** | [FIREBASE-SETUP-GUIDE.md](guides/FIREBASE-SETUP-GUIDE.md) |
@@ -17,15 +18,17 @@
 
 ```
 docs/
-├── guides/           # Setup and deployment guides
-├── reference/        # Architecture and implementation details
-├── reports/          # Analysis and health reports
-├── playbooks/        # Operational checklists and fixes
-├── roadmaps/         # Future planning documents
-└── archive/          # Historical HIPAA/security docs
+├── CODEBASE-REFERENCE.md  # Master reference for AI agents & developers
+├── guides/                # Setup and deployment guides
+├── reference/             # Architecture, database schema, implementation
+├── reports/               # Analysis and health reports
+├── playbooks/             # Operational checklists and fixes
+├── roadmaps/              # Future planning documents
+└── archive/               # Historical HIPAA/security docs
 ```
 
 ---
+
 
 ## Guides
 
