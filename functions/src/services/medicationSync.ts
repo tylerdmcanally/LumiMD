@@ -568,6 +568,25 @@ const upsertMedication = async ({
         } catch (nudgeError) {
           functions.logger.error('[medicationSync] Failed to clear nudges for stopped med:', nudgeError);
         }
+
+        // Also delete medication reminders for stopped medication
+        try {
+          const remindersSnapshot = await getRemindersCollection()
+            .where('userId', '==', userId)
+            .where('medicationId', '==', existingDoc.id)
+            .get();
+
+          if (!remindersSnapshot.empty) {
+            const batch = db().batch();
+            remindersSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            functions.logger.info(
+              `[medicationSync] Deleted ${remindersSnapshot.size} reminder(s) for stopped ${entry.name}`
+            );
+          }
+        } catch (reminderError) {
+          functions.logger.error('[medicationSync] Failed to delete reminders for stopped med:', reminderError);
+        }
       }
     }
 

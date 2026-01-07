@@ -259,6 +259,155 @@ nudgesDebugRouter.post('/debug/create-sequence', requireAuth, async (req: AuthRe
 });
 
 // =============================================================================
+// POST /v1/nudges/debug/test-condition - Create condition-specific test sequences
+// =============================================================================
+
+const CONDITION_SEQUENCES: Record<string, { name: string; type: string; conditionId: string | null; steps: Array<{ day: number; title: string; message: string; actionType: string }> }> = {
+    htn: {
+        name: 'Hypertension',
+        type: 'condition_tracking',
+        conditionId: 'hypertension',
+        steps: [
+            { day: 1, title: 'BP Baseline', message: "Let's establish your baseline blood pressure. Please take a reading now.", actionType: 'log_bp' },
+            { day: 3, title: 'Morning BP Check', message: 'Quick morning BP check - measure before taking any meds.', actionType: 'log_bp' },
+            { day: 5, title: "How's the BP Going?", message: 'Have you noticed any patterns with your blood pressure readings?', actionType: 'log_bp' },
+            { day: 7, title: 'Weekly BP Summary', message: 'Time for your weekly BP check. How are you feeling overall?', actionType: 'log_bp' },
+        ]
+    },
+    hf: {
+        name: 'Heart Failure',
+        type: 'condition_tracking',
+        conditionId: 'heart_failure',
+        steps: [
+            { day: 1, title: 'Welcome to HF Monitoring', message: 'Daily weight tracking catches fluid buildup early. Weigh yourself each morning.', actionType: 'log_weight' },
+            { day: 3, title: 'Weight Trend Check', message: "How's the daily weighing going? A gain of 2+ lbs in a day signals fluid buildup.", actionType: 'log_weight' },
+            { day: 5, title: 'Symptom Check-In', message: 'Any swelling in ankles or feet? More shortness of breath than usual?', actionType: 'symptom_check' },
+            { day: 7, title: 'Weekly HF Review', message: 'Weekly check: rate your breathing, energy, and any swelling.', actionType: 'symptom_check' },
+        ]
+    },
+    dm: {
+        name: 'Diabetes',
+        type: 'condition_tracking',
+        conditionId: 'diabetes',
+        steps: [
+            { day: 1, title: 'Glucose Baseline', message: "Let's start tracking your blood sugar. Log your fasting glucose.", actionType: 'log_glucose' },
+            { day: 3, title: 'Post-Meal Check', message: "How's your blood sugar after meals? Log a reading 2 hours after eating.", actionType: 'log_glucose' },
+            { day: 7, title: 'Weekly Glucose Review', message: 'Weekly check-in: How are your blood sugars trending overall?', actionType: 'log_glucose' },
+        ]
+    },
+    med: {
+        name: 'New Medication',
+        type: 'medication_checkin',
+        conditionId: null,
+        steps: [
+            { day: 1, title: 'Prescription Pickup', message: 'Have you picked up your new prescription from the pharmacy?', actionType: 'pickup_check' },
+            { day: 4, title: 'Getting Started', message: 'Have you started taking your new medication?', actionType: 'started_check' },
+            { day: 10, title: 'Side Effects Check', message: 'Any side effects from your new medication?', actionType: 'side_effects' },
+            { day: 28, title: 'Monthly Check-in', message: "How's the medication working for you overall?", actionType: 'feeling_check' },
+        ]
+    }
+};
+
+const testConditionSchema = z.object({
+    condition: z.enum(['htn', 'hf', 'dm', 'med', 'all']),
+    intervalSeconds: z.number().min(10).max(600).default(30),
+    medicationName: z.string().optional(),
+});
+
+nudgesDebugRouter.post('/debug/test-condition', requireAuth, async (req: AuthRequest, res) => {
+    if (!isDevelopment()) {
+        res.status(403).json({
+            code: 'forbidden',
+            message: 'Debug endpoints are only available in development',
+        });
+        return;
+    }
+
+    try {
+        const userId = req.user!.uid;
+        const data = testConditionSchema.parse(req.body);
+        const now = admin.firestore.Timestamp.now();
+
+        const conditions = data.condition === 'all'
+            ? Object.keys(CONDITION_SEQUENCES) as Array<keyof typeof CONDITION_SEQUENCES>
+            : [data.condition];
+
+        const allNudges: Array<{ id: string; title: string; scheduledIn: string; condition: string }> = [];
+        let globalOffset = 0;
+
+        for (const condKey of conditions) {
+            const seq = CONDITION_SEQUENCES[condKey];
+            const sequenceId = `test_${condKey}_${Date.now()}`;
+
+            for (let i = 0; i < seq.steps.length; i++) {
+                const step = seq.steps[i];
+                const scheduledDate = new Date(Date.now() + ((globalOffset + i) * data.intervalSeconds * 1000));
+                const scheduledFor = admin.firestore.Timestamp.fromDate(scheduledDate);
+
+                const nudgeData: Record<string, unknown> = {
+                    userId,
+                    visitId: `test-${condKey}-visit`,
+                    type: seq.type,
+                    conditionId: seq.conditionId,
+                    title: `[TEST] ${step.title}`,
+                    message: step.message,
+                    actionType: step.actionType,
+                    scheduledFor,
+                    sequenceDay: step.day,
+                    sequenceId,
+                    status: 'pending',
+                    notificationSent: false,
+                    createdAt: now,
+                    updatedAt: now,
+                };
+
+                if (seq.type === 'medication_checkin') {
+                    nudgeData.medicationName = data.medicationName || 'Test Medication';
+                }
+
+                const docRef = await getNudgesCollection().add(nudgeData);
+                allNudges.push({
+                    id: docRef.id,
+                    title: step.title,
+                    scheduledIn: `${(globalOffset + i) * data.intervalSeconds}s`,
+                    condition: seq.name,
+                });
+            }
+
+            globalOffset += seq.steps.length;
+        }
+
+        functions.logger.info('[LumiBot Debug] Created test condition sequence', {
+            userId,
+            conditions,
+            count: allNudges.length,
+            intervalSeconds: data.intervalSeconds,
+        });
+
+        res.status(201).json({
+            message: `Created ${allNudges.length} test nudges`,
+            intervalSeconds: data.intervalSeconds,
+            nudges: allNudges,
+        });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            res.status(400).json({
+                code: 'validation_failed',
+                message: 'Invalid request body',
+                details: error.errors,
+            });
+            return;
+        }
+
+        functions.logger.error('[LumiBot Debug] Error creating test condition:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to create test condition sequence',
+        });
+    }
+});
+
+// =============================================================================
 // POST /v1/nudges/debug/analyze-visit - Re-run analysis on a visit
 // =============================================================================
 

@@ -459,7 +459,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     await clearMedicationSafetyCacheForUser(userId);
 
-    // If medication was stopped (active changed to false), clear pending nudges
+    // If medication was stopped (active changed to false), clear pending nudges and reminders
     if (data.active === false && medication.active !== false) {
       const nudgesSnapshot = await getDb()
         .collection('nudges')
@@ -473,6 +473,20 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
         nudgesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
         functions.logger.info(`[medications] Cleared ${nudgesSnapshot.size} pending nudge(s) for stopped medication ${medId}`);
+      }
+
+      // Also delete medication reminders for stopped medication
+      const remindersSnapshot = await getDb()
+        .collection('medicationReminders')
+        .where('userId', '==', userId)
+        .where('medicationId', '==', medId)
+        .get();
+
+      if (!remindersSnapshot.empty) {
+        const reminderBatch = getDb().batch();
+        remindersSnapshot.docs.forEach(doc => reminderBatch.delete(doc.ref));
+        await reminderBatch.commit();
+        functions.logger.info(`[medications] Deleted ${remindersSnapshot.size} reminder(s) for stopped medication ${medId}`);
       }
     }
 
