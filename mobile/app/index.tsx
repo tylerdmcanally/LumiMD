@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollView, View, StyleSheet, Text, ActivityIndicator } from 'react-native';
+import { ScrollView, View, StyleSheet, Text, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, spacing } from '../components/ui';
@@ -21,6 +21,8 @@ import {
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
 import { HealthLogButton } from '../components/HealthLogButton';
+import { ShareConfirmationSheet } from '../components/ShareConfirmationSheet';
+import { useVisitSharePrompt } from '../lib/hooks/useVisitSharePrompt';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
 
@@ -63,6 +65,25 @@ export default function HomeScreen() {
 
   // Web portal banner state - for placing "Need help?" button below cards
   const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();
+
+  // Visit share prompt - triggers when a visit finishes processing and user has caregivers
+  const { pendingShare, clearPendingShare } = useVisitSharePrompt();
+
+  const handleShareComplete = useCallback((sent: number, failed: number) => {
+    if (sent > 0) {
+      Alert.alert(
+        'Shared!',
+        `Visit summary sent to ${sent} caregiver${sent > 1 ? 's' : ''}.`,
+        [{ text: 'OK' }]
+      );
+    } else if (failed > 0) {
+      Alert.alert(
+        'Sharing Failed',
+        'Could not send the visit summary. You can try again from the visit details.',
+        [{ text: 'OK' }]
+      );
+    }
+  }, []);
 
 
   const [lastViewedCompletedVisitId, setLastViewedCompletedVisitIdState] = useState<string | null>(null);
@@ -342,6 +363,14 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
       </SafeAreaView>
+
+      {/* Share Confirmation Sheet - shown when visit processing completes */}
+      <ShareConfirmationSheet
+        visible={pendingShare !== null}
+        visitId={pendingShare?.visitId || ''}
+        onClose={clearPendingShare}
+        onShareComplete={handleShareComplete}
+      />
     </ErrorBoundary>
   );
 }

@@ -28,6 +28,7 @@ import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { cn } from '@/lib/utils';
 import { auth, db } from '@/lib/firebase';
 import { api } from '@/lib/api/client';
+import { CaregiverManagementCard } from '@/components/CaregiverManagementCard';
 
 export default function SettingsPage() {
     const router = useRouter();
@@ -406,6 +407,9 @@ export default function SettingsPage() {
 
                 {/* AI-Detected Conditions */}
                 <AIDetectedConditionsCard />
+
+                {/* Caregiver PDF Sharing */}
+                <CaregiverManagementCard />
 
                 {/* Medical History */}
                 <Card variant="elevated" padding="lg" className="space-y-6">

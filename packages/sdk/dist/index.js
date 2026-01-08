@@ -286,6 +286,19 @@ function createApiClient(config) {
       }),
       deleteAccount: () => apiRequest("/v1/users/me", {
         method: "DELETE"
+      }),
+      // Caregiver management
+      listCaregivers: () => apiRequest("/v1/users/me/caregivers"),
+      addCaregiver: (data) => apiRequest("/v1/users/me/caregivers", {
+        method: "POST",
+        body: JSON.stringify(data)
+      }),
+      updateCaregiver: (id, data) => apiRequest(`/v1/users/me/caregivers/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data)
+      }),
+      deleteCaregiver: (id) => apiRequest(`/v1/users/me/caregivers/${id}`, {
+        method: "DELETE"
       })
     },
     // Shares

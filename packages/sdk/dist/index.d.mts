@@ -376,6 +376,20 @@ declare function createApiClient(config: ApiClientConfig): {
         }) => Promise<void>;
         exportData: () => Promise<any>;
         deleteAccount: () => Promise<void>;
+        listCaregivers: () => Promise<{
+            caregivers: any[];
+            autoShareWithCaregivers: boolean;
+        }>;
+        addCaregiver: (data: {
+            name: string;
+            email: string;
+            relationship?: string;
+        }) => Promise<any>;
+        updateCaregiver: (id: string, data: {
+            name?: string;
+            relationship?: string;
+        }) => Promise<any>;
+        deleteCaregiver: (id: string) => Promise<void>;
     };
     shares: {
         list: () => Promise<Share[]>;

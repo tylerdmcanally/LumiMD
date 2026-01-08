@@ -394,6 +394,23 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<void>('/v1/users/me', {
           method: 'DELETE',
         }),
+      // Caregiver management
+      listCaregivers: () =>
+        apiRequest<{ caregivers: any[]; autoShareWithCaregivers: boolean }>('/v1/users/me/caregivers'),
+      addCaregiver: (data: { name: string; email: string; relationship?: string }) =>
+        apiRequest<any>('/v1/users/me/caregivers', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      updateCaregiver: (id: string, data: { name?: string; relationship?: string }) =>
+        apiRequest<any>(`/v1/users/me/caregivers/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        }),
+      deleteCaregiver: (id: string) =>
+        apiRequest<void>(`/v1/users/me/caregivers/${id}`, {
+          method: 'DELETE',
+        }),
     },
 
     // Shares

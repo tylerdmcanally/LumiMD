@@ -83,5 +83,21 @@ export function useUpdateUserProfile() {
   });
 }
 
+interface AddCaregiverInput {
+  name: string;
+  email: string;
+  relationship?: string;
+}
 
+export function useAddCaregiver() {
+  const queryClient = useQueryClient();
 
+  return useMutation({
+    mutationFn: async (payload: AddCaregiverInput) => {
+      return api.user.addCaregiver(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+    },
+  });
+}

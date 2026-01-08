@@ -17,6 +17,7 @@ const updateProfileSchema = z.object({
   medicalHistory: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   folders: z.array(z.string()).optional(),
+  autoShareWithCaregivers: z.boolean().optional(),
 });
 
 const registerPushTokenSchema = z.object({
@@ -28,6 +29,20 @@ const registerPushTokenSchema = z.object({
 const unregisterPushTokenSchema = z.object({
   token: z.string().min(1, 'Push token is required'),
 });
+
+// Caregiver schemas
+const addCaregiverSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+  relationship: z.string().max(50).optional(),
+});
+
+const updateCaregiverSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  relationship: z.string().max(50).optional(),
+});
+
+const MAX_CAREGIVERS = 5;
 
 const sanitizeString = (value?: string | null) => {
   if (typeof value !== 'string') return undefined;
@@ -451,3 +466,288 @@ usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// =============================================================================
+// CAREGIVER MANAGEMENT
+// =============================================================================
+
+interface Caregiver {
+  id: string;
+  name: string;
+  email: string;
+  relationship?: string;
+  status: 'pending' | 'active' | 'paused';
+  shareUserId?: string;
+  createdAt: admin.firestore.Timestamp;
+  emailPausedAt?: admin.firestore.Timestamp;
+}
+
+/**
+ * GET /v1/users/me/caregivers
+ * List all caregivers for the authenticated user
+ */
+usersRouter.get('/me/caregivers', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const userRef = getDb().collection('users').doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      res.json({ caregivers: [], autoShareWithCaregivers: false });
+      return;
+    }
+
+    const data = userDoc.data() || {};
+    const caregivers = Array.isArray(data.caregivers) ? data.caregivers : [];
+
+    res.json({
+      caregivers: caregivers.map((c: Caregiver) => ({
+        ...c,
+        createdAt: c.createdAt?.toDate?.()?.toISOString() ?? null,
+        emailPausedAt: c.emailPausedAt?.toDate?.()?.toISOString() ?? null,
+      })),
+      autoShareWithCaregivers: data.autoShareWithCaregivers ?? false,
+    });
+  } catch (error) {
+    functions.logger.error('[users] Error listing caregivers:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to list caregivers',
+    });
+  }
+});
+
+/**
+ * POST /v1/users/me/caregivers
+ * Add a new caregiver
+ */
+usersRouter.post('/me/caregivers', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const payload = addCaregiverSchema.parse(req.body);
+
+    const userRef = getDb().collection('users').doc(userId);
+    const userDoc = await userRef.get();
+    const data = userDoc.exists ? userDoc.data() || {} : {};
+    const caregivers: Caregiver[] = Array.isArray(data.caregivers) ? data.caregivers : [];
+
+    // Check caregiver limit
+    if (caregivers.length >= MAX_CAREGIVERS) {
+      res.status(400).json({
+        code: 'limit_reached',
+        message: `Maximum of ${MAX_CAREGIVERS} caregivers allowed`,
+      });
+      return;
+    }
+
+    // Check for duplicate email
+    const normalizedEmail = payload.email.toLowerCase().trim();
+    if (caregivers.some(c => c.email.toLowerCase() === normalizedEmail)) {
+      res.status(400).json({
+        code: 'duplicate_email',
+        message: 'A caregiver with this email already exists',
+      });
+      return;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    const newCaregiver: Caregiver = {
+      id: `cg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      name: payload.name.trim(),
+      email: normalizedEmail,
+      relationship: payload.relationship?.trim() || undefined,
+      status: 'pending',
+      createdAt: now,
+    };
+
+    caregivers.push(newCaregiver);
+    await userRef.set({ caregivers, updatedAt: now }, { merge: true });
+
+    functions.logger.info(`[users] Added caregiver ${newCaregiver.id} for user ${userId}`);
+
+    // Create share invite record for auto-connection on signup
+    try {
+      const inviteRef = getDb().collection('shareInvites').doc(); // Auto-ID
+      await inviteRef.set({
+        ownerId: userId,
+        inviteeEmail: normalizedEmail,
+        role: 'caregiver', // standard role
+        caregiverId: newCaregiver.id,
+        status: 'pending',
+        createdAt: now,
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        updatedAt: now,
+      });
+      functions.logger.info(`[users] Created share invite ${inviteRef.id} for ${normalizedEmail}`);
+    } catch (err) {
+      functions.logger.error('[users] Failed to create share invite record:', err);
+      // Continue anyway, this is a "soft" failure
+    }
+
+    // Send invite email
+    try {
+      const { sendCaregiverInviteEmail } = await import('../services/caregiverEmailService');
+      await sendCaregiverInviteEmail(userId, newCaregiver);
+    } catch (err) {
+      functions.logger.error('[users] Failed to send invite email:', err);
+      // Continue, don't fail the request
+    }
+
+    res.status(201).json({
+      ...newCaregiver,
+      createdAt: newCaregiver.createdAt.toDate().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error adding caregiver:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to add caregiver',
+    });
+  }
+});
+
+/**
+ * PUT /v1/users/me/caregivers/:id
+ * Update a caregiver's info
+ */
+usersRouter.put('/me/caregivers/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const caregiverId = req.params.id;
+    const payload = updateCaregiverSchema.parse(req.body);
+
+    const userRef = getDb().collection('users').doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Caregiver not found',
+      });
+      return;
+    }
+
+    const data = userDoc.data() || {};
+    const caregivers: Caregiver[] = Array.isArray(data.caregivers) ? data.caregivers : [];
+    const caregiverIndex = caregivers.findIndex(c => c.id === caregiverId);
+
+    if (caregiverIndex === -1) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Caregiver not found',
+      });
+      return;
+    }
+
+    // Update caregiver fields
+    if (payload.name !== undefined) {
+      caregivers[caregiverIndex].name = payload.name.trim();
+    }
+    if (payload.relationship !== undefined) {
+      caregivers[caregiverIndex].relationship = payload.relationship.trim() || undefined;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    await userRef.set({ caregivers, updatedAt: now }, { merge: true });
+
+    functions.logger.info(`[users] Updated caregiver ${caregiverId} for user ${userId}`);
+
+    const updatedCaregiver = caregivers[caregiverIndex];
+    res.json({
+      ...updatedCaregiver,
+      createdAt: updatedCaregiver.createdAt?.toDate?.()?.toISOString() ?? null,
+      emailPausedAt: updatedCaregiver.emailPausedAt?.toDate?.()?.toISOString() ?? null,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error updating caregiver:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to update caregiver',
+    });
+  }
+});
+
+/**
+ * DELETE /v1/users/me/caregivers/:id
+ * Remove a caregiver
+ */
+usersRouter.delete('/me/caregivers/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const caregiverId = req.params.id;
+
+    const userRef = getDb().collection('users').doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Caregiver not found',
+      });
+      return;
+    }
+
+    const data = userDoc.data() || {};
+    const caregivers: Caregiver[] = Array.isArray(data.caregivers) ? data.caregivers : [];
+    const caregiverIndex = caregivers.findIndex(c => c.id === caregiverId);
+
+    if (caregiverIndex === -1) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Caregiver not found',
+      });
+      return;
+    }
+
+    const removedCaregiver = caregivers[caregiverIndex];
+
+    // Remove from array
+    caregivers.splice(caregiverIndex, 1);
+
+    const now = admin.firestore.Timestamp.now();
+    await userRef.set({ caregivers, updatedAt: now }, { merge: true });
+
+    // If caregiver had a linked account (shareUserId), revoke their share access
+    if (removedCaregiver.shareUserId) {
+      const shareId = `${userId}_${removedCaregiver.shareUserId}`;
+      const shareRef = getDb().collection('shares').doc(shareId);
+      const shareDoc = await shareRef.get();
+
+      if (shareDoc.exists) {
+        await shareRef.update({
+          status: 'revoked',
+          revokedAt: now,
+          updatedAt: now,
+        });
+        functions.logger.info(`[users] Revoked share ${shareId} for removed caregiver`);
+      }
+    }
+
+    functions.logger.info(`[users] Removed caregiver ${caregiverId} for user ${userId}`);
+
+    res.status(204).send();
+  } catch (error) {
+    functions.logger.error('[users] Error removing caregiver:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to remove caregiver',
+    });
+  }
+});

@@ -166,6 +166,81 @@ app.use('/v1/medication-logs', medicationLogsRouter);
 app.use('/v1/insights', insightsRouter);
 app.use('/v1/medical-context', medicalContextRouter);
 
+// Public endpoint for caregivers to view shared visit summaries (no auth required)
+app.get('/v1/shared/visits/:userId/:visitId', async (req, res) => {
+  try {
+    const { userId, visitId } = req.params;
+
+    // Validate parameters
+    if (!userId || !visitId) {
+      res.status(400).json({
+        code: 'invalid_params',
+        message: 'User ID and Visit ID are required',
+      });
+      return;
+    }
+
+    const db = admin.firestore();
+
+    // Check if visit exists and user has sharing enabled
+    const visitDoc = await db.collection('visits').doc(visitId).get();
+    if (!visitDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
+
+    const visit = visitDoc.data()!;
+
+    // Verify visit belongs to the specified user
+    if (visit.userId !== userId) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
+
+    // Must be a completed visit
+    if (visit.processingStatus !== 'completed' && visit.status !== 'completed') {
+      res.status(400).json({
+        code: 'not_ready',
+        message: 'Visit summary is not yet available',
+      });
+      return;
+    }
+
+    // Get patient info for display
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.exists ? userDoc.data() : {};
+    const patientName = userData?.firstName
+      ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
+      : undefined;
+
+    // Return sanitized visit data (public-safe fields only)
+    res.json({
+      id: visitId,
+      visitDate: visit.visitDate?.toDate?.()?.toISOString() ||
+        visit.createdAt?.toDate?.()?.toISOString() ||
+        new Date().toISOString(),
+      provider: visit.provider || undefined,
+      summary: visit.summary || undefined,
+      diagnoses: visit.diagnoses || [],
+      medications: visit.medications || {},
+      nextSteps: visit.nextSteps || [],
+      patientName,
+    });
+  } catch (error) {
+    functions.logger.error('[shared/visits] Error fetching shared visit:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to load visit summary',
+    });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

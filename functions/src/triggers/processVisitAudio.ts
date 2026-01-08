@@ -6,6 +6,74 @@ import { getAssemblyAIService } from '../services/assemblyai';
 
 const db = () => admin.firestore();
 
+// Helper to wait for a specified time
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Find visit document with retry logic to handle race condition
+// where audio upload completes before visit document is created
+async function findVisitDocument(
+  filePath: string,
+  bucketName: string,
+  downloadToken: string | undefined,
+  maxRetries = 5,
+  initialDelayMs = 1000
+): Promise<FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData> | null> {
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // First try: query by storagePath
+    let visitSnapshot = await db()
+      .collection('visits')
+      .where('storagePath', '==', filePath)
+      .limit(1)
+      .get();
+
+    if (!visitSnapshot.empty) {
+      return visitSnapshot;
+    }
+
+    // Second try: query by audioUrl if we have a download token
+    if (downloadToken) {
+      const encodedPath = encodeURIComponent(filePath);
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
+
+      visitSnapshot = await db()
+        .collection('visits')
+        .where('audioUrl', '==', downloadUrl)
+        .limit(1)
+        .get();
+
+      if (!visitSnapshot.empty) {
+        return visitSnapshot;
+      }
+    }
+
+    // Third try: derive visitId from path pattern (visits/{userId}/{timestamp}.m4a)
+    // The path format may be visits/{visitId} or visits/{userId}/{filename}
+    const visitIdMatch = filePath.match(/^visits\/([^/]+)/);
+    const derivedVisitId = visitIdMatch?.[1];
+
+    if (derivedVisitId) {
+      const derivedRef = db().collection('visits').doc(derivedVisitId);
+      const derivedDoc = await derivedRef.get();
+      if (derivedDoc.exists) {
+        return {
+          docs: [derivedDoc],
+          empty: false,
+        } as unknown as FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
+      }
+    }
+
+    // If not found and we have retries left, wait before trying again
+    if (attempt < maxRetries - 1) {
+      const waitTime = initialDelayMs * Math.pow(2, attempt); // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+      logger.info(`[processVisitAudio] Visit document not found, retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await delay(waitTime);
+    }
+  }
+
+  return null; // Not found after all retries
+}
+
 export const processVisitAudio = onObjectFinalized(
   {
     timeoutSeconds: 60,
@@ -30,44 +98,11 @@ export const processVisitAudio = onObjectFinalized(
       object.metadata?.firebaseStorageDownloadTokens ||
       object.metadata?.firebaseStorageDownloadToken;
 
-    let visitSnapshot = await db()
-      .collection('visits')
-      .where('storagePath', '==', filePath)
-      .limit(1)
-      .get();
+    // Find visit document with retries to handle race condition
+    const visitSnapshot = await findVisitDocument(filePath, bucketName, downloadToken);
 
-    if (visitSnapshot.empty) {
-      const encodedPath = encodeURIComponent(filePath);
-      const downloadUrl = downloadToken
-        ? `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`
-        : null;
-
-      if (downloadUrl) {
-        visitSnapshot = await db()
-          .collection('visits')
-          .where('audioUrl', '==', downloadUrl)
-          .limit(1)
-          .get();
-      }
-    }
-
-    if (visitSnapshot.empty) {
-      const visitIdMatch = filePath.match(/^visits\/([^/]+)/);
-      const derivedVisitId = visitIdMatch?.[1];
-
-      if (derivedVisitId) {
-        const derivedRef = db().collection('visits').doc(derivedVisitId);
-        const derivedDoc = await derivedRef.get();
-        if (derivedDoc.exists) {
-          visitSnapshot = {
-            docs: [derivedDoc],
-          } as unknown as FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>;
-        }
-      }
-    }
-
-    if (visitSnapshot.empty) {
-      throw new Error(`[processVisitAudio] No visit document found for file: ${filePath}`);
+    if (!visitSnapshot || visitSnapshot.empty) {
+      throw new Error(`[processVisitAudio] No visit document found for file: ${filePath} after retries`);
     }
 
     const visitDoc = visitSnapshot.docs[0];

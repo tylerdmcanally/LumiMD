@@ -686,3 +686,75 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * POST /v1/visits/:id/share-with-caregivers
+ * Send visit summary PDF to caregivers
+ */
+visitsRouter.post('/:id/share-with-caregivers', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const visitId = req.params.id;
+
+    // Validate optional caregiver filter
+    const caregiverIds = Array.isArray(req.body.caregiverIds) ? req.body.caregiverIds : undefined;
+
+    // Verify visit exists and belongs to user
+    const visitDoc = await getDb().collection('visits').doc(visitId).get();
+    if (!visitDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
+
+    const visit = visitDoc.data()!;
+    if (visit.userId !== userId) {
+      res.status(403).json({
+        code: 'forbidden',
+        message: 'You do not have access to this visit',
+      });
+      return;
+    }
+
+    // Check visit has been processed
+    if (visit.processingStatus !== 'completed' && visit.status !== 'completed') {
+      res.status(400).json({
+        code: 'not_ready',
+        message: 'Visit must be fully processed before sharing',
+      });
+      return;
+    }
+
+    // Import and call the caregiver email service
+    const { sendVisitPdfToAllCaregivers } = await import('../services/caregiverEmailService');
+    const result = await sendVisitPdfToAllCaregivers(userId, visitId, caregiverIds);
+
+    if (result.sent === 0 && result.failed === 0) {
+      res.status(400).json({
+        code: 'no_caregivers',
+        message: 'No active caregivers to share with',
+      });
+      return;
+    }
+
+    functions.logger.info(`[visits] Shared visit ${visitId} with caregivers`, {
+      userId,
+      sent: result.sent,
+      failed: result.failed,
+    });
+
+    res.json({
+      message: `Sent to ${result.sent} caregiver(s)`,
+      sent: result.sent,
+      failed: result.failed,
+      results: result.results,
+    });
+  } catch (error) {
+    functions.logger.error('[visits] Error sharing with caregivers:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to share visit with caregivers',
+    });
+  }
+});

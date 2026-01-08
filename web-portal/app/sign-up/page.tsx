@@ -32,6 +32,9 @@ export default function SignUpPage() {
     }
   }, []);
 
+  const inviteType = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('invite') : null;
+  const inviteFrom = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('from') : null;
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -112,9 +115,17 @@ export default function SignUpPage() {
               <h2 className="text-2xl font-semibold text-text-primary">
                 Get started in minutes
               </h2>
-              <p className="mt-2 text-sm text-text-secondary">
-                We’ll send a verification email so you can securely access the portal.
-              </p>
+              {inviteType === 'caregiver' && inviteFrom ? (
+                <div className="mt-4 rounded-lg bg-brand-primary/10 p-3 text-sm text-text-secondary border border-brand-primary/20">
+                  <p>
+                    <span className="font-semibold text-brand-primary">{decodeURIComponent(inviteFrom)}</span> has invited you to join their care team. Create an account to accept the invitation.
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-text-secondary">
+                  We’ll send a verification email so you can securely access the portal.
+                </p>
+              )}
             </div>
 
             <form className="space-y-5" onSubmit={handleSubmit}>
