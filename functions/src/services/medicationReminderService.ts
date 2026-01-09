@@ -10,7 +10,9 @@ import { getNotificationService, PushNotificationPayload } from './notifications
 
 const getDb = () => admin.firestore();
 const getRemindersCollection = () => getDb().collection('medicationReminders');
+const getMedicationsCollection = () => getDb().collection('medications');
 const getUsersCollection = () => getDb().collection('users');
+
 
 const DEFAULT_TIMEZONE = 'America/Chicago';
 
@@ -153,6 +155,20 @@ export async function processAndNotifyMedicationReminders(): Promise<{
         if (wasRecentlySent(reminder.lastSentAt)) {
             functions.logger.info(`[MedReminders] Skipping ${doc.id} - recently sent at ${reminder.lastSentAt?.toDate?.()?.toISOString()}`);
             continue;
+        }
+
+        // Verify medication is still active - defense against orphaned reminders
+        try {
+            const medDoc = await getMedicationsCollection().doc(reminder.medicationId).get();
+            if (!medDoc.exists || medDoc.get('active') === false) {
+                // Orphaned reminder - medication was discontinued or deleted
+                functions.logger.warn(`[MedReminders] Deleting orphaned reminder ${doc.id} - medication ${reminder.medicationName} is no longer active`);
+                await doc.ref.delete();
+                continue;
+            }
+        } catch (medCheckError) {
+            functions.logger.error(`[MedReminders] Error checking medication status for ${doc.id}:`, medCheckError);
+            // Continue anyway to avoid blocking all reminders on one error
         }
 
         if (!remindersByUser.has(reminder.userId)) {
