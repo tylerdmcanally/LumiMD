@@ -1,7 +1,25 @@
 # LumiMD Privacy Policy
 
 **Effective Date:** December 3, 2025
-**Last Updated:** December 3, 2025
+**Last Updated:** January 8, 2026
+
+<!-- TODO: REMOVE THIS BETA SECTION BEFORE PUBLIC LAUNCH -->
+
+---
+
+## Beta Program Notice
+
+LumiMD is currently in beta testing. By participating in our beta program:
+
+- You acknowledge the service is under active development and may contain bugs or unexpected behavior
+- Features may change, be modified, or removed at any time
+- We may contact you for feedback about your experience
+- This privacy policy applies fully to all beta participants
+- Your data is protected with the same security measures as our production service
+
+We appreciate your help in making LumiMD better. Your feedback directly shapes the product.
+
+<!-- END BETA SECTION -->
 
 ---
 

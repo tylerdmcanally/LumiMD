@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { useMedicationSchedule, useMarkDose, useMarkBatch, useSnoozeDose, type ScheduledDose } from '../lib/api/hooks';
+import { useWidgetSync } from '../lib/widget';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 export default function MedicationScheduleScreen() {
@@ -37,6 +38,9 @@ export default function MedicationScheduleScreen() {
     const markDose = useMarkDose();
     const markBatch = useMarkBatch();
     const snooze = useSnoozeDose();
+
+    // Sync medication schedule to widget whenever data changes
+    useWidgetSync(schedule);
 
     // Group doses by time period
     const groupedDoses = useMemo(() => {
@@ -216,7 +220,7 @@ export default function MedicationScheduleScreen() {
             <SafeAreaView style={styles.safeArea}>
                 <View style={styles.container}>
                     <View style={styles.header}>
-                        <Pressable onPress={() => router.back()} style={styles.backButton}>
+                        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
                             <Ionicons name="chevron-back" size={28} color={Colors.text} />
                         </Pressable>
                         <Text style={styles.headerTitle}>Today's Schedule</Text>

@@ -55,6 +55,7 @@ Mobile App → Audio Recording → AssemblyAI (Transcription) → OpenAI (Summar
 │   ├── app/             # Screens (Expo Router)
 │   ├── components/      # Reusable UI components
 │   ├── lib/             # Utilities, API clients
+│   ├── targets/         # Native extensions (Widgets)
 │   └── .env             # Client-side config
 │
 ├── web-portal/          # Next.js Web Application
@@ -67,6 +68,10 @@ Mobile App → Audio Recording → AssemblyAI (Transcription) → OpenAI (Summar
 ├── firebase-setup/      # Firestore/Storage rules
 ├── packages/sdk/        # Shared TypeScript types
 └── docs/                # Documentation
+    ├── features/        # Deep dives (Widgets, etc.)
+    ├── architecture/    # System robustness & roadmaps
+    ├── guides/          # Setup & How-to
+    └── reference/       # API & Schema reference
 ```
 
 ---
@@ -76,6 +81,7 @@ Mobile App → Audio Recording → AssemblyAI (Transcription) → OpenAI (Summar
 | Layer | Technology |
 |-------|------------|
 | **Mobile** | Expo SDK 54, React Native, Expo Router |
+| **Widgets** | Swift, SwiftUI, WidgetKit |
 | **Web** | Next.js 15, React 19, Tailwind CSS |
 | **Backend** | Firebase Cloud Functions (Node.js 20), Express |
 | **Database** | Firestore (NoSQL) |
@@ -357,6 +363,17 @@ Base URL: `https://us-central1-lumimd-dev.cloudfunctions.net/api`
 | `ReminderTimePickerModal.tsx` | Medication timing UI |
 | `HealthLogButton.tsx` | Quick health logging |
 
+### Widgets (`mobile/targets/widget`)
+
+Widgets are native iOS extensions enabling Home Screen functionality.
+
+| File | Purpose |
+|------|---------|
+| `widgets.swift` | Swift UI code for views and entries |
+| `expo-target.config.js` | Configures the widget target and App Groups |
+
+See [Widget Documentation](../features/WIDGETS.md) for build and sync details.
+
 ---
 
 ## Web Portal Structure
@@ -506,41 +523,12 @@ FIREBASE_PRIVATE_KEY=
 ### Caregiver Sharing Flow
 ```
 1. Owner creates share via POST /v1/shares
-2. Share document created with status: 'pending'
+2. Share document created with status: 'pending' (Viewer)
 3. Email sent to caregiver with invite link
 4. Caregiver accepts via PUT /v1/shares/:id/accept
 5. Firestore rules now allow caregiver to read owner's data
 6. Caregiver sees read-only view in web portal
 ```
-
----
-
-## Common Patterns
-
-### Authentication
-All API endpoints require Firebase ID token in Authorization header:
-```
-Authorization: Bearer <firebase-id-token>
-```
-
-### Error Responses
-```typescript
-{
-  error: string;
-  code?: string;
-  details?: any;
-}
-```
-
-### Pagination (where supported)
-```
-?limit=20&startAfter=<docId>
-```
-
-### Timezone Handling
-- All times stored as Firestore Timestamps (UTC)
-- User timezone stored in `/users/{userId}/timezone`
-- Reminders computed in user's local timezone
 
 ---
 

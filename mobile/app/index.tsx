@@ -18,6 +18,7 @@ import {
   cleanupOrphanedReminders,
   cleanupOrphanedNudges,
 } from '../lib/api/hooks';
+import { useWidgetSync } from '../lib/widget';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
 import { HealthLogButton } from '../components/HealthLogButton';
@@ -62,6 +63,9 @@ export default function HomeScreen() {
     data: schedule,
     isLoading: scheduleLoading,
   } = useMedicationSchedule({ enabled: isAuthenticated });
+
+  // Sync medication schedule to widget
+  useWidgetSync(schedule);
 
   // Web portal banner state - for placing "Need help?" button below cards
   const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();

@@ -14,6 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.lumimd.app",
+      "appleTeamId": "42M6N2GJD2",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:lumimd.app"
@@ -25,6 +26,11 @@
         "UIBackgroundModes": [
           "audio",
           "remote-notification"
+        ]
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.lumimd.app"
         ]
       }
     },
@@ -75,7 +81,8 @@
           }
         }
       ],
-      "@react-native-firebase/app"
+      "@react-native-firebase/app",
+      "@bacons/apple-targets"
     ],
     "extra": {
       "router": {},

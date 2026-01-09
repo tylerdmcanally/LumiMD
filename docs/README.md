@@ -9,7 +9,7 @@
 | **Understand the codebase** | [CODEBASE-REFERENCE.md](CODEBASE-REFERENCE.md) |
 | **Get started quickly** | [QUICK-START.md](guides/QUICK-START.md) |
 | **Build the workspace** | [BUILDING.md](BUILDING.md) |
-| **Set up Firebase** | [FIREBASE-SETUP-GUIDE.md](guides/FIREBASE-SETUP-GUIDE.md) |
+| **Understand features** | [WIDGETS.md](features/WIDGETS.md) |
 | **Deploy to TestFlight** | [TESTFLIGHT-DEPLOYMENT.md](guides/TESTFLIGHT-DEPLOYMENT.md) |
 
 ---
@@ -19,23 +19,38 @@
 ```
 docs/
 ├── CODEBASE-REFERENCE.md  # Master reference for AI agents & developers
+├── features/              # Deep dive into specific features
+├── architecture/          # System design and robustness specs
 ├── guides/                # Setup and deployment guides
-├── reference/             # Architecture, database schema, implementation
+├── reference/             # Database schema, implementation details
 ├── reports/               # Analysis and health reports
-├── playbooks/             # Operational checklists and fixes
-├── roadmaps/              # Future planning documents
-└── archive/               # Historical HIPAA/security docs
+└── archive/               # Historical docs (Legacy Dev Guide, Playbooks)
 ```
 
 ---
 
+## Features
+
+| Document | Description |
+|----------|-------------|
+| [WIDGETS.md](features/WIDGETS.md) | iOS Home Screen Widgets & App Groups |
+
+---
+
+## Architecture & Roadmaps
+
+| Document | Description |
+|----------|-------------|
+| [RESILIENCE-ROADMAP.md](architecture/RESILIENCE-ROADMAP.md) | System resilience and future robustness plan |
+| [ROBUSTNESS-ROADMAP.md](architecture/ROBUSTNESS-ROADMAP.md) | Detailed analysis of system stability |
+
+---
 
 ## Guides
 
 | Document | Description |
 |----------|-------------|
 | [QUICK-START.md](guides/QUICK-START.md) | 5-minute setup for new developers |
-| [Dev Guide.md](guides/Dev%20Guide.md) | Comprehensive development reference |
 | [MOBILE-SETUP.md](guides/MOBILE-SETUP.md) | Mobile app configuration |
 | [FIREBASE-SETUP-GUIDE.md](guides/FIREBASE-SETUP-GUIDE.md) | Firebase project setup |
 | [GOOGLE-SIGNIN-SETUP.md](guides/GOOGLE-SIGNIN-SETUP.md) | OAuth configuration |
@@ -53,6 +68,7 @@ docs/
 |----------|-------------|
 | [ARCHITECTURE-COMPARISON.md](reference/ARCHITECTURE-COMPARISON.md) | System design decisions |
 | [IMPLEMENTATION-SUMMARY.md](reference/IMPLEMENTATION-SUMMARY.md) | Feature implementation details |
+| [DATABASE-SCHEMA.md](reference/DATABASE-SCHEMA.md) | Firestore data model |
 | [TESTING-RESULTS.md](reference/TESTING-RESULTS.md) | Test coverage and results |
 
 ---
@@ -68,33 +84,21 @@ docs/
 
 ---
 
-## Operational Playbooks
-
-| Document | Description |
-|----------|-------------|
-| [ACTION-CHECKLIST.md](playbooks/ACTION-CHECKLIST.md) | Common operational tasks |
-| [QUICK-FIXES-TODAY.md](playbooks/QUICK-FIXES-TODAY.md) | Immediate fixes guide |
-| [READY-TO-VIEW.md](playbooks/READY-TO-VIEW.md) | Pre-launch checklist |
-
----
-
 ## Archive
 
-Historical documents for reference:
+Historical and legacy documents:
 
-- [DATA_PRIVACY_ENCRYPTION_STRATEGY.md](archive/DATA_PRIVACY_ENCRYPTION_STRATEGY.md) - Data protection architecture
-- [HIPAA_COMPLIANCE_CHECKLIST.md](archive/HIPAA_COMPLIANCE_CHECKLIST.md) - HIPAA compliance status
+- [Dev Guide (Legacy)](archive/Dev%20Guide%20(Legacy).md) - Previous master planning document
+- [Playbooks](archive/playbooks/) - Old operational checklists
+- [Data Privacy Strategy](archive/DATA_PRIVACY_ENCRYPTION_STRATEGY.md)
+- [HIPAA Compliance](archive/HIPAA_COMPLIANCE_CHECKLIST.md)
 
 ---
 
 ## Contributing
 
-When adding new documentation:
-
-1. **Guides** → Step-by-step instructions for setting something up
-2. **Reference** → Technical details and architecture decisions  
-3. **Reports** → Point-in-time analysis or status documents
-4. **Playbooks** → Operational procedures and checklists
-5. **Archive** → Older docs kept for reference
-
-Use clear, descriptive filenames in SCREAMING_CASE with `.md` extension.
+1. **Features** → Technical deep dives
+2. **Guides** → Step-by-step instructions
+3. **Reference** → Canonical technical specs
+4. **Architecture** → Strategic planning and design
+5. **Archive** → Deprecated docs

@@ -239,7 +239,12 @@ export default function RecordVisitScreen() {
           style: 'destructive',
           onPress: () => {
             resetRecording();
-            router.back();
+            // If opened via widget (no back history), go to home
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/');
+            }
           },
         },
       ]
