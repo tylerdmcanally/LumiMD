@@ -18,11 +18,33 @@ export default function PrivacyPolicyPage() {
             LumiMD Privacy Policy
           </h1>
           <p className="mt-3 text-text-secondary">
-            Effective Date: December 17, 2024 | Last Updated: December 17, 2024
+            Effective Date: December 17, 2024 | Last Updated: January 8, 2026
           </p>
         </header>
 
         <div className="bg-surface rounded-2xl shadow-elevated p-8 sm:p-10 space-y-10 border border-border-light">
+          {/* TODO: REMOVE THIS BETA SECTION BEFORE PUBLIC LAUNCH */}
+          {/* Beta Program Notice */}
+          <section className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded">
+            <h2 className="text-xl font-semibold text-text-primary mb-3">
+              Beta Program Notice
+            </h2>
+            <p className="text-text-secondary mb-3">
+              LumiMD is currently in beta testing. By participating in our beta program:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-text-secondary ml-4">
+              <li>You acknowledge the service is under active development and may contain bugs or unexpected behavior</li>
+              <li>Features may change, be modified, or removed at any time</li>
+              <li>We may contact you for feedback about your experience</li>
+              <li>This privacy policy applies fully to all beta participants</li>
+              <li>Your data is protected with the same security measures as our production service</li>
+            </ul>
+            <p className="text-text-secondary mt-3">
+              We appreciate your help in making LumiMD better. Your feedback directly shapes the product.
+            </p>
+          </section>
+          {/* END BETA SECTION */}
+
           {/* Commitment Section */}
           <section>
             <h2 className="text-2xl font-semibold text-text-primary mb-4 pb-2 border-b border-border-light">
@@ -557,10 +579,10 @@ export default function PrivacyPolicyPage() {
         {/* Footer */}
         <footer className="text-center mt-12 pt-8 border-t border-border-light text-text-secondary">
           <p>
-            Policy Version: 2.0 | Last Reviewed: December 17, 2024
+            Policy Version: 2.1 (Beta) | Last Reviewed: January 8, 2026
           </p>
           <p className="mt-2">
-            &copy; 2024 LumiMD. All rights reserved.
+            &copy; 2026 LumiMD. All rights reserved.
           </p>
         </footer>
       </div>
