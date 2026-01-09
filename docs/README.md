@@ -41,6 +41,7 @@ docs/
 
 | Document | Description |
 |----------|-------------|
+| [WEB-PROPERTIES.md](architecture/WEB-PROPERTIES.md) | Web portal vs marketing site structure |
 | [RESILIENCE-ROADMAP.md](architecture/RESILIENCE-ROADMAP.md) | System resilience and future robustness plan |
 | [ROBUSTNESS-ROADMAP.md](architecture/ROBUSTNESS-ROADMAP.md) | Detailed analysis of system stability |
 
