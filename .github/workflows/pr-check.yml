@@ -1,0 +1,92 @@
+# Security and Quality Checks for Pull Requests
+# Runs on all PRs to main branch
+
+name: PR Security Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Web Portal Audit
+      - name: Install web-portal dependencies
+        working-directory: ./web-portal
+        run: npm ci
+
+      - name: Audit web-portal
+        working-directory: ./web-portal
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      # Functions Audit
+      - name: Install functions dependencies
+        working-directory: ./functions
+        run: npm ci
+
+      - name: Audit functions
+        working-directory: ./functions
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      # Mobile Audit
+      - name: Install mobile dependencies
+        working-directory: ./mobile
+        run: npm ci
+
+      - name: Audit mobile
+        working-directory: ./mobile
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  # Secret scanning with Gitleaks
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # TypeScript type checking
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install functions dependencies
+        working-directory: ./functions
+        run: npm ci
+
+      - name: TypeScript check (functions)
+        working-directory: ./functions
+        run: npx tsc --noEmit
