@@ -5,7 +5,6 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { TopNavigation } from '@/components/layout/TopNavigation';
 import { MobileSidebarDrawer } from '@/components/layout/MobileSidebarDrawer';
 import { ViewingProvider } from '@/lib/contexts/ViewingContext';
-import { ReadOnlyBanner } from '@/components/ReadOnlyBanner';
 import { UnverifiedEmailBanner } from '@/components/UnverifiedEmailBanner';
 
 export default function ProtectedLayout({
@@ -58,7 +57,6 @@ export default function ProtectedLayout({
 
           <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
             <UnverifiedEmailBanner />
-            <ReadOnlyBanner />
             <div
               className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain"
               style={{
