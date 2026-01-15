@@ -55,8 +55,16 @@ export default function InviteAcceptPage() {
     }
 
     if (user && token && !hasAttemptedAccept.current && !acceptMutation.isPending) {
-      hasAttemptedAccept.current = true;
-      acceptMutation.mutate(token);
+      // Add a small delay to ensure Firebase auth is fully hydrated
+      // This fixes a race condition where auth.currentUser may be null
+      // immediately after redirect, even though user state is available
+      const timer = setTimeout(() => {
+        if (!hasAttemptedAccept.current) {
+          hasAttemptedAccept.current = true;
+          acceptMutation.mutate(token);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [user, token]);
 
