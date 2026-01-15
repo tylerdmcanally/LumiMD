@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
 import { useViewing } from '@/lib/contexts/ViewingContext';
-import { AccountSwitcher } from './AccountSwitcher';
+
 
 type NavItem = {
     label: string;
@@ -171,10 +171,7 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
                             </Link>
                         )}
 
-                        {/* Account Switcher (desktop only, if caregiver) */}
-                        <div className="hidden md:block">
-                            <AccountSwitcher />
-                        </div>
+
 
                         {/* User Menu */}
                         <div className="relative" ref={userMenuRef}>

@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
 import { useViewing } from '@/lib/contexts/ViewingContext';
-import { AccountSwitcher } from './AccountSwitcher';
+
 
 type NavItem = {
   label: string;
@@ -192,12 +192,7 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
 
         {/* User Profile & Sign Out */}
         <div className="border-t border-border-light p-4 space-y-3">
-          {/* Account Switcher for caregivers */}
-          {isCaregiver && (
-            <div className="mb-3">
-              <AccountSwitcher />
-            </div>
-          )}
+
 
           {/* User Info */}
           {user && (

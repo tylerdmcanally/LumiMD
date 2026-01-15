@@ -30,31 +30,10 @@ export default function InviteAcceptPage() {
         description: 'You now have access to view this person\'s health information.',
       });
 
-      // Check if user has own health data to determine redirect
-      try {
-        const [visitsRes, medsRes] = await Promise.all([
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/visits?limit=1`, {
-            credentials: 'include',
-          }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/meds?limit=1`, {
-            credentials: 'include',
-          }),
-        ]);
-
-        const visits = visitsRes.ok ? await visitsRes.json() : [];
-        const meds = medsRes.ok ? await medsRes.json() : [];
-        const hasOwnData = visits.length > 0 || meds.length > 0;
-
-        // Route pure caregivers to care dashboard, others to patient dashboard
-        setTimeout(() => {
-          router.push(hasOwnData ? '/dashboard' : '/care');
-        }, 1500);
-      } catch {
-        // Fallback to patient dashboard on error
-        setTimeout(() => {
-          router.push('/dashboard');
-        }, 1500);
-      }
+      // Always route caregivers to the care dashboard
+      setTimeout(() => {
+        router.push('/care');
+      }, 1500);
     },
     onError: (error: any) => {
       const message = error?.userMessage || error?.message || 'Failed to accept invitation';

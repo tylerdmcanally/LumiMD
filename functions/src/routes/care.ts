@@ -18,19 +18,40 @@ const getDb = () => admin.firestore();
 // HELPER: Get accepted incoming shares for caregiver
 // =============================================================================
 
+// =============================================================================
+// HELPER: Get accepted incoming shares for caregiver
+// =============================================================================
+
 async function getAcceptedSharesForCaregiver(caregiverId: string) {
+    // Query ALL shares for this caregiver first to debug potential status issues
     const sharesSnapshot = await getDb()
         .collection('shares')
         .where('caregiverUserId', '==', caregiverId)
-        .where('status', '==', 'accepted')
         .get();
 
-    return sharesSnapshot.docs.map((doc) => ({
+    const allShares = sharesSnapshot.docs.map((doc) => ({
         id: doc.id,
-        ownerId: doc.data().ownerId,
-        ownerName: doc.data().ownerName,
-        ownerEmail: doc.data().ownerEmail,
+        ...doc.data(),
     }));
+
+    // Log what we found for debugging
+    functions.logger.info(`[care] Found ${allShares.length} total shares for caregiver ${caregiverId}`);
+    allShares.forEach(s => {
+        functions.logger.info(`[care] Share ${s.id}: status=${(s as any).status}, owner=${(s as any).ownerId}`);
+    });
+
+    // Filter for accepted ones
+    const acceptedShares = sharesSnapshot.docs
+        .filter((doc) => doc.data().status === 'accepted')
+        .map((doc) => ({
+            id: doc.id,
+            ownerId: doc.data().ownerId,
+            ownerName: doc.data().ownerName,
+            ownerEmail: doc.data().ownerEmail,
+        }));
+
+    functions.logger.info(`[care] Returning ${acceptedShares.length} accepted shares`);
+    return acceptedShares;
 }
 
 // =============================================================================
@@ -41,16 +62,29 @@ async function validateCaregiverAccess(
     caregiverId: string,
     patientId: string
 ): Promise<boolean> {
+    // Check direct share ID first (preferred)
     const shareId = `${patientId}_${caregiverId}`;
     const shareDoc = await getDb().collection('shares').doc(shareId).get();
 
-    if (!shareDoc.exists) return false;
+    if (shareDoc.exists) {
+        const share = shareDoc.data();
+        if (share?.status === 'accepted') return true;
+        functions.logger.warn(`[care] Access denied. Share ${shareId} exists but status is ${share?.status}`);
+    } else {
+        // Fallback: check query in case ID format is different
+        const querySnapshot = await getDb()
+            .collection('shares')
+            .where('ownerId', '==', patientId)
+            .where('caregiverUserId', '==', caregiverId)
+            .where('status', '==', 'accepted')
+            .limit(1)
+            .get();
 
-    const share = shareDoc.data();
-    return (
-        share?.caregiverUserId === caregiverId &&
-        share?.status === 'accepted'
-    );
+        if (!querySnapshot.empty) return true;
+        functions.logger.warn(`[care] Access denied. No accepted share found for owner ${patientId} and caregiver ${caregiverId}`);
+    }
+
+    return false;
 }
 
 // =============================================================================
@@ -259,6 +293,7 @@ careRouter.get('/overview', requireAuth, async (req: AuthRequest, res) => {
         );
 
         res.json({ patients: patientsData });
+
     } catch (error) {
         functions.logger.error('[care] Error fetching overview:', error);
         res.status(500).json({
