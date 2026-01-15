@@ -44,14 +44,13 @@ import { db } from '@/lib/firebase';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { downloadActionAsICS } from '@/lib/calendar';
-import { useViewing } from '@/lib/contexts/ViewingContext';
 
 export default function ActionsPage() {
   const user = useCurrentUser();
   // Don't pass userId - let useActions use ViewingContext
   const { data: actions = [], isLoading } = useActions();
-  const { isViewingShared } = useViewing();
-  const isReadOnly = isViewingShared;
+  // Read-only mode removed - caregivers use /care route instead
+  const isReadOnly = false;
   const [showCompleted, setShowCompleted] = React.useState(false);
   const queryClient = useQueryClient();
   const [updatingActionId, setUpdatingActionId] = React.useState<string | null>(null);
@@ -118,10 +117,10 @@ export default function ActionsPage() {
       const updated = previous.map((action) =>
         action.id === variables.id
           ? {
-              ...action,
-              completed: variables.completed,
-              completedAt: variables.completed ? new Date().toISOString() : null,
-            }
+            ...action,
+            completed: variables.completed,
+            completedAt: variables.completed ? new Date().toISOString() : null,
+          }
           : action,
       );
       queryClient.setQueryData(queryKeys.actions(user.uid), updated);
@@ -189,9 +188,9 @@ export default function ActionsPage() {
         source: 'manual',
       };
       payload.dueAt = toDueAtTimestamp(dueDate) ?? null;
-      
+
       console.log('[CREATE ACTION] Payload:', payload);
-      
+
       try {
         const docRef = await addDoc(collection(db, 'actions'), payload);
         console.log('[CREATE ACTION] Success! Document ID:', docRef.id);
@@ -267,12 +266,12 @@ export default function ActionsPage() {
       const updated = previous.map((action) =>
         action.id === variables.id
           ? {
-              ...action,
-              description: variables.description.trim(),
-              notes: sanitizeOptionalString(variables.notes) ?? '',
-              dueAt: variables.dueDate ? new Date(`${variables.dueDate}T12:00:00`).toISOString() : null,
-              updatedAt: new Date().toISOString(),
-            }
+            ...action,
+            description: variables.description.trim(),
+            notes: sanitizeOptionalString(variables.notes) ?? '',
+            dueAt: variables.dueDate ? new Date(`${variables.dueDate}T12:00:00`).toISOString() : null,
+            updatedAt: new Date().toISOString(),
+          }
           : action,
       );
       queryClient.setQueryData(queryKeys.actions(user.uid), updated);
@@ -353,7 +352,7 @@ export default function ActionsPage() {
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           <StatCard label="Pending" value={stats.pending} variant="warning" />
           <StatCard label="Completed" value={stats.completed} variant="success" />
-          </div>
+        </div>
 
         {/* Actions List */}
         {isLoading ? (
@@ -361,7 +360,7 @@ export default function ActionsPage() {
             <div className="p-12 text-center">
               <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
               <p className="mt-4 text-text-secondary">Loading action items...</p>
-        </div>
+            </div>
           </Card>
         ) : actions.length === 0 ? (
           <Card variant="elevated" padding="lg">
@@ -371,7 +370,7 @@ export default function ActionsPage() {
               <p className="mt-2 text-sm text-text-secondary">
                 You&apos;re all caught up. Add a new action item to get started.
               </p>
-        </div>
+            </div>
           </Card>
         ) : (
           <div className="space-y-8">

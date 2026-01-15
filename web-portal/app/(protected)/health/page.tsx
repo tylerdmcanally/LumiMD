@@ -298,7 +298,7 @@ function LogReadingModal({
 // =============================================================================
 
 export default function HealthDashboardPage() {
-    const { isViewingShared, viewingUserId } = useViewing();
+    const { viewingUserId } = useViewing();
     const { data: healthLogs = [], isLoading } = useHealthLogs();
     const apiClient = useApiClient();
     const queryClient = useQueryClient();
@@ -511,31 +511,24 @@ export default function HealthDashboardPage() {
                             <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
                                 Your Health Dashboard
                             </h1>
-                            {isViewingShared && (
-                                <p className="text-sm text-brand-primary font-medium">
-                                    Viewing shared data (read-only)
-                                </p>
-                            )}
                         </div>
-                        {!isViewingShared && (
-                            <div className="flex gap-2">
-                                <Button
-                                    variant="ghost"
-                                    onClick={handleExportReport}
-                                    disabled={isExporting || hasNoData}
-                                    leftIcon={<Download className="h-4 w-4" />}
-                                >
-                                    {isExporting ? 'Exporting...' : 'Export PDF'}
-                                </Button>
-                                <Button
-                                    variant="primary"
-                                    onClick={() => setModalOpen(true)}
-                                    leftIcon={<Plus className="h-4 w-4" />}
-                                >
-                                    Log Reading
-                                </Button>
-                            </div>
-                        )}
+                        <div className="flex gap-2">
+                            <Button
+                                variant="ghost"
+                                onClick={handleExportReport}
+                                disabled={isExporting || hasNoData}
+                                leftIcon={<Download className="h-4 w-4" />}
+                            >
+                                {isExporting ? 'Exporting...' : 'Export PDF'}
+                            </Button>
+                            <Button
+                                variant="primary"
+                                onClick={() => setModalOpen(true)}
+                                leftIcon={<Plus className="h-4 w-4" />}
+                            >
+                                Log Reading
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -557,15 +550,13 @@ export default function HealthDashboardPage() {
                         <p className="text-text-secondary max-w-md mx-auto mb-4">
                             Start tracking your health by logging blood pressure, glucose, or weight readings.
                         </p>
-                        {!isViewingShared && (
-                            <Button
-                                variant="primary"
-                                onClick={() => setModalOpen(true)}
-                                leftIcon={<Plus className="h-4 w-4" />}
-                            >
-                                Log Your First Reading
-                            </Button>
-                        )}
+                        <Button
+                            variant="primary"
+                            onClick={() => setModalOpen(true)}
+                            leftIcon={<Plus className="h-4 w-4" />}
+                        >
+                            Log Your First Reading
+                        </Button>
                     </Card>
                 )}
 
@@ -993,7 +984,7 @@ export default function HealthDashboardPage() {
                                 <h2 className="text-lg font-semibold text-text-primary">
                                     Recent Readings
                                 </h2>
-                                {!isViewingShared && selectedIds.size > 0 && (
+                                {selectedIds.size > 0 && (
                                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brand-primary/10 text-brand-primary text-sm font-medium">
                                         {selectedIds.size} selected
                                         <button
@@ -1006,7 +997,7 @@ export default function HealthDashboardPage() {
                                     </span>
                                 )}
                             </div>
-                            {!isViewingShared && selectedIds.size > 0 && (
+                            {selectedIds.size > 0 && (
                                 <Button
                                     variant="danger"
                                     onClick={handleBulkDelete}
@@ -1022,24 +1013,20 @@ export default function HealthDashboardPage() {
                                 <table className="w-full">
                                     <thead>
                                         <tr className="border-b border-border-light">
-                                            {!isViewingShared && (
-                                                <th className="px-4 py-3 w-10">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={allVisibleSelected}
-                                                        onChange={toggleSelectAll}
-                                                        className="h-4 w-4 rounded border-border-light text-brand-primary focus:ring-brand-primary cursor-pointer"
-                                                        title={allVisibleSelected ? "Deselect all" : "Select all"}
-                                                    />
-                                                </th>
-                                            )}
+                                            <th className="px-4 py-3 w-10">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={allVisibleSelected}
+                                                    onChange={toggleSelectAll}
+                                                    className="h-4 w-4 rounded border-border-light text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                    title={allVisibleSelected ? "Deselect all" : "Select all"}
+                                                />
+                                            </th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Date</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Type</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Value</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Status</th>
-                                            {!isViewingShared && (
-                                                <th className="px-4 py-3 text-right text-sm font-medium text-text-secondary">Actions</th>
-                                            )}
+                                            <th className="px-4 py-3 text-right text-sm font-medium text-text-secondary">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1048,16 +1035,14 @@ export default function HealthDashboardPage() {
                                                 "border-b border-border-light last:border-0",
                                                 selectedIds.has(log.id) && "bg-brand-primary/5"
                                             )}>
-                                                {!isViewingShared && (
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={selectedIds.has(log.id)}
-                                                            onChange={() => toggleSelect(log.id)}
-                                                            className="h-4 w-4 rounded border-border-light text-brand-primary focus:ring-brand-primary cursor-pointer"
-                                                        />
-                                                    </td>
-                                                )}
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedIds.has(log.id)}
+                                                        onChange={() => toggleSelect(log.id)}
+                                                        className="h-4 w-4 rounded border-border-light text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                                    />
+                                                </td>
                                                 <td className="px-4 py-3 text-sm text-text-primary">
                                                     {log.createdAt ? format(new Date(log.createdAt), 'MMM d, h:mm a') : '-'}
                                                 </td>
@@ -1082,18 +1067,16 @@ export default function HealthDashboardPage() {
                                                         {log.alertLevel || 'normal'}
                                                     </span>
                                                 </td>
-                                                {!isViewingShared && (
-                                                    <td className="px-4 py-3 text-right">
-                                                        <button
-                                                            onClick={() => handleDelete(log.id)}
-                                                            disabled={deletingId === log.id}
-                                                            className="text-text-tertiary hover:text-error transition-colors disabled:opacity-50"
-                                                            title="Delete reading"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
-                                                    </td>
-                                                )}
+                                                <td className="px-4 py-3 text-right">
+                                                    <button
+                                                        onClick={() => handleDelete(log.id)}
+                                                        disabled={deletingId === log.id}
+                                                        className="text-text-tertiary hover:text-error transition-colors disabled:opacity-50"
+                                                        title="Delete reading"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>

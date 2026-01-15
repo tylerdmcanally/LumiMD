@@ -23,7 +23,7 @@ import { WelcomeCards } from '@/components/dashboard/WelcomeCards';
 
 export default function DashboardPage() {
   const user = useCurrentUser();
-  const { viewingUserId, isViewingShared } = useViewing();
+  const { viewingUserId } = useViewing();
 
   // For current user's name (logged-in account) and viewed user's name (data owner)
   const { data: currentUserProfile, isLoading: profileLoading } = useUserProfile(user?.uid ?? null);
@@ -166,18 +166,13 @@ export default function DashboardPage() {
               {greeting}
             </span>
             <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
-              {isViewingShared ? `${viewedName}'s Health` : `Welcome back, ${viewedName}`}
+              Welcome back, {viewedName}
             </h1>
-            {isViewingShared && (
-              <p className="text-sm text-brand-primary font-medium">
-                Viewing shared data (read-only)
-              </p>
-            )}
           </div>
         </div>
 
         {/* Welcome Cards for New Users */}
-        {isNewUser && !isViewingShared && (
+        {isNewUser && (
           <WelcomeCards />
         )}
 

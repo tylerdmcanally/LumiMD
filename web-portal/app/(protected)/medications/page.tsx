@@ -19,7 +19,6 @@ import { deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { api } from '@/lib/api/client';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useViewing } from '@/lib/contexts/ViewingContext';
 
 type GroupedMedications = {
   active: any[];
@@ -36,8 +35,8 @@ export default function MedicationsPage() {
   const [viewMedication, setViewMedication] = React.useState<any | null>(null);
   const [medicationWarnings, setMedicationWarnings] = React.useState<any | null>(null);
   const [reminderMedication, setReminderMedication] = React.useState<any | null>(null);
-  const { isViewingShared } = useViewing();
-  const isReadOnly = isViewingShared;
+  // Read-only mode removed - caregivers use /care route instead
+  const isReadOnly = false;
 
   // Fetch medication reminders
   const { data: reminders = [] } = useMedicationReminders();
