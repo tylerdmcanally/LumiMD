@@ -186,9 +186,11 @@ interface ShareInvite {
     ownerId: string;
     ownerEmail: string;
     ownerName: string;
-    inviteeEmail: string;
+    inviteeEmail?: string;
+    caregiverEmail?: string;
+    caregiverUserId?: string | null;
     role: 'viewer';
-    status: 'pending' | 'accepted' | 'expired';
+    status: 'pending' | 'accepted' | 'expired' | 'revoked';
     message?: string | null;
     createdAt?: string | null;
     expiresAt?: string | null;

@@ -21,9 +21,11 @@ export interface ShareInvite {
   ownerId: string;
   ownerEmail: string;
   ownerName: string;
-  inviteeEmail: string;
+  inviteeEmail?: string;      // Legacy field
+  caregiverEmail?: string;    // New field from /v1/shares/invite
+  caregiverUserId?: string | null;  // Set on acceptance
   role: 'viewer';
-  status: 'pending' | 'accepted' | 'expired';
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
   message?: string | null;
   createdAt?: string | null;
   expiresAt?: string | null;
