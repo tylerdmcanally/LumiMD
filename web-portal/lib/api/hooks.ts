@@ -12,7 +12,7 @@ import {
 import * as Firestore from 'firebase/firestore';
 import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { useViewingSafe } from '@/lib/contexts/ViewingContext';
 
 // =============================================================================
@@ -923,10 +923,20 @@ export function useCareOverview(
     queryFn: async () => {
       if (!currentUserId) return { patients: [] };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/care/overview`, {
+      // Get Firebase auth token for API authentication
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/overview`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (!response.ok) {
@@ -980,12 +990,22 @@ export function usePatientMedicationStatus(
     queryFn: async () => {
       if (!patientId) throw new Error('Patient ID required');
 
+      // Get Firebase auth token for API authentication
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/v1/care/${patientId}/medication-status`,
+        `${apiUrl}/v1/care/${patientId}/medication-status`,
         {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
         }
       );
 
