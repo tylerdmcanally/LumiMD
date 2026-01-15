@@ -515,7 +515,7 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
       const user = await admin.auth().getUser(userId);
       const userEmail = user.email?.toLowerCase().trim() || '';
       const inviteEmail = invite.inviteeEmail?.toLowerCase().trim() || '';
-      
+
       if (userEmail !== inviteEmail) {
         functions.logger.warn(
           `[shares] Email mismatch for invite ${token}: user email "${userEmail}" does not match invite email "${inviteEmail}"`,
@@ -606,11 +606,58 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
 
     const share = shareDoc.data()!;
 
-    // Verify user is the caregiver
+    // Debug logging for 403 issues
+    functions.logger.info(`[shares] Accept invite attempt: userId=${userId}, shareId=${shareId}`);
+    functions.logger.info(`[shares] Share data: caregiverUserId=${share.caregiverUserId}, ownerId=${share.ownerId}, status=${share.status}, caregiverEmail=${share.caregiverEmail}`);
+
+    // Get current user's email for validation
+    const currentUser = await admin.auth().getUser(userId);
+    const currentUserEmail = currentUser.email?.toLowerCase().trim();
+
+    // Validate access: either user ID matches OR email matches
+    // If email matches but user ID doesn't, update the share with correct user ID
+    // This handles cases where accounts were recreated or invite was resent
+    const shareEmail = share.caregiverEmail?.toLowerCase().trim();
+
     if (share.caregiverUserId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
-        message: 'You are not authorized to accept this invitation',
+      // User ID doesn't match - check if email matches
+      if (!currentUserEmail || !shareEmail || currentUserEmail !== shareEmail) {
+        functions.logger.warn(`[shares] 403: User ${userId} (email: ${currentUserEmail}) tried to accept share ${shareId} but caregiverEmail is ${shareEmail} and caregiverUserId is ${share.caregiverUserId}`);
+        res.status(403).json({
+          code: 'forbidden',
+          message: 'You are not authorized to accept this invitation',
+        });
+        return;
+      }
+
+      // Email matches - update the caregiverUserId to this user and accept
+      functions.logger.info(`[shares] Email match - updating caregiverUserId from ${share.caregiverUserId} to ${userId}`);
+
+      // Also update the document ID to match new format
+      const newShareId = `${share.ownerId}_${userId}`;
+
+      await getDb().collection('shares').doc(newShareId).set({
+        ...share,
+        caregiverUserId: userId,
+        status: 'accepted',
+        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Delete the old share with wrong caregiver ID
+      await shareDoc.ref.delete();
+
+      functions.logger.info(`[shares] User ${userId} accepted share (migrated from ${shareId} to ${newShareId})`);
+
+      const newShareDoc = await getDb().collection('shares').doc(newShareId).get();
+      const newShare = newShareDoc.data()!;
+
+      res.json({
+        id: newShareId,
+        ...newShare,
+        createdAt: newShare.createdAt?.toDate().toISOString(),
+        updatedAt: newShare.updatedAt?.toDate().toISOString(),
+        acceptedAt: newShare.acceptedAt?.toDate().toISOString(),
       });
       return;
     }
