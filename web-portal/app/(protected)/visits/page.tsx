@@ -35,7 +35,6 @@ import {
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
 import { getSubscriptionState } from '@/lib/subscription';
-import { useViewing } from '@/lib/contexts/ViewingContext';
 
 type VisitFilters = {
   search: string;
@@ -72,10 +71,10 @@ export default function VisitsPage() {
   const router = useRouter();
   const user = useCurrentUser();
   const { data: profile } = useUserProfile(user?.uid);
-  const { isViewingSelf } = useViewing();
   const [filters, setFilters] = React.useState<VisitFilters>(DEFAULT_FILTERS);
   const subscription = getSubscriptionState(profile);
-  const isReadOnly = !isViewingSelf;
+  // Read-only mode removed - caregivers use /care route instead
+  const isReadOnly = false;
 
   // Don't pass userId - let useVisits use ViewingContext
   const { data: visits = [], isLoading } = useVisits();
@@ -159,9 +158,9 @@ export default function VisitsPage() {
       result = result.filter((visit: any) => {
         const visitFolders = Array.isArray(visit.folders)
           ? visit.folders
-        .filter((folder: unknown): folder is string => typeof folder === 'string')
-        .map((folder: string) => folder.trim())
-        .filter((folder: string) => folder.length > 0)
+            .filter((folder: unknown): folder is string => typeof folder === 'string')
+            .map((folder: string) => folder.trim())
+            .filter((folder: string) => folder.length > 0)
           : [];
 
         if (filters.folder === 'none') {
@@ -198,9 +197,9 @@ export default function VisitsPage() {
     filteredVisits.forEach((visit: any) => {
       const visitFolders = Array.isArray(visit.folders)
         ? visit.folders
-            .filter((folder: unknown): folder is string => typeof folder === 'string')
-            .map((folder: string) => folder.trim())
-            .filter((folder: string) => folder.length > 0)
+          .filter((folder: unknown): folder is string => typeof folder === 'string')
+          .map((folder: string) => folder.trim())
+          .filter((folder: string) => folder.length > 0)
         : [];
 
       if (visitFolders.length === 0) {
@@ -438,433 +437,433 @@ export default function VisitsPage() {
             </Card>
           )}
 
-        {/* Stats Cards - show only Total on mobile, full breakdown on desktop */}
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-          <StatCard label="Total Visits" value={stats.total} />
-          <div className="hidden md:block">
-            <StatCard
-              label="Completed"
-              value={stats.completed || 0}
-              variant="success"
-            />
-          </div>
-          <div className="hidden md:block">
-            <StatCard
-              label="Processing"
-              value={stats.processing || 0}
-              variant="warning"
-            />
-          </div>
-          <div className="hidden md:block">
-            <StatCard
-              label="Pending"
-              value={stats.pending || 0}
-              variant="neutral"
-            />
-          </div>
-        </div>
-
-        {/* Filters - Desktop only, mobile gets simple search */}
-        <div className="hidden md:block">
-          <Card variant="elevated" padding="lg">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Filter className="h-5 w-5 text-text-tertiary" />
-                <h3 className="font-semibold text-text-primary">Filters</h3>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-              <Input
-                placeholder="Search visits..."
-                value={filters.search}
-                onChange={(e) =>
-                  setFilters((prev) => ({ ...prev, search: e.target.value }))
-                }
-                leftIcon={<Search className="h-4 w-4" />}
+          {/* Stats Cards - show only Total on mobile, full breakdown on desktop */}
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+            <StatCard label="Total Visits" value={stats.total} />
+            <div className="hidden md:block">
+              <StatCard
+                label="Completed"
+                value={stats.completed || 0}
+                variant="success"
               />
-
-              <Select
-                value={filters.provider}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, provider: value }))
-                }
-              >
-                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
-                  <SelectValue placeholder="All Providers" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
-                  <SelectItem value="all">All Providers</SelectItem>
-                  {providers.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {provider}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={filters.specialty}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, specialty: value }))
-                }
-              >
-                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
-                  <SelectValue placeholder="All Specialties" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
-                  <SelectItem value="all">All Specialties</SelectItem>
-                  {specialties.map((specialty) => (
-                    <SelectItem key={specialty} value={specialty}>
-                      {specialty}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={filters.location}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, location: value }))
-                }
-              >
-                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
-                  <SelectValue placeholder="All Locations" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
-                  <SelectItem value="all">All Locations</SelectItem>
-                  {locations.map((location) => (
-                    <SelectItem key={location} value={location}>
-                      {location}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={filters.folder}
-                onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, folder: value }))
-                }
-              >
-                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
-                  <SelectValue placeholder="All Folders" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
-                  <SelectItem value="all">All Folders</SelectItem>
-                  <SelectItem value="none">No Folder</SelectItem>
-                  {folders.map((folder) => (
-                    <SelectItem key={folder} value={folder}>
-                      {folder}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={filters.sortBy}
-                onValueChange={(value: any) =>
-                  setFilters((prev) => ({ ...prev, sortBy: value }))
-                }
-              >
-                <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
-                  <SelectValue placeholder="Sort By" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
-                  <SelectItem value="date_desc">Newest First</SelectItem>
-                  <SelectItem value="date_asc">Oldest First</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-text-secondary">
-                Search and filter by provider, specialty, location, or folder. Sorting updates instantly.
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start sm:self-auto"
-                onClick={handleResetFilters}
-                disabled={!isFilterActive}
-              >
-                Reset filters
-              </Button>
+            <div className="hidden md:block">
+              <StatCard
+                label="Processing"
+                value={stats.processing || 0}
+                variant="warning"
+              />
+            </div>
+            <div className="hidden md:block">
+              <StatCard
+                label="Pending"
+                value={stats.pending || 0}
+                variant="neutral"
+              />
             </div>
           </div>
-        </Card>
-        </div>
 
-        {/* Mobile-only simple search */}
-        <div className="md:hidden">
-          <Input
-            placeholder="Search visits..."
-            value={filters.search}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, search: e.target.value }))
-            }
-            leftIcon={<Search className="h-4 w-4" />}
-            className="w-full"
-          />
-        </div>
+          {/* Filters - Desktop only, mobile gets simple search */}
+          <div className="hidden md:block">
+            <Card variant="elevated" padding="lg">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-5 w-5 text-text-tertiary" />
+                  <h3 className="font-semibold text-text-primary">Filters</h3>
+                </div>
 
-        {/* Visits Table/List */}
-        <Card variant="elevated" padding="none">
-          {isLoading ? (
-            <div className="p-12 text-center">
-              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
-              <p className="mt-4 text-text-secondary">Loading visits...</p>
-            </div>
-          ) : filteredVisits.length === 0 ? (
-            <div className="p-12 text-center">
-              <Stethoscope className="mx-auto h-12 w-12 text-text-tertiary" />
-              <h3 className="mt-4 font-semibold text-text-primary">
-                No visits found
-              </h3>
-              <p className="mt-2 text-sm text-text-secondary">
-                {filters.search ||
-                filters.provider !== 'all' ||
-                filters.specialty !== 'all' ||
-                filters.location !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'Record your first visit to get started'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div
-                className={cn(
-                  'px-4 pt-4 text-sm transition-smooth sm:px-6',
-                  isSelectionMode
-                    ? 'rounded-t-3xl border border-border-light bg-background-subtle/70 pb-4'
-                    : 'flex flex-col gap-3 md:flex-row md:items-center md:justify-between',
-                )}
-              >
-                {isSelectionMode ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p
-                      className={cn(
-                        'text-text-secondary',
-                        hasSelection && 'text-text-primary',
-                      )}
-                    >
-                      {hasSelection
-                        ? `${selectedVisitIds.size} selected`
-                        : 'Tap visits to select them'}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="ghost"
-                        size="sm"
-                        onClick={clearSelection}
-                        className="text-text-secondary hover:text-text-primary"
-                        disabled={!hasSelection}
-                      >
-                        Clear selection
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => openDeleteDialogFor()}
-                        disabled={!hasSelection}
-                      >
-                        Delete selected
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleToggleSelectionMode}
-                      >
-                        Cancel
-          </Button>
-        </div>
-                  </div>
-                ) : (
-                  <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <p className="text-text-secondary">
-                      Showing {filteredVisits.length} visit
-                      {filteredVisits.length === 1 ? '' : 's'}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {!isSelectionMode && canShowFolderView ? (
-                        <div className="flex items-center gap-1 rounded-full border border-border-light bg-background-subtle p-1">
-                          <button
-                            type="button"
-                            onClick={() => setViewMode('list')}
-                            className={cn(
-                              'rounded-full px-3 py-1 text-xs font-semibold transition-smooth',
-                              viewMode === 'list'
-                                ? 'bg-brand-primary text-white shadow-sm'
-                                : 'text-text-secondary hover:text-text-primary',
-                            )}
-                            aria-pressed={viewMode === 'list'}
-                          >
-                            List
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setViewMode('folders')}
-                            className={cn(
-                              'rounded-full px-3 py-1 text-xs font-semibold transition-smooth',
-                              viewMode === 'folders'
-                                ? 'bg-brand-primary text-white shadow-sm'
-                                : 'text-text-secondary hover:text-text-primary',
-                            )}
-                            aria-pressed={viewMode === 'folders'}
-                          >
-                            By folder
-                          </button>
-                        </div>
-                      ) : null}
-                      {viewMode === 'folders' && groupedVisits.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={handleToggleAllGroups}
-                          className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary transition-smooth hover:text-text-primary"
-                        >
-                          {allGroupsCollapsed ? 'Expand all' : 'Collapse all'}
-                        </button>
-                      ) : null}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleToggleSelectionMode}
-                        className="w-full justify-center sm:w-auto"
-                      >
-                        Select visits
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+                  <Input
+                    placeholder="Search visits..."
+                    value={filters.search}
+                    onChange={(e) =>
+                      setFilters((prev) => ({ ...prev, search: e.target.value }))
+                    }
+                    leftIcon={<Search className="h-4 w-4" />}
+                  />
 
-              <div className="hidden md:block">
-                {viewMode === 'list' ? (
-                  <>
-                    <div
-                      className={cn(
-                        'grid items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-sm font-semibold text-text-secondary',
-                        isSelectionMode
-                          ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
-                          : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
-                      )}
-                    >
-                      {isSelectionMode && (
-                        <div className="flex items-center justify-center pr-8">
-                          <button
-                            type="button"
-                            onClick={() => toggleSelectAll(!allSelected)}
-                            aria-pressed={allSelected}
-                            className={cn(
-                              'rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide transition-smooth shadow-sm',
-                              allSelected
-                                ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
-                                : 'border-brand-primary/40 bg-brand-primary/8 text-brand-primary hover:bg-brand-primary/12',
-                            )}
-                          >
-                            {allSelected ? 'Clear all' : 'Select all'}
-                          </button>
-                        </div>
-                      )}
-                      <div>Provider & Specialty</div>
-                      <div>Date</div>
-                      <div className="hidden lg:block">Location</div>
-                      <div>Status</div>
-                      <div className="text-right">Actions</div>
-                    </div>
-
-                    <div className="divide-y divide-border-light">
-                      {filteredVisits.map((visit: any) => (
-                        <VisitRow
-                          key={visit.id}
-                          visit={visit}
-                          selectionMode={isSelectionMode}
-                          selected={selectedVisitIds.has(visit.id)}
-                          onToggleSelect={() => toggleSelectVisit(visit.id)}
-                          onDelete={() => openDeleteDialogFor([visit.id])}
-                          onView={() => router.push(`/visits/${visit.id}`)}
-                        />
+                  <Select
+                    value={filters.provider}
+                    onValueChange={(value) =>
+                      setFilters((prev) => ({ ...prev, provider: value }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
+                      <SelectValue placeholder="All Providers" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
+                      <SelectItem value="all">All Providers</SelectItem>
+                      {providers.map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          {provider}
+                        </SelectItem>
                       ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="space-y-4 px-6 pb-6">
-                    {groupedVisits.map((group) => {
-                      const collapsed = collapsedGroups.has(group.key);
-                      return (
-                        <div
-                          key={group.key}
-                          className="rounded-3xl border border-border-light bg-background-subtle/40"
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.specialty}
+                    onValueChange={(value) =>
+                      setFilters((prev) => ({ ...prev, specialty: value }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
+                      <SelectValue placeholder="All Specialties" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
+                      <SelectItem value="all">All Specialties</SelectItem>
+                      {specialties.map((specialty) => (
+                        <SelectItem key={specialty} value={specialty}>
+                          {specialty}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.location}
+                    onValueChange={(value) =>
+                      setFilters((prev) => ({ ...prev, location: value }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
+                      <SelectValue placeholder="All Locations" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
+                      <SelectItem value="all">All Locations</SelectItem>
+                      {locations.map((location) => (
+                        <SelectItem key={location} value={location}>
+                          {location}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.folder}
+                    onValueChange={(value) =>
+                      setFilters((prev) => ({ ...prev, folder: value }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
+                      <SelectValue placeholder="All Folders" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
+                      <SelectItem value="all">All Folders</SelectItem>
+                      <SelectItem value="none">No Folder</SelectItem>
+                      {folders.map((folder) => (
+                        <SelectItem key={folder} value={folder}>
+                          {folder}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={filters.sortBy}
+                    onValueChange={(value: any) =>
+                      setFilters((prev) => ({ ...prev, sortBy: value }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-xl border-border-light/80 bg-surface text-text-primary shadow-sm transition-smooth hover:border-brand-primary/50 focus-visible:ring-brand-primary/30">
+                      <SelectValue placeholder="Sort By" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-border-light/80 bg-surface shadow-lg">
+                      <SelectItem value="date_desc">Newest First</SelectItem>
+                      <SelectItem value="date_asc">Oldest First</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-text-secondary">
+                    Search and filter by provider, specialty, location, or folder. Sorting updates instantly.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="self-start sm:self-auto"
+                    onClick={handleResetFilters}
+                    disabled={!isFilterActive}
+                  >
+                    Reset filters
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Mobile-only simple search */}
+          <div className="md:hidden">
+            <Input
+              placeholder="Search visits..."
+              value={filters.search}
+              onChange={(e) =>
+                setFilters((prev) => ({ ...prev, search: e.target.value }))
+              }
+              leftIcon={<Search className="h-4 w-4" />}
+              className="w-full"
+            />
+          </div>
+
+          {/* Visits Table/List */}
+          <Card variant="elevated" padding="none">
+            {isLoading ? (
+              <div className="p-12 text-center">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-brand-primary border-t-transparent" />
+                <p className="mt-4 text-text-secondary">Loading visits...</p>
+              </div>
+            ) : filteredVisits.length === 0 ? (
+              <div className="p-12 text-center">
+                <Stethoscope className="mx-auto h-12 w-12 text-text-tertiary" />
+                <h3 className="mt-4 font-semibold text-text-primary">
+                  No visits found
+                </h3>
+                <p className="mt-2 text-sm text-text-secondary">
+                  {filters.search ||
+                    filters.provider !== 'all' ||
+                    filters.specialty !== 'all' ||
+                    filters.location !== 'all'
+                    ? 'Try adjusting your filters'
+                    : 'Record your first visit to get started'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div
+                  className={cn(
+                    'px-4 pt-4 text-sm transition-smooth sm:px-6',
+                    isSelectionMode
+                      ? 'rounded-t-3xl border border-border-light bg-background-subtle/70 pb-4'
+                      : 'flex flex-col gap-3 md:flex-row md:items-center md:justify-between',
+                  )}
+                >
+                  {isSelectionMode ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p
+                        className={cn(
+                          'text-text-secondary',
+                          hasSelection && 'text-text-primary',
+                        )}
+                      >
+                        {hasSelection
+                          ? `${selectedVisitIds.size} selected`
+                          : 'Tap visits to select them'}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearSelection}
+                          className="text-text-secondary hover:text-text-primary"
+                          disabled={!hasSelection}
                         >
+                          Clear selection
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => openDeleteDialogFor()}
+                          disabled={!hasSelection}
+                        >
+                          Delete selected
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleToggleSelectionMode}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <p className="text-text-secondary">
+                        Showing {filteredVisits.length} visit
+                        {filteredVisits.length === 1 ? '' : 's'}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!isSelectionMode && canShowFolderView ? (
+                          <div className="flex items-center gap-1 rounded-full border border-border-light bg-background-subtle p-1">
+                            <button
+                              type="button"
+                              onClick={() => setViewMode('list')}
+                              className={cn(
+                                'rounded-full px-3 py-1 text-xs font-semibold transition-smooth',
+                                viewMode === 'list'
+                                  ? 'bg-brand-primary text-white shadow-sm'
+                                  : 'text-text-secondary hover:text-text-primary',
+                              )}
+                              aria-pressed={viewMode === 'list'}
+                            >
+                              List
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setViewMode('folders')}
+                              className={cn(
+                                'rounded-full px-3 py-1 text-xs font-semibold transition-smooth',
+                                viewMode === 'folders'
+                                  ? 'bg-brand-primary text-white shadow-sm'
+                                  : 'text-text-secondary hover:text-text-primary',
+                              )}
+                              aria-pressed={viewMode === 'folders'}
+                            >
+                              By folder
+                            </button>
+                          </div>
+                        ) : null}
+                        {viewMode === 'folders' && groupedVisits.length > 0 ? (
                           <button
                             type="button"
-                            onClick={() => toggleGroup(group.key)}
-                            className="flex w-full items-center justify-between gap-3 rounded-3xl px-5 py-4 text-left transition-smooth hover:bg-background-subtle/80"
+                            onClick={handleToggleAllGroups}
+                            className="rounded-full px-3 py-1 text-xs font-semibold text-text-secondary transition-smooth hover:text-text-primary"
                           >
-                            <div className="flex items-center gap-3">
-                              <Folder className="h-4 w-4 text-brand-primary" />
-                              <div>
-                                <p className="font-semibold text-text-primary">{group.label}</p>
-                                <p className="text-xs text-text-secondary">
-                                  {group.visits.length} visit
-                                  {group.visits.length === 1 ? '' : 's'}
-                                </p>
-                              </div>
-                            </div>
-                            <ChevronDown
-                              className={cn(
-                                'h-4 w-4 text-text-secondary transition-transform',
-                                collapsed ? '-rotate-90' : 'rotate-0',
-                              )}
-                              aria-hidden="true"
-                            />
+                            {allGroupsCollapsed ? 'Expand all' : 'Collapse all'}
                           </button>
-                          {!collapsed ? (
-                            <>
-                              <div
-                                className={cn(
-                                  'grid items-center gap-4 border-t border-border-light bg-background-subtle px-5 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary',
-                                  isSelectionMode
-                                    ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
-                                    : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
-                                )}
-                              >
-                                {isSelectionMode && (
-                                  <div className="flex items-center justify-center pr-8 text-[11px] font-semibold">
-                                    Select
-                                  </div>
-                                )}
-                                <div>Provider & Specialty</div>
-                                <div>Date</div>
-                                <div className="hidden lg:block">Location</div>
-                                <div>Status</div>
-                                <div className="text-right">Actions</div>
-                              </div>
-                              <div className="divide-y divide-border-light">
-                                {group.visits.map((visit: any) => (
-                                  <VisitRow
-                                    key={`${group.key}-${visit.id}`}
-                                    visit={visit}
-                                    selectionMode={isSelectionMode}
-                                    selected={selectedVisitIds.has(visit.id)}
-                                    onToggleSelect={() => toggleSelectVisit(visit.id)}
-                                    onDelete={() => openDeleteDialogFor([visit.id])}
-                                    onView={() => router.push(`/visits/${visit.id}`)}
-                                  />
-                                ))}
-                              </div>
-                            </>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleToggleSelectionMode}
+                          className="w-full justify-center sm:w-auto"
+                        >
+                          Select visits
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-              {/* Mobile Cards */}
-              <div className="space-y-3 px-4 pb-5 md:hidden">
-                {viewMode === 'list'
-                  ? filteredVisits.map((visit: any) => (
+                <div className="hidden md:block">
+                  {viewMode === 'list' ? (
+                    <>
+                      <div
+                        className={cn(
+                          'grid items-center gap-4 border-b border-border-light bg-background-subtle px-6 py-4 text-sm font-semibold text-text-secondary',
+                          isSelectionMode
+                            ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
+                            : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
+                        )}
+                      >
+                        {isSelectionMode && (
+                          <div className="flex items-center justify-center pr-8">
+                            <button
+                              type="button"
+                              onClick={() => toggleSelectAll(!allSelected)}
+                              aria-pressed={allSelected}
+                              className={cn(
+                                'rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide transition-smooth shadow-sm',
+                                allSelected
+                                  ? 'border-brand-primary bg-brand-primary text-white shadow-sm'
+                                  : 'border-brand-primary/40 bg-brand-primary/8 text-brand-primary hover:bg-brand-primary/12',
+                              )}
+                            >
+                              {allSelected ? 'Clear all' : 'Select all'}
+                            </button>
+                          </div>
+                        )}
+                        <div>Provider & Specialty</div>
+                        <div>Date</div>
+                        <div className="hidden lg:block">Location</div>
+                        <div>Status</div>
+                        <div className="text-right">Actions</div>
+                      </div>
+
+                      <div className="divide-y divide-border-light">
+                        {filteredVisits.map((visit: any) => (
+                          <VisitRow
+                            key={visit.id}
+                            visit={visit}
+                            selectionMode={isSelectionMode}
+                            selected={selectedVisitIds.has(visit.id)}
+                            onToggleSelect={() => toggleSelectVisit(visit.id)}
+                            onDelete={() => openDeleteDialogFor([visit.id])}
+                            onView={() => router.push(`/visits/${visit.id}`)}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4 px-6 pb-6">
+                      {groupedVisits.map((group) => {
+                        const collapsed = collapsedGroups.has(group.key);
+                        return (
+                          <div
+                            key={group.key}
+                            className="rounded-3xl border border-border-light bg-background-subtle/40"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleGroup(group.key)}
+                              className="flex w-full items-center justify-between gap-3 rounded-3xl px-5 py-4 text-left transition-smooth hover:bg-background-subtle/80"
+                            >
+                              <div className="flex items-center gap-3">
+                                <Folder className="h-4 w-4 text-brand-primary" />
+                                <div>
+                                  <p className="font-semibold text-text-primary">{group.label}</p>
+                                  <p className="text-xs text-text-secondary">
+                                    {group.visits.length} visit
+                                    {group.visits.length === 1 ? '' : 's'}
+                                  </p>
+                                </div>
+                              </div>
+                              <ChevronDown
+                                className={cn(
+                                  'h-4 w-4 text-text-secondary transition-transform',
+                                  collapsed ? '-rotate-90' : 'rotate-0',
+                                )}
+                                aria-hidden="true"
+                              />
+                            </button>
+                            {!collapsed ? (
+                              <>
+                                <div
+                                  className={cn(
+                                    'grid items-center gap-4 border-t border-border-light bg-background-subtle px-5 py-3 text-xs font-semibold uppercase tracking-wide text-text-secondary',
+                                    isSelectionMode
+                                      ? 'grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
+                                      : 'grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]',
+                                  )}
+                                >
+                                  {isSelectionMode && (
+                                    <div className="flex items-center justify-center pr-8 text-[11px] font-semibold">
+                                      Select
+                                    </div>
+                                  )}
+                                  <div>Provider & Specialty</div>
+                                  <div>Date</div>
+                                  <div className="hidden lg:block">Location</div>
+                                  <div>Status</div>
+                                  <div className="text-right">Actions</div>
+                                </div>
+                                <div className="divide-y divide-border-light">
+                                  {group.visits.map((visit: any) => (
+                                    <VisitRow
+                                      key={`${group.key}-${visit.id}`}
+                                      visit={visit}
+                                      selectionMode={isSelectionMode}
+                                      selected={selectedVisitIds.has(visit.id)}
+                                      onToggleSelect={() => toggleSelectVisit(visit.id)}
+                                      onDelete={() => openDeleteDialogFor([visit.id])}
+                                      onView={() => router.push(`/visits/${visit.id}`)}
+                                    />
+                                  ))}
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Mobile Cards */}
+                <div className="space-y-3 px-4 pb-5 md:hidden">
+                  {viewMode === 'list'
+                    ? filteredVisits.map((visit: any) => (
                       <VisitCard
                         key={visit.id}
                         visit={visit}
@@ -875,7 +874,7 @@ export default function VisitsPage() {
                         onView={() => router.push(`/visits/${visit.id}`)}
                       />
                     ))
-                  : groupedVisits.map((group) => {
+                    : groupedVisits.map((group) => {
                       const collapsed = collapsedGroups.has(group.key);
                       return (
                         <div
@@ -923,32 +922,32 @@ export default function VisitsPage() {
                         </div>
                       );
                     })}
+                </div>
               </div>
-            </div>
-          )}
-        </Card>
+            )}
+          </Card>
 
-        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                Delete {selectedVisitIds.size > 1 ? 'visits' : 'visit'}?
-              </DialogTitle>
-              <DialogDescription>
-                This action cannot be undone. The selected visit
-                {selectedVisitIds.size > 1 ? 's will' : ' will'} be removed permanently.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="danger" onClick={handleConfirmDelete}>
-                Confirm delete
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>
+                  Delete {selectedVisitIds.size > 1 ? 'visits' : 'visit'}?
+                </DialogTitle>
+                <DialogDescription>
+                  This action cannot be undone. The selected visit
+                  {selectedVisitIds.size > 1 ? 's will' : ' will'} be removed permanently.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="danger" onClick={handleConfirmDelete}>
+                  Confirm delete
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </PageContainer>
     </TooltipProvider>
