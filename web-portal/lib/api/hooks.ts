@@ -786,3 +786,217 @@ export function useUpdateConditionStatus() {
     },
   });
 }
+
+// =============================================================================
+// Shared Patients (for caregiver view)
+// =============================================================================
+
+export type SharedPatient = {
+  userId: string;
+  name: string;
+  email?: string;
+};
+
+/**
+ * Fetches the list of patients who have shared their data with the current user.
+ * Returns enriched data with user profile information.
+ */
+export function useSharedPatients(
+  options?: QueryEnabledOptions<SharedPatient[]>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  return useQuery<SharedPatient[]>({
+    queryKey: ['shared-patients', currentUserId ?? 'anonymous'],
+    staleTime: 60_000, // 1 minute
+    enabled: Boolean(currentUserId),
+    ...options,
+    queryFn: async () => {
+      if (!currentUserId) return [];
+
+      // Fetch shares where current user is the recipient
+      const sharesResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/shares`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      if (!sharesResponse.ok) {
+        throw new Error('Failed to fetch shares');
+      }
+
+      const shares = await sharesResponse.json();
+      const incomingAccepted = shares.filter(
+        (s: any) => s.type === 'incoming' && s.status === 'accepted'
+      );
+
+      // Map to SharedPatient structure
+      return incomingAccepted.map((share: any) => ({
+        userId: share.ownerId,
+        name: share.ownerName || share.ownerEmail?.split('@')[0] || 'Unknown',
+        email: share.ownerEmail,
+      }));
+    },
+  });
+}
+
+// =============================================================================
+// User Type Detection (for routing)
+// =============================================================================
+
+export type UserType = {
+  isPatient: boolean;       // Has own health data
+  isCaregiver: boolean;     // Has shared patients
+  isBoth: boolean;          // Has both
+  isPureCaregiver: boolean; // Caregiver only (no own data)
+  isLoading: boolean;
+};
+
+/**
+ * Determines the user's type based on whether they have:
+ * - Own health data (visits, medications) = patient
+ * - Shared patients = caregiver
+ * Used for routing decisions.
+ */
+export function useUserType(): UserType {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  const { data: hasPatientData, isLoading: patientDataLoading } = useHasPatientData(currentUserId);
+  const { data: sharedPatients, isLoading: sharedPatientsLoading } = useSharedPatients();
+
+  const isPatient = Boolean(hasPatientData);
+  const isCaregiver = Boolean(sharedPatients && sharedPatients.length > 0);
+
+  return {
+    isPatient,
+    isCaregiver,
+    isBoth: isPatient && isCaregiver,
+    isPureCaregiver: !isPatient && isCaregiver,
+    isLoading: patientDataLoading || sharedPatientsLoading,
+  };
+}
+
+// =============================================================================
+// Care Dashboard Overview (aggregated data for all shared patients)
+// =============================================================================
+
+export type CarePatientOverview = {
+  userId: string;
+  name: string;
+  email?: string;
+  medicationsToday: {
+    total: number;
+    taken: number;
+    skipped: number;
+    pending: number;
+    missed: number;
+  };
+  pendingActions: number;
+  alerts: Array<{
+    type: 'missed_dose' | 'overdue_action';
+    priority: 'high' | 'medium' | 'low';
+    message: string;
+  }>;
+};
+
+export type CareOverviewData = {
+  patients: CarePatientOverview[];
+};
+
+/**
+ * Fetches aggregated care dashboard data for all shared patients.
+ * Includes medication status, pending actions, and alerts.
+ */
+export function useCareOverview(
+  options?: QueryEnabledOptions<CareOverviewData>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  return useQuery<CareOverviewData>({
+    queryKey: ['care-overview', currentUserId ?? 'anonymous'],
+    staleTime: 30_000, // 30 seconds - refresh frequently for real-time status
+    enabled: Boolean(currentUserId),
+    ...options,
+    queryFn: async () => {
+      if (!currentUserId) return { patients: [] };
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/care/overview`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch care overview');
+      }
+
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Patient Medication Status (for care/:patientId view)
+// =============================================================================
+
+export type PatientMedicationSchedule = {
+  date: string;
+  schedule: Array<{
+    medicationId: string;
+    medicationName: string;
+    dose?: string;
+    scheduledTime: string;
+    status: 'taken' | 'skipped' | 'pending' | 'missed';
+    actionAt?: string;
+  }>;
+  summary: {
+    total: number;
+    taken: number;
+    skipped: number;
+    pending: number;
+    missed: number;
+  };
+};
+
+/**
+ * Fetches today's medication schedule for a shared patient.
+ * Used in the caregiver patient detail view.
+ */
+export function usePatientMedicationStatus(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<PatientMedicationSchedule>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  return useQuery<PatientMedicationSchedule>({
+    queryKey: ['care-medication-status', patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId),
+    ...options,
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/v1/care/${patientId}/medication-status`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch medication status');
+      }
+
+      return response.json();
+    },
+  });
+}

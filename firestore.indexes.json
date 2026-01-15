@@ -209,11 +209,11 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "notificationSent",
+          "fieldPath": "status",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "status",
+          "fieldPath": "notificationSent",
           "order": "ASCENDING"
         },
         {

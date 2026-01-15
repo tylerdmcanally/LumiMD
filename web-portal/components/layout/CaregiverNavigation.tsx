@@ -2,20 +2,18 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import {
     Home,
-    Stethoscope,
     Pill,
     CheckSquare,
-    Users,
     Settings,
     LogOut,
     User,
     ChevronDown,
     Menu,
-    Activity,
+    ArrowLeftRight,
 } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
@@ -23,8 +21,6 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
 import { useUserProfile } from '@/lib/api/hooks';
-import { useViewing } from '@/lib/contexts/ViewingContext';
-import { AccountSwitcher } from './AccountSwitcher';
 
 type NavItem = {
     label: string;
@@ -33,34 +29,26 @@ type NavItem = {
     exact?: boolean;
 };
 
-const NAV_ITEMS: NavItem[] = [
-    { label: 'Home', href: '/dashboard', icon: Home, exact: true },
-    { label: 'Visits', href: '/visits', icon: Stethoscope },
-    { label: 'Medications', href: '/medications', icon: Pill },
-    { label: 'Health', href: '/health', icon: Activity },
-    { label: 'Action Items', href: '/actions', icon: CheckSquare },
-    { label: 'Sharing', href: '/sharing', icon: Users },
+const CARE_NAV_ITEMS: NavItem[] = [
+    { label: 'Overview', href: '/care', icon: Home, exact: true },
+    { label: 'Medications', href: '/care/medications', icon: Pill },
+    { label: 'Actions', href: '/care/actions', icon: CheckSquare },
 ];
 
-
-interface TopNavigationProps {
+interface CaregiverNavigationProps {
     onMobileMenuClick?: () => void;
 }
 
-export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
+export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationProps) {
     const pathname = usePathname();
+    const router = useRouter();
     const user = useCurrentUser();
     const userId = user?.uid ?? null;
-    const { isCaregiver, viewingUserId } = useViewing();
     const [userMenuOpen, setUserMenuOpen] = React.useState(false);
     const userMenuRef = React.useRef<HTMLDivElement>(null);
 
     const { data: profile } = useUserProfile(userId, {
         enabled: Boolean(userId),
-    });
-
-    const { data: viewingProfile } = useUserProfile(viewingUserId ?? undefined, {
-        enabled: Boolean(viewingUserId),
     });
 
     // Close menu when clicking outside
@@ -96,6 +84,10 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
         }
     };
 
+    const handleSwitchToMyHealth = () => {
+        router.push('/dashboard');
+    };
+
     return (
         <header
             className="fixed top-0 left-0 right-0 z-header bg-surface border-b border-border-light shrink-0"
@@ -122,18 +114,21 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
 
                         {/* Logo */}
                         <Link
-                            href="/dashboard"
-                            className="flex items-center transition-smooth hover:opacity-80"
+                            href="/care"
+                            className="flex items-center gap-2 transition-smooth hover:opacity-80"
                         >
                             <span className="text-2xl font-black tracking-tight text-brand-primary leading-none">
                                 LumiMD
+                            </span>
+                            <span className="hidden sm:inline-block text-sm font-medium text-text-muted bg-brand-primary-pale px-2 py-0.5 rounded-full">
+                                Care
                             </span>
                         </Link>
                     </div>
 
                     {/* Center: Navigation (desktop only) */}
                     <nav className="hidden md:flex items-center gap-1">
-                        {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Sharing')).map((item) => {
+                        {CARE_NAV_ITEMS.map((item) => {
                             const isActive = item.exact
                                 ? pathname === item.href
                                 : pathname?.startsWith(item.href);
@@ -158,23 +153,18 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
                         })}
                     </nav>
 
-                    {/* Right: Account Switcher + User Menu */}
+                    {/* Right: Switch View + User Menu */}
                     <div className="flex items-center gap-3">
-                        {/* Care Dashboard link (desktop only, if caregiver) */}
-                        {isCaregiver && (
-                            <Link
-                                href="/care"
-                                className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-hover hover:text-brand-primary transition-all"
-                            >
-                                <Users className="h-4 w-4" />
-                                <span>Care Dashboard</span>
-                            </Link>
-                        )}
-
-                        {/* Account Switcher (desktop only, if caregiver) */}
-                        <div className="hidden md:block">
-                            <AccountSwitcher />
-                        </div>
+                        {/* Switch to My Health (desktop only) */}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleSwitchToMyHealth}
+                            className="hidden md:flex items-center gap-2 text-text-secondary hover:text-brand-primary"
+                        >
+                            <ArrowLeftRight className="h-4 w-4" />
+                            <span>My Health</span>
+                        </Button>
 
                         {/* User Menu */}
                         <div className="relative" ref={userMenuRef}>
@@ -207,8 +197,20 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
 
                                     {/* Menu Items */}
                                     <div className="py-1">
+                                        {/* Switch to My Health (mobile) */}
+                                        <button
+                                            onClick={() => {
+                                                setUserMenuOpen(false);
+                                                handleSwitchToMyHealth();
+                                            }}
+                                            className="md:hidden w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-hover hover:text-text-primary transition-colors"
+                                        >
+                                            <ArrowLeftRight className="h-4 w-4" />
+                                            <span>Switch to My Health</span>
+                                        </button>
+
                                         <Link
-                                            href="/settings"
+                                            href="/care/settings"
                                             onClick={() => setUserMenuOpen(false)}
                                             className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-hover hover:text-text-primary transition-colors"
                                         >

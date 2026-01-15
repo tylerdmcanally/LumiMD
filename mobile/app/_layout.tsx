@@ -57,13 +57,24 @@ function NotificationHandler() {
         return;
       }
 
-      const pendingCount = Array.isArray(pendingActions) ? pendingActions.length : 0;
+      // Only count actions that are due within 7 days or are overdue
+      const now = new Date();
+      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      const urgentActionsCount = Array.isArray(pendingActions)
+        ? pendingActions.filter((action: any) => {
+          if (!action.dueDate) return true; // No due date = show in badge (needs attention)
+          const dueDate = new Date(action.dueDate);
+          return dueDate <= sevenDaysFromNow; // Due within 7 days or already overdue
+        }).length
+        : 0;
+
       // Count visits that are completed but might need review
       const visitsCount = Array.isArray(visits)
         ? visits.filter((v: any) => v.processingStatus === 'completed').length
         : 0;
-      // Use pending actions as primary badge indicator, fallback to visits
-      await setBadgeCount(Math.max(pendingCount, visitsCount > 0 ? 1 : 0));
+      // Use urgent pending actions as primary badge indicator, fallback to visits
+      await setBadgeCount(Math.max(urgentActionsCount, visitsCount > 0 ? 1 : 0));
     };
 
     updateBadge();

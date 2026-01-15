@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { useMedicationSchedule, useMarkDose, useMarkBatch, useSnoozeDose, type ScheduledDose } from '../lib/api/hooks';
-import { useWidgetSync } from '../lib/widget';
+import { useWidgetSync, syncMedicationScheduleToWidget } from '../lib/widget';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 export default function MedicationScheduleScreen() {
@@ -71,6 +71,18 @@ export default function MedicationScheduleScreen() {
                 scheduledTime: dose.scheduledTime,
                 action,
             });
+            // Immediately sync to widget after marking (don't wait for refetch)
+            if (schedule) {
+                const updatedDoses = schedule.scheduledDoses.map(d =>
+                    d.medicationId === dose.medicationId && d.scheduledTime === dose.scheduledTime
+                        ? { ...d, status: action }
+                        : d
+                );
+                syncMedicationScheduleToWidget({
+                    ...schedule,
+                    scheduledDoses: updatedDoses as ScheduledDose[]
+                });
+            }
         } catch (err) {
             Alert.alert('Error', 'Failed to mark dose. Please try again.');
         }
@@ -88,6 +100,19 @@ export default function MedicationScheduleScreen() {
                 })),
                 action,
             });
+            // Immediately sync to widget after batch mark
+            if (schedule) {
+                const markedIds = new Set(pendingDoses.map(d => `${d.medicationId}_${d.scheduledTime}`));
+                const updatedDoses = schedule.scheduledDoses.map(d =>
+                    markedIds.has(`${d.medicationId}_${d.scheduledTime}`)
+                        ? { ...d, status: action }
+                        : d
+                );
+                syncMedicationScheduleToWidget({
+                    ...schedule,
+                    scheduledDoses: updatedDoses as ScheduledDose[]
+                });
+            }
         } catch (err) {
             Alert.alert('Error', 'Failed to mark doses. Please try again.');
         }
@@ -220,7 +245,15 @@ export default function MedicationScheduleScreen() {
             <SafeAreaView style={styles.safeArea}>
                 <View style={styles.container}>
                     <View style={styles.header}>
-                        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
+                        <Pressable onPress={() => {
+                            // Handle back navigation from widget deep link (cold start has no back stack)
+                            if (router.canGoBack()) {
+                                router.back();
+                            } else {
+                                // No back stack = came from widget, navigate to home
+                                router.replace('/');
+                            }
+                        }} style={styles.backButton}>
                             <Ionicons name="chevron-back" size={28} color={Colors.text} />
                         </Pressable>
                         <Text style={styles.headerTitle}>Today's Schedule</Text>

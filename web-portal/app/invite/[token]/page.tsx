@@ -25,14 +25,36 @@ export default function InviteAcceptPage() {
     mutationFn: async (inviteToken: string) => {
       return api.shares.acceptInvite(inviteToken);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Invitation accepted!', {
         description: 'You now have access to view this person\'s health information.',
       });
-      // Redirect to dashboard after a short delay
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 1500);
+
+      // Check if user has own health data to determine redirect
+      try {
+        const [visitsRes, medsRes] = await Promise.all([
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/visits?limit=1`, {
+            credentials: 'include',
+          }),
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/meds?limit=1`, {
+            credentials: 'include',
+          }),
+        ]);
+
+        const visits = visitsRes.ok ? await visitsRes.json() : [];
+        const meds = medsRes.ok ? await medsRes.json() : [];
+        const hasOwnData = visits.length > 0 || meds.length > 0;
+
+        // Route pure caregivers to care dashboard, others to patient dashboard
+        setTimeout(() => {
+          router.push(hasOwnData ? '/dashboard' : '/care');
+        }, 1500);
+      } catch {
+        // Fallback to patient dashboard on error
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1500);
+      }
     },
     onError: (error: any) => {
       const message = error?.userMessage || error?.message || 'Failed to accept invitation';
@@ -44,7 +66,7 @@ export default function InviteAcceptPage() {
   // Track the user ID to detect account switches
   const lastUserIdRef = React.useRef<string | null>(null);
   const hasAttemptedAccept = React.useRef(false);
-  
+
   React.useEffect(() => {
     // Reset attempt flag and mutation state if user changed (signed out and back in with different account)
     if (user?.uid !== lastUserIdRef.current) {
@@ -52,7 +74,7 @@ export default function InviteAcceptPage() {
       lastUserIdRef.current = user?.uid ?? null;
       acceptMutation.reset();
     }
-    
+
     if (user && token && !hasAttemptedAccept.current && !acceptMutation.isPending) {
       hasAttemptedAccept.current = true;
       acceptMutation.mutate(token);

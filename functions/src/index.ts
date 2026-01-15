@@ -19,6 +19,7 @@ import { healthLogsRouter } from './routes/healthLogs';
 import { medicationRemindersRouter } from './routes/medicationReminders';
 import medicationLogsRouter from './routes/medicationLogs';
 import { medicalContextRouter } from './routes/medicalContext';
+import { careRouter } from './routes/care';
 import { apiLimiter } from './middlewares/rateLimit';
 import { requireHttps } from './middlewares/httpsOnly';
 import { errorHandler } from './middlewares/errorHandler';
@@ -165,6 +166,7 @@ app.use('/v1/medication-reminders', medicationRemindersRouter);
 app.use('/v1/medication-logs', medicationLogsRouter);
 app.use('/v1/insights', insightsRouter);
 app.use('/v1/medical-context', medicalContextRouter);
+app.use('/v1/care', careRouter);
 
 // Public endpoint for caregivers to view shared visit summaries (no auth required)
 app.get('/v1/shared/visits/:userId/:visitId', async (req, res) => {
