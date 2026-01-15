@@ -15,7 +15,7 @@ import { HealthStep } from '../../components/onboarding/HealthStep';
 import { CaregiverStep, CaregiverEntry } from '../../components/onboarding/CaregiverStep';
 import { CompletionStep } from '../../components/onboarding/CompletionStep';
 import { TermsStep } from '../../components/onboarding/TermsStep';
-import { useAddCaregiver } from '../../lib/api/mutations';
+import { useInviteCaregiver } from '../../lib/api/mutations';
 
 
 export type OnboardingData = {
@@ -43,7 +43,7 @@ const initialData: OnboardingData = {
 export default function OnboardingScreen() {
     const router = useRouter();
     const updateProfile = useUpdateUserProfile();
-    const addCaregiver = useAddCaregiver();
+    const inviteCaregiver = useInviteCaregiver();
     const [currentStep, setCurrentStep] = useState(0);
     const [data, setData] = useState<OnboardingData>(initialData);
     const [saving, setSaving] = useState(false);
@@ -81,17 +81,16 @@ export default function OnboardingScreen() {
                 complete: true,
             });
 
-            // Save each caregiver to the backend
+            // Invite each caregiver via the new token-based system
             for (const caregiver of data.caregivers) {
                 try {
-                    await addCaregiver.mutateAsync({
-                        name: caregiver.name,
-                        email: caregiver.email,
-                        relationship: caregiver.relationship || undefined,
+                    await inviteCaregiver.mutateAsync({
+                        caregiverEmail: caregiver.email,
+                        message: `${data.firstName} wants to share their health information with you.`,
                     });
-                    console.log('[Onboarding] Saved caregiver:', caregiver.name);
+                    console.log('[Onboarding] Invited caregiver:', caregiver.email);
                 } catch (caregiverError) {
-                    console.error('[Onboarding] Failed to save caregiver:', caregiverError);
+                    console.error('[Onboarding] Failed to invite caregiver:', caregiverError);
                     // Continue with other caregivers even if one fails
                 }
             }
@@ -105,7 +104,7 @@ export default function OnboardingScreen() {
         } finally {
             setSaving(false);
         }
-    }, [data, updateProfile, addCaregiver, router]);
+    }, [data, updateProfile, inviteCaregiver, router]);
 
 
     const handleRecordFirst = useCallback(async () => {

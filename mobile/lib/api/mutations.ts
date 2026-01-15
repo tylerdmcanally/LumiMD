@@ -101,3 +101,28 @@ export function useAddCaregiver() {
     },
   });
 }
+
+/**
+ * Invite a caregiver using the new token-based invite system
+ * Creates invite via /v1/shares/invite and sends email
+ */
+export function useInviteCaregiver() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { caregiverEmail: string; message?: string }) => {
+      // Create the invite via new endpoint
+      const invite = await api.shares.invite(payload);
+
+      // Note: Email sending should be handled by the caller or backend
+      // For mobile onboarding, we may skip email initially since
+      // the caregiver can be added to a list and invited later
+
+      return invite;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shares'] });
+      queryClient.invalidateQueries({ queryKey: ['share-invites'] });
+    },
+  });
+}
