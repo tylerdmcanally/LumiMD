@@ -404,6 +404,15 @@ declare function createApiClient(config: ApiClientConfig): {
         acceptInvite: (token: string) => Promise<Share>;
         getInvites: () => Promise<ShareInvite[]>;
         cancelInvite: (inviteId: string) => Promise<ShareInvite>;
+        invite: (data: {
+            caregiverEmail: string;
+            message?: string;
+        }) => Promise<ShareInvite>;
+        acceptToken: (token: string) => Promise<ShareInvite>;
+        myInvites: () => Promise<ShareInvite[]>;
+        revokeInvite: (token: string) => Promise<{
+            success: boolean;
+        }>;
     };
     nudges: {
         list: () => Promise<Nudge[]>;

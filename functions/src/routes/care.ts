@@ -16,41 +16,28 @@ const getDb = () => admin.firestore();
 
 // =============================================================================
 // HELPER: Get accepted incoming shares for caregiver
-// =============================================================================
-
-// =============================================================================
-// HELPER: Get accepted incoming shares for caregiver
+// Queries the shareInvites collection for accepted invites where user is caregiver
 // =============================================================================
 
 async function getAcceptedSharesForCaregiver(caregiverId: string) {
-    // Query ALL shares for this caregiver first to debug potential status issues
-    const sharesSnapshot = await getDb()
-        .collection('shares')
+    // Query shareInvites where this user is the caregiver and status is accepted
+    const invitesSnapshot = await getDb()
+        .collection('shareInvites')
         .where('caregiverUserId', '==', caregiverId)
+        .where('status', '==', 'accepted')
         .get();
 
-    const allShares = sharesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-    }));
-
-    // Log what we found for debugging
-    functions.logger.info(`[care] Found ${allShares.length} total shares for caregiver ${caregiverId}`);
-    allShares.forEach(s => {
-        functions.logger.info(`[care] Share ${s.id}: status=${(s as any).status}, owner=${(s as any).ownerId}`);
+    const acceptedShares = invitesSnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            ownerId: data.ownerId,
+            ownerName: data.ownerName,
+            ownerEmail: data.ownerEmail,
+        };
     });
 
-    // Filter for accepted ones
-    const acceptedShares = sharesSnapshot.docs
-        .filter((doc) => doc.data().status === 'accepted')
-        .map((doc) => ({
-            id: doc.id,
-            ownerId: doc.data().ownerId,
-            ownerName: doc.data().ownerName,
-            ownerEmail: doc.data().ownerEmail,
-        }));
-
-    functions.logger.info(`[care] Returning ${acceptedShares.length} accepted shares`);
+    functions.logger.info(`[care] Found ${acceptedShares.length} accepted invites for caregiver ${caregiverId}`);
     return acceptedShares;
 }
 

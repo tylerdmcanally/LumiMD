@@ -23,7 +23,8 @@ export default function InviteAcceptPage() {
 
   const acceptMutation = useMutation({
     mutationFn: async (inviteToken: string) => {
-      return api.shares.acceptInvite(inviteToken);
+      // Use new token-based acceptance endpoint
+      return api.shares.acceptToken(inviteToken);
     },
     onSuccess: async () => {
       toast.success('Invitation accepted!', {

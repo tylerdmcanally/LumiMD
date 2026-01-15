@@ -427,6 +427,7 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'PATCH',
           body: JSON.stringify(data),
         }),
+      // Legacy accept-invite endpoint
       acceptInvite: (token: string) =>
         apiRequest<Share>('/v1/shares/accept-invite', {
           method: 'POST',
@@ -435,6 +436,21 @@ export function createApiClient(config: ApiClientConfig) {
       getInvites: () => apiRequest<ShareInvite[]>('/v1/shares/invites'),
       cancelInvite: (inviteId: string) =>
         apiRequest<ShareInvite>(`/v1/shares/invites/${inviteId}`, {
+          method: 'PATCH',
+        }),
+      // NEW: Token-based invite system
+      invite: (data: { caregiverEmail: string; message?: string }) =>
+        apiRequest<ShareInvite>('/v1/shares/invite', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      acceptToken: (token: string) =>
+        apiRequest<ShareInvite>(`/v1/shares/accept/${token}`, {
+          method: 'POST',
+        }),
+      myInvites: () => apiRequest<ShareInvite[]>('/v1/shares/my-invites'),
+      revokeInvite: (token: string) =>
+        apiRequest<{ success: boolean }>(`/v1/shares/revoke/${token}`, {
           method: 'PATCH',
         }),
     },

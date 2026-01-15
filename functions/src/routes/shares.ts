@@ -730,3 +730,308 @@ sharesRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     message: 'Use PATCH with status: "revoked" instead of DELETE',
   });
 });
+
+// =============================================================================
+// NEW UNIFIED TOKEN-BASED INVITE SYSTEM
+// =============================================================================
+
+/**
+ * POST /v1/shares/invite
+ * Create a new share invitation using token-based system
+ * Always creates a shareInvite with random token, regardless of whether user exists
+ * Email is sent by this endpoint directly via Resend
+ */
+sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ownerId = req.user!.uid;
+    const data = createShareSchema.parse(req.body);
+    const caregiverEmail = data.caregiverEmail.toLowerCase().trim();
+
+    // Get owner info
+    const ownerUser = await admin.auth().getUser(ownerId);
+    const ownerEmail = ownerUser.email?.toLowerCase().trim() || '';
+    const ownerProfile = await getDb().collection('users').doc(ownerId).get();
+    const ownerData = ownerProfile.data();
+    const ownerName =
+      ownerData?.preferredName ||
+      ownerData?.firstName ||
+      ownerUser.displayName ||
+      ownerEmail.split('@')[0];
+
+    // Edge case: Prevent sharing with yourself
+    if (ownerEmail === caregiverEmail) {
+      res.status(400).json({
+        code: 'invalid_share',
+        message: 'You cannot share with yourself',
+      });
+      return;
+    }
+
+    // Edge case: Check for existing pending invite
+    const existingPendingQuery = await getDb()
+      .collection('shareInvites')
+      .where('ownerId', '==', ownerId)
+      .where('caregiverEmail', '==', caregiverEmail)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+
+    if (!existingPendingQuery.empty) {
+      res.status(409).json({
+        code: 'invite_exists',
+        message: 'An invitation has already been sent to this email',
+      });
+      return;
+    }
+
+    // Edge case: Check for existing accepted share
+    const existingAcceptedQuery = await getDb()
+      .collection('shareInvites')
+      .where('ownerId', '==', ownerId)
+      .where('caregiverEmail', '==', caregiverEmail)
+      .where('status', '==', 'accepted')
+      .limit(1)
+      .get();
+
+    if (!existingAcceptedQuery.empty) {
+      res.status(409).json({
+        code: 'share_exists',
+        message: 'You are already sharing with this user',
+      });
+      return;
+    }
+
+    // Generate unique token
+    const inviteToken = randomBytes(32).toString('base64url');
+    const now = admin.firestore.Timestamp.now();
+    const expiresAt = admin.firestore.Timestamp.fromMillis(
+      now.toMillis() + 7 * 24 * 60 * 60 * 1000 // 7 days
+    );
+
+    // Create invite document
+    await getDb().collection('shareInvites').doc(inviteToken).set({
+      ownerId,
+      ownerEmail,
+      ownerName,
+      caregiverEmail,
+      caregiverUserId: null, // Set on acceptance
+      status: 'pending',
+      role: 'viewer',
+      message: data.message || null,
+      createdAt: now,
+      expiresAt,
+      acceptedAt: null,
+    });
+
+    functions.logger.info(`[shares] Created invite ${inviteToken} from ${ownerId} to ${caregiverEmail}`);
+
+    // Return invite for frontend to send email
+    res.status(201).json({
+      id: inviteToken,
+      ownerId,
+      ownerEmail,
+      ownerName,
+      caregiverEmail,
+      status: 'pending',
+      role: 'viewer',
+      message: data.message || null,
+      createdAt: now.toDate().toISOString(),
+      expiresAt: expiresAt.toDate().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[shares] Error creating invite:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to create invitation',
+    });
+  }
+});
+
+/**
+ * POST /v1/shares/accept/:token
+ * Accept a share invitation using token
+ * Validates that current user's email matches invite's caregiverEmail
+ * Creates accepted share and updates invite status
+ */
+sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const { token } = req.params;
+
+    // Get invite document
+    const inviteDoc = await getDb().collection('shareInvites').doc(token).get();
+
+    if (!inviteDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Invitation not found',
+      });
+      return;
+    }
+
+    const invite = inviteDoc.data()!;
+
+    // Edge case: Check if expired
+    const now = admin.firestore.Timestamp.now();
+    if (invite.expiresAt && invite.expiresAt.toMillis() < now.toMillis()) {
+      await inviteDoc.ref.update({ status: 'expired' });
+      res.status(410).json({
+        code: 'invite_expired',
+        message: 'This invitation has expired. Please ask for a new invitation.',
+      });
+      return;
+    }
+
+    // Get current user's email
+    const currentUser = await admin.auth().getUser(userId);
+    const currentUserEmail = currentUser.email?.toLowerCase().trim();
+
+    functions.logger.info(`[shares] Accept attempt: token=${token}, userId=${userId}, userEmail=${currentUserEmail}, inviteEmail=${invite.caregiverEmail}`);
+
+    // Edge case: Validate email match
+    if (!currentUserEmail || currentUserEmail !== invite.caregiverEmail) {
+      res.status(403).json({
+        code: 'email_mismatch',
+        message: `This invitation was sent to ${invite.caregiverEmail}. Please sign in with that email address.`,
+        userMessage: `This invitation was sent to ${invite.caregiverEmail}. Please sign in with that email address.`,
+      });
+      return;
+    }
+
+    // Edge case: Check if already accepted
+    if (invite.status === 'accepted') {
+      res.json({
+        id: token,
+        ...invite,
+        createdAt: invite.createdAt?.toDate().toISOString(),
+        expiresAt: invite.expiresAt?.toDate().toISOString(),
+        acceptedAt: invite.acceptedAt?.toDate().toISOString(),
+      });
+      return;
+    }
+
+    // Edge case: Check if revoked
+    if (invite.status === 'revoked') {
+      res.status(403).json({
+        code: 'invite_revoked',
+        message: 'This invitation has been revoked.',
+      });
+      return;
+    }
+
+    // Accept the invite
+    await inviteDoc.ref.update({
+      status: 'accepted',
+      caregiverUserId: userId,
+      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    functions.logger.info(`[shares] User ${userId} accepted invite ${token}`);
+
+    // Fetch updated document
+    const updatedDoc = await inviteDoc.ref.get();
+    const updatedInvite = updatedDoc.data()!;
+
+    res.json({
+      id: token,
+      ...updatedInvite,
+      createdAt: updatedInvite.createdAt?.toDate().toISOString(),
+      expiresAt: updatedInvite.expiresAt?.toDate().toISOString(),
+      acceptedAt: updatedInvite.acceptedAt?.toDate().toISOString(),
+    });
+  } catch (error) {
+    functions.logger.error('[shares] Error accepting invite:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to accept invitation',
+    });
+  }
+});
+
+/**
+ * GET /v1/shares/my-invites
+ * Get all invites sent by current user (as patient/owner)
+ */
+sharesRouter.get('/my-invites', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    const invitesSnapshot = await getDb()
+      .collection('shareInvites')
+      .where('ownerId', '==', userId)
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    const invites = invitesSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate().toISOString(),
+      expiresAt: doc.data().expiresAt?.toDate().toISOString(),
+      acceptedAt: doc.data().acceptedAt?.toDate().toISOString(),
+    }));
+
+    res.json(invites);
+  } catch (error) {
+    functions.logger.error('[shares] Error fetching invites:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch invites',
+    });
+  }
+});
+
+/**
+ * PATCH /v1/shares/revoke/:token
+ * Revoke a share invitation (by owner)
+ */
+sharesRouter.patch('/revoke/:token', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const { token } = req.params;
+
+    const inviteDoc = await getDb().collection('shareInvites').doc(token).get();
+
+    if (!inviteDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Invitation not found',
+      });
+      return;
+    }
+
+    const invite = inviteDoc.data()!;
+
+    // Only owner can revoke
+    if (invite.ownerId !== userId) {
+      res.status(403).json({
+        code: 'forbidden',
+        message: 'Only the owner can revoke this invitation',
+      });
+      return;
+    }
+
+    await inviteDoc.ref.update({
+      status: 'revoked',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    functions.logger.info(`[shares] Owner ${userId} revoked invite ${token}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    functions.logger.error('[shares] Error revoking invite:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to revoke invitation',
+    });
+  }
+});

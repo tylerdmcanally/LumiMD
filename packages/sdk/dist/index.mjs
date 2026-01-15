@@ -311,12 +311,25 @@ function createApiClient(config) {
         method: "PATCH",
         body: JSON.stringify(data)
       }),
+      // Legacy accept-invite endpoint
       acceptInvite: (token) => apiRequest("/v1/shares/accept-invite", {
         method: "POST",
         body: JSON.stringify({ token })
       }),
       getInvites: () => apiRequest("/v1/shares/invites"),
       cancelInvite: (inviteId) => apiRequest(`/v1/shares/invites/${inviteId}`, {
+        method: "PATCH"
+      }),
+      // NEW: Token-based invite system
+      invite: (data) => apiRequest("/v1/shares/invite", {
+        method: "POST",
+        body: JSON.stringify(data)
+      }),
+      acceptToken: (token) => apiRequest(`/v1/shares/accept/${token}`, {
+        method: "POST"
+      }),
+      myInvites: () => apiRequest("/v1/shares/my-invites"),
+      revokeInvite: (token) => apiRequest(`/v1/shares/revoke/${token}`, {
         method: "PATCH"
       })
     },
