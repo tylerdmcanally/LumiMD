@@ -1094,6 +1094,8 @@ export type CareVisitSummary = {
   id: string;
   visitDate?: string | null;
   provider?: string | null;
+  specialty?: string | null;
+  location?: string | null;
   summary?: string | null;
   diagnoses?: string[];
   medications?: Record<string, unknown>;
