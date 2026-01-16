@@ -1206,3 +1206,237 @@ export function usePatientMedicationStatus(
     },
   });
 }
+
+// =============================================================================
+// Caregiver Notes
+// =============================================================================
+
+export type CaregiverNote = {
+  id: string;
+  visitId: string;
+  note: string | null;
+  pinned: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+/**
+ * Fetches all caregiver notes for a patient.
+ */
+export function useCaregiverNotes(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CaregiverNote[]>,
+) {
+  return useQuery<CaregiverNote[]>({
+    queryKey: ['caregiver-notes', patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId),
+    ...options,
+    queryFn: async () => {
+      if (!patientId) return [];
+
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/notes`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch notes');
+      }
+
+      return response.json();
+    },
+  });
+}
+
+/**
+ * Mutation to save a caregiver note (create or update).
+ */
+export function useSaveCaregiverNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      patientId,
+      visitId,
+      note,
+      pinned,
+    }: {
+      patientId: string;
+      visitId: string;
+      note?: string;
+      pinned?: boolean;
+    }) => {
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/visits/${visitId}/note`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ note, pinned }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to save note');
+      }
+
+      return response.json() as Promise<CaregiverNote>;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['caregiver-notes', variables.patientId],
+      });
+    },
+  });
+}
+
+/**
+ * Mutation to delete a caregiver note.
+ */
+export function useDeleteCaregiverNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      patientId,
+      visitId,
+    }: {
+      patientId: string;
+      visitId: string;
+    }) => {
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/visits/${visitId}/note`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to delete note');
+      }
+
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['caregiver-notes', variables.patientId],
+      });
+    },
+  });
+}
+
+// =============================================================================
+// Care Summary Export
+// =============================================================================
+
+export type CareSummaryExport = {
+  generatedAt: string;
+  patient: {
+    name: string;
+    id: string;
+  };
+  overview: {
+    totalVisits: number;
+    totalConditions: number;
+    totalProviders: number;
+    activeMedications: number;
+    pendingActions: number;
+  };
+  conditions: string[];
+  providers: string[];
+  currentMedications: Array<{
+    name: string;
+    dosage: string | null;
+    frequency: string | null;
+    instructions: string | null;
+  }>;
+  pendingActions: Array<{
+    title: string;
+    dueDate: string | null;
+    priority: string;
+  }>;
+  recentVisits: Array<{
+    date: string | null;
+    provider: string | null;
+    specialty: string | null;
+    summary: string | null;
+    diagnoses: string[];
+  }>;
+};
+
+/**
+ * Fetches a care summary for export.
+ */
+export function useCareSummaryExport(patientId: string | undefined) {
+  return useQuery<CareSummaryExport>({
+    queryKey: ['care-summary-export', patientId ?? 'unknown'],
+    staleTime: 60_000,
+    enabled: false, // Only fetch when explicitly triggered
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/export/summary`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate care summary');
+      }
+
+      return response.json();
+    },
+  });
+}

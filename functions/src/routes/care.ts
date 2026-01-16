@@ -861,3 +861,330 @@ careRouter.get(
         }
     }
 );
+
+// =============================================================================
+// CAREGIVER NOTES API
+// Private notes that caregivers can add to visits
+// =============================================================================
+
+// GET /v1/care/:patientId/notes
+// List all caregiver notes for a patient
+careRouter.get('/:patientId/notes', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+
+        // Validate caregiver has access to this patient
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        // Fetch all notes for this caregiver + patient combination
+        const notesSnapshot = await getDb()
+            .collection('caregiverNotes')
+            .where('caregiverId', '==', caregiverId)
+            .where('patientId', '==', patientId)
+            .orderBy('updatedAt', 'desc')
+            .get();
+
+        const notes = notesSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                visitId: data.visitId,
+                note: data.note || null,
+                pinned: data.pinned || false,
+                createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
+                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
+            };
+        });
+
+        res.json(notes);
+    } catch (error) {
+        functions.logger.error('[care] Error fetching caregiver notes:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch notes',
+        });
+    }
+});
+
+// PUT /v1/care/:patientId/visits/:visitId/note
+// Create or update a caregiver note for a specific visit
+careRouter.put('/:patientId/visits/:visitId/note', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const { patientId, visitId } = req.params;
+        const { note, pinned } = req.body;
+
+        // Validate caregiver has access to this patient
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        // Verify the visit exists and belongs to the patient
+        const visitDoc = await getDb().collection('visits').doc(visitId).get();
+        if (!visitDoc.exists) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Visit not found',
+            });
+            return;
+        }
+
+        const visitData = visitDoc.data();
+        if (visitData?.userId !== patientId) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'Visit does not belong to this patient',
+            });
+            return;
+        }
+
+        // Use a deterministic document ID for upsert behavior
+        const noteDocId = `${caregiverId}_${patientId}_${visitId}`;
+        const now = admin.firestore.FieldValue.serverTimestamp();
+
+        // Check if note already exists
+        const existingDoc = await getDb().collection('caregiverNotes').doc(noteDocId).get();
+
+        const noteData: Record<string, any> = {
+            caregiverId,
+            patientId,
+            visitId,
+            updatedAt: now,
+        };
+
+        // Only update fields that are provided
+        if (typeof note === 'string') {
+            noteData.note = note.trim();
+        }
+        if (typeof pinned === 'boolean') {
+            noteData.pinned = pinned;
+        }
+
+        if (!existingDoc.exists) {
+            // Create new note
+            noteData.createdAt = now;
+            noteData.pinned = noteData.pinned ?? false;
+            noteData.note = noteData.note ?? '';
+        }
+
+        await getDb().collection('caregiverNotes').doc(noteDocId).set(noteData, { merge: true });
+
+        // Fetch the updated document to return
+        const updatedDoc = await getDb().collection('caregiverNotes').doc(noteDocId).get();
+        const updatedData = updatedDoc.data();
+
+        res.json({
+            id: noteDocId,
+            visitId,
+            note: updatedData?.note || null,
+            pinned: updatedData?.pinned || false,
+            createdAt: updatedData?.createdAt?.toDate?.()?.toISOString() || null,
+            updatedAt: updatedData?.updatedAt?.toDate?.()?.toISOString() || null,
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error saving caregiver note:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to save note',
+        });
+    }
+});
+
+// DELETE /v1/care/:patientId/visits/:visitId/note
+// Delete a caregiver note for a specific visit
+careRouter.delete('/:patientId/visits/:visitId/note', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const { patientId, visitId } = req.params;
+
+        // Validate caregiver has access to this patient
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const noteDocId = `${caregiverId}_${patientId}_${visitId}`;
+        const noteDoc = await getDb().collection('caregiverNotes').doc(noteDocId).get();
+
+        if (!noteDoc.exists) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Note not found',
+            });
+            return;
+        }
+
+        await getDb().collection('caregiverNotes').doc(noteDocId).delete();
+
+        res.json({ success: true });
+    } catch (error) {
+        functions.logger.error('[care] Error deleting caregiver note:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to delete note',
+        });
+    }
+});
+
+// =============================================================================
+// CARE SUMMARY EXPORT
+// Generate a text/JSON summary of patient care for export
+// =============================================================================
+
+// GET /v1/care/:patientId/export/summary
+// Generate a care summary for a patient
+careRouter.get('/:patientId/export/summary', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+
+        // Validate caregiver has access
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        // Get patient profile
+        let patientName = 'Unknown Patient';
+        try {
+            const profileDoc = await getDb().collection('users').doc(patientId).get();
+            const profile = profileDoc.data();
+            patientName = profile?.preferredName || profile?.firstName || 'Unknown';
+            if (!patientName || patientName === 'Unknown') {
+                const authUser = await admin.auth().getUser(patientId);
+                patientName = authUser.displayName || authUser.email?.split('@')[0] || 'Unknown';
+            }
+        } catch {
+            // Keep default name
+        }
+
+        // Fetch all visits
+        const visitsSnapshot = await getDb()
+            .collection('visits')
+            .where('userId', '==', patientId)
+            .orderBy('createdAt', 'desc')
+            .get();
+
+        const visits = visitsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                visitDate: data.visitDate?.toDate?.()?.toISOString() || data.createdAt?.toDate?.()?.toISOString() || null,
+                provider: data.provider || null,
+                specialty: data.specialty || null,
+                location: data.location || null,
+                summary: data.summary || null,
+                diagnoses: Array.isArray(data.diagnoses) ? data.diagnoses.filter(Boolean) : [],
+                nextSteps: Array.isArray(data.nextSteps) ? data.nextSteps.filter(Boolean) : [],
+                medications: data.medications || null,
+            };
+        });
+
+        // Fetch active medications
+        const medsSnapshot = await getDb()
+            .collection('medications')
+            .where('userId', '==', patientId)
+            .where('active', '==', true)
+            .get();
+
+        const medications = medsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                name: data.name || 'Unknown',
+                dosage: data.dosage || data.dose || null,
+                frequency: data.frequency || null,
+                instructions: data.instructions || null,
+            };
+        });
+
+        // Fetch pending actions
+        const actionsSnapshot = await getDb()
+            .collection('actions')
+            .where('userId', '==', patientId)
+            .where('completed', '==', false)
+            .get();
+
+        const pendingActions = actionsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                title: data.title || data.text || 'Unknown',
+                dueDate: data.dueDate?.toDate?.()?.toISOString() || null,
+                priority: data.priority || 'normal',
+            };
+        });
+
+        // Extract unique conditions from all visits
+        const conditionSet = new Set<string>();
+        visits.forEach((visit) => {
+            visit.diagnoses.forEach((dx: string) => {
+                if (dx?.trim()) conditionSet.add(dx.trim());
+            });
+        });
+        const conditions = Array.from(conditionSet).sort();
+
+        // Extract unique providers
+        const providerSet = new Set<string>();
+        visits.forEach((visit) => {
+            if (visit.provider?.trim()) {
+                providerSet.add(visit.provider.trim());
+            }
+        });
+        const providers = Array.from(providerSet).sort();
+
+        // Build summary
+        const summary = {
+            generatedAt: new Date().toISOString(),
+            patient: {
+                name: patientName,
+                id: patientId,
+            },
+            overview: {
+                totalVisits: visits.length,
+                totalConditions: conditions.length,
+                totalProviders: providers.length,
+                activeMedications: medications.length,
+                pendingActions: pendingActions.length,
+            },
+            conditions,
+            providers,
+            currentMedications: medications,
+            pendingActions,
+            recentVisits: visits.slice(0, 10).map((v) => ({
+                date: v.visitDate,
+                provider: v.provider,
+                specialty: v.specialty,
+                summary: v.summary?.substring(0, 300),
+                diagnoses: v.diagnoses,
+            })),
+        };
+
+        res.json(summary);
+    } catch (error) {
+        functions.logger.error('[care] Error generating care summary:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to generate care summary',
+        });
+    }
+});

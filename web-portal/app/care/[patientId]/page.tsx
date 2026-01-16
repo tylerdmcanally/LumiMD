@@ -14,6 +14,8 @@ import {
     XCircle,
     Clock,
     AlertTriangle,
+    Users,
+    Activity,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
@@ -218,7 +220,7 @@ export default function PatientDetailPage() {
             </section>
 
             {/* Quick Actions - Links to other views */}
-            <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Card variant="elevated" padding="md" className="hover:shadow-lg transition-shadow">
                     <Link href={`/care/${patientId}/visits`} className="block">
                         <div className="flex items-center gap-3 mb-2">
@@ -228,6 +230,30 @@ export default function PatientDetailPage() {
                             <span className="font-medium text-text-primary">Visits</span>
                         </div>
                         <p className="text-sm text-text-muted">View past visit summaries</p>
+                    </Link>
+                </Card>
+
+                <Card variant="elevated" padding="md" className="hover:shadow-lg transition-shadow">
+                    <Link href={`/care/${patientId}/conditions`} className="block">
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                                <Activity className="h-5 w-5" />
+                            </div>
+                            <span className="font-medium text-text-primary">Conditions</span>
+                        </div>
+                        <p className="text-sm text-text-muted">Track diagnoses over time</p>
+                    </Link>
+                </Card>
+
+                <Card variant="elevated" padding="md" className="hover:shadow-lg transition-shadow">
+                    <Link href={`/care/${patientId}/providers`} className="block">
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                                <Users className="h-5 w-5" />
+                            </div>
+                            <span className="font-medium text-text-primary">Providers</span>
+                        </div>
+                        <p className="text-sm text-text-muted">Care team directory</p>
                     </Link>
                 </Card>
 
