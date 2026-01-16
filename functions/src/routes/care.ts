@@ -49,28 +49,20 @@ async function validateCaregiverAccess(
     caregiverId: string,
     patientId: string
 ): Promise<boolean> {
-    // Check direct share ID first (preferred)
-    const shareId = `${patientId}_${caregiverId}`;
-    const shareDoc = await getDb().collection('shares').doc(shareId).get();
+    // Query shareInvites for accepted invite from this patient to this caregiver
+    const invitesSnapshot = await getDb()
+        .collection('shareInvites')
+        .where('ownerId', '==', patientId)
+        .where('caregiverUserId', '==', caregiverId)
+        .where('status', '==', 'accepted')
+        .limit(1)
+        .get();
 
-    if (shareDoc.exists) {
-        const share = shareDoc.data();
-        if (share?.status === 'accepted') return true;
-        functions.logger.warn(`[care] Access denied. Share ${shareId} exists but status is ${share?.status}`);
-    } else {
-        // Fallback: check query in case ID format is different
-        const querySnapshot = await getDb()
-            .collection('shares')
-            .where('ownerId', '==', patientId)
-            .where('caregiverUserId', '==', caregiverId)
-            .where('status', '==', 'accepted')
-            .limit(1)
-            .get();
-
-        if (!querySnapshot.empty) return true;
-        functions.logger.warn(`[care] Access denied. No accepted share found for owner ${patientId} and caregiver ${caregiverId}`);
+    if (!invitesSnapshot.empty) {
+        return true;
     }
 
+    functions.logger.warn(`[care] Access denied. No accepted invite found for owner ${patientId} and caregiver ${caregiverId}`);
     return false;
 }
 
