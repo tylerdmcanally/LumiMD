@@ -18,7 +18,8 @@ function CareLayoutInner({ children }: { children: React.ReactNode }) {
         enabled: Boolean(userId),
     });
 
-    const hasPatientRole = profile?.roles?.includes('patient') ?? false;
+    const roles = profile?.roles as Array<string> | undefined;
+    const hasPatientRole = roles?.includes('patient') ?? false;
 
     return (
         <div

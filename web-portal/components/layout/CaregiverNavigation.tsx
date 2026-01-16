@@ -51,7 +51,8 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
     });
 
     // Check if user also has patient role
-    const hasPatientRole = profile?.roles?.includes('patient') ?? false;
+    const roles = profile?.roles as Array<string> | undefined;
+    const hasPatientRole = roles?.includes('patient') ?? false;
 
     // Close menu when clicking outside
     React.useEffect(() => {
