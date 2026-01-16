@@ -2,9 +2,9 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, CheckCircle2, XCircle, LogOut } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, LogOut, Users } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 
 import { api } from '@/lib/api/client';
@@ -21,20 +21,25 @@ export default function InviteAcceptPage() {
   const token = params.token;
   const user = useCurrentUser();
 
+  // Fetch invite info (public endpoint, no auth required)
+  const { data: inviteInfo, isLoading: inviteLoading, error: inviteError } = useQuery({
+    queryKey: ['invite-info', token],
+    queryFn: () => api.shares.getInviteInfo(token),
+    enabled: Boolean(token),
+    retry: false,
+  });
+
   const acceptMutation = useMutation({
     mutationFn: async (inviteToken: string) => {
-      // Use new token-based acceptance endpoint
       return api.shares.acceptToken(inviteToken);
     },
     onSuccess: async () => {
       toast.success('Invitation accepted!', {
         description: 'You now have access to view this person\'s health information.',
       });
-
-      // Always route caregivers to the care dashboard
       setTimeout(() => {
         router.push('/care');
-      }, 1500);
+      }, 1000);
     },
     onError: (error: any) => {
       const message = error?.userMessage || error?.message || 'Failed to accept invitation';
@@ -43,12 +48,10 @@ export default function InviteAcceptPage() {
   });
 
   // Auto-accept if user is logged in
-  // Track the user ID to detect account switches
   const lastUserIdRef = React.useRef<string | null>(null);
   const hasAttemptedAccept = React.useRef(false);
 
   React.useEffect(() => {
-    // Reset attempt flag and mutation state if user changed (signed out and back in with different account)
     if (user?.uid !== lastUserIdRef.current) {
       hasAttemptedAccept.current = false;
       lastUserIdRef.current = user?.uid ?? null;
@@ -56,9 +59,6 @@ export default function InviteAcceptPage() {
     }
 
     if (user && token && !hasAttemptedAccept.current && !acceptMutation.isPending) {
-      // Add a small delay to ensure Firebase auth is fully hydrated
-      // This fixes a race condition where auth.currentUser may be null
-      // immediately after redirect, even though user state is available
       const timer = setTimeout(() => {
         if (!hasAttemptedAccept.current) {
           hasAttemptedAccept.current = true;
@@ -69,7 +69,66 @@ export default function InviteAcceptPage() {
     }
   }, [user, token]);
 
-  // If user is logged in, show accepting state
+  // Build sign-up URL with invite context
+  const signUpUrl = React.useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('invite', token);
+    if (inviteInfo?.caregiverEmail) {
+      params.set('email', inviteInfo.caregiverEmail);
+    }
+    if (inviteInfo?.ownerName) {
+      params.set('from', inviteInfo.ownerName);
+    }
+    return `/sign-up?${params.toString()}`;
+  }, [token, inviteInfo]);
+
+  // Loading invite info
+  if (inviteLoading) {
+    return (
+      <PageContainer maxWidth="lg">
+        <Card variant="elevated" padding="lg" className="text-center py-12">
+          <Loader2 className="h-12 w-12 animate-spin text-brand-primary mx-auto mb-4" />
+          <h1 className="text-2xl font-semibold text-text-primary mb-2">
+            Loading Invitation
+          </h1>
+          <p className="text-text-secondary">Please wait...</p>
+        </Card>
+      </PageContainer>
+    );
+  }
+
+  // Invite error (expired, not found, etc.)
+  if (inviteError) {
+    const error = inviteError as any;
+    const isExpired = error?.code === 'invite_expired';
+    const isNotFound = error?.code === 'not_found';
+    const isUsed = error?.code === 'invite_used';
+
+    return (
+      <PageContainer maxWidth="lg">
+        <Card variant="elevated" padding="lg" className="text-center py-12">
+          <XCircle className="h-12 w-12 text-error mx-auto mb-4" />
+          <h1 className="text-2xl font-semibold text-text-primary mb-2">
+            {isExpired && 'Invitation Expired'}
+            {isNotFound && 'Invitation Not Found'}
+            {isUsed && 'Invitation Already Used'}
+            {!isExpired && !isNotFound && !isUsed && 'Invalid Invitation'}
+          </h1>
+          <p className="text-text-secondary mb-6">
+            {isExpired && 'This invitation has expired. Please ask for a new invitation.'}
+            {isNotFound && 'This invitation could not be found.'}
+            {isUsed && 'This invitation has already been accepted.'}
+            {!isExpired && !isNotFound && !isUsed && (error?.message || 'This invitation is not valid.')}
+          </p>
+          <Button variant="primary" onClick={() => router.push('/')}>
+            Go to Home
+          </Button>
+        </Card>
+      </PageContainer>
+    );
+  }
+
+  // User logged in - accepting
   if (user && acceptMutation.isPending) {
     return (
       <PageContainer maxWidth="lg">
@@ -84,7 +143,7 @@ export default function InviteAcceptPage() {
     );
   }
 
-  // If successfully accepted
+  // Successfully accepted
   if (acceptMutation.isSuccess) {
     return (
       <PageContainer maxWidth="lg">
@@ -94,67 +153,46 @@ export default function InviteAcceptPage() {
             Invitation Accepted!
           </h1>
           <p className="text-text-secondary mb-6">
-            You now have access to view this person's health information.
+            You now have access to view {inviteInfo?.ownerName || 'their'}'s health information.
           </p>
-          <Button variant="primary" onClick={() => router.push('/dashboard')}>
-            Go to Dashboard
+          <Button variant="primary" onClick={() => router.push('/care')}>
+            Go to Care Dashboard
           </Button>
         </Card>
       </PageContainer>
     );
   }
 
-  // If error occurred
+  // Accept error
   if (acceptMutation.isError) {
     const error = acceptMutation.error as any;
-    const isExpired = error?.code === 'invite_expired';
     const isEmailMismatch = error?.code === 'email_mismatch';
-    const isNotFound = error?.code === 'not_found';
 
     return (
       <PageContainer maxWidth="lg">
         <Card variant="elevated" padding="lg" className="text-center py-12">
           <XCircle className="h-12 w-12 text-error mx-auto mb-4" />
           <h1 className="text-2xl font-semibold text-text-primary mb-2">
-            {isExpired && 'Invitation Expired'}
-            {isEmailMismatch && 'Email Mismatch'}
-            {isNotFound && 'Invitation Not Found'}
-            {!isExpired && !isEmailMismatch && !isNotFound && 'Unable to Accept Invitation'}
+            {isEmailMismatch ? 'Email Mismatch' : 'Unable to Accept Invitation'}
           </h1>
           <p className="text-text-secondary mb-6">
-            {isExpired &&
-              'This invitation has expired. Please ask the person to send you a new invitation.'}
-            {isEmailMismatch &&
-              (error?.userMessage || 'This invitation was sent to a different email address. Please sign in with the email address that received the invitation.')}
-            {isNotFound && 'This invitation could not be found. It may have already been accepted or cancelled.'}
-            {!isExpired && !isEmailMismatch && !isNotFound && (error?.userMessage || error?.message || 'An error occurred while accepting the invitation.')}
+            {error?.userMessage || error?.message || 'An error occurred while accepting the invitation.'}
           </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-            {!user && (
-              <>
-                <Button variant="primary" asChild>
-                  <Link href={`/sign-in?returnTo=/invite/${token}`}>Sign In</Link>
-                </Button>
-                <Button variant="secondary" asChild>
-                  <Link href={`/sign-up?returnTo=/invite/${token}`}>Create Account</Link>
-                </Button>
-              </>
-            )}
-            {user && isEmailMismatch && (
+            {isEmailMismatch && (
               <Button
                 variant="primary"
                 leftIcon={<LogOut className="h-4 w-4" />}
                 onClick={async () => {
                   await signOut(auth);
-                  // Page will re-render showing sign-in options
                 }}
               >
                 Sign Out & Use Different Account
               </Button>
             )}
-            {user && !isEmailMismatch && (
-              <Button variant="primary" onClick={() => router.push('/dashboard')}>
-                Go to Dashboard
+            {!isEmailMismatch && (
+              <Button variant="primary" onClick={() => router.push('/care')}>
+                Go to Care Dashboard
               </Button>
             )}
           </div>
@@ -163,24 +201,35 @@ export default function InviteAcceptPage() {
     );
   }
 
-  // User not logged in - show sign in/sign up options
+  // User not logged in - show personalized invitation
   return (
     <PageContainer maxWidth="lg">
       <Card variant="elevated" padding="lg" className="text-center py-12">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-primary-pale mx-auto mb-4">
+          <Users className="h-8 w-8 text-brand-primary" />
+        </div>
         <h1 className="text-2xl font-semibold text-text-primary mb-2">
           You've Been Invited!
         </h1>
-        <p className="text-text-secondary mb-6">
-          Sign in or create an account to accept this invitation and view health information.
+        <p className="text-text-secondary mb-2">
+          <span className="font-semibold text-brand-primary">{inviteInfo?.ownerName || 'Someone'}</span> has invited you to be their caregiver on LumiMD.
+        </p>
+        <p className="text-sm text-text-muted mb-6">
+          Create an account to view their health information, medications, and action items.
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button variant="primary" asChild>
-            <Link href={`/sign-in?returnTo=/invite/${token}`}>Sign In</Link>
+            <Link href={signUpUrl}>Create Account</Link>
           </Button>
           <Button variant="secondary" asChild>
-            <Link href={`/sign-up?returnTo=/invite/${token}`}>Create Account</Link>
+            <Link href={`/sign-in?returnTo=/invite/${token}`}>I Have an Account</Link>
           </Button>
         </div>
+        {inviteInfo?.caregiverEmail && (
+          <p className="text-xs text-text-muted mt-4">
+            This invitation was sent to {inviteInfo.caregiverEmail}
+          </p>
+        )}
       </Card>
     </PageContainer>
   );

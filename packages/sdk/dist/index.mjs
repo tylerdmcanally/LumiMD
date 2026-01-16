@@ -325,6 +325,10 @@ function createApiClient(config) {
         method: "POST",
         body: JSON.stringify(data)
       }),
+      getInviteInfo: (token) => apiRequest(
+        `/v1/shares/invite-info/${token}`,
+        { requireAuth: false }
+      ),
       acceptToken: (token) => apiRequest(`/v1/shares/accept/${token}`, {
         method: "POST"
       }),

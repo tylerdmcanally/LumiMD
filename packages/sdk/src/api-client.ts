@@ -444,6 +444,11 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'POST',
           body: JSON.stringify(data),
         }),
+      getInviteInfo: (token: string) =>
+        apiRequest<{ ownerName: string; caregiverEmail: string; status: string; expiresAt?: string }>(
+          `/v1/shares/invite-info/${token}`,
+          { requireAuth: false }
+        ),
       acceptToken: (token: string) =>
         apiRequest<ShareInvite>(`/v1/shares/accept/${token}`, {
           method: 'POST',

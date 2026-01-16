@@ -740,6 +740,63 @@ sharesRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 // =============================================================================
 
 /**
+ * GET /v1/shares/invite-info/:token
+ * Public endpoint to get basic invite information without authentication
+ * Used by sign-up page to show caregiver context
+ */
+sharesRouter.get('/invite-info/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const inviteDoc = await getDb().collection('shareInvites').doc(token).get();
+
+    if (!inviteDoc.exists) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Invitation not found',
+      });
+      return;
+    }
+
+    const invite = inviteDoc.data()!;
+
+    // Check if expired
+    const now = Date.now();
+    if (invite.expiresAt && invite.expiresAt.toMillis() < now) {
+      res.status(410).json({
+        code: 'invite_expired',
+        message: 'This invitation has expired',
+      });
+      return;
+    }
+
+    // Check if already used
+    if (invite.status !== 'pending') {
+      res.status(400).json({
+        code: 'invite_used',
+        message: 'This invitation has already been used',
+        status: invite.status,
+      });
+      return;
+    }
+
+    // Return only public info needed for sign-up flow
+    res.json({
+      ownerName: invite.ownerName || 'Someone',
+      caregiverEmail: invite.caregiverEmail,
+      status: invite.status,
+      expiresAt: invite.expiresAt?.toDate().toISOString(),
+    });
+  } catch (error) {
+    functions.logger.error('[shares] Error fetching invite info:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch invitation',
+    });
+  }
+});
+
+/**
  * POST /v1/shares/invite
  * Create a new share invitation using token-based system
  * Always creates a shareInvite with random token, regardless of whether user exists

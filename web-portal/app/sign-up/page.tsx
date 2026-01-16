@@ -3,10 +3,11 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
-import { Mail, Lock, User, ArrowRight } from 'lucide-react';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { Mail, Lock, User, ArrowRight, Users } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
+import { api } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,21 +15,30 @@ import { Card } from '@/components/ui/card';
 
 export default function SignUpPage() {
   const router = useRouter();
-  const [returnTo] = React.useState(() => {
-    if (typeof window === 'undefined') return '/dashboard';
-    const params = new URLSearchParams(window.location.search);
-    return params.get('returnTo') || '/dashboard';
+
+  // Parse URL params once on mount
+  const [params] = React.useState(() => {
+    if (typeof window === 'undefined') return { invite: null, email: null, from: null, returnTo: '/dashboard' };
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+      invite: urlParams.get('invite'),
+      email: urlParams.get('email'),
+      from: urlParams.get('from'),
+      returnTo: urlParams.get('returnTo') || '/dashboard',
+    };
   });
-  const [email, setEmail] = React.useState('');
+
+  const isInviteFlow = Boolean(params.invite);
+  const inviteEmail = params.email || '';
+  const inviteFrom = params.from ? decodeURIComponent(params.from) : null;
+
+  const [email, setEmail] = React.useState(inviteEmail);
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [fullName, setFullName] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
-
-  const inviteType = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('invite') : null;
-  const inviteFrom = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('from') : null;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -53,13 +63,13 @@ export default function SignUpPage() {
         await updateProfile(credential.user, { displayName: fullName.trim() });
       }
 
-      // Ensure auth state is fully available before redirecting
+      // Ensure auth state is fully available
       await credential.user.getIdToken();
 
-      // Try to send verification email via our custom Resend endpoint
+      // Try to send verification email
       try {
         const idToken = await credential.user.getIdToken();
-        const response = await fetch('/api/send-verification-email', {
+        await fetch('/api/send-verification-email', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -70,21 +80,34 @@ export default function SignUpPage() {
             email: email.trim(),
           }),
         });
-
-        if (!response.ok) {
-          throw new Error('Failed to send verification email');
-        }
-
-        setSuccessMessage('Account created! Check your inbox to verify your email.');
-      } catch (emailError: any) {
+      } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
-        setSuccessMessage('Account created! However, we had trouble sending the verification email. You can resend it from your profile.');
       }
 
-      // User is already signed in after account creation, so go to returnTo directly.
-      setTimeout(() => {
-        router.replace(returnTo);
-      }, 500);
+      // If this is an invite flow, accept the invite and go to care dashboard
+      if (isInviteFlow && params.invite) {
+        setSuccessMessage('Account created! Accepting invitation...');
+        try {
+          await api.shares.acceptToken(params.invite);
+          setSuccessMessage('Welcome to LumiMD! Redirecting to care dashboard...');
+          setTimeout(() => {
+            router.replace('/care');
+          }, 1000);
+        } catch (acceptError: any) {
+          console.error('Failed to accept invite:', acceptError);
+          // Even if accept fails, account was created - go to invite page to retry
+          setError('Account created, but we had trouble accepting the invitation. Please try again.');
+          setTimeout(() => {
+            router.replace(`/invite/${params.invite}`);
+          }, 2000);
+        }
+      } else {
+        // Normal sign-up flow
+        setSuccessMessage('Account created! Check your inbox to verify your email.');
+        setTimeout(() => {
+          router.replace(params.returnTo);
+        }, 500);
+      }
     } catch (err: any) {
       const message =
         err?.code === 'auth/email-already-in-use'
@@ -100,32 +123,46 @@ export default function SignUpPage() {
       <div className="w-full max-w-md animate-fade-in-up">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary shadow-floating">
-            <span className="text-2xl font-bold text-white">L</span>
+            {isInviteFlow ? (
+              <Users className="h-8 w-8 text-white" />
+            ) : (
+              <span className="text-2xl font-bold text-white">L</span>
+            )}
           </div>
-          <h1 className="text-3xl font-bold text-text-primary">Create your LumiMD account</h1>
+          <h1 className="text-3xl font-bold text-text-primary">
+            {isInviteFlow ? 'Join as a Caregiver' : 'Create your LumiMD account'}
+          </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Keep your visits, medications, and action items organized.
+            {isInviteFlow
+              ? 'Create an account to view shared health information.'
+              : 'Keep your visits, medications, and action items organized.'}
           </p>
         </div>
 
         <Card variant="elevated" padding="lg" className="shadow-floating">
           <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-2xl font-semibold text-text-primary">
-                Get started in minutes
-              </h2>
-              {inviteType === 'caregiver' && inviteFrom ? (
-                <div className="mt-4 rounded-lg bg-brand-primary/10 p-3 text-sm text-text-secondary border border-brand-primary/20">
-                  <p>
-                    <span className="font-semibold text-brand-primary">{decodeURIComponent(inviteFrom)}</span> has invited you to join their care team. Create an account to accept the invitation.
-                  </p>
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-text-secondary">
-                  We’ll send a verification email so you can securely access the portal.
+            {/* Caregiver invite banner */}
+            {isInviteFlow && inviteFrom && (
+              <div className="rounded-lg bg-brand-primary/10 p-4 text-sm border border-brand-primary/20">
+                <p className="text-text-secondary">
+                  <span className="font-semibold text-brand-primary">{inviteFrom}</span> has invited you to be their caregiver.
                 </p>
-              )}
-            </div>
+                <p className="text-text-muted mt-1">
+                  You'll be able to view their visits, medications, and health information.
+                </p>
+              </div>
+            )}
+
+            {!isInviteFlow && (
+              <div className="text-center">
+                <h2 className="text-2xl font-semibold text-text-primary">
+                  Get started in minutes
+                </h2>
+                <p className="mt-2 text-sm text-text-secondary">
+                  We'll send a verification email so you can securely access the portal.
+                </p>
+              </div>
+            )}
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
@@ -154,7 +191,14 @@ export default function SignUpPage() {
                   placeholder="you@example.com"
                   leftIcon={<Mail className="h-4 w-4" />}
                   required
+                  disabled={isInviteFlow && Boolean(inviteEmail)}
+                  className={isInviteFlow && inviteEmail ? 'bg-background-subtle' : ''}
                 />
+                {isInviteFlow && inviteEmail && (
+                  <p className="text-xs text-text-muted">
+                    This invitation was sent to this email address.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -210,7 +254,9 @@ export default function SignUpPage() {
                 disabled={isSubmitting}
                 rightIcon={<ArrowRight className="h-5 w-5" />}
               >
-                {isSubmitting ? 'Creating account...' : 'Create account'}
+                {isSubmitting 
+                  ? (isInviteFlow ? 'Creating account...' : 'Creating account...') 
+                  : (isInviteFlow ? 'Create Account & Accept Invite' : 'Create account')}
               </Button>
             </form>
 
@@ -229,7 +275,15 @@ export default function SignUpPage() {
               variant="outline"
               size="lg"
               fullWidth
-              onClick={() => router.push(`/sign-in?returnTo=${encodeURIComponent(returnTo)}`)}
+              onClick={() => {
+                const signInParams = new URLSearchParams();
+                if (isInviteFlow && params.invite) {
+                  signInParams.set('returnTo', `/invite/${params.invite}`);
+                } else {
+                  signInParams.set('returnTo', params.returnTo);
+                }
+                router.push(`/sign-in?${signInParams.toString()}`);
+              }}
             >
               Sign in instead
             </Button>
@@ -253,4 +307,3 @@ export default function SignUpPage() {
     </div>
   );
 }
-
