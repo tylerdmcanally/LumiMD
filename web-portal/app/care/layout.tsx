@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { AuthGuard } from '@/components/AuthGuard';
 import { CaregiverNavigation } from '@/components/layout/CaregiverNavigation';
 import { CaregiverMobileSidebar } from '@/components/layout/CaregiverMobileSidebar';
+import { ViewingProvider } from '@/lib/contexts/ViewingContext';
 
 export default function CareLayout({
     children,
@@ -50,27 +51,29 @@ export default function CareLayout({
 
     return (
         <AuthGuard>
-            <div
-                className="flex flex-col bg-background overflow-hidden"
-                style={{ height: 'var(--app-height)' }}
-            >
-                <CaregiverNavigation onMobileMenuClick={() => setDrawerOpen(true)} />
-                <CaregiverMobileSidebar open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+            <ViewingProvider>
+                <div
+                    className="flex flex-col bg-background overflow-hidden"
+                    style={{ height: 'var(--app-height)' }}
+                >
+                    <CaregiverNavigation onMobileMenuClick={() => setDrawerOpen(true)} />
+                    <CaregiverMobileSidebar open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-                {/* Spacer for fixed header */}
-                <div className="h-20 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)' }} />
+                    {/* Spacer for fixed header */}
+                    <div className="h-20 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)' }} />
 
-                <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
-                    <div
-                        className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain"
-                        style={{
-                            paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))',
-                        }}
-                    >
-                        {children}
-                    </div>
-                </main>
-            </div>
+                    <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
+                        <div
+                            className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain"
+                            style={{
+                                paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))',
+                            }}
+                        >
+                            {children}
+                        </div>
+                    </main>
+                </div>
+            </ViewingProvider>
         </AuthGuard>
     );
 }
