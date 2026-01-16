@@ -164,6 +164,8 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
         .doc(shareId)
         .set({
           ownerId,
+          ownerName,
+          ownerEmail,
           caregiverUserId,
           caregiverEmail: data.caregiverEmail.toLowerCase(),
           role: data.role,
@@ -558,6 +560,8 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
         .doc(shareId)
         .set({
           ownerId: invite.ownerId,
+          ownerName: invite.ownerName,
+          ownerEmail: invite.ownerEmail,
           caregiverUserId: userId,
           caregiverEmail: invite.inviteeEmail,
           role: invite.role,
@@ -767,8 +771,35 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       return;
     }
 
-    // Edge case: Check for existing pending invite
-    const existingPendingQuery = await getDb()
+    // Check canonical shares collection for existing relationship
+    const existingShareQuery = await getDb()
+      .collection('shares')
+      .where('ownerId', '==', ownerId)
+      .where('caregiverEmail', '==', caregiverEmail)
+      .limit(1)
+      .get();
+
+    if (!existingShareQuery.empty) {
+      const existingShare = existingShareQuery.docs[0].data();
+      if (existingShare.status === 'pending') {
+        res.status(409).json({
+          code: 'invite_exists',
+          message: 'An invitation has already been sent to this email',
+        });
+        return;
+      }
+      if (existingShare.status === 'accepted') {
+        res.status(409).json({
+          code: 'share_exists',
+          message: 'You are already sharing with this user',
+        });
+        return;
+      }
+      // If revoked, allow re-inviting (fall through)
+    }
+
+    // Also check for pending invites not yet in shares
+    const existingPendingInvite = await getDb()
       .collection('shareInvites')
       .where('ownerId', '==', ownerId)
       .where('caregiverEmail', '==', caregiverEmail)
@@ -776,27 +807,10 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       .limit(1)
       .get();
 
-    if (!existingPendingQuery.empty) {
+    if (!existingPendingInvite.empty) {
       res.status(409).json({
         code: 'invite_exists',
         message: 'An invitation has already been sent to this email',
-      });
-      return;
-    }
-
-    // Edge case: Check for existing accepted share
-    const existingAcceptedQuery = await getDb()
-      .collection('shareInvites')
-      .where('ownerId', '==', ownerId)
-      .where('caregiverEmail', '==', caregiverEmail)
-      .where('status', '==', 'accepted')
-      .limit(1)
-      .get();
-
-    if (!existingAcceptedQuery.empty) {
-      res.status(409).json({
-        code: 'share_exists',
-        message: 'You are already sharing with this user',
       });
       return;
     }
@@ -929,13 +943,36 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
     }
 
     // Accept the invite
+    const acceptedAt = admin.firestore.Timestamp.now();
     await inviteDoc.ref.update({
       status: 'accepted',
       caregiverUserId: userId,
-      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+      acceptedAt,
     });
 
     functions.logger.info(`[shares] User ${userId} accepted invite ${token}`);
+
+    // Create/Update canonical share record for caregiver access
+    const shareId = `${invite.ownerId}_${userId}`;
+    await getDb()
+      .collection('shares')
+      .doc(shareId)
+      .set(
+        {
+          ownerId: invite.ownerId,
+          ownerName: invite.ownerName,
+          ownerEmail: invite.ownerEmail,
+          caregiverUserId: userId,
+          caregiverEmail: invite.caregiverEmail,
+          role: invite.role || 'viewer',
+          status: 'accepted',
+          message: invite.message || null,
+          createdAt: acceptedAt,
+          updatedAt: acceptedAt,
+          acceptedAt,
+        },
+        { merge: true }
+      );
 
     // Fetch updated document
     const updatedDoc = await inviteDoc.ref.get();
@@ -992,6 +1029,7 @@ sharesRouter.get('/my-invites', requireAuth, async (req: AuthRequest, res) => {
 /**
  * PATCH /v1/shares/revoke/:token
  * Revoke a share invitation (by owner)
+ * Also revokes the canonical shares record if invite was already accepted
  */
 sharesRouter.patch('/revoke/:token', requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -1019,10 +1057,26 @@ sharesRouter.patch('/revoke/:token', requireAuth, async (req: AuthRequest, res) 
       return;
     }
 
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    // Update invite status
     await inviteDoc.ref.update({
       status: 'revoked',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: now,
     });
+
+    // If invite was accepted, also revoke the canonical shares record
+    if (invite.caregiverUserId) {
+      const shareId = `${invite.ownerId}_${invite.caregiverUserId}`;
+      const shareDoc = await getDb().collection('shares').doc(shareId).get();
+      if (shareDoc.exists) {
+        await shareDoc.ref.update({
+          status: 'revoked',
+          updatedAt: now,
+        });
+        functions.logger.info(`[shares] Also revoked share record ${shareId}`);
+      }
+    }
 
     functions.logger.info(`[shares] Owner ${userId} revoked invite ${token}`);
 

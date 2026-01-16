@@ -16,18 +16,17 @@ const getDb = () => admin.firestore();
 
 // =============================================================================
 // HELPER: Get accepted incoming shares for caregiver
-// Queries the shareInvites collection for accepted invites where user is caregiver
+// Canonical access source is the shares collection
 // =============================================================================
 
 async function getAcceptedSharesForCaregiver(caregiverId: string) {
-    // Query shareInvites where this user is the caregiver and status is accepted
-    const invitesSnapshot = await getDb()
-        .collection('shareInvites')
+    const sharesSnapshot = await getDb()
+        .collection('shares')
         .where('caregiverUserId', '==', caregiverId)
         .where('status', '==', 'accepted')
         .get();
 
-    const acceptedShares = invitesSnapshot.docs.map((doc) => {
+    const acceptedShares = sharesSnapshot.docs.map((doc) => {
         const data = doc.data();
         return {
             id: doc.id,
@@ -37,7 +36,9 @@ async function getAcceptedSharesForCaregiver(caregiverId: string) {
         };
     });
 
-    functions.logger.info(`[care] Found ${acceptedShares.length} accepted invites for caregiver ${caregiverId}`);
+    functions.logger.info(
+        `[care] Found ${acceptedShares.length} accepted shares for caregiver ${caregiverId}`
+    );
     return acceptedShares;
 }
 
@@ -49,20 +50,21 @@ async function validateCaregiverAccess(
     caregiverId: string,
     patientId: string
 ): Promise<boolean> {
-    // Query shareInvites for accepted invite from this patient to this caregiver
-    const invitesSnapshot = await getDb()
-        .collection('shareInvites')
+    const sharesSnapshot = await getDb()
+        .collection('shares')
         .where('ownerId', '==', patientId)
         .where('caregiverUserId', '==', caregiverId)
         .where('status', '==', 'accepted')
         .limit(1)
         .get();
 
-    if (!invitesSnapshot.empty) {
+    if (!sharesSnapshot.empty) {
         return true;
     }
 
-    functions.logger.warn(`[care] Access denied. No accepted invite found for owner ${patientId} and caregiver ${caregiverId}`);
+    functions.logger.warn(
+        `[care] Access denied. No accepted share found for owner ${patientId} and caregiver ${caregiverId}`
+    );
     return false;
 }
 
