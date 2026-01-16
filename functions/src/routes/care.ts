@@ -62,6 +62,42 @@ async function validateCaregiverAccess(
         return true;
     }
 
+    // Fallback: check canonical share doc id
+    const shareDocId = `${patientId}_${caregiverId}`;
+    const shareDoc = await getDb().collection('shares').doc(shareDocId).get();
+    if (shareDoc.exists && shareDoc.data()?.status === 'accepted') {
+        return true;
+    }
+
+    // Fallback: match on caregiver email if userId missing
+    try {
+        const caregiverAuth = await admin.auth().getUser(caregiverId);
+        const caregiverEmail = caregiverAuth.email?.toLowerCase().trim();
+        if (caregiverEmail) {
+            const emailMatchSnapshot = await getDb()
+                .collection('shares')
+                .where('ownerId', '==', patientId)
+                .where('caregiverEmail', '==', caregiverEmail)
+                .where('status', '==', 'accepted')
+                .limit(1)
+                .get();
+
+            if (!emailMatchSnapshot.empty) {
+                const matchDoc = emailMatchSnapshot.docs[0];
+                const data = matchDoc.data();
+                if (!data.caregiverUserId) {
+                    await matchDoc.ref.update({
+                        caregiverUserId: caregiverId,
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                }
+                return true;
+            }
+        }
+    } catch (error) {
+        functions.logger.warn('[care] Unable to validate caregiver email fallback', error);
+    }
+
     functions.logger.warn(
         `[care] Access denied. No accepted share found for owner ${patientId} and caregiver ${caregiverId}`
     );
