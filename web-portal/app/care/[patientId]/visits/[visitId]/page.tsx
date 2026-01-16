@@ -1,8 +1,8 @@
-\'use client\';
+'use client';
 
-import * as React from \'react\';
-import Link from \'next/link\';
-import { useParams } from \'next/navigation\';
+import * as React from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import {
   ArrowLeft,
   Loader2,
@@ -11,12 +11,12 @@ import {
   Stethoscope,
   Pill,
   ClipboardList,
-} from \'lucide-react\';
-import { PageContainer } from \'@/components/layout/PageContainer\';
-import { Card } from \'@/components/ui/card\';
-import { Button } from \'@/components/ui/button\';
-import { useCareVisitSummary } from \'@/lib/api/hooks\';
-import { cn } from \'@/lib/utils\';
+} from 'lucide-react';
+import { PageContainer } from '@/components/layout/PageContainer';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useCareVisitSummary } from '@/lib/api/hooks';
+import { cn } from '@/lib/utils';
 
 export default function CareVisitDetailPage() {
   const params = useParams<{ patientId: string; visitId: string }>();
