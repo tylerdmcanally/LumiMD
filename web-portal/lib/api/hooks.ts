@@ -1087,6 +1087,52 @@ export function useCareVisits(
 }
 
 // =============================================================================
+// Caregiver Visit Summary (shared)
+// =============================================================================
+
+export type CareVisitSummary = {
+  id: string;
+  visitDate?: string | null;
+  provider?: string | null;
+  summary?: string | null;
+  diagnoses?: string[];
+  medications?: Record<string, unknown>;
+  nextSteps?: string[];
+  patientName?: string;
+};
+
+export function useCareVisitSummary(
+  patientId: string | undefined,
+  visitId: string | undefined,
+  options?: QueryEnabledOptions<CareVisitSummary>,
+) {
+  return useQuery<CareVisitSummary>({
+    queryKey: ['care-visit-summary', patientId ?? 'unknown', visitId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId && visitId),
+    ...options,
+    queryFn: async () => {
+      if (!patientId || !visitId) {
+        throw new Error('Patient ID and visit ID required');
+      }
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/shared/visits/${patientId}/${visitId}`);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Visit not found or not available');
+        }
+        throw new Error('Failed to fetch visit summary');
+      }
+
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
 // Patient Medication Status (for care/:patientId view)
 // =============================================================================
 
