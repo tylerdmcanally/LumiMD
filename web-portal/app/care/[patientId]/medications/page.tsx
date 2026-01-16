@@ -46,9 +46,9 @@ export default function PatientMedicationsPage() {
                         {error.message || 'An error occurred while loading medications.'}
                     </p>
                     <Button variant="secondary" asChild>
-                        <Link href={`/care/${patientId}`}>
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back to Overview
+                        <Link href={`/care/${patientId}`} className="flex items-center">
+                            <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
+                            <span>Back to Overview</span>
                         </Link>
                     </Button>
                 </Card>
@@ -63,9 +63,9 @@ export default function PatientMedicationsPage() {
         <PageContainer maxWidth="lg">
             {/* Back Button */}
             <Button variant="ghost" size="sm" className="mb-4" asChild>
-                <Link href={`/care/${patientId}`}>
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Overview
+                <Link href={`/care/${patientId}`} className="flex items-center">
+                    <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
+                    <span>Back to Overview</span>
                 </Link>
             </Button>
 

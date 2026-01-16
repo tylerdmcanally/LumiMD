@@ -173,9 +173,9 @@ export default function PatientDetailPage() {
                         {error.message || 'An error occurred while loading this patient.'}
                     </p>
                     <Button variant="secondary" asChild>
-                        <Link href="/care">
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back to Dashboard
+                        <Link href="/care" className="flex items-center">
+                            <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
+                            <span>Back to Dashboard</span>
                         </Link>
                     </Button>
                 </Card>
@@ -187,9 +187,9 @@ export default function PatientDetailPage() {
         <PageContainer maxWidth="lg">
             {/* Back Button */}
             <Button variant="ghost" size="sm" className="mb-4" asChild>
-                <Link href="/care">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Care Dashboard
+                <Link href="/care" className="flex items-center">
+                    <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
+                    <span>Back to Care Dashboard</span>
                 </Link>
             </Button>
 
