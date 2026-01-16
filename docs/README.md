@@ -24,7 +24,6 @@ docs/
 ├── guides/                # Setup and deployment guides
 ├── reference/             # Database schema, implementation details
 ├── reports/               # Analysis and health reports
-└── archive/               # Historical docs (Legacy Dev Guide, Playbooks)
 ```
 
 ---
@@ -89,10 +88,6 @@ docs/
 
 Historical and legacy documents:
 
-- [Dev Guide (Legacy)](archive/Dev%20Guide%20(Legacy).md) - Previous master planning document
-- [Playbooks](archive/playbooks/) - Old operational checklists
-- [Data Privacy Strategy](archive/DATA_PRIVACY_ENCRYPTION_STRATEGY.md)
-- [HIPAA Compliance](archive/HIPAA_COMPLIANCE_CHECKLIST.md)
 
 ---
 

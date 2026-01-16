@@ -6,13 +6,54 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { CaregiverNavigation } from '@/components/layout/CaregiverNavigation';
 import { CaregiverMobileSidebar } from '@/components/layout/CaregiverMobileSidebar';
 import { ViewingProvider } from '@/lib/contexts/ViewingContext';
+import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
+import { useUserProfile } from '@/lib/api/hooks';
+
+function CareLayoutInner({ children }: { children: React.ReactNode }) {
+    const [drawerOpen, setDrawerOpen] = React.useState(false);
+    const user = useCurrentUser();
+    const userId = user?.uid ?? null;
+
+    const { data: profile } = useUserProfile(userId, {
+        enabled: Boolean(userId),
+    });
+
+    const hasPatientRole = profile?.roles?.includes('patient') ?? false;
+
+    return (
+        <div
+            className="flex flex-col bg-background overflow-hidden"
+            style={{ height: 'var(--app-height)' }}
+        >
+            <CaregiverNavigation onMobileMenuClick={() => setDrawerOpen(true)} />
+            <CaregiverMobileSidebar
+                open={drawerOpen}
+                onClose={() => setDrawerOpen(false)}
+                hasPatientRole={hasPatientRole}
+            />
+
+            {/* Spacer for fixed header */}
+            <div className="h-20 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)' }} />
+
+            <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
+                <div
+                    className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain"
+                    style={{
+                        paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))',
+                    }}
+                >
+                    {children}
+                </div>
+            </main>
+        </div>
+    );
+}
 
 export default function CareLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
-    const [drawerOpen, setDrawerOpen] = React.useState(false);
     const pathname = usePathname();
     const isPublicCareRoute =
         pathname?.startsWith('/care/sign-in') ||
@@ -52,27 +93,7 @@ export default function CareLayout({
     return (
         <AuthGuard>
             <ViewingProvider>
-                <div
-                    className="flex flex-col bg-background overflow-hidden"
-                    style={{ height: 'var(--app-height)' }}
-                >
-                    <CaregiverNavigation onMobileMenuClick={() => setDrawerOpen(true)} />
-                    <CaregiverMobileSidebar open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-
-                    {/* Spacer for fixed header */}
-                    <div className="h-20 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)' }} />
-
-                    <main className="flex flex-1 flex-col min-w-0 overflow-hidden">
-                        <div
-                            className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch overscroll-contain"
-                            style={{
-                                paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))',
-                            }}
-                        >
-                            {children}
-                        </div>
-                    </main>
-                </div>
+                <CareLayoutInner>{children}</CareLayoutInner>
             </ViewingProvider>
         </AuthGuard>
     );

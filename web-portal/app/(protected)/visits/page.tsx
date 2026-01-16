@@ -22,7 +22,6 @@ import { normalizeVisitStatus } from '@/lib/visits/status';
 import { format } from 'date-fns';
 import { Search, Filter, Calendar, ChevronDown, Folder, MapPin, Stethoscope, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { deleteDoc, doc } from 'firebase/firestore';
 
 import {
   Dialog,
@@ -33,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api/client';
 import { getSubscriptionState } from '@/lib/subscription';
 
 type VisitFilters = {
@@ -376,7 +375,7 @@ export default function VisitsPage() {
     }
 
     try {
-      await Promise.all(ids.map((id) => deleteDoc(doc(db, 'visits', id))));
+      await Promise.all(ids.map((id) => api.visits.delete(id)));
       toast.success(
         ids.length === 1
           ? 'Visit deleted successfully.'

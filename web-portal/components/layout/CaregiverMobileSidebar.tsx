@@ -28,9 +28,10 @@ const CARE_NAV_ITEMS: NavItem[] = [
 interface CaregiverMobileSidebarProps {
     open: boolean;
     onClose: () => void;
+    hasPatientRole?: boolean;
 }
 
-export function CaregiverMobileSidebar({ open, onClose }: CaregiverMobileSidebarProps) {
+export function CaregiverMobileSidebar({ open, onClose, hasPatientRole = false }: CaregiverMobileSidebarProps) {
     const router = useRouter();
 
     const handleSwitchToMyHealth = () => {
@@ -97,19 +98,21 @@ export function CaregiverMobileSidebar({ open, onClose }: CaregiverMobileSidebar
                     })}
                 </nav>
 
-                {/* Divider */}
-                <div className="mx-4 border-t border-border-light" />
-
-                {/* Switch to My Health */}
-                <div className="p-4">
-                    <button
-                        onClick={handleSwitchToMyHealth}
-                        className="flex items-center gap-3 px-4 py-3 rounded-lg w-full text-text-secondary hover:bg-hover hover:text-brand-primary transition-colors"
-                    >
-                        <ArrowLeftRight className="h-5 w-5" />
-                        <span className="font-medium">Switch to My Health</span>
-                    </button>
-                </div>
+                {/* Divider and Switch to My Health - only show if user also has patient role */}
+                {hasPatientRole && (
+                    <>
+                        <div className="mx-4 border-t border-border-light" />
+                        <div className="p-4">
+                            <button
+                                onClick={handleSwitchToMyHealth}
+                                className="flex items-center gap-3 px-4 py-3 rounded-lg w-full text-text-secondary hover:bg-hover hover:text-brand-primary transition-colors"
+                            >
+                                <ArrowLeftRight className="h-5 w-5" />
+                                <span className="font-medium">Switch to My Health</span>
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </>
     );

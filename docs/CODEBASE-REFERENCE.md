@@ -399,6 +399,8 @@ See [Widget Documentation](../features/WIDGETS.md) for build and sync details.
 | `components/layout/` | Navigation, headers (7 files) |
 | `components/ui/` | Shadcn UI primitives (16 files) |
 
+**Operational note:** Destructive actions (delete visits/medications/actions) should go through the API to ensure storage cleanup, related record cleanup, and audit logging.
+
 ---
 
 ## Key Services
@@ -488,6 +490,7 @@ FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
 ```
+**Note:** Use `NEXT_PUBLIC_API_BASE_URL` for all web portal API calls. `NEXT_PUBLIC_API_URL` is deprecated.
 
 ---
 

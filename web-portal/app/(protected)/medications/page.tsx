@@ -15,7 +15,7 @@ import { useMedications, useMedicationReminders, queryKeys } from '@/lib/api/hoo
 import { ReminderDialog } from '@/components/medications/ReminderDialog';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
-import { deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { api } from '@/lib/api/client';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -1150,7 +1150,7 @@ function DeleteMedicationDialog({
 
   const handleDelete = async () => {
     try {
-      await deleteDoc(doc(db, 'medications', medication.id));
+      await api.medications.delete(medication.id);
       toast.success('Medication deleted');
       onClose();
     } catch (error) {

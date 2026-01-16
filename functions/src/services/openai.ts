@@ -461,9 +461,6 @@ const refineMedicationListWithKnownNames = (
     if (!normalizedEntryName) {
       result.needsConfirmation = true;
       result.status = result.status ?? 'unverified';
-      if (!result.warning) {
-
-      }
       if (!result.note) {
         result.note = UNVERIFIED_WARNING;
       }
@@ -510,17 +507,11 @@ const refineMedicationListWithKnownNames = (
         if (!result.original) {
           result.original = entry.original ?? entry.display ?? entry.name;
         }
-        if (!result.needsConfirmation) {
-
-        }
         return result;
       }
 
       result.needsConfirmation = true;
       result.status = 'unverified';
-      if (!result.warning) {
-
-      }
       if (!result.note) {
         result.note = result.original ?? entry.display ?? entry.name;
       }
@@ -538,9 +529,6 @@ const refineMedicationListWithKnownNames = (
       result.name = directMatch.original;
       result.needsConfirmation = entry.needsConfirmation ?? false;
       result.status = 'matched';
-      if (!result.needsConfirmation) {
-
-      }
       return result;
     }
 
@@ -562,9 +550,6 @@ const refineMedicationListWithKnownNames = (
         result.name = bestMatchItem.original;
         result.needsConfirmation = true;
         result.status = 'fuzzy';
-        if (!result.warning) {
-
-        }
         if (!result.note) {
           result.note = 'Medication name auto-corrected from the transcript. Please review.';
         }
@@ -574,9 +559,6 @@ const refineMedicationListWithKnownNames = (
 
     result.needsConfirmation = true;
     result.status = 'unverified';
-    if (!result.warning) {
-
-    }
     if (!result.note) {
       result.note = UNVERIFIED_WARNING;
     }

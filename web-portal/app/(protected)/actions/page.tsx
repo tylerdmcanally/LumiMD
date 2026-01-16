@@ -41,7 +41,7 @@ import { useActions, queryKeys } from '@/lib/api/hooks';
 import { api } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { downloadActionAsICS } from '@/lib/calendar';
 
@@ -296,7 +296,7 @@ export default function ActionsPage() {
   });
   const deleteActionMutation = useMutation({
     mutationFn: async (id: string) => {
-      await deleteDoc(doc(db, 'actions', id));
+      await api.actions.delete(id);
     },
     onMutate: async (id) => {
       if (!user?.uid) return;

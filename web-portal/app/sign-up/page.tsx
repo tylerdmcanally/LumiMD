@@ -21,10 +21,13 @@ export default function SignUpPage() {
   const [params] = React.useState(() => {
     if (typeof window === 'undefined') return { invite: null, email: null, from: null, returnTo: '/dashboard' };
     const urlParams = new URLSearchParams(window.location.search);
+    const storedInvite = sessionStorage.getItem('invite_token');
+    const storedEmail = sessionStorage.getItem('invite_email');
+    const storedFrom = sessionStorage.getItem('invite_from');
     return {
-      invite: urlParams.get('invite'),
-      email: urlParams.get('email'),
-      from: urlParams.get('from'),
+      invite: urlParams.get('invite') || storedInvite,
+      email: urlParams.get('email') || storedEmail,
+      from: urlParams.get('from') || storedFrom,
       returnTo: urlParams.get('returnTo') || '/dashboard',
     };
   });
@@ -49,6 +52,15 @@ export default function SignUpPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isInviteFlow) {
+      sessionStorage.removeItem('invite_token');
+      sessionStorage.removeItem('invite_email');
+      sessionStorage.removeItem('invite_from');
+    }
+  }, [isInviteFlow]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -100,6 +112,11 @@ export default function SignUpPage() {
         try {
           await api.shares.acceptToken(inviteToken);
           setSuccessMessage('Welcome to LumiMD! Redirecting to care dashboard...');
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('invite_token');
+            sessionStorage.removeItem('invite_email');
+            sessionStorage.removeItem('invite_from');
+          }
           setTimeout(() => {
             router.replace('/care');
           }, 1000);

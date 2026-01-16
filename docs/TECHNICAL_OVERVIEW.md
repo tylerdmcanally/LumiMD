@@ -585,6 +585,7 @@ EXPO_PUBLIC_API_BASE_URL=https://us-central1-lumimd-dev.cloudfunctions.net/api
 # Firebase Config
 NEXT_PUBLIC_FIREBASE_API_KEY=AIza...
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=lumimd-dev
+NEXT_PUBLIC_API_BASE_URL=https://us-central1-lumimd-dev.cloudfunctions.net/api
 
 # Server-side for email verification
 FIREBASE_PROJECT_ID=lumimd-dev
@@ -592,6 +593,7 @@ FIREBASE_CLIENT_EMAIL=firebase-adminsdk@...
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."
 RESEND_API_KEY=re_...
 ```
+**Note:** Use `NEXT_PUBLIC_API_BASE_URL` for web portal API calls. `NEXT_PUBLIC_API_URL` is deprecated.
 
 ### Development vs Production
 

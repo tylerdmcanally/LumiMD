@@ -50,6 +50,9 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
         enabled: Boolean(userId),
     });
 
+    // Check if user also has patient role
+    const hasPatientRole = profile?.roles?.includes('patient') ?? false;
+
     // Close menu when clicking outside
     React.useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -154,16 +157,18 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
 
                     {/* Right: Switch View + User Menu */}
                     <div className="flex items-center gap-3">
-                        {/* Switch to My Health (desktop only) */}
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleSwitchToMyHealth}
-                            className="hidden md:flex items-center gap-2 text-text-secondary hover:text-brand-primary"
-                        >
-                            <ArrowLeftRight className="h-4 w-4" />
-                            <span>My Health</span>
-                        </Button>
+                        {/* Switch to My Health (desktop only) - only show if user also has patient role */}
+                        {hasPatientRole && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleSwitchToMyHealth}
+                                className="hidden md:flex items-center gap-2 text-text-secondary hover:text-brand-primary"
+                            >
+                                <ArrowLeftRight className="h-4 w-4" />
+                                <span>My Health</span>
+                            </Button>
+                        )}
 
                         {/* User Menu */}
                         <div className="relative" ref={userMenuRef}>
@@ -196,17 +201,19 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
 
                                     {/* Menu Items */}
                                     <div className="py-1">
-                                        {/* Switch to My Health (mobile) */}
-                                        <button
-                                            onClick={() => {
-                                                setUserMenuOpen(false);
-                                                handleSwitchToMyHealth();
-                                            }}
-                                            className="md:hidden w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-hover hover:text-text-primary transition-colors"
-                                        >
-                                            <ArrowLeftRight className="h-4 w-4" />
-                                            <span>Switch to My Health</span>
-                                        </button>
+                                        {/* Switch to My Health (mobile) - only show if user also has patient role */}
+                                        {hasPatientRole && (
+                                            <button
+                                                onClick={() => {
+                                                    setUserMenuOpen(false);
+                                                    handleSwitchToMyHealth();
+                                                }}
+                                                className="md:hidden w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-hover hover:text-text-primary transition-colors"
+                                            >
+                                                <ArrowLeftRight className="h-4 w-4" />
+                                                <span>Switch to My Health</span>
+                                            </button>
+                                        )}
 
                                         <Link
                                             href="/care/settings"
