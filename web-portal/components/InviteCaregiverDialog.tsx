@@ -38,7 +38,7 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
 
       // Then send the email via Vercel API route
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://portal.lumimd.app';
-      const inviteLink = `${appUrl}/invite/${invite.id}`;
+      const inviteLink = `${appUrl}/care/invite/${invite.id}`;
 
       try {
         const emailResponse = await fetch('/api/send-invite-email', {

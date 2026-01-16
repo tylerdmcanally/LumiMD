@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { usePathname } from 'next/navigation';
 import { AuthGuard } from '@/components/AuthGuard';
 import { CaregiverNavigation } from '@/components/layout/CaregiverNavigation';
 import { CaregiverMobileSidebar } from '@/components/layout/CaregiverMobileSidebar';
@@ -11,6 +12,11 @@ export default function CareLayout({
     children: React.ReactNode;
 }) {
     const [drawerOpen, setDrawerOpen] = React.useState(false);
+    const pathname = usePathname();
+    const isPublicCareRoute =
+        pathname?.startsWith('/care/sign-in') ||
+        pathname?.startsWith('/care/sign-up') ||
+        pathname?.startsWith('/care/invite');
 
     // Set viewport height for consistent cross-browser mobile experience
     React.useEffect(() => {
@@ -37,6 +43,10 @@ export default function CareLayout({
             window.removeEventListener('resize', handleResize);
         };
     }, []);
+
+    if (isPublicCareRoute) {
+        return <>{children}</>;
+    }
 
     return (
         <AuthGuard>
