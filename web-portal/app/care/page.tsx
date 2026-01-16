@@ -254,9 +254,9 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                     className="flex-1"
                     asChild
                 >
-                    <Link href={`/care/${patient.userId}/medications`}>
-                        <Pill className="h-4 w-4 mr-1.5" />
-                        Medications
+                    <Link href={`/care/${patient.userId}/medications`} className="flex items-center justify-center gap-1.5">
+                        <Pill className="h-4 w-4 shrink-0" />
+                        <span>Medications</span>
                     </Link>
                 </Button>
                 <Button
@@ -265,17 +265,18 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                     className="flex-1"
                     asChild
                 >
-                    <Link href={`/care/${patient.userId}/actions`}>
-                        <ClipboardList className="h-4 w-4 mr-1.5" />
-                        Actions
+                    <Link href={`/care/${patient.userId}/actions`} className="flex items-center justify-center gap-1.5">
+                        <ClipboardList className="h-4 w-4 shrink-0" />
+                        <span>Actions</span>
                     </Link>
                 </Button>
                 <Button
                     variant="primary"
                     size="sm"
+                    className="px-3"
                     asChild
                 >
-                    <Link href={`/care/${patient.userId}`}>
+                    <Link href={`/care/${patient.userId}`} className="flex items-center justify-center">
                         <ArrowRight className="h-4 w-4" />
                     </Link>
                 </Button>
