@@ -171,7 +171,7 @@ export default function HealthMetricsPage() {
           <MetricCard
             title="Blood Glucose"
             icon={<Droplets className="h-5 w-5" />}
-            value={summary?.glucose.latest?.reading}
+            value={summary?.glucose.latest?.reading ?? null}
             unit="mg/dL"
             trend={summary?.glucose.trend}
             alertLevel={summary?.glucose.latestAlertLevel}
@@ -184,7 +184,7 @@ export default function HealthMetricsPage() {
           <MetricCard
             title="Weight"
             icon={<Scale className="h-5 w-5" />}
-            value={summary?.weight.latest?.weight}
+            value={summary?.weight.latest?.weight ?? null}
             unit={summary?.weight.latest?.unit || 'lbs'}
             trend={summary?.weight.trend}
             lastUpdated={summary?.weight.latestDate}
