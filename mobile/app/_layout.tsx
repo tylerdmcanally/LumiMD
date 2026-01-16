@@ -1,5 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, AppState } from 'react-native';
 import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -9,8 +9,9 @@ import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
-import { usePendingActions, useVisits } from '../lib/api/hooks';
+import { usePendingActions, useVisits, useMedicationSchedule } from '../lib/api/hooks';
 import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
+import { syncMedicationScheduleToWidget } from '../lib/widget/widgetSync';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -44,10 +45,14 @@ function NotificationHandler() {
   const { isAuthenticated, user } = useAuth();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
+  const appState = useRef(AppState.currentState);
 
   // Only fetch data when authenticated to prevent SDK errors
   const { data: pendingActions } = usePendingActions({ enabled: isAuthenticated && !!user });
   const { data: visits } = useVisits({ enabled: isAuthenticated && !!user });
+  const { data: medicationSchedule, refetch: refetchSchedule } = useMedicationSchedule({ 
+    enabled: isAuthenticated && !!user 
+  });
 
   // Update badge count when actions or visits change
   useEffect(() => {
@@ -145,6 +150,43 @@ function NotificationHandler() {
       }
     };
   }, [isAuthenticated, router]);
+
+  // Sync widget on app foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active' &&
+        isAuthenticated
+      ) {
+        // App has come to the foreground - refresh schedule and sync widget
+        console.log('[AppState] App came to foreground, refreshing medication schedule');
+        refetchSchedule().then(() => {
+          // Widget sync will happen automatically via useWidgetSync in medication-schedule screen
+          // But also sync here in case user doesn't open that screen
+          if (medicationSchedule) {
+            syncMedicationScheduleToWidget(medicationSchedule).catch(err => {
+              console.warn('[AppState] Failed to sync widget on foreground:', err);
+            });
+          }
+        });
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isAuthenticated, medicationSchedule, refetchSchedule]);
+
+  // Sync widget whenever schedule data changes (handles both foreground and data updates)
+  useEffect(() => {
+    if (isAuthenticated && medicationSchedule) {
+      syncMedicationScheduleToWidget(medicationSchedule).catch(err => {
+        console.warn('[NotificationHandler] Failed to sync widget:', err);
+      });
+    }
+  }, [isAuthenticated, medicationSchedule]);
 
   return null;
 }

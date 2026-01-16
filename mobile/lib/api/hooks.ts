@@ -403,13 +403,13 @@ export interface ScheduledDose {
   name: string;
   dose: string;
   scheduledTime: string;
-  status: 'taken' | 'skipped' | 'pending';
+  status: 'taken' | 'skipped' | 'pending' | 'overdue';
   logId: string | null;
 }
 
 export interface MedicationScheduleResponse {
   scheduledDoses: ScheduledDose[];
-  summary: { taken: number; skipped: number; pending: number; total: number };
+  summary: { taken: number; skipped: number; pending: number; overdue?: number; total: number };
   nextDue: { name: string; time: string } | null;
 }
 

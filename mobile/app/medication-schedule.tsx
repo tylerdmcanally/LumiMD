@@ -147,6 +147,7 @@ export default function MedicationScheduleScreen() {
 
     const renderDoseItem = (dose: ScheduledDose, isLast: boolean) => {
         const isPending = dose.status === 'pending';
+        const isOverdue = dose.status === 'overdue';
         const isTaken = dose.status === 'taken';
         const isSkipped = dose.status === 'skipped';
 
@@ -160,20 +161,23 @@ export default function MedicationScheduleScreen() {
                         styles.statusIcon,
                         isTaken && styles.statusTaken,
                         isSkipped && styles.statusSkipped,
+                        isOverdue && styles.statusOverdue,
                         isPending && styles.statusPending,
                     ]}>
                         {isTaken && <Ionicons name="checkmark" size={16} color="#fff" />}
                         {isSkipped && <Ionicons name="close" size={16} color="#fff" />}
+                        {isOverdue && <Ionicons name="alert" size={16} color="#fff" />}
                         {isPending && <Ionicons name="time-outline" size={16} color={Colors.textMuted} />}
                     </View>
                     <View style={styles.doseDetails}>
                         <Text style={styles.doseName}>{dose.name}</Text>
                         {dose.dose && <Text style={styles.doseDosage}>{dose.dose}</Text>}
+                        {isOverdue && <Text style={styles.overdueText}>Overdue</Text>}
                     </View>
                     <Text style={styles.doseTime}>{formatTime(dose.scheduledTime)}</Text>
                 </View>
 
-                {isPending && (
+                {(isPending || isOverdue) && (
                     <View style={styles.doseActions}>
                         <Pressable
                             style={[styles.actionButton, styles.takenButton]}
@@ -208,7 +212,7 @@ export default function MedicationScheduleScreen() {
     const renderSection = (title: string, icon: string, doses: ScheduledDose[]) => {
         if (doses.length === 0) return null;
 
-        const pendingCount = doses.filter(d => d.status === 'pending').length;
+        const pendingCount = doses.filter(d => d.status === 'pending' || d.status === 'overdue').length;
         const showMarkAll = pendingCount > 1;
 
         return (
@@ -517,6 +521,9 @@ const styles = StyleSheet.create({
     statusSkipped: {
         backgroundColor: Colors.error,
     },
+    statusOverdue: {
+        backgroundColor: Colors.error,
+    },
     statusPending: {
         backgroundColor: 'rgba(100,116,139,0.15)',
     },
@@ -531,6 +538,12 @@ const styles = StyleSheet.create({
     doseDosage: {
         fontSize: 14,
         color: Colors.textMuted,
+        marginTop: 2,
+    },
+    overdueText: {
+        fontSize: 12,
+        color: Colors.error,
+        fontWeight: '600',
         marginTop: 2,
     },
     doseTime: {

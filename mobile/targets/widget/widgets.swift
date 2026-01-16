@@ -85,11 +85,11 @@ struct MedScheduleEntry: TimelineEntry {
     }
     
     enum MedStatus: String {
-        case pending, taken, skipped
+        case pending, taken, skipped, overdue
     }
     
     var pendingCount: Int {
-        medications.filter { $0.status == .pending }.count
+        medications.filter { $0.status == .pending || $0.status == .overdue }.count
     }
     
     var takenCount: Int {
@@ -97,11 +97,11 @@ struct MedScheduleEntry: TimelineEntry {
     }
     
     var nextPending: ScheduledMed? {
-        medications.first { $0.status == .pending }
+        medications.first { $0.status == .pending || $0.status == .overdue }
     }
     
     var allDone: Bool {
-        medications.allSatisfy { $0.status != .pending }
+        medications.allSatisfy { $0.status != .pending && $0.status != .overdue }
     }
     
     static var placeholder: MedScheduleEntry {
@@ -140,9 +140,23 @@ struct MedScheduleProvider: TimelineProvider {
              return MedScheduleEntry(date: Date(), medications: [], isSynced: false)
         }
               
-        guard let data = jsonString.data(using: .utf8),
-              let meds = try? JSONDecoder().decode([SharedMedication].self, from: data) else {
-            // Key exists but failed to decode - treat as valid empty or error, but technically synced-ish
+        guard let data = jsonString.data(using: .utf8) else {
+            return MedScheduleEntry(date: Date(), medications: [], isSynced: true)
+        }
+        
+        // Try to decode as new WidgetData format first, fallback to old array format
+        let meds: [SharedMedication]
+        let lastSyncedAt: String?
+        
+        if let widgetData = try? JSONDecoder().decode(WidgetData.self, from: data) {
+            meds = widgetData.medications
+            lastSyncedAt = widgetData.lastSyncedAt
+        } else if let oldMeds = try? JSONDecoder().decode([SharedMedication].self, from: data) {
+            // Backward compatibility: old format was just an array
+            meds = oldMeds
+            lastSyncedAt = nil
+        } else {
+            // Failed to decode - treat as valid empty
             return MedScheduleEntry(date: Date(), medications: [], isSynced: true)
         }
         
@@ -166,6 +180,11 @@ struct SharedMedication: Codable {
     let dose: String
     let time: String
     let status: String
+}
+
+struct WidgetData: Codable {
+    let medications: [SharedMedication]
+    let lastSyncedAt: String?
 }
 
 // MARK: - Widget View

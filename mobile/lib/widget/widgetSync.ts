@@ -23,7 +23,15 @@ export interface SharedMedication {
     name: string;
     dose: string;
     time: string;
-    status: 'pending' | 'taken' | 'skipped';
+    status: 'pending' | 'taken' | 'skipped' | 'overdue';
+}
+
+/**
+ * Widget data structure with metadata
+ */
+interface WidgetData {
+    medications: SharedMedication[];
+    lastSyncedAt: string; // ISO timestamp
 }
 
 /**
@@ -36,11 +44,17 @@ export async function syncMedicationScheduleToWidget(
     if (Platform.OS !== 'ios') return;
 
     try {
+        const now = new Date().toISOString();
+        
         if (!schedule?.scheduledDoses) {
             // Clear widget data if no schedule
+            const emptyData: WidgetData = {
+                medications: [],
+                lastSyncedAt: now,
+            };
             await SharedGroupPreferences.setItem(
                 MEDICATION_SCHEDULE_KEY,
-                JSON.stringify([]),
+                JSON.stringify(emptyData),
                 APP_GROUP_ID
             );
             reloadWidgetTimelines();
@@ -49,7 +63,7 @@ export async function syncMedicationScheduleToWidget(
 
         // Transform to widget format
         const sharedMeds: SharedMedication[] = schedule.scheduledDoses
-            .filter(dose => dose.status === 'pending' || dose.status === 'taken' || dose.status === 'skipped')
+            .filter(dose => dose.status === 'pending' || dose.status === 'taken' || dose.status === 'skipped' || dose.status === 'overdue')
             .map(dose => ({
                 id: `${dose.medicationId}_${dose.scheduledTime}`,
                 name: dose.name,
@@ -60,21 +74,28 @@ export async function syncMedicationScheduleToWidget(
 
         // Sort: pending first, then by time
         sharedMeds.sort((a, b) => {
-            if (a.status === 'pending' && b.status !== 'pending') return -1;
-            if (a.status !== 'pending' && b.status === 'pending') return 1;
+            const aActive = a.status === 'pending' || a.status === 'overdue';
+            const bActive = b.status === 'pending' || b.status === 'overdue';
+            if (aActive && !bActive) return -1;
+            if (!aActive && bActive) return 1;
             return a.time.localeCompare(b.time);
         });
 
-        // Write to App Groups
+        // Write to App Groups with metadata
+        const widgetData: WidgetData = {
+            medications: sharedMeds,
+            lastSyncedAt: now,
+        };
+        
         await SharedGroupPreferences.setItem(
             MEDICATION_SCHEDULE_KEY,
-            JSON.stringify(sharedMeds),
+            JSON.stringify(widgetData),
             APP_GROUP_ID
         );
 
         // Trigger widget refresh
         reloadWidgetTimelines();
-        console.log(`[WidgetSync] Synced ${sharedMeds.length} medications to widget`);
+        console.log(`[WidgetSync] Synced ${sharedMeds.length} medications to widget at ${now}`);
     } catch (error) {
         console.warn('[WidgetSync] Failed to sync:', error);
     }
