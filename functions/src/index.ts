@@ -228,6 +228,8 @@ app.get('/v1/shared/visits/:userId/:visitId', async (req, res) => {
         visit.createdAt?.toDate?.()?.toISOString() ||
         new Date().toISOString(),
       provider: visit.provider || undefined,
+      specialty: visit.specialty || undefined,
+      location: visit.location || undefined,
       summary: visit.summary || undefined,
       diagnoses: visit.diagnoses || [],
       medications: visit.medications || {},
