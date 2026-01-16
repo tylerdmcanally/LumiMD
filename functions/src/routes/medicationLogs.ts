@@ -40,6 +40,14 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
         const userId = req.user!.uid;
         const data = logActionSchema.parse(req.body);
 
+        const userDoc = await getDb().collection('users').doc(userId).get();
+        const userTimezone =
+            typeof userDoc.data()?.timezone === 'string'
+                ? (userDoc.data()?.timezone as string)
+                : 'America/Chicago';
+        const intendedDateStr = new Date().toLocaleDateString('en-CA', { timeZone: userTimezone });
+        const now = admin.firestore.Timestamp.now();
+
         const logEntry = {
             userId,
             medicationId: data.medicationId,
@@ -47,7 +55,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
             reminderId: data.reminderId || null,
             action: data.action,
             scheduledTime: data.scheduledTime,
-            loggedAt: admin.firestore.Timestamp.now(),
+            scheduledDate: intendedDateStr,
+            loggedAt: now,
+            createdAt: now,
         };
 
         const docRef = await getLogsCollection().add(logEntry);

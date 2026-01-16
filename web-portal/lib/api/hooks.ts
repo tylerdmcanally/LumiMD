@@ -1041,6 +1041,52 @@ export function useCareActions(
 }
 
 // =============================================================================
+// Caregiver Patient Visits
+// =============================================================================
+
+export function useCareVisits(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<Visit[]>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  return useQuery<Visit[]>({
+    queryKey: ['care-visits', patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId),
+    ...options,
+    queryFn: async () => {
+      if (!patientId) return [];
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/visits`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch visits');
+      }
+
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
 // Patient Medication Status (for care/:patientId view)
 // =============================================================================
 

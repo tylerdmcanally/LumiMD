@@ -15,14 +15,14 @@ import {
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useVisits } from '@/lib/api/hooks';
+import { useCareVisits } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
 export default function PatientVisitsPage() {
     const params = useParams<{ patientId: string }>();
     const patientId = params.patientId;
 
-    const { data: visits, isLoading, error } = useVisits(patientId);
+    const { data: visits, isLoading, error } = useCareVisits(patientId);
 
     if (isLoading) {
         return (
@@ -56,8 +56,11 @@ export default function PatientVisitsPage() {
         );
     }
 
-    const processedVisits = visits?.filter((v) => v.status === 'processed') ?? [];
-    const pendingVisits = visits?.filter((v) => v.status !== 'processed') ?? [];
+    const processedVisits =
+        visits?.filter((v) => v.processingStatus === 'completed' || v.status === 'completed') ?? [];
+    const pendingVisits =
+        visits?.filter((v) => !(v.processingStatus === 'completed' || v.status === 'completed')) ??
+        [];
 
     return (
         <PageContainer maxWidth="lg">

@@ -648,19 +648,87 @@ medicationsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 });
 
 /**
+ * Get user's timezone from their profile
+ */
+async function getUserTimezone(userId: string): Promise<string> {
+  try {
+    const userDoc = await getDb().collection('users').doc(userId).get();
+    if (userDoc.exists) {
+      const timezone = userDoc.data()?.timezone;
+      if (timezone && typeof timezone === 'string') {
+        return timezone;
+      }
+    }
+  } catch (error) {
+    functions.logger.warn(`[medications] Could not fetch timezone for user ${userId}:`, error);
+  }
+  return 'America/Chicago'; // Default timezone
+}
+
+/**
+ * Get start and end of day in a specific timezone
+ * Returns UTC Date objects representing midnight and end of day in the user's timezone
+ */
+function getDayBoundariesInTimezone(timezone: string): { startOfDay: Date; endOfDay: Date } {
+  const now = new Date();
+  
+  // Get current date string in user's timezone (YYYY-MM-DD format)
+  const dateStr = now.toLocaleDateString('en-CA', { timeZone: timezone });
+  const [year, month, day] = dateStr.split('-').map(Number);
+  
+  // Create a test date at a known UTC time (noon UTC) to calculate offset
+  const testUTC = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`);
+  
+  // Get what time this UTC moment is in the user's timezone
+  const tzFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  
+  const tzParts = tzFormatter.formatToParts(testUTC);
+  const tzHour = parseInt(tzParts.find(p => p.type === 'hour')!.value);
+  const tzMinute = parseInt(tzParts.find(p => p.type === 'minute')!.value);
+  
+  // Calculate offset: if UTC noon is 7 AM in user's TZ, offset is -5 hours
+  const offsetHours = tzHour - 12;
+  const offsetMinutes = offsetHours * 60 + (tzMinute - 0);
+  
+  // Calculate midnight in user's timezone
+  // Midnight UTC for the date, adjusted by the offset
+  const midnightUTC = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`);
+  const startOfDayUTC = new Date(midnightUTC.getTime() - offsetMinutes * 60 * 1000);
+  const endOfDayUTC = new Date(startOfDayUTC.getTime() + 24 * 60 * 60 * 1000 - 1);
+  
+  return { startOfDay: startOfDayUTC, endOfDay: endOfDayUTC };
+}
+
+/**
  * GET /v1/meds/schedule
  * Get today's medication schedule with taken status
  */
 medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const overdueGraceMinutes = 120;
 
-    // Get start and end of today (00:00:00 to 23:59:59)
+    // Get user's timezone
+    const userTimezone = await getUserTimezone(userId);
+    
+    // Get start and end of today in user's timezone (00:00:00 to 23:59:59)
+    const { startOfDay, endOfDay } = getDayBoundariesInTimezone(userTimezone);
+    
+    // Get current time in user's timezone for "next due" calculation
     const now = new Date();
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
+    const currentTimeInTZ = now.toLocaleTimeString('en-US', {
+      timeZone: userTimezone,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const currentMinutes =
+      parseInt(currentTimeInTZ.slice(0, 2), 10) * 60 + parseInt(currentTimeInTZ.slice(3, 5), 10);
 
     // Get all medication reminders for this user
     const remindersSnapshot = await getDb()
@@ -677,10 +745,26 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
       .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
       .get();
 
+    // Get today's date string in user's timezone for validation
+    const todayDateStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
+
     // Build a map of logged doses: medicationId_time -> log
+    // Only include logs that are actually from today (double-check date to prevent interday issues)
     const loggedDoses = new Map<string, any>();
     logsSnapshot.docs.forEach(doc => {
       const log = doc.data();
+      const logDate = log.loggedAt?.toDate();
+      
+      // Verify the log is actually from today in user's timezone
+      if (logDate) {
+        const logDateStr = logDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
+        if (logDateStr !== todayDateStr) {
+          // Log is from a different day, skip it (shouldn't happen due to query, but safety check)
+          functions.logger.warn(`[medications] Skipping log ${doc.id} - date mismatch: ${logDateStr} vs ${todayDateStr}`);
+          return;
+        }
+      }
+      
       const key = `${log.medicationId}_${log.scheduledTime || 'any'}`;
       loggedDoses.set(key, { id: doc.id, ...log });
     });
@@ -721,14 +805,44 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
         const logKey = `${reminder.medicationId}_${time}`;
         const log = loggedDoses.get(logKey);
 
+        // Additional validation: if we found a log, verify it's actually for today
+        // This prevents interday matching issues
+        let status: 'taken' | 'skipped' | 'pending' | 'overdue' = 'pending';
+        let logId: string | null = null;
+        
+        if (log) {
+          // Prefer scheduledDate if available (new logs), otherwise fall back to loggedAt date
+          const logDateStr = log.scheduledDate || (() => {
+            const logDate = log.loggedAt?.toDate();
+            return logDate ? logDate.toLocaleDateString('en-CA', { timeZone: userTimezone }) : null;
+          })();
+          
+          if (logDateStr === todayDateStr) {
+            // Log is for today, use it
+            status = log.action;
+            logId = log.id;
+          } else {
+            // Log is from a different day, ignore it (shouldn't happen due to query + previous check)
+            functions.logger.warn(`[medications] Ignoring log ${log.id} for ${reminder.medicationId} ${time} - date mismatch: ${logDateStr} vs ${todayDateStr}`);
+          }
+        }
+
+        if (status === 'pending') {
+          const [hours, minutes] = time.split(':').map(Number);
+          const scheduledMinutes = hours * 60 + minutes;
+          if (scheduledMinutes <= currentMinutes - overdueGraceMinutes) {
+            status = 'overdue';
+          }
+        }
+
         scheduledDoses.push({
           medicationId: reminder.medicationId,
           reminderId: doc.id,
           name: medication.name,
           dose: medication.dose || '',
           scheduledTime: time,
-          status: log ? log.action : 'pending',
-          logId: log?.id || null,
+          status,
+          logId,
         });
       });
     });
@@ -739,14 +853,18 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
     // Calculate summary
     const taken = scheduledDoses.filter(d => d.status === 'taken').length;
     const skipped = scheduledDoses.filter(d => d.status === 'skipped').length;
-    const pending = scheduledDoses.filter(d => d.status === 'pending').length;
+    const overdue = scheduledDoses.filter(d => d.status === 'overdue').length;
+    const pending = scheduledDoses.filter(d => d.status === 'pending' || d.status === 'overdue').length;
     const total = scheduledDoses.length;
 
-    // Find next due dose
-    const currentTimeHHMM = now.toTimeString().slice(0, 5);
-    const nextDue = scheduledDoses.find(
-      d => d.status === 'pending' && d.scheduledTime >= currentTimeHHMM
-    );
+    // Find next due dose using current time in user's timezone
+    const currentTimeHHMM = currentTimeInTZ;
+    const nextDue =
+      scheduledDoses.find(
+        d => d.status === 'pending' && d.scheduledTime >= currentTimeHHMM
+      ) ||
+      scheduledDoses.find(d => d.status === 'overdue') ||
+      scheduledDoses.find(d => d.status === 'pending');
 
     functions.logger.info(`[medications] Retrieved schedule for user ${userId}`, {
       total,
@@ -757,7 +875,7 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
 
     res.json({
       scheduledDoses,
-      summary: { taken, skipped, pending, total },
+      summary: { taken, skipped, pending, overdue, total },
       nextDue: nextDue ? { name: nextDue.name, time: nextDue.scheduledTime } : null,
     });
   } catch (error) {
@@ -799,14 +917,21 @@ medicationsRouter.post('/schedule/mark', requireAuth, async (req: AuthRequest, r
     }
 
     const now = admin.firestore.Timestamp.now();
+    
+    // Get user's timezone to determine the intended date for this scheduled dose
+    const userTimezone = await getUserTimezone(userId);
+    const nowDate = new Date();
+    const intendedDateStr = nowDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
 
-    // Create medication log
+    // Create medication log with the intended date for the scheduled dose
+    // This helps prevent interday matching issues
     const logRef = await getDb().collection('medicationLogs').add({
       userId,
       medicationId: data.medicationId,
       medicationName: medication.name,
       action: data.action,
       scheduledTime: data.scheduledTime,
+      scheduledDate: intendedDateStr, // Store the date this dose was intended for
       loggedAt: now,
       createdAt: now,
     });
@@ -873,12 +998,18 @@ medicationsRouter.post('/schedule/mark-batch', requireAuth, async (req: AuthRequ
           continue;
         }
 
+        // Get user's timezone for intended date
+        const userTimezone = await getUserTimezone(userId);
+        const nowDate = new Date();
+        const intendedDateStr = nowDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
+
         const logRef = await getDb().collection('medicationLogs').add({
           userId,
           medicationId: dose.medicationId,
           medicationName: medication.name,
           action: data.action,
           scheduledTime: dose.scheduledTime,
+          scheduledDate: intendedDateStr, // Store the date this dose was intended for
           loggedAt: now,
           createdAt: now,
         });
@@ -950,6 +1081,11 @@ medicationsRouter.post('/schedule/snooze', requireAuth, async (req: AuthRequest,
 
     const now = admin.firestore.Timestamp.now();
     const snoozeUntil = new Date(Date.now() + parseInt(data.snoozeMinutes) * 60 * 1000);
+    
+    // Get user's timezone for intended date
+    const userTimezone = await getUserTimezone(userId);
+    const nowDate = new Date();
+    const intendedDateStr = nowDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
 
     // Create snooze log
     const logRef = await getDb().collection('medicationLogs').add({
@@ -958,6 +1094,7 @@ medicationsRouter.post('/schedule/snooze', requireAuth, async (req: AuthRequest,
       medicationName: medication.name,
       action: 'snoozed',
       scheduledTime: data.scheduledTime,
+      scheduledDate: intendedDateStr, // Store the date this dose was intended for
       snoozeMinutes: parseInt(data.snoozeMinutes),
       snoozeUntil: admin.firestore.Timestamp.fromDate(snoozeUntil),
       loggedAt: now,

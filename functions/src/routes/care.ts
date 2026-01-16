@@ -136,9 +136,40 @@ async function validateCaregiverAccess(
 // =============================================================================
 
 async function getTodaysMedicationStatus(patientId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+    const overdueGraceMinutes = 120;
+
+    const userDoc = await getDb().collection('users').doc(patientId).get();
+    const userTimezone =
+        typeof userDoc.data()?.timezone === 'string'
+            ? (userDoc.data()?.timezone as string)
+            : 'America/Chicago';
+
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD
+
+    const dayBoundaries = (() => {
+        const dateStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const testUTC = new Date(
+            `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`
+        );
+        const tzFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: userTimezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+        const tzParts = tzFormatter.formatToParts(testUTC);
+        const tzHour = parseInt(tzParts.find((p) => p.type === 'hour')!.value, 10);
+        const tzMinute = parseInt(tzParts.find((p) => p.type === 'minute')!.value, 10);
+        const offsetMinutes = (tzHour - 12) * 60 + tzMinute;
+        const midnightUTC = new Date(
+            `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`
+        );
+        const startOfDayUTC = new Date(midnightUTC.getTime() - offsetMinutes * 60 * 1000);
+        const endOfDayUTC = new Date(startOfDayUTC.getTime() + 24 * 60 * 60 * 1000 - 1);
+        return { startOfDayUTC, endOfDayUTC };
+    })();
 
     // Get active medications with reminders
     const medsSnapshot = await getDb()
@@ -157,10 +188,20 @@ async function getTodaysMedicationStatus(patientId: string) {
     const logsSnapshot = await getDb()
         .collection('medicationLogs')
         .where('userId', '==', patientId)
-        .where('date', '==', todayStr)
+        .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(dayBoundaries.startOfDayUTC))
+        .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(dayBoundaries.endOfDayUTC))
         .get();
 
-    const logs = logsSnapshot.docs.map((doc) => doc.data());
+    const logs = logsSnapshot.docs
+        .map((doc) => doc.data())
+        .filter((log) => {
+            const logDateStr =
+                log.scheduledDate ||
+                (log.loggedAt?.toDate
+                    ? log.loggedAt.toDate().toLocaleDateString('en-CA', { timeZone: userTimezone })
+                    : null);
+            return logDateStr === todayStr;
+        });
 
     // Build reminder map: medicationId -> times
     const reminderMap = new Map<string, string[]>();
@@ -176,9 +217,14 @@ async function getTodaysMedicationStatus(patientId: string) {
     let pending = 0;
     let missed = 0;
 
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
+    const currentTimeStr = now.toLocaleTimeString('en-US', {
+        timeZone: userTimezone,
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+    const currentHour = parseInt(currentTimeStr.slice(0, 2), 10);
+    const currentMinute = parseInt(currentTimeStr.slice(3, 5), 10);
 
     medsSnapshot.docs.forEach((doc) => {
         const medId = doc.id;
@@ -199,11 +245,11 @@ async function getTodaysMedicationStatus(patientId: string) {
                 if (log.action === 'taken') taken++;
                 else if (log.action === 'skipped') skipped++;
             } else {
-                // Not logged - check if missed (past time by 1+ hour)
+                // Not logged - check if missed (past time by grace window)
                 const scheduledMins = scheduledHour * 60 + scheduledMin;
                 const currentMins = currentHour * 60 + currentMinute;
 
-                if (currentMins > scheduledMins + 60) {
+                if (currentMins > scheduledMins + overdueGraceMinutes) {
                     missed++;
                 } else {
                     pending++;
@@ -507,6 +553,55 @@ careRouter.get('/:patientId/actions', requireAuth, async (req: AuthRequest, res)
 });
 
 // =============================================================================
+// GET /v1/care/:patientId/visits
+// List visits for a shared patient
+// =============================================================================
+
+careRouter.get('/:patientId/visits', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const visitsSnapshot = await getDb()
+            .collection('visits')
+            .where('userId', '==', patientId)
+            .orderBy('createdAt', 'desc')
+            .get();
+
+        const visits = visitsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
+                updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
+                processedAt: data.processedAt?.toDate?.().toISOString() ?? null,
+                visitDate: data.visitDate?.toDate?.()
+                    ? data.visitDate.toDate().toISOString()
+                    : data.visitDate ?? null,
+            };
+        });
+
+        res.json(visits);
+    } catch (error) {
+        functions.logger.error('[care] Error fetching patient visits:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch visits',
+        });
+    }
+});
+
+// =============================================================================
 // GET /v1/care/:patientId/medication-status
 // Today's medication doses for a specific patient
 // =============================================================================
@@ -529,9 +624,40 @@ careRouter.get(
                 return;
             }
 
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayStr = today.toISOString().split('T')[0];
+            const overdueGraceMinutes = 120;
+
+            const userDoc = await getDb().collection('users').doc(patientId).get();
+            const userTimezone =
+                typeof userDoc.data()?.timezone === 'string'
+                    ? (userDoc.data()?.timezone as string)
+                    : 'America/Chicago';
+
+            const now = new Date();
+            const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
+
+            const dayBoundaries = (() => {
+                const dateStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const testUTC = new Date(
+                    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`
+                );
+                const tzFormatter = new Intl.DateTimeFormat('en-US', {
+                    timeZone: userTimezone,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                });
+                const tzParts = tzFormatter.formatToParts(testUTC);
+                const tzHour = parseInt(tzParts.find((p) => p.type === 'hour')!.value, 10);
+                const tzMinute = parseInt(tzParts.find((p) => p.type === 'minute')!.value, 10);
+                const offsetMinutes = (tzHour - 12) * 60 + tzMinute;
+                const midnightUTC = new Date(
+                    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`
+                );
+                const startOfDayUTC = new Date(midnightUTC.getTime() - offsetMinutes * 60 * 1000);
+                const endOfDayUTC = new Date(startOfDayUTC.getTime() + 24 * 60 * 60 * 1000 - 1);
+                return { startOfDayUTC, endOfDayUTC };
+            })();
 
             // Get active medications
             const medsSnapshot = await getDb()
@@ -551,7 +677,8 @@ careRouter.get(
             const logsSnapshot = await getDb()
                 .collection('medicationLogs')
                 .where('userId', '==', patientId)
-                .where('date', '==', todayStr)
+                .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(dayBoundaries.startOfDayUTC))
+                .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(dayBoundaries.endOfDayUTC))
                 .get();
 
             const medications = medsSnapshot.docs.map((doc) => {
@@ -570,10 +697,18 @@ careRouter.get(
                 reminderMap.set(data.medicationId, data.times || []);
             });
 
-            const logs = logsSnapshot.docs.map((doc) => doc.data());
-
             // Build schedule
-            const now = new Date();
+            const logs = logsSnapshot.docs
+                .map((doc) => doc.data())
+                .filter((log) => {
+                    const logDateStr =
+                        log.scheduledDate ||
+                        (log.loggedAt?.toDate
+                            ? log.loggedAt.toDate().toLocaleDateString('en-CA', { timeZone: userTimezone })
+                            : null);
+                    return logDateStr === todayStr;
+                });
+
             const schedule = medications.flatMap((med) => {
                 const times = reminderMap.get(med.id) || [];
                 return times.map((time) => {
@@ -585,17 +720,28 @@ careRouter.get(
                     let actionAt: string | undefined;
 
                     if (log) {
-                        status = log.action;
-                        actionAt = log.createdAt;
+                        if (log.action === 'taken' || log.action === 'skipped') {
+                            status = log.action;
+                        } else {
+                            status = 'pending';
+                        }
+                        actionAt = log.loggedAt?.toDate?.().toISOString();
                     } else {
                         // Check if missed
                         const [hourStr, minStr] = time.split(':');
                         const scheduledMins =
                             parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
+                        const currentTimeStr = now.toLocaleTimeString('en-US', {
+                            timeZone: userTimezone,
+                            hour12: false,
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        });
                         const currentMins =
-                            now.getHours() * 60 + now.getMinutes();
+                            parseInt(currentTimeStr.slice(0, 2), 10) * 60 +
+                            parseInt(currentTimeStr.slice(3, 5), 10);
 
-                        if (currentMins > scheduledMins + 60) {
+                        if (currentMins > scheduledMins + overdueGraceMinutes) {
                             status = 'missed';
                         }
                     }
