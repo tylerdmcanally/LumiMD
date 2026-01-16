@@ -8,6 +8,7 @@ import { Mail, Lock, User, ArrowRight, Users } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
 import { api } from '@/lib/api/client';
+import { resolvePostAuthRedirect } from '@/lib/auth/redirects';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,7 +29,16 @@ export default function SignUpPage() {
     };
   });
 
-  const isInviteFlow = Boolean(params.invite);
+  const inviteToken = React.useMemo(() => {
+    if (params.invite) return params.invite;
+    if (params.returnTo?.startsWith('/invite/')) {
+      const token = params.returnTo.replace('/invite/', '').split('?')[0];
+      return token || null;
+    }
+    return null;
+  }, [params.invite, params.returnTo]);
+
+  const isInviteFlow = Boolean(inviteToken);
   const inviteEmail = params.email || '';
   const inviteFrom = params.from ? decodeURIComponent(params.from) : null;
 
@@ -85,10 +95,10 @@ export default function SignUpPage() {
       }
 
       // If this is an invite flow, accept the invite and go to care dashboard
-      if (isInviteFlow && params.invite) {
+      if (isInviteFlow && inviteToken) {
         setSuccessMessage('Account created! Accepting invitation...');
         try {
-          await api.shares.acceptToken(params.invite);
+          await api.shares.acceptToken(inviteToken);
           setSuccessMessage('Welcome to LumiMD! Redirecting to care dashboard...');
           setTimeout(() => {
             router.replace('/care');
@@ -98,14 +108,23 @@ export default function SignUpPage() {
           // Even if accept fails, account was created - go to invite page to retry
           setError('Account created, but we had trouble accepting the invitation. Please try again.');
           setTimeout(() => {
-            router.replace(`/invite/${params.invite}`);
+            router.replace(`/invite/${inviteToken}`);
           }, 2000);
         }
       } else {
         // Normal sign-up flow
         setSuccessMessage('Account created! Check your inbox to verify your email.');
+        try {
+          await api.user.updateProfile({
+            roles: ['patient'],
+            primaryRole: 'patient',
+          });
+        } catch (roleError) {
+          console.warn('[sign-up] Failed to set primary role:', roleError);
+        }
+        const destination = await resolvePostAuthRedirect(params.returnTo);
         setTimeout(() => {
-          router.replace(params.returnTo);
+          router.replace(destination);
         }, 500);
       }
     } catch (err: any) {
@@ -277,8 +296,8 @@ export default function SignUpPage() {
               fullWidth
               onClick={() => {
                 const signInParams = new URLSearchParams();
-                if (isInviteFlow && params.invite) {
-                  signInParams.set('returnTo', `/invite/${params.invite}`);
+                if (isInviteFlow && inviteToken) {
+                  signInParams.set('returnTo', `/invite/${inviteToken}`);
                 } else {
                   signInParams.set('returnTo', params.returnTo);
                 }

@@ -9,6 +9,8 @@ export interface UserProfile {
   allergies?: string[];
   tags?: string[];
   folders?: string[];
+  roles?: Array<'patient' | 'caregiver'>;
+  primaryRole?: 'patient' | 'caregiver' | null;
   createdAt?: string | null;
   updatedAt?: string | null;
   // Subscription fields

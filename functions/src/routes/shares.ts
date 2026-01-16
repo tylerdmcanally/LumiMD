@@ -10,6 +10,25 @@ export const sharesRouter = Router();
 
 const getDb = () => admin.firestore();
 
+const ensureCaregiverRole = async (userId: string) => {
+  const userRef = getDb().collection('users').doc(userId);
+  const userDoc = await userRef.get();
+  const data = userDoc.data() ?? {};
+  const existingRoles = Array.isArray(data.roles) ? data.roles : [];
+  const roles = Array.from(new Set([...existingRoles, 'caregiver']));
+
+  const update: Record<string, unknown> = {
+    roles,
+    updatedAt: admin.firestore.Timestamp.now(),
+  };
+
+  if (!data.primaryRole) {
+    update.primaryRole = 'caregiver';
+  }
+
+  await userRef.set(update, { merge: true });
+};
+
 // ============================================================================
 // VALIDATION SCHEMAS
 // ============================================================================
@@ -579,6 +598,8 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
         updatedAt: now,
       });
 
+      await ensureCaregiverRole(userId);
+
       functions.logger.info(
         `[shares] User ${userId} accepted invite ${token} from ${invite.ownerId}`,
       );
@@ -651,6 +672,8 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
       // Delete the old share with wrong caregiver ID
       await shareDoc.ref.delete();
 
+      await ensureCaregiverRole(userId);
+
       functions.logger.info(`[shares] User ${userId} accepted share (migrated from ${shareId} to ${newShareId})`);
 
       const newShareDoc = await getDb().collection('shares').doc(newShareId).get();
@@ -685,6 +708,8 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
         acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      await ensureCaregiverRole(userId);
 
       functions.logger.info(`[shares] User ${userId} accepted share ${shareId}`);
 
@@ -1030,6 +1055,8 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
         },
         { merge: true }
       );
+
+    await ensureCaregiverRole(userId);
 
     // Fetch updated document
     const updatedDoc = await inviteDoc.ref.get();

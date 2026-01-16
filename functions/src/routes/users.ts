@@ -9,6 +9,8 @@ export const usersRouter = Router();
 
 const getDb = () => admin.firestore();
 
+const userRoleSchema = z.enum(['patient', 'caregiver']);
+
 const updateProfileSchema = z.object({
   firstName: z.string().max(100).optional(),
   lastName: z.string().max(100).optional(),
@@ -18,6 +20,8 @@ const updateProfileSchema = z.object({
   tags: z.array(z.string()).optional(),
   folders: z.array(z.string()).optional(),
   autoShareWithCaregivers: z.boolean().optional(),
+  roles: z.array(userRoleSchema).optional(),
+  primaryRole: userRoleSchema.optional(),
 });
 
 const registerPushTokenSchema = z.object({
@@ -61,6 +65,11 @@ const sanitizeStringArray = (values?: string[]) => {
   );
 };
 
+const normalizeRoles = (roles?: Array<'patient' | 'caregiver'>) => {
+  if (!Array.isArray(roles)) return undefined;
+  return Array.from(new Set(roles)).filter((role) => role === 'patient' || role === 'caregiver');
+};
+
 const isProfileComplete = (data: Record<string, unknown>): boolean => {
   const hasFirstName =
     typeof data.firstName === 'string' && data.firstName.trim().length > 0;
@@ -99,6 +108,8 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
       medicalHistory: Array.isArray(data.medicalHistory) ? data.medicalHistory : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       folders: Array.isArray(data.folders) ? data.folders : [],
+      roles: Array.isArray(data.roles) ? data.roles : [],
+      primaryRole: typeof data.primaryRole === 'string' ? data.primaryRole : null,
       createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
       updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
       complete: isProfileComplete(data),
@@ -154,6 +165,14 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       updateData.folders = sanitizeStringArray(payload.folders) ?? [];
     }
 
+    if (payload.roles !== undefined) {
+      updateData.roles = normalizeRoles(payload.roles) ?? [];
+    }
+
+    if (payload.primaryRole !== undefined) {
+      updateData.primaryRole = payload.primaryRole;
+    }
+
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
       updateData.createdAt = now;
@@ -173,6 +192,8 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       medicalHistory: Array.isArray(data.medicalHistory) ? data.medicalHistory : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       folders: Array.isArray(data.folders) ? data.folders : [],
+      roles: Array.isArray(data.roles) ? data.roles : [],
+      primaryRole: typeof data.primaryRole === 'string' ? data.primaryRole : null,
       createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
       updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
       complete: isProfileComplete(data),

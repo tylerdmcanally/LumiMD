@@ -7,6 +7,7 @@ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { Mail, Lock, ArrowRight, Smartphone } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
+import { resolvePostAuthRedirect } from '@/lib/auth/redirects';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -62,7 +63,8 @@ export default function SignInPage() {
     try {
       setIsSubmitting(true);
       await signInWithEmailAndPassword(auth, email.trim(), password);
-      router.push(returnTo);
+      const destination = await resolvePostAuthRedirect(returnTo);
+      router.push(destination);
     } catch (err: any) {
       const message =
         err?.code === 'auth/invalid-credential'
@@ -215,7 +217,7 @@ export default function SignInPage() {
           <p>
             Don't have an account?{' '}
             <Link
-              href="/sign-up"
+              href={`/sign-up?returnTo=${encodeURIComponent(returnTo)}`}
               className="font-semibold text-brand-primary hover:text-brand-primary-dark transition-smooth"
             >
               Sign up for free
