@@ -42,9 +42,37 @@ export default function CareVisitDetailPage() {
   const patientId = params.patientId;
   const visitId = params.visitId;
 
-  const { data: visit, isLoading, error, refetch } = useCareVisitSummary(patientId, visitId);
+  const { data: visitData, isLoading, error, refetch } = useCareVisitSummary(patientId, visitId);
   const { data: allVisits } = useCareVisits(patientId);
   const updateVisitMetadata = useUpdateVisitMetadata();
+
+  // Local override for optimistic updates
+  const [localOverrides, setLocalOverrides] = React.useState<{
+    provider?: string;
+    specialty?: string;
+    location?: string;
+    visitDate?: string;
+  } | null>(null);
+
+  // Merge server data with local overrides
+  const visit = React.useMemo(() => {
+    if (!visitData) return null;
+    if (!localOverrides) return visitData;
+    return {
+      ...visitData,
+      provider: localOverrides.provider ?? visitData.provider,
+      specialty: localOverrides.specialty ?? visitData.specialty,
+      location: localOverrides.location ?? visitData.location,
+      visitDate: localOverrides.visitDate ?? visitData.visitDate,
+    };
+  }, [visitData, localOverrides]);
+
+  // Clear local overrides when server data updates
+  React.useEffect(() => {
+    if (visitData) {
+      setLocalOverrides(null);
+    }
+  }, [visitData]);
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
@@ -145,8 +173,19 @@ export default function CareVisitDetailPage() {
           visitDate: editForm.visitDate || null,
         },
       });
+      
+      // Optimistically update the UI immediately
+      setLocalOverrides({
+        provider: editForm.provider || undefined,
+        specialty: editForm.specialty || undefined,
+        location: editForm.location || undefined,
+        visitDate: editForm.visitDate ? new Date(editForm.visitDate).toISOString() : undefined,
+      });
+      
       toast.success('Visit details updated');
       setEditDialogOpen(false);
+      
+      // Also refetch to sync with server
       refetch();
     } catch (err) {
       toast.error('Failed to update visit');
