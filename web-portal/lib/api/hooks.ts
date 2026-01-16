@@ -1506,3 +1506,240 @@ export function useUpdateVisitMetadata() {
     },
   });
 }
+
+// =============================================================================
+// Health Logs for Caregivers
+// =============================================================================
+
+export type HealthLogEntry = {
+  id: string;
+  type: 'bp' | 'glucose' | 'weight' | 'symptom_check' | 'med_compliance';
+  value: {
+    systolic?: number;
+    diastolic?: number;
+    pulse?: number;
+    reading?: number;
+    timing?: string;
+    weight?: number;
+    unit?: string;
+  };
+  alertLevel: 'normal' | 'caution' | 'warning' | 'emergency';
+  createdAt: string;
+  source: string;
+};
+
+export type HealthLogSummary = {
+  bp: {
+    count: number;
+    latest: { systolic: number; diastolic: number } | null;
+    latestDate: string | null;
+    latestAlertLevel: string | null;
+    avgSystolic: number | null;
+    avgDiastolic: number | null;
+    trend: 'up' | 'down' | 'stable' | null;
+  };
+  glucose: {
+    count: number;
+    latest: { reading: number } | null;
+    latestDate: string | null;
+    latestAlertLevel: string | null;
+    avg: number | null;
+    min: number | null;
+    max: number | null;
+    trend: 'up' | 'down' | 'stable' | null;
+  };
+  weight: {
+    count: number;
+    latest: { weight: number; unit: string } | null;
+    latestDate: string | null;
+    oldest: { weight: number; unit: string } | null;
+    change: number | null;
+    trend: 'up' | 'down' | 'stable' | null;
+  };
+};
+
+export type CareHealthLogsResponse = {
+  logs: HealthLogEntry[];
+  summary: HealthLogSummary;
+  alerts: {
+    emergency: number;
+    warning: number;
+    caution: number;
+  };
+  period: {
+    days: number;
+    from: string;
+    to: string;
+  };
+};
+
+export function useCareHealthLogs(
+  patientId: string | undefined,
+  options?: { type?: string; days?: number }
+) {
+  return useQuery<CareHealthLogsResponse>({
+    queryKey: ['care-health-logs', patientId, options?.type, options?.days],
+    staleTime: 60_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const params = new URLSearchParams();
+      if (options?.type) params.set('type', options.type);
+      if (options?.days) params.set('days', String(options.days));
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/health-logs?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch health logs');
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Medication Adherence for Caregivers
+// =============================================================================
+
+export type MedicationAdherenceData = {
+  overall: {
+    totalDoses: number;
+    takenDoses: number;
+    skippedDoses: number;
+    missedDoses: number;
+    adherenceRate: number;
+  };
+  byMedication: Array<{
+    medicationId: string;
+    medicationName: string;
+    totalDoses: number;
+    takenDoses: number;
+    skippedDoses: number;
+    adherenceRate: number;
+    streak: number;
+  }>;
+  calendar: Array<{
+    date: string;
+    scheduled: number;
+    taken: number;
+    skipped: number;
+    missed: number;
+  }>;
+  patterns: {
+    bestTimeOfDay: string | null;
+    worstTimeOfDay: string | null;
+    insights: string[];
+  };
+  period: {
+    days: number;
+    from: string;
+    to: string;
+  };
+};
+
+export function useCareMedicationAdherence(
+  patientId: string | undefined,
+  options?: { days?: number; medicationId?: string }
+) {
+  return useQuery<MedicationAdherenceData>({
+    queryKey: ['care-medication-adherence', patientId, options?.days, options?.medicationId],
+    staleTime: 60_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const params = new URLSearchParams();
+      if (options?.days) params.set('days', String(options.days));
+      if (options?.medicationId) params.set('medicationId', options.medicationId);
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/medication-adherence?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch medication adherence');
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Quick Overview for Caregivers
+// =============================================================================
+
+export type QuickOverviewData = {
+  needsAttention: Array<{
+    type: string;
+    priority: 'high' | 'medium' | 'low';
+    message: string;
+    actionUrl?: string;
+  }>;
+  todaysMeds: {
+    total: number;
+    taken: number;
+    pending: number;
+    missed: number;
+    skipped?: number;
+  };
+  recentActivity: Array<{
+    type: string;
+    description: string;
+    timestamp: string;
+  }>;
+  healthSnapshot: {
+    latestBp?: { value: string; alertLevel: string; date: string };
+    latestGlucose?: { value: string; alertLevel: string; date: string };
+    latestWeight?: { value: string; change?: string; date: string };
+  };
+};
+
+export function useCareQuickOverview(patientId: string | undefined) {
+  return useQuery<QuickOverviewData>({
+    queryKey: ['care-quick-overview', patientId],
+    staleTime: 30_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/quick-overview`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch quick overview');
+      return response.json();
+    },
+  });
+}

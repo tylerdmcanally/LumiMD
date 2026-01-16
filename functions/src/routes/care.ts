@@ -1284,3 +1284,669 @@ careRouter.patch('/:patientId/visits/:visitId', requireAuth, async (req: AuthReq
         });
     }
 });
+
+// =============================================================================
+// HEALTH LOGS API FOR CAREGIVERS
+// View patient health metrics (BP, glucose, weight)
+// =============================================================================
+
+// GET /v1/care/:patientId/health-logs
+// Fetch health logs for a patient with summary statistics
+careRouter.get('/:patientId/health-logs', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const { type = 'all', days = '30', limit: limitParam } = req.query;
+
+        // Validate caregiver has access
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const daysNum = Math.min(Math.max(parseInt(days as string) || 30, 1), 365);
+        const limitNum = limitParam ? Math.min(parseInt(limitParam as string), 500) : undefined;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - daysNum);
+
+        // Build query
+        let query = getDb()
+            .collection('healthLogs')
+            .where('userId', '==', patientId)
+            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+            .orderBy('createdAt', 'desc');
+
+        // Filter by type if specified
+        if (type !== 'all' && ['bp', 'glucose', 'weight'].includes(type as string)) {
+            query = query.where('type', '==', type);
+        }
+
+        if (limitNum) {
+            query = query.limit(limitNum);
+        }
+
+        const snapshot = await query.get();
+
+        const logs = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                type: data.type,
+                value: data.value,
+                alertLevel: data.alertLevel || 'normal',
+                createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
+                source: data.source || 'manual',
+            };
+        });
+
+        // Calculate summaries
+        const bpLogs = logs.filter((l) => l.type === 'bp');
+        const glucoseLogs = logs.filter((l) => l.type === 'glucose');
+        const weightLogs = logs.filter((l) => l.type === 'weight');
+
+        // BP Summary
+        const bpSummary = {
+            count: bpLogs.length,
+            latest: bpLogs[0]?.value || null,
+            latestDate: bpLogs[0]?.createdAt || null,
+            latestAlertLevel: bpLogs[0]?.alertLevel || null,
+            avgSystolic: bpLogs.length > 0
+                ? Math.round(bpLogs.reduce((sum, l) => sum + ((l.value as any)?.systolic || 0), 0) / bpLogs.length)
+                : null,
+            avgDiastolic: bpLogs.length > 0
+                ? Math.round(bpLogs.reduce((sum, l) => sum + ((l.value as any)?.diastolic || 0), 0) / bpLogs.length)
+                : null,
+            trend: calculateTrend(bpLogs.map((l) => (l.value as any)?.systolic).filter(Boolean)),
+        };
+
+        // Glucose Summary
+        const glucoseSummary = {
+            count: glucoseLogs.length,
+            latest: glucoseLogs[0]?.value || null,
+            latestDate: glucoseLogs[0]?.createdAt || null,
+            latestAlertLevel: glucoseLogs[0]?.alertLevel || null,
+            avg: glucoseLogs.length > 0
+                ? Math.round(glucoseLogs.reduce((sum, l) => sum + ((l.value as any)?.reading || 0), 0) / glucoseLogs.length)
+                : null,
+            min: glucoseLogs.length > 0
+                ? Math.min(...glucoseLogs.map((l) => (l.value as any)?.reading || 999))
+                : null,
+            max: glucoseLogs.length > 0
+                ? Math.max(...glucoseLogs.map((l) => (l.value as any)?.reading || 0))
+                : null,
+            trend: calculateTrend(glucoseLogs.map((l) => (l.value as any)?.reading).filter(Boolean)),
+        };
+
+        // Weight Summary
+        const weightValues = weightLogs.map((l) => (l.value as any)?.weight).filter(Boolean);
+        const weightSummary = {
+            count: weightLogs.length,
+            latest: weightLogs[0]?.value || null,
+            latestDate: weightLogs[0]?.createdAt || null,
+            oldest: weightLogs[weightLogs.length - 1]?.value || null,
+            change: weightValues.length >= 2
+                ? Math.round((weightValues[0] - weightValues[weightValues.length - 1]) * 10) / 10
+                : null,
+            trend: calculateTrend(weightValues),
+        };
+
+        // Count alerts
+        const alertCounts = {
+            emergency: logs.filter((l) => l.alertLevel === 'emergency').length,
+            warning: logs.filter((l) => l.alertLevel === 'warning').length,
+            caution: logs.filter((l) => l.alertLevel === 'caution').length,
+        };
+
+        res.json({
+            logs,
+            summary: {
+                bp: bpSummary,
+                glucose: glucoseSummary,
+                weight: weightSummary,
+            },
+            alerts: alertCounts,
+            period: {
+                days: daysNum,
+                from: startDate.toISOString(),
+                to: new Date().toISOString(),
+            },
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching health logs:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch health logs',
+        });
+    }
+});
+
+/**
+ * Calculate trend direction from an array of values (newest first)
+ */
+function calculateTrend(values: number[]): 'up' | 'down' | 'stable' | null {
+    if (values.length < 3) return null;
+    
+    // Compare average of first half vs second half
+    const midpoint = Math.floor(values.length / 2);
+    const recentAvg = values.slice(0, midpoint).reduce((a, b) => a + b, 0) / midpoint;
+    const olderAvg = values.slice(midpoint).reduce((a, b) => a + b, 0) / (values.length - midpoint);
+    
+    const percentChange = ((recentAvg - olderAvg) / olderAvg) * 100;
+    
+    if (percentChange > 5) return 'up';
+    if (percentChange < -5) return 'down';
+    return 'stable';
+}
+
+// =============================================================================
+// MEDICATION ADHERENCE API FOR CAREGIVERS
+// Track medication compliance over time
+// =============================================================================
+
+// GET /v1/care/:patientId/medication-adherence
+// Fetch medication adherence statistics for a patient
+careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const { days = '30', medicationId } = req.query;
+
+        // Validate caregiver has access
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const daysNum = Math.min(Math.max(parseInt(days as string) || 30, 1), 365);
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - daysNum);
+        startDate.setHours(0, 0, 0, 0);
+
+        // Fetch medication logs
+        let logsQuery = getDb()
+            .collection('medicationLogs')
+            .where('userId', '==', patientId)
+            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+            .orderBy('createdAt', 'desc');
+
+        if (medicationId) {
+            logsQuery = logsQuery.where('medicationId', '==', medicationId);
+        }
+
+        const logsSnapshot = await logsQuery.get();
+
+        // Fetch active medications
+        const medsSnapshot = await getDb()
+            .collection('medications')
+            .where('userId', '==', patientId)
+            .where('active', '==', true)
+            .get();
+
+        const medications = new Map<string, { name: string; times: string[] }>();
+        medsSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            medications.set(doc.id, {
+                name: data.name || 'Unknown',
+                times: Array.isArray(data.times) ? data.times : [],
+            });
+        });
+
+        // Process logs
+        const logs = logsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                medicationId: data.medicationId,
+                action: data.action, // 'taken', 'skipped', 'snoozed'
+                scheduledDate: data.scheduledDate || null,
+                createdAt: data.createdAt?.toDate?.() || new Date(),
+            };
+        });
+
+        // Calculate overall stats
+        const takenCount = logs.filter((l) => l.action === 'taken').length;
+        const skippedCount = logs.filter((l) => l.action === 'skipped').length;
+        const totalLogged = takenCount + skippedCount;
+
+        // Calculate expected doses (rough estimate based on active meds and days)
+        let expectedDoses = 0;
+        medications.forEach((med) => {
+            expectedDoses += med.times.length * daysNum;
+        });
+
+        const missedCount = Math.max(0, expectedDoses - totalLogged);
+        const adherenceRate = expectedDoses > 0
+            ? Math.round((takenCount / expectedDoses) * 100)
+            : 100;
+
+        // Per-medication breakdown
+        const byMedication: Array<{
+            medicationId: string;
+            medicationName: string;
+            totalDoses: number;
+            takenDoses: number;
+            skippedDoses: number;
+            adherenceRate: number;
+            streak: number;
+        }> = [];
+
+        medications.forEach((med, medId) => {
+            const medLogs = logs.filter((l) => l.medicationId === medId);
+            const taken = medLogs.filter((l) => l.action === 'taken').length;
+            const skipped = medLogs.filter((l) => l.action === 'skipped').length;
+            const expected = med.times.length * daysNum;
+            
+            // Calculate current streak
+            let streak = 0;
+            const sortedLogs = medLogs
+                .filter((l) => l.action === 'taken')
+                .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+            
+            if (sortedLogs.length > 0) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let checkDate = new Date(today);
+                
+                for (let i = 0; i < daysNum; i++) {
+                    const dateStr = checkDate.toISOString().split('T')[0];
+                    const hasLog = sortedLogs.some((l) => 
+                        l.createdAt.toISOString().split('T')[0] === dateStr
+                    );
+                    if (hasLog) {
+                        streak++;
+                        checkDate.setDate(checkDate.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            byMedication.push({
+                medicationId: medId,
+                medicationName: med.name,
+                totalDoses: expected,
+                takenDoses: taken,
+                skippedDoses: skipped,
+                adherenceRate: expected > 0 ? Math.round((taken / expected) * 100) : 100,
+                streak,
+            });
+        });
+
+        // Sort by adherence rate (lowest first for attention)
+        byMedication.sort((a, b) => a.adherenceRate - b.adherenceRate);
+
+        // Build calendar data (last N days)
+        const calendar: Array<{
+            date: string;
+            scheduled: number;
+            taken: number;
+            skipped: number;
+            missed: number;
+        }> = [];
+
+        for (let i = 0; i < daysNum; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            date.setHours(0, 0, 0, 0);
+            const dateStr = date.toISOString().split('T')[0];
+
+            const dayLogs = logs.filter((l) => {
+                const logDate = l.scheduledDate || l.createdAt.toISOString().split('T')[0];
+                return logDate === dateStr;
+            });
+
+            let scheduledCount = 0;
+            medications.forEach((med) => {
+                scheduledCount += med.times.length;
+            });
+
+            const taken = dayLogs.filter((l) => l.action === 'taken').length;
+            const skipped = dayLogs.filter((l) => l.action === 'skipped').length;
+            const missed = Math.max(0, scheduledCount - taken - skipped);
+
+            calendar.push({
+                date: dateStr,
+                scheduled: scheduledCount,
+                taken,
+                skipped,
+                missed,
+            });
+        }
+
+        // Detect patterns
+        const patterns: {
+            bestTimeOfDay: string | null;
+            worstTimeOfDay: string | null;
+            insights: string[];
+        } = {
+            bestTimeOfDay: null,
+            worstTimeOfDay: null,
+            insights: [],
+        };
+
+        // Check for weekend pattern
+        const weekendDays = calendar.filter((c) => {
+            const day = new Date(c.date).getDay();
+            return day === 0 || day === 6;
+        });
+        const weekdayDays = calendar.filter((c) => {
+            const day = new Date(c.date).getDay();
+            return day !== 0 && day !== 6;
+        });
+
+        if (weekendDays.length > 0 && weekdayDays.length > 0) {
+            const weekendRate = weekendDays.reduce((sum, d) => sum + d.taken, 0) / 
+                weekendDays.reduce((sum, d) => sum + d.scheduled, 0) * 100;
+            const weekdayRate = weekdayDays.reduce((sum, d) => sum + d.taken, 0) / 
+                weekdayDays.reduce((sum, d) => sum + d.scheduled, 0) * 100;
+
+            if (weekdayRate - weekendRate > 15) {
+                patterns.insights.push('Lower adherence on weekends');
+            } else if (weekendRate - weekdayRate > 15) {
+                patterns.insights.push('Better adherence on weekends');
+            }
+        }
+
+        // Add streak insight
+        const maxStreak = Math.max(...byMedication.map((m) => m.streak), 0);
+        if (maxStreak >= 7) {
+            patterns.insights.push(`${maxStreak}-day streak active`);
+        }
+
+        // Add low adherence warning
+        const lowAdherenceMeds = byMedication.filter((m) => m.adherenceRate < 70);
+        if (lowAdherenceMeds.length > 0) {
+            patterns.insights.push(`${lowAdherenceMeds.length} medication(s) below 70% adherence`);
+        }
+
+        res.json({
+            overall: {
+                totalDoses: expectedDoses,
+                takenDoses: takenCount,
+                skippedDoses: skippedCount,
+                missedDoses: missedCount,
+                adherenceRate,
+            },
+            byMedication,
+            calendar,
+            patterns,
+            period: {
+                days: daysNum,
+                from: startDate.toISOString(),
+                to: new Date().toISOString(),
+            },
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching medication adherence:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch medication adherence',
+        });
+    }
+});
+
+// =============================================================================
+// QUICK OVERVIEW API FOR CAREGIVERS
+// At-a-glance dashboard data
+// =============================================================================
+
+// GET /v1/care/:patientId/quick-overview
+// Fetch quick overview data for enhanced patient dashboard
+careRouter.get('/:patientId/quick-overview', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+
+        // Validate caregiver has access
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const now = new Date();
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(now);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+
+        // Parallel fetch all data
+        const [
+            todayMedStatus,
+            healthLogsSnapshot,
+            recentActionsSnapshot,
+            recentVisitsSnapshot,
+            recentMedLogsSnapshot,
+        ] = await Promise.all([
+            // Today's medication status
+            getTodaysMedicationStatus(patientId),
+            // Recent health logs (last 7 days)
+            getDb()
+                .collection('healthLogs')
+                .where('userId', '==', patientId)
+                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(weekAgo))
+                .orderBy('createdAt', 'desc')
+                .limit(10)
+                .get(),
+            // Overdue actions
+            getDb()
+                .collection('actions')
+                .where('userId', '==', patientId)
+                .where('completed', '==', false)
+                .orderBy('dueDate', 'asc')
+                .limit(10)
+                .get(),
+            // Recent visits
+            getDb()
+                .collection('visits')
+                .where('userId', '==', patientId)
+                .orderBy('createdAt', 'desc')
+                .limit(5)
+                .get(),
+            // Recent medication logs
+            getDb()
+                .collection('medicationLogs')
+                .where('userId', '==', patientId)
+                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(weekAgo))
+                .orderBy('createdAt', 'desc')
+                .limit(10)
+                .get(),
+        ]);
+
+        // Build needs attention items
+        const needsAttention: Array<{
+            type: string;
+            priority: 'high' | 'medium' | 'low';
+            message: string;
+            actionUrl?: string;
+        }> = [];
+
+        // Check for missed medications today
+        if (todayMedStatus.missed > 0) {
+            needsAttention.push({
+                type: 'missed_med',
+                priority: 'high',
+                message: `${todayMedStatus.missed} missed medication${todayMedStatus.missed > 1 ? 's' : ''} today`,
+                actionUrl: `/care/${patientId}/medications`,
+            });
+        }
+
+        // Check for overdue actions
+        const overdueActions = recentActionsSnapshot.docs.filter((doc) => {
+            const data = doc.data();
+            const dueDate = data.dueDate?.toDate?.();
+            return dueDate && dueDate < now;
+        });
+        if (overdueActions.length > 0) {
+            needsAttention.push({
+                type: 'overdue_action',
+                priority: 'medium',
+                message: `${overdueActions.length} overdue action item${overdueActions.length > 1 ? 's' : ''}`,
+                actionUrl: `/care/${patientId}/actions`,
+            });
+        }
+
+        // Check for health alerts
+        const healthAlerts = healthLogsSnapshot.docs.filter((doc) => {
+            const data = doc.data();
+            return data.alertLevel === 'warning' || data.alertLevel === 'emergency';
+        });
+        if (healthAlerts.length > 0) {
+            const latest = healthAlerts[0].data();
+            needsAttention.push({
+                type: 'health_alert',
+                priority: latest.alertLevel === 'emergency' ? 'high' : 'medium',
+                message: `Health reading flagged: ${formatHealthValue(latest.type, latest.value)}`,
+                actionUrl: `/care/${patientId}/health`,
+            });
+        }
+
+        // Check for no recent logs
+        if (healthLogsSnapshot.empty) {
+            needsAttention.push({
+                type: 'no_recent_logs',
+                priority: 'low',
+                message: 'No health readings in the past week',
+                actionUrl: `/care/${patientId}/health`,
+            });
+        }
+
+        // Sort by priority
+        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        needsAttention.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+        // Build health snapshot
+        const healthSnapshot: {
+            latestBp?: { value: string; alertLevel: string; date: string };
+            latestGlucose?: { value: string; alertLevel: string; date: string };
+            latestWeight?: { value: string; change?: string; date: string };
+        } = {};
+
+        healthLogsSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            const date = data.createdAt?.toDate?.()?.toISOString() || '';
+            
+            if (data.type === 'bp' && !healthSnapshot.latestBp) {
+                healthSnapshot.latestBp = {
+                    value: `${data.value?.systolic}/${data.value?.diastolic}`,
+                    alertLevel: data.alertLevel || 'normal',
+                    date,
+                };
+            }
+            if (data.type === 'glucose' && !healthSnapshot.latestGlucose) {
+                healthSnapshot.latestGlucose = {
+                    value: `${data.value?.reading} mg/dL`,
+                    alertLevel: data.alertLevel || 'normal',
+                    date,
+                };
+            }
+            if (data.type === 'weight' && !healthSnapshot.latestWeight) {
+                healthSnapshot.latestWeight = {
+                    value: `${data.value?.weight} ${data.value?.unit || 'lbs'}`,
+                    date,
+                };
+            }
+        });
+
+        // Build recent activity
+        const recentActivity: Array<{
+            type: string;
+            description: string;
+            timestamp: string;
+        }> = [];
+
+        // Add medication logs to activity
+        recentMedLogsSnapshot.docs.slice(0, 5).forEach((doc) => {
+            const data = doc.data();
+            recentActivity.push({
+                type: data.action === 'taken' ? 'med_taken' : 'med_skipped',
+                description: `${data.action === 'taken' ? 'Took' : 'Skipped'} ${data.medicationName || 'medication'}`,
+                timestamp: data.createdAt?.toDate?.()?.toISOString() || '',
+            });
+        });
+
+        // Add health logs to activity
+        healthLogsSnapshot.docs.slice(0, 3).forEach((doc) => {
+            const data = doc.data();
+            recentActivity.push({
+                type: 'health_log',
+                description: `Logged ${getHealthLogTypeLabel(data.type)}: ${formatHealthValue(data.type, data.value)}`,
+                timestamp: data.createdAt?.toDate?.()?.toISOString() || '',
+            });
+        });
+
+        // Add recent visits to activity
+        recentVisitsSnapshot.docs.slice(0, 2).forEach((doc) => {
+            const data = doc.data();
+            if (data.processingStatus === 'completed' || data.status === 'completed') {
+                recentActivity.push({
+                    type: 'visit',
+                    description: `Visit with ${data.provider || 'provider'}`,
+                    timestamp: data.visitDate?.toDate?.()?.toISOString() || data.createdAt?.toDate?.()?.toISOString() || '',
+                });
+            }
+        });
+
+        // Sort by timestamp (newest first)
+        recentActivity.sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+
+        res.json({
+            needsAttention,
+            todaysMeds: todayMedStatus,
+            recentActivity: recentActivity.slice(0, 5),
+            healthSnapshot,
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching quick overview:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch quick overview',
+        });
+    }
+});
+
+/**
+ * Helper to format health values for display
+ */
+function formatHealthValue(type: string, value: any): string {
+    switch (type) {
+        case 'bp':
+            return `${value?.systolic}/${value?.diastolic}`;
+        case 'glucose':
+            return `${value?.reading} mg/dL`;
+        case 'weight':
+            return `${value?.weight} ${value?.unit || 'lbs'}`;
+        default:
+            return 'Unknown';
+    }
+}
+
+/**
+ * Helper to get human-readable health log type labels
+ */
+function getHealthLogTypeLabel(type: string): string {
+    switch (type) {
+        case 'bp':
+            return 'blood pressure';
+        case 'glucose':
+            return 'glucose';
+        case 'weight':
+            return 'weight';
+        case 'symptom_check':
+            return 'symptoms';
+        default:
+            return type;
+    }
+}
