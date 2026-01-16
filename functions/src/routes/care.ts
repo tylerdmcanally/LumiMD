@@ -285,6 +285,104 @@ careRouter.get('/overview', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // =============================================================================
+// GET /v1/care/:patientId/medications
+// List medications for a shared patient
+// =============================================================================
+
+careRouter.get('/:patientId/medications', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const medsSnapshot = await getDb()
+            .collection('medications')
+            .where('userId', '==', patientId)
+            .orderBy('name', 'asc')
+            .get();
+
+        const medications = medsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate().toISOString(),
+                updatedAt: data.updatedAt?.toDate().toISOString(),
+                startedAt: data.startedAt?.toDate()?.toISOString() || null,
+                stoppedAt: data.stoppedAt?.toDate()?.toISOString() || null,
+                changedAt: data.changedAt?.toDate()?.toISOString() || null,
+                lastSyncedAt: data.lastSyncedAt?.toDate()?.toISOString() || null,
+                medicationWarning: data.medicationWarning || null,
+                needsConfirmation: data.needsConfirmation || false,
+                medicationStatus: data.medicationStatus || null,
+            };
+        });
+
+        res.json(medications);
+    } catch (error) {
+        functions.logger.error('[care] Error fetching patient medications:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch medications',
+        });
+    }
+});
+
+// =============================================================================
+// GET /v1/care/:patientId/actions
+// List action items for a shared patient
+// =============================================================================
+
+careRouter.get('/:patientId/actions', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const actionsSnapshot = await getDb()
+            .collection('actions')
+            .where('userId', '==', patientId)
+            .get();
+
+        const actions = actionsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate().toISOString(),
+                updatedAt: data.updatedAt?.toDate().toISOString(),
+                completedAt: data.completedAt?.toDate()?.toISOString() || null,
+                dueAt: data.dueAt ? new Date(data.dueAt).toISOString() : null,
+            };
+        });
+
+        res.json(actions);
+    } catch (error) {
+        functions.logger.error('[care] Error fetching patient actions:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch action items',
+        });
+    }
+});
+
+// =============================================================================
 // GET /v1/care/:patientId/medication-status
 // Today's medication doses for a specific patient
 // =============================================================================

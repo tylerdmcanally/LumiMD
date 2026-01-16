@@ -15,6 +15,10 @@ import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/r
 import { auth, db } from '@/lib/firebase';
 import { useViewingSafe } from '@/lib/contexts/ViewingContext';
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+
 // =============================================================================
 // Local Firestore helpers (mirrors @lumimd/sdk realtime exports)
 // =============================================================================
@@ -632,7 +636,7 @@ export function useMedicationCompliance(
         };
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/meds/compliance?days=${days}`, {
+      const response = await fetch(`${API_BASE_URL}/v1/meds/compliance?days=${days}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -680,7 +684,7 @@ export function useHealthInsights(
         return [];
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/insights`, {
+      const response = await fetch(`${API_BASE_URL}/v1/insights`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -729,7 +733,7 @@ export function usePatientConditions(
         return [];
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/medical-context/conditions`, {
+      const response = await fetch(`${API_BASE_URL}/v1/medical-context/conditions`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -757,7 +761,7 @@ export function useUpdateConditionStatus() {
   return useMutation({
     mutationFn: async ({ conditionId, status }: { conditionId: string; status: 'active' | 'resolved' | 'monitoring' }) => {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/v1/medical-context/conditions/${conditionId}`,
+        `${API_BASE_URL}/v1/medical-context/conditions/${conditionId}`,
         {
           method: 'PATCH',
           headers: {
@@ -816,7 +820,7 @@ export function useSharedPatients(
       if (!currentUserId) return [];
 
       // Fetch shares where current user is the recipient
-      const sharesResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/shares`, {
+      const sharesResponse = await fetch(`${API_BASE_URL}/v1/shares`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -941,6 +945,94 @@ export function useCareOverview(
 
       if (!response.ok) {
         throw new Error('Failed to fetch care overview');
+      }
+
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Caregiver Patient Medications
+// =============================================================================
+
+export function useCareMedications(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<Medication[]>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  return useQuery<Medication[]>({
+    queryKey: ['care-medications', patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId),
+    ...options,
+    queryFn: async () => {
+      if (!patientId) return [];
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/medications`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch medications');
+      }
+
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Caregiver Patient Actions
+// =============================================================================
+
+export function useCareActions(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<ActionItem[]>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  return useQuery<ActionItem[]>({
+    queryKey: ['care-actions', patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId),
+    ...options,
+    queryFn: async () => {
+      if (!patientId) return [];
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/actions`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch action items');
       }
 
       return response.json();

@@ -16,14 +16,14 @@ import {
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useActions } from '@/lib/api/hooks';
+import { useCareActions } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
 export default function PatientActionsPage() {
     const params = useParams<{ patientId: string }>();
     const patientId = params.patientId;
 
-    const { data: actions, isLoading, error } = useActions(patientId);
+    const { data: actions, isLoading, error } = useCareActions(patientId);
 
     if (isLoading) {
         return (
