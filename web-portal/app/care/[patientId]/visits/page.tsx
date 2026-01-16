@@ -12,50 +12,11 @@ import {
   MapPin,
   ChevronRight,
   Stethoscope,
-  Clock,
-  CheckCircle2,
-  FileText,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { useCareVisits } from '@/lib/api/hooks';
-import { cn } from '@/lib/utils';
-
-type VisitStatus = 'completed' | 'processing' | 'pending';
-
-function getVisitStatus(visit: any): VisitStatus {
-  if (visit.processingStatus === 'completed' || visit.status === 'completed') {
-    return 'completed';
-  }
-  if (visit.processingStatus === 'processing' || visit.status === 'processing') {
-    return 'processing';
-  }
-  return 'pending';
-}
-
-const STATUS_CONFIG: Record<VisitStatus, {
-  label: string;
-  tone: 'success' | 'warning' | 'neutral';
-  icon: React.ReactNode;
-}> = {
-  completed: {
-    label: 'Completed',
-    tone: 'success',
-    icon: <CheckCircle2 className="h-3 w-3" />,
-  },
-  processing: {
-    label: 'Processing',
-    tone: 'warning',
-    icon: <Clock className="h-3 w-3" />,
-  },
-  pending: {
-    label: 'Pending',
-    tone: 'neutral',
-    icon: <Clock className="h-3 w-3" />,
-  },
-};
 
 export default function PatientVisitsPage() {
   const params = useParams<{ patientId: string }>();
@@ -63,28 +24,14 @@ export default function PatientVisitsPage() {
 
   const { data: visits, isLoading, error } = useCareVisits(patientId);
 
-  // Separate visits by status
-  const { completedVisits, processingVisits } = React.useMemo(() => {
-    if (!visits) return { completedVisits: [], processingVisits: [] };
-    
-    const completed = visits.filter(
-      (v) => v.processingStatus === 'completed' || v.status === 'completed'
-    );
-    const processing = visits.filter(
-      (v) => !(v.processingStatus === 'completed' || v.status === 'completed')
-    );
-
-    // Sort by date descending
-    const sortByDate = (a: any, b: any) => {
+  // Sort visits by date descending
+  const sortedVisits = React.useMemo(() => {
+    if (!visits) return [];
+    return [...visits].sort((a, b) => {
       const aDate = new Date(a.visitDate || a.createdAt || 0).getTime();
       const bDate = new Date(b.visitDate || b.createdAt || 0).getTime();
       return bDate - aDate;
-    };
-
-    return {
-      completedVisits: completed.sort(sortByDate),
-      processingVisits: processing.sort(sortByDate),
-    };
+    });
   }, [visits]);
 
   if (isLoading) {
@@ -120,7 +67,7 @@ export default function PatientVisitsPage() {
     );
   }
 
-  const totalVisits = visits?.length ?? 0;
+  const totalVisits = sortedVisits.length;
 
   return (
     <PageContainer maxWidth="2xl">
@@ -143,29 +90,6 @@ export default function PatientVisitsPage() {
           </p>
         </header>
 
-        {/* Stats Cards */}
-        {totalVisits > 0 && (
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard
-              label="Total Visits"
-              value={totalVisits}
-              icon={<FileText className="h-5 w-5 text-brand-primary" />}
-            />
-            <StatCard
-              label="Completed"
-              value={completedVisits.length}
-              icon={<CheckCircle2 className="h-5 w-5 text-success" />}
-              variant="success"
-            />
-            <StatCard
-              label="Processing"
-              value={processingVisits.length}
-              icon={<Clock className="h-5 w-5 text-warning" />}
-              variant="warning"
-            />
-          </div>
-        )}
-
         {/* Empty State */}
         {totalVisits === 0 ? (
           <Card variant="elevated" padding="lg" className="text-center py-16">
@@ -180,111 +104,18 @@ export default function PatientVisitsPage() {
             </p>
           </Card>
         ) : (
-          <div className="space-y-6">
-            {/* Processing Visits Section */}
-            {processingVisits.length > 0 && (
-              <section>
-                <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-warning" />
-                  Processing ({processingVisits.length})
-                </h2>
-                <div className="space-y-3">
-                  {processingVisits.map((visit) => (
-                    <ProcessingVisitCard key={visit.id} visit={visit} />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Completed Visits Section */}
-            {completedVisits.length > 0 && (
-              <section>
-                {processingVisits.length > 0 && (
-                  <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-success" />
-                    Completed ({completedVisits.length})
-                  </h2>
-                )}
-                <div className="space-y-3">
-                  {completedVisits.map((visit) => (
-                    <VisitCard
-                      key={visit.id}
-                      visit={visit}
-                      patientId={patientId}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
+          <div className="space-y-3">
+            {sortedVisits.map((visit) => (
+              <VisitCard
+                key={visit.id}
+                visit={visit}
+                patientId={patientId}
+              />
+            ))}
           </div>
         )}
       </div>
     </PageContainer>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  icon,
-  variant = 'neutral',
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  variant?: 'neutral' | 'success' | 'warning';
-}) {
-  const variantStyles = {
-    neutral: 'border-l-brand-primary',
-    success: 'border-l-success',
-    warning: 'border-l-warning',
-  };
-
-  return (
-    <Card variant="flat" padding="md" className={cn('border-l-4', variantStyles[variant])}>
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background-subtle">
-          {icon}
-        </div>
-        <div>
-          <p className="text-sm font-medium text-text-secondary">{label}</p>
-          <p className="text-2xl font-bold text-text-primary">{value}</p>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function ProcessingVisitCard({ visit }: { visit: any }) {
-  const visitDate = visit.visitDate || visit.createdAt;
-  const formattedDate = visitDate
-    ? format(new Date(visitDate), 'MMMM d, yyyy')
-    : 'Date unknown';
-
-  return (
-    <Card variant="elevated" padding="md" className="opacity-80 border-l-4 border-l-warning">
-      <div className="flex items-center gap-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-light">
-          <Loader2 className="h-5 w-5 animate-spin text-warning" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <Badge tone="warning" variant="soft" size="sm">
-              Processing
-            </Badge>
-          </div>
-          <p className="text-sm text-text-secondary">
-            Visit from {formattedDate} is being processed
-          </p>
-          {visit.provider && (
-            <p className="text-xs text-text-muted mt-1">
-              {visit.provider}
-              {visit.specialty && ` • ${visit.specialty}`}
-            </p>
-          )}
-        </div>
-      </div>
-    </Card>
   );
 }
 
@@ -297,14 +128,37 @@ function VisitCard({ visit, patientId }: { visit: any; patientId: string }) {
     ? format(new Date(visitDate), 'MMM d, yyyy')
     : null;
 
-  const status = getVisitStatus(visit);
-  const statusConfig = STATUS_CONFIG[status];
-
   const providerName = visit.provider || 'Unknown Provider';
   const specialty = visit.specialty || null;
   const location = visit.location || null;
   const summary = visit.summary || null;
   const diagnoses = Array.isArray(visit.diagnoses) ? visit.diagnoses.filter(Boolean) : [];
+
+  // Check if still processing
+  const isProcessing = !(visit.processingStatus === 'completed' || visit.status === 'completed');
+
+  if (isProcessing) {
+    return (
+      <Card variant="elevated" padding="md" className="opacity-80">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-light shrink-0">
+            <Loader2 className="h-5 w-5 animate-spin text-warning" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-text-secondary">
+              Visit from {formattedShortDate || 'unknown date'} is being processed
+            </p>
+            {visit.provider && (
+              <p className="text-xs text-text-muted mt-1">
+                {visit.provider}
+                {visit.specialty && ` • ${visit.specialty}`}
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Link href={`/care/${patientId}/visits/${visit.id}`} className="block group">
@@ -317,17 +171,11 @@ function VisitCard({ visit, patientId }: { visit: any; patientId: string }) {
           <div className="flex items-start justify-between gap-4">
             {/* Main Content */}
             <div className="flex-1 min-w-0 space-y-3">
-              {/* Date & Status */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 text-sm text-text-muted">
-                  <Calendar className="h-4 w-4" />
-                  <span className="hidden sm:inline">{formattedDate || 'Date not recorded'}</span>
-                  <span className="sm:hidden">{formattedShortDate || 'No date'}</span>
-                </div>
-                <Badge tone={statusConfig.tone} variant="soft" size="sm" className="gap-1">
-                  {statusConfig.icon}
-                  {statusConfig.label}
-                </Badge>
+              {/* Date */}
+              <div className="flex items-center gap-1.5 text-sm text-text-muted">
+                <Calendar className="h-4 w-4" />
+                <span className="hidden sm:inline">{formattedDate || 'Date not recorded'}</span>
+                <span className="sm:hidden">{formattedShortDate || 'No date'}</span>
               </div>
 
               {/* Provider & Specialty */}
