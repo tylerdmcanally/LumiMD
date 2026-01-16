@@ -1470,18 +1470,35 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
         startDate.setDate(startDate.getDate() - daysNum);
         startDate.setHours(0, 0, 0, 0);
 
-        // Fetch medication logs
-        let logsQuery = getDb()
-            .collection('medicationLogs')
-            .where('userId', '==', patientId)
-            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-            .orderBy('createdAt', 'desc');
+        // Fetch medication logs - try both createdAt and loggedAt fields
+        let logsSnapshot;
+        try {
+            let logsQuery = getDb()
+                .collection('medicationLogs')
+                .where('userId', '==', patientId)
+                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+                .orderBy('createdAt', 'desc');
 
-        if (medicationId) {
-            logsQuery = logsQuery.where('medicationId', '==', medicationId);
+            if (medicationId) {
+                logsQuery = logsQuery.where('medicationId', '==', medicationId);
+            }
+
+            logsSnapshot = await logsQuery.get();
+        } catch (indexError) {
+            // Fallback: try with loggedAt field if createdAt index doesn't exist
+            functions.logger.warn('[care] createdAt query failed, trying loggedAt:', indexError);
+            let logsQuery = getDb()
+                .collection('medicationLogs')
+                .where('userId', '==', patientId)
+                .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+                .orderBy('loggedAt', 'desc');
+
+            if (medicationId) {
+                logsQuery = logsQuery.where('medicationId', '==', medicationId);
+            }
+
+            logsSnapshot = await logsQuery.get();
         }
-
-        const logsSnapshot = await logsQuery.get();
 
         // Fetch active medications
         const medsSnapshot = await getDb()
@@ -1490,23 +1507,43 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
             .where('active', '==', true)
             .get();
 
+        // Fetch medication reminders (contains the schedule times)
+        const remindersSnapshot = await getDb()
+            .collection('medicationReminders')
+            .where('userId', '==', patientId)
+            .where('enabled', '==', true)
+            .get();
+
+        // Build a map of medication ID -> reminder times
+        const remindersByMedId = new Map<string, string[]>();
+        remindersSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            if (data.medicationId && Array.isArray(data.times)) {
+                remindersByMedId.set(data.medicationId, data.times);
+            }
+        });
+
+        // Build medications map with schedule info from reminders
         const medications = new Map<string, { name: string; times: string[] }>();
         medsSnapshot.docs.forEach((doc) => {
             const data = doc.data();
+            const times = remindersByMedId.get(doc.id) || [];
             medications.set(doc.id, {
                 name: data.name || 'Unknown',
-                times: Array.isArray(data.times) ? data.times : [],
+                times,
             });
         });
 
         // Process logs
         const logs = logsSnapshot.docs.map((doc) => {
             const data = doc.data();
+            const timestamp = data.createdAt?.toDate?.() || data.loggedAt?.toDate?.() || new Date();
             return {
                 medicationId: data.medicationId,
+                medicationName: data.medicationName || null,
                 action: data.action, // 'taken', 'skipped', 'snoozed'
                 scheduledDate: data.scheduledDate || null,
-                createdAt: data.createdAt?.toDate?.() || new Date(),
+                createdAt: timestamp,
             };
         });
 
@@ -1515,16 +1552,21 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
         const skippedCount = logs.filter((l) => l.action === 'skipped').length;
         const totalLogged = takenCount + skippedCount;
 
-        // Calculate expected doses (rough estimate based on active meds and days)
+        // Calculate expected doses based on reminders with scheduled times
         let expectedDoses = 0;
         medications.forEach((med) => {
-            expectedDoses += med.times.length * daysNum;
+            if (med.times.length > 0) {
+                expectedDoses += med.times.length * daysNum;
+            }
         });
 
-        const missedCount = Math.max(0, expectedDoses - totalLogged);
-        const adherenceRate = expectedDoses > 0
-            ? Math.round((takenCount / expectedDoses) * 100)
-            : 100;
+        // If no reminders are set up, use the logs as the denominator
+        // This handles the case where patient takes meds but hasn't set up reminders
+        const effectiveExpected = expectedDoses > 0 ? expectedDoses : totalLogged;
+        const missedCount = Math.max(0, effectiveExpected - totalLogged);
+        const adherenceRate = effectiveExpected > 0
+            ? Math.round((takenCount / effectiveExpected) * 100)
+            : (takenCount > 0 ? 100 : 0);
 
         // Per-medication breakdown
         const byMedication: Array<{
@@ -1537,11 +1579,18 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
             streak: number;
         }> = [];
 
+        // Track medications that have logs but aren't in the active meds list
+        const loggedMedIds = new Set(logs.map((l) => l.medicationId));
+
         medications.forEach((med, medId) => {
             const medLogs = logs.filter((l) => l.medicationId === medId);
             const taken = medLogs.filter((l) => l.action === 'taken').length;
             const skipped = medLogs.filter((l) => l.action === 'skipped').length;
-            const expected = med.times.length * daysNum;
+            
+            // Expected = scheduled times * days, or fallback to logged count if no schedule
+            const expected = med.times.length > 0 
+                ? med.times.length * daysNum 
+                : (taken + skipped);
             
             // Calculate current streak
             let streak = 0;
@@ -1577,7 +1626,30 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
                 adherenceRate: expected > 0 ? Math.round((taken / expected) * 100) : 100,
                 streak,
             });
+
+            loggedMedIds.delete(medId);
         });
+
+        // Add medications that have logs but aren't in active meds (might be discontinued)
+        for (const medId of loggedMedIds) {
+            const medLogs = logs.filter((l) => l.medicationId === medId);
+            const taken = medLogs.filter((l) => l.action === 'taken').length;
+            const skipped = medLogs.filter((l) => l.action === 'skipped').length;
+            const total = taken + skipped;
+            
+            // Get name from logs
+            const medName = medLogs.find((l) => l.medicationName)?.medicationName || 'Unknown Medication';
+
+            byMedication.push({
+                medicationId: medId,
+                medicationName: medName,
+                totalDoses: total,
+                takenDoses: taken,
+                skippedDoses: skipped,
+                adherenceRate: total > 0 ? Math.round((taken / total) * 100) : 100,
+                streak: 0,
+            });
+        }
 
         // Sort by adherence rate (lowest first for attention)
         byMedication.sort((a, b) => a.adherenceRate - b.adherenceRate);
@@ -1602,6 +1674,7 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
                 return logDate === dateStr;
             });
 
+            // Calculate scheduled count from reminders
             let scheduledCount = 0;
             medications.forEach((med) => {
                 scheduledCount += med.times.length;
@@ -1609,11 +1682,14 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
 
             const taken = dayLogs.filter((l) => l.action === 'taken').length;
             const skipped = dayLogs.filter((l) => l.action === 'skipped').length;
-            const missed = Math.max(0, scheduledCount - taken - skipped);
+            
+            // For calendar, use actual logs if no schedule exists
+            const effectiveScheduled = scheduledCount > 0 ? scheduledCount : (taken + skipped);
+            const missed = Math.max(0, effectiveScheduled - taken - skipped);
 
             calendar.push({
                 date: dateStr,
-                scheduled: scheduledCount,
+                scheduled: effectiveScheduled,
                 taken,
                 skipped,
                 missed,
@@ -1631,7 +1707,7 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
             insights: [],
         };
 
-        // Check for weekend pattern
+        // Check for weekend pattern (only if we have scheduled data)
         const weekendDays = calendar.filter((c) => {
             const day = new Date(c.date).getDay();
             return day === 0 || day === 6;
@@ -1641,16 +1717,19 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
             return day !== 0 && day !== 6;
         });
 
-        if (weekendDays.length > 0 && weekdayDays.length > 0) {
-            const weekendRate = weekendDays.reduce((sum, d) => sum + d.taken, 0) / 
-                weekendDays.reduce((sum, d) => sum + d.scheduled, 0) * 100;
-            const weekdayRate = weekdayDays.reduce((sum, d) => sum + d.taken, 0) / 
-                weekdayDays.reduce((sum, d) => sum + d.scheduled, 0) * 100;
+        const weekendScheduled = weekendDays.reduce((sum, d) => sum + d.scheduled, 0);
+        const weekdayScheduled = weekdayDays.reduce((sum, d) => sum + d.scheduled, 0);
 
-            if (weekdayRate - weekendRate > 15) {
-                patterns.insights.push('Lower adherence on weekends');
-            } else if (weekendRate - weekdayRate > 15) {
-                patterns.insights.push('Better adherence on weekends');
+        if (weekendScheduled > 0 && weekdayScheduled > 0) {
+            const weekendRate = (weekendDays.reduce((sum, d) => sum + d.taken, 0) / weekendScheduled) * 100;
+            const weekdayRate = (weekdayDays.reduce((sum, d) => sum + d.taken, 0) / weekdayScheduled) * 100;
+
+            if (!isNaN(weekdayRate) && !isNaN(weekendRate)) {
+                if (weekdayRate - weekendRate > 15) {
+                    patterns.insights.push('Lower adherence on weekends');
+                } else if (weekendRate - weekdayRate > 15) {
+                    patterns.insights.push('Better adherence on weekends');
+                }
             }
         }
 
@@ -1661,14 +1740,19 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
         }
 
         // Add low adherence warning
-        const lowAdherenceMeds = byMedication.filter((m) => m.adherenceRate < 70);
+        const lowAdherenceMeds = byMedication.filter((m) => m.adherenceRate < 70 && m.totalDoses > 0);
         if (lowAdherenceMeds.length > 0) {
             patterns.insights.push(`${lowAdherenceMeds.length} medication(s) below 70% adherence`);
         }
 
+        // Add insight if no reminders are set up
+        if (expectedDoses === 0 && totalLogged > 0) {
+            patterns.insights.push('No medication schedules set up - showing logged data only');
+        }
+
         res.json({
             overall: {
-                totalDoses: expectedDoses,
+                totalDoses: effectiveExpected,
                 takenDoses: takenCount,
                 skippedDoses: skippedCount,
                 missedDoses: missedCount,
