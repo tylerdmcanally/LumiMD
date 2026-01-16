@@ -468,13 +468,31 @@ careRouter.get('/:patientId/actions', requireAuth, async (req: AuthRequest, res)
 
         const actions = actionsSnapshot.docs.map((doc) => {
             const data = doc.data();
+            
+            // Safe date conversion helper
+            const toISOStringSafe = (val: any): string | null => {
+                if (!val) return null;
+                try {
+                    // Handle Firestore Timestamp
+                    if (val?.toDate) {
+                        return val.toDate().toISOString();
+                    }
+                    // Handle string or number
+                    const date = new Date(val);
+                    if (isNaN(date.getTime())) return null;
+                    return date.toISOString();
+                } catch {
+                    return null;
+                }
+            };
+
             return {
                 id: doc.id,
                 ...data,
-                createdAt: data.createdAt?.toDate().toISOString(),
-                updatedAt: data.updatedAt?.toDate().toISOString(),
-                completedAt: data.completedAt?.toDate()?.toISOString() || null,
-                dueAt: data.dueAt ? new Date(data.dueAt).toISOString() : null,
+                createdAt: toISOStringSafe(data.createdAt),
+                updatedAt: toISOStringSafe(data.updatedAt),
+                completedAt: toISOStringSafe(data.completedAt),
+                dueAt: toISOStringSafe(data.dueAt),
             };
         });
 
