@@ -31,8 +31,7 @@ type NavItem = {
 
 const CARE_NAV_ITEMS: NavItem[] = [
     { label: 'Overview', href: '/care', icon: Home, exact: true },
-    { label: 'Medications', href: '/care/medications', icon: Pill },
-    { label: 'Actions', href: '/care/actions', icon: CheckSquare },
+    // Medications and Actions are accessed via patient detail pages
 ];
 
 interface CaregiverNavigationProps {
