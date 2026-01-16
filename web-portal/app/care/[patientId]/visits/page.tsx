@@ -485,14 +485,14 @@ export default function PatientVisitsPage() {
               size="sm"
               onClick={handleExport}
               disabled={isExporting}
-              className="self-start"
+              className="self-start flex items-center gap-2"
             >
               {isExporting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Download className="h-4 w-4 mr-2" />
+                <Download className="h-4 w-4" />
               )}
-              Export Summary
+              <span>Export Summary</span>
             </Button>
           )}
         </header>
@@ -738,22 +738,22 @@ export default function PatientVisitsPage() {
             <Button variant="ghost" onClick={() => setExportDialogOpen(false)}>
               Close
             </Button>
-            <Button variant="outline" onClick={handleCopyToClipboard}>
+            <Button variant="outline" onClick={handleCopyToClipboard} className="flex items-center gap-2">
               {copied ? (
                 <>
-                  <Check className="h-4 w-4 mr-2" />
-                  Copied!
+                  <Check className="h-4 w-4" />
+                  <span>Copied!</span>
                 </>
               ) : (
                 <>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy to Clipboard
+                  <Copy className="h-4 w-4" />
+                  <span>Copy to Clipboard</span>
                 </>
               )}
             </Button>
-            <Button onClick={handleDownloadText}>
-              <Download className="h-4 w-4 mr-2" />
-              Download
+            <Button onClick={handleDownloadText} className="flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              <span>Download</span>
             </Button>
           </DialogFooter>
         </DialogContent>
