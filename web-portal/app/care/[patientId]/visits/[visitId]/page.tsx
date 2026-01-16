@@ -44,7 +44,7 @@ export default function CareVisitDetailPage() {
             Unable to load visit
           </h2>
           <p className="text-text-secondary mb-4">
-            {error?.message || \'An error occurred while loading this visit.\'}
+            {error?.message || 'An error occurred while loading this visit.'}
           </p>
           <Button variant="secondary" asChild>
             <Link href={`/care/${patientId}/visits`} className="flex items-center">
@@ -75,11 +75,11 @@ export default function CareVisitDetailPage() {
             <Calendar className="h-4 w-4" />
             {visit.visitDate
               ? new Date(visit.visitDate).toLocaleDateString()
-              : \'Date not recorded\'}
+              : 'Date not recorded'}
           </div>
           <div className="flex items-center gap-1">
             <Stethoscope className="h-4 w-4" />
-            {visit.provider || \'Unknown Provider\'}
+            {visit.provider || 'Unknown Provider'}
           </div>
         </div>
       </div>
@@ -91,10 +91,10 @@ export default function CareVisitDetailPage() {
             Summary
           </h2>
           <p className={cn(
-            \'text-sm leading-relaxed\',
-            visit.summary ? \'text-text-secondary\' : \'text-text-muted\'
+            'text-sm leading-relaxed',
+            visit.summary ? 'text-text-secondary' : 'text-text-muted'
           )}>
-            {visit.summary || \'Summary is still processing.\'}
+            {visit.summary || 'Summary is still processing.'}
           </p>
         </Card>
 
@@ -132,7 +132,9 @@ export default function CareVisitDetailPage() {
                   {Array.isArray(meds) && meds.length > 0 ? (
                     <ul className="space-y-1">
                       {meds.map((med, idx) => (
-                        <li key={`${section}-${idx}`}>• {typeof med === \'string\' ? med : (med as any)?.name || \'Medication\'}</li>
+                        <li key={`${section}-${idx}`}>
+                          • {typeof med === 'string' ? med : (med as any)?.name || 'Medication'}
+                        </li>
                       ))}
                     </ul>
                   ) : (
