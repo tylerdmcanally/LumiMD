@@ -358,7 +358,7 @@ function VisitCard({ visit, patientId }: { visit: any; patientId: string }) {
               {/* Diagnoses Tags */}
               {diagnoses.length > 0 && (
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {diagnoses.slice(0, 3).map((diagnosis, idx) => (
+                  {diagnoses.slice(0, 3).map((diagnosis: unknown, idx: number) => (
                     <span
                       key={`${visit.id}-dx-${idx}`}
                       className="text-xs px-2.5 py-1 rounded-full bg-brand-primary-pale text-brand-primary font-medium"
