@@ -14,7 +14,11 @@ import { Card } from '@/components/ui/card';
 
 export default function SignUpPage() {
   const router = useRouter();
-  const [returnTo, setReturnTo] = React.useState('/dashboard');
+  const [returnTo] = React.useState(() => {
+    if (typeof window === 'undefined') return '/dashboard';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('returnTo') || '/dashboard';
+  });
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
@@ -22,15 +26,6 @@ export default function SignUpPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const next = params.get('returnTo');
-    if (next) {
-      setReturnTo(next);
-    }
-  }, []);
 
   const inviteType = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('invite') : null;
   const inviteFrom = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('from') : null;
@@ -58,6 +53,9 @@ export default function SignUpPage() {
         await updateProfile(credential.user, { displayName: fullName.trim() });
       }
 
+      // Ensure auth state is fully available before redirecting
+      await credential.user.getIdToken();
+
       // Try to send verification email via our custom Resend endpoint
       try {
         const idToken = await credential.user.getIdToken();
@@ -77,15 +75,16 @@ export default function SignUpPage() {
           throw new Error('Failed to send verification email');
         }
 
-        setSuccessMessage('Account created! Check your inbox to verify your email before signing in.');
+        setSuccessMessage('Account created! Check your inbox to verify your email.');
       } catch (emailError: any) {
         console.error('Failed to send verification email:', emailError);
-        setSuccessMessage('Account created! However, we had trouble sending the verification email. You can resend it after signing in.');
+        setSuccessMessage('Account created! However, we had trouble sending the verification email. You can resend it from your profile.');
       }
 
+      // User is already signed in after account creation, so go to returnTo directly.
       setTimeout(() => {
-        router.push(`/sign-in?returnTo=${encodeURIComponent(returnTo)}`);
-      }, 3000);
+        router.replace(returnTo);
+      }, 500);
     } catch (err: any) {
       const message =
         err?.code === 'auth/email-already-in-use'
