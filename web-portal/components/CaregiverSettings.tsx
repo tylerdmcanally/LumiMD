@@ -18,14 +18,16 @@ export function CaregiverSettings() {
   const [inviteDialogOpen, setInviteDialogOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
+  // Get shares (accepted relationships)
   const { data: shares = [], isLoading: sharesLoading } = useQuery({
     queryKey: ['shares'],
     queryFn: () => api.shares.list(),
   });
 
-  const { data: invites = [], isLoading: invitesLoading } = useQuery({
-    queryKey: ['shares', 'invites'],
-    queryFn: () => api.shares.getInvites(),
+  // Get invites sent by current user (patient)
+  const { data: myInvites = [], isLoading: invitesLoading } = useQuery({
+    queryKey: ['shares', 'my-invites'],
+    queryFn: () => api.shares.myInvites(),
   });
 
   const revokeMutation = useMutation({
@@ -44,14 +46,15 @@ export function CaregiverSettings() {
     },
   });
 
+  // Cancel token-based invite
   const cancelInviteMutation = useMutation({
-    mutationFn: async (inviteId: string) => {
-      return api.shares.cancelInvite(inviteId);
+    mutationFn: async (inviteToken: string) => {
+      return api.shares.revokeInvite(inviteToken);
     },
     onSuccess: () => {
       toast.success('Invitation cancelled');
       queryClient.invalidateQueries({ queryKey: ['shares'] });
-      queryClient.invalidateQueries({ queryKey: ['shares', 'invites'] });
+      queryClient.invalidateQueries({ queryKey: ['shares', 'my-invites'] });
     },
     onError: (error: any) => {
       console.error('[CaregiverSettings] Error cancelling invite:', error);
@@ -65,13 +68,13 @@ export function CaregiverSettings() {
     },
   });
 
+  // Filter shares for display
   const acceptedShares = shares.filter(
     (s: Share) => s.type === 'outgoing' && s.status === 'accepted',
   );
-  const pendingShares = shares.filter(
-    (s: Share) => s.type === 'outgoing' && s.status === 'pending',
-  );
-  const pendingInvites = invites.filter((i: ShareInvite) => i.status === 'pending');
+
+  // Pending invites sent by current user
+  const pendingInvites = myInvites.filter((i: any) => i.status === 'pending');
 
   const safeFormatDate = (value?: string | null) => {
     if (!value) return null;
@@ -155,85 +158,66 @@ export function CaregiverSettings() {
             </div>
           )}
 
-          {/* Pending Shares & Invites */}
-          {(pendingShares.length > 0 || pendingInvites.length > 0) && (
+          {/* Pending Invitations */}
+          {pendingInvites.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-base font-semibold text-text-primary">Pending Invitations</h3>
               <div className="space-y-3">
-                {pendingShares.map((share: Share) => (
-                  <div
-                    key={share.id}
-                    className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning-light">
-                        <Clock className="h-5 w-5 text-warning-dark" />
+                {pendingInvites.map((invite: any) => {
+                  const email = invite.caregiverEmail || invite.inviteeEmail;
+                  const isExpired = invite.expiresAt && new Date(invite.expiresAt) < new Date();
+                  
+                  return (
+                    <div
+                      key={invite.id}
+                      className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${isExpired ? 'bg-error-light' : 'bg-warning-light'}`}>
+                          <Mail className={`h-5 w-5 ${isExpired ? 'text-error-dark' : 'text-warning-dark'}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-text-primary truncate">{email}</p>
+                          <p className="text-sm text-text-secondary">
+                            {isExpired ? (
+                              <span className="text-error">Expired</span>
+                            ) : (
+                              <>
+                                Waiting for acceptance
+                                {safeFormatDate(invite.createdAt) && ` • Sent ${safeFormatDate(invite.createdAt)}`}
+                              </>
+                            )}
+                          </p>
+                          {!isExpired && safeFormatDate(invite.expiresAt) && (
+                            <p className="text-xs text-text-muted">
+                              Expires {safeFormatDate(invite.expiresAt)}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-text-primary truncate">{share.caregiverEmail}</p>
-                        <p className="text-sm text-text-secondary">
-                          Waiting for acceptance
-                          {safeFormatDate(share.createdAt) && ` • Sent ${safeFormatDate(share.createdAt)}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 justify-between sm:justify-end">
-                      <Badge size="sm" tone="warning" variant="soft">
-                        Pending
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => revokeMutation.mutate(share.id)}
-                        disabled={revokeMutation.isPending}
-                        className="text-error hover:text-error"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                {pendingInvites.map((invite: ShareInvite) => (
-                  <div
-                    key={invite.id}
-                    className="flex flex-col gap-3 rounded-xl border border-border-light bg-background-subtle p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-warning-light">
-                        <Mail className="h-5 w-5 text-warning-dark" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-text-primary truncate">{invite.inviteeEmail}</p>
-                        <p className="text-sm text-text-secondary">
-                          No account yet
-                          {safeFormatDate(invite.expiresAt) &&
-                            ` • Expires ${safeFormatDate(invite.expiresAt)}`}
-                        </p>
+                      <div className="flex items-center gap-2 justify-between sm:justify-end">
+                        <Badge size="sm" tone={isExpired ? 'error' : 'warning'} variant="soft">
+                          {isExpired ? 'Expired' : 'Pending'}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => cancelInviteMutation.mutate(invite.id)}
+                          disabled={cancelInviteMutation.isPending}
+                          className="text-error hover:text-error"
+                        >
+                          {isExpired ? 'Remove' : 'Cancel'}
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 justify-between sm:justify-end">
-                      <Badge size="sm" tone="warning" variant="soft">
-                        Invited
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => cancelInviteMutation.mutate(invite.id)}
-                        disabled={cancelInviteMutation.isPending}
-                        className="text-error hover:text-error"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Empty State */}
           {acceptedShares.length === 0 &&
-            pendingShares.length === 0 &&
             pendingInvites.length === 0 && (
               <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background-subtle/70 py-10 px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-primary-pale mb-4">
