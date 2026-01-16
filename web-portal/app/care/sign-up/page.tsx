@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { PageContainer } from '@/components/layout/PageContainer';
 
-export default function CareSignUpPage() {
+function CareSignUpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
@@ -294,5 +294,25 @@ export default function CareSignUpPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CareSignUpPage() {
+  return (
+    <React.Suspense
+      fallback={(
+        <PageContainer maxWidth="lg">
+          <Card variant="elevated" padding="lg" className="text-center py-12">
+            <Loader2 className="h-12 w-12 animate-spin text-brand-primary mx-auto mb-4" />
+            <h1 className="text-2xl font-semibold text-text-primary mb-2">
+              Loading
+            </h1>
+            <p className="text-text-secondary">Preparing caregiver sign-up...</p>
+          </Card>
+        </PageContainer>
+      )}
+    >
+      <CareSignUpContent />
+    </React.Suspense>
   );
 }
