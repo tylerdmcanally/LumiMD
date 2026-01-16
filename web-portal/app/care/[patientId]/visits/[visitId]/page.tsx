@@ -33,7 +33,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { useCareVisitSummary, useUpdateVisitMetadata } from '@/lib/api/hooks';
+import { useCareVisitSummary, useUpdateVisitMetadata, useCareVisits } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -43,6 +43,7 @@ export default function CareVisitDetailPage() {
   const visitId = params.visitId;
 
   const { data: visit, isLoading, error, refetch } = useCareVisitSummary(patientId, visitId);
+  const { data: allVisits } = useCareVisits(patientId);
   const updateVisitMetadata = useUpdateVisitMetadata();
 
   // Edit dialog state
@@ -53,6 +54,43 @@ export default function CareVisitDetailPage() {
     location: '',
     visitDate: '',
   });
+
+  // Build provider -> specialty/location mappings from all visits
+  const { providerMap, specialties, providers, locations } = React.useMemo(() => {
+    const pMap = new Map<string, { specialty: string | null; location: string | null }>();
+    const specSet = new Set<string>();
+    const provSet = new Set<string>();
+    const locSet = new Set<string>();
+
+    if (allVisits) {
+      allVisits.forEach((v: any) => {
+        const prov = v.provider?.trim();
+        const spec = v.specialty?.trim();
+        const loc = v.location?.trim();
+
+        if (prov) {
+          provSet.add(prov);
+          // Store the most recent specialty/location for this provider
+          if (!pMap.has(prov) || spec || loc) {
+            const existing = pMap.get(prov) || { specialty: null, location: null };
+            pMap.set(prov, {
+              specialty: spec || existing.specialty,
+              location: loc || existing.location,
+            });
+          }
+        }
+        if (spec) specSet.add(spec);
+        if (loc) locSet.add(loc);
+      });
+    }
+
+    return {
+      providerMap: pMap,
+      specialties: Array.from(specSet).sort(),
+      providers: Array.from(provSet).sort(),
+      locations: Array.from(locSet).sort(),
+    };
+  }, [allVisits]);
 
   // Initialize edit form when visit data loads
   React.useEffect(() => {
@@ -70,6 +108,26 @@ export default function CareVisitDetailPage() {
       });
     }
   }, [visit]);
+
+  // Auto-fill specialty and location when provider changes
+  const handleProviderChange = (value: string) => {
+    setEditForm((prev) => {
+      const newForm = { ...prev, provider: value };
+      
+      // If we know this provider, auto-fill specialty and location if empty
+      const knownProvider = providerMap.get(value);
+      if (knownProvider) {
+        if (!prev.specialty && knownProvider.specialty) {
+          newForm.specialty = knownProvider.specialty;
+        }
+        if (!prev.location && knownProvider.location) {
+          newForm.location = knownProvider.location;
+        }
+      }
+      
+      return newForm;
+    });
+  };
 
   const handleOpenEdit = () => {
     setEditDialogOpen(true);
@@ -358,6 +416,7 @@ export default function CareVisitDetailPage() {
             <DialogTitle>Edit Visit Details</DialogTitle>
             <DialogDescription>
               Update the provider, specialty, location, or date for this visit.
+              Selecting a known provider will auto-fill specialty and location.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -367,9 +426,20 @@ export default function CareVisitDetailPage() {
               </label>
               <Input
                 value={editForm.provider}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, provider: e.target.value }))}
+                onChange={(e) => handleProviderChange(e.target.value)}
                 placeholder="e.g., Dr. Smith"
+                list="provider-suggestions"
               />
+              <datalist id="provider-suggestions">
+                {providers.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+              {providers.length > 0 && (
+                <p className="text-xs text-text-muted">
+                  {providers.length} provider{providers.length !== 1 ? 's' : ''} from previous visits
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-text-primary">
@@ -379,7 +449,13 @@ export default function CareVisitDetailPage() {
                 value={editForm.specialty}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, specialty: e.target.value }))}
                 placeholder="e.g., Cardiology"
+                list="specialty-suggestions"
               />
+              <datalist id="specialty-suggestions">
+                {specialties.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-text-primary">
@@ -389,7 +465,13 @@ export default function CareVisitDetailPage() {
                 value={editForm.location}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, location: e.target.value }))}
                 placeholder="e.g., Main Street Medical Center"
+                list="location-suggestions"
               />
+              <datalist id="location-suggestions">
+                {locations.map((l) => (
+                  <option key={l} value={l} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-text-primary">
