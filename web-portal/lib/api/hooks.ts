@@ -1440,3 +1440,69 @@ export function useCareSummaryExport(patientId: string | undefined) {
     },
   });
 }
+
+// =============================================================================
+// Visit Metadata Editing
+// =============================================================================
+
+export type VisitMetadataUpdate = {
+  provider?: string;
+  specialty?: string;
+  location?: string;
+  visitDate?: string | null;
+};
+
+/**
+ * Mutation to update visit metadata (for caregivers).
+ */
+export function useUpdateVisitMetadata() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      patientId,
+      visitId,
+      data,
+    }: {
+      patientId: string;
+      visitId: string;
+      data: VisitMetadataUpdate;
+    }) => {
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/visits/${visitId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(data),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update visit');
+      }
+
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({
+        queryKey: ['care-visits', variables.patientId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['care-visit-summary', variables.patientId, variables.visitId],
+      });
+    },
+  });
+}

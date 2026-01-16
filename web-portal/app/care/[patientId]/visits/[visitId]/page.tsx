@@ -18,20 +18,82 @@ import {
   MinusCircle,
   RefreshCw,
   FileText,
+  Pencil,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useCareVisitSummary } from '@/lib/api/hooks';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { useCareVisitSummary, useUpdateVisitMetadata } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function CareVisitDetailPage() {
   const params = useParams<{ patientId: string; visitId: string }>();
   const patientId = params.patientId;
   const visitId = params.visitId;
 
-  const { data: visit, isLoading, error } = useCareVisitSummary(patientId, visitId);
+  const { data: visit, isLoading, error, refetch } = useCareVisitSummary(patientId, visitId);
+  const updateVisitMetadata = useUpdateVisitMetadata();
+
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false);
+  const [editForm, setEditForm] = React.useState({
+    provider: '',
+    specialty: '',
+    location: '',
+    visitDate: '',
+  });
+
+  // Initialize edit form when visit data loads
+  React.useEffect(() => {
+    if (visit) {
+      const visitDate = visit.visitDate ? new Date(visit.visitDate) : null;
+      const formattedDateForInput = visitDate && !isNaN(visitDate.getTime())
+        ? format(visitDate, 'yyyy-MM-dd')
+        : '';
+      
+      setEditForm({
+        provider: visit.provider || '',
+        specialty: visit.specialty || '',
+        location: visit.location || '',
+        visitDate: formattedDateForInput,
+      });
+    }
+  }, [visit]);
+
+  const handleOpenEdit = () => {
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      await updateVisitMetadata.mutateAsync({
+        patientId,
+        visitId,
+        data: {
+          provider: editForm.provider,
+          specialty: editForm.specialty,
+          location: editForm.location,
+          visitDate: editForm.visitDate || null,
+        },
+      });
+      toast.success('Visit details updated');
+      setEditDialogOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error('Failed to update visit');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -89,12 +151,16 @@ export default function CareVisitDetailPage() {
     <PageContainer maxWidth="2xl">
       <div className="flex flex-col gap-8">
         {/* Back Button */}
-        <div>
+        <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" asChild>
             <Link href={`/care/${patientId}/visits`} className="flex items-center text-brand-primary hover:text-brand-primary-dark">
               <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
               <span>Back to visits</span>
             </Link>
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleOpenEdit}>
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit Details
           </Button>
         </div>
 
@@ -120,21 +186,25 @@ export default function CareVisitDetailPage() {
             icon={<Calendar className="h-4 w-4 text-brand-primary" />}
             label="Visit Date"
             value={formattedDate || 'Not recorded'}
+            onEdit={handleOpenEdit}
           />
           <HighlightCard
             icon={<Stethoscope className="h-4 w-4 text-brand-primary" />}
             label="Provider"
             value={visit.provider || 'Not recorded'}
+            onEdit={handleOpenEdit}
           />
           <HighlightCard
             icon={<Sparkles className="h-4 w-4 text-brand-primary" />}
             label="Specialty"
             value={visit.specialty || 'Not recorded'}
+            onEdit={handleOpenEdit}
           />
           <HighlightCard
             icon={<MapPin className="h-4 w-4 text-brand-primary" />}
             label="Location"
             value={visit.location || 'Not recorded'}
+            onEdit={handleOpenEdit}
           />
         </section>
 
@@ -280,6 +350,71 @@ export default function CareVisitDetailPage() {
           </div>
         </Card>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Visit Details</DialogTitle>
+            <DialogDescription>
+              Update the provider, specialty, location, or date for this visit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-text-primary">
+                Provider Name
+              </label>
+              <Input
+                value={editForm.provider}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, provider: e.target.value }))}
+                placeholder="e.g., Dr. Smith"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-text-primary">
+                Specialty
+              </label>
+              <Input
+                value={editForm.specialty}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, specialty: e.target.value }))}
+                placeholder="e.g., Cardiology"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-text-primary">
+                Location
+              </label>
+              <Input
+                value={editForm.location}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, location: e.target.value }))}
+                placeholder="e.g., Main Street Medical Center"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-text-primary">
+                Visit Date
+              </label>
+              <Input
+                type="date"
+                value={editForm.visitDate}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, visitDate: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={updateVisitMetadata.isPending}
+            >
+              {updateVisitMetadata.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   );
 }
@@ -288,21 +423,29 @@ function HighlightCard({
   icon,
   label,
   value,
+  onEdit,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  onEdit?: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-border-light/60 bg-background-subtle/70 p-4 shadow-soft backdrop-blur-sm">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-        {icon}
-        {label}
+    <button
+      onClick={onEdit}
+      className="w-full text-left group rounded-2xl border border-border-light/60 bg-background-subtle/70 p-4 shadow-soft backdrop-blur-sm hover:border-brand-primary/30 hover:shadow-md transition-all"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          {icon}
+          {label}
+        </div>
+        <Pencil className="h-3 w-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
       <div className="mt-2 text-base font-semibold text-text-primary truncate" title={value}>
         {value}
       </div>
-    </div>
+    </button>
   );
 }
 

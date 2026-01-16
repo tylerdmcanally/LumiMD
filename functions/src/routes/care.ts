@@ -1188,3 +1188,99 @@ careRouter.get('/:patientId/export/summary', requireAuth, async (req: AuthReques
         });
     }
 });
+
+// =============================================================================
+// VISIT METADATA EDITING
+// Allow caregivers to update visit metadata (provider, specialty, location, date)
+// =============================================================================
+
+// PATCH /v1/care/:patientId/visits/:visitId
+// Update visit metadata
+careRouter.patch('/:patientId/visits/:visitId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const { patientId, visitId } = req.params;
+        const { provider, specialty, location, visitDate } = req.body;
+
+        // Validate caregiver has access to this patient
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        // Verify the visit exists and belongs to the patient
+        const visitRef = getDb().collection('visits').doc(visitId);
+        const visitDoc = await visitRef.get();
+        
+        if (!visitDoc.exists) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Visit not found',
+            });
+            return;
+        }
+
+        const visitData = visitDoc.data();
+        if (visitData?.userId !== patientId) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'Visit does not belong to this patient',
+            });
+            return;
+        }
+
+        // Build update object - only include fields that are provided
+        const updateData: Record<string, any> = {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastEditedBy: caregiverId,
+            lastEditedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (typeof provider === 'string') {
+            updateData.provider = provider.trim() || null;
+        }
+        if (typeof specialty === 'string') {
+            updateData.specialty = specialty.trim() || null;
+        }
+        if (typeof location === 'string') {
+            updateData.location = location.trim() || null;
+        }
+        if (visitDate !== undefined) {
+            // Accept ISO string or null
+            if (visitDate === null) {
+                updateData.visitDate = null;
+            } else if (typeof visitDate === 'string') {
+                const parsedDate = new Date(visitDate);
+                if (!isNaN(parsedDate.getTime())) {
+                    updateData.visitDate = admin.firestore.Timestamp.fromDate(parsedDate);
+                }
+            }
+        }
+
+        // Update the visit
+        await visitRef.update(updateData);
+
+        // Fetch the updated document
+        const updatedDoc = await visitRef.get();
+        const updated = updatedDoc.data();
+
+        res.json({
+            id: visitId,
+            provider: updated?.provider || null,
+            specialty: updated?.specialty || null,
+            location: updated?.location || null,
+            visitDate: updated?.visitDate?.toDate?.()?.toISOString() || null,
+            updatedAt: updated?.updatedAt?.toDate?.()?.toISOString() || null,
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error updating visit metadata:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to update visit',
+        });
+    }
+});
