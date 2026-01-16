@@ -358,8 +358,8 @@ export default function CareDashboardPage() {
                 /* Two-column desktop layout */
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Left: Patient Cards (2/3 width on desktop) */}
-                    <div className="lg:col-span-2 space-y-4">
-                        <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+                    <div className="lg:col-span-2">
+                        <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2 mb-4">
                             <Users className="h-5 w-5 text-brand-primary" />
                             Family Members
                         </h2>
@@ -372,6 +372,8 @@ export default function CareDashboardPage() {
 
                     {/* Right: Needs Attention Panel (1/3 width on desktop) */}
                     <div className="lg:col-span-1">
+                        {/* Spacer to align with patient cards (matches heading height) */}
+                        <div className="hidden lg:block h-[32px] mb-4" />
                         <div className="lg:sticky lg:top-24">
                             <NeedsAttentionPanel patients={patients} />
                         </div>
