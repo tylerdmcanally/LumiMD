@@ -211,7 +211,8 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
 
             {/* Medication Progress Bar */}
             <div className="px-4 pb-3">
-                <div className="flex items-center gap-2 text-xs mb-1.5">
+                {/* Fixed height status line for consistent card heights */}
+                <div className="flex items-center gap-2 text-xs mb-1.5 min-h-[18px]">
                     {medicationsToday.taken > 0 && (
                         <span className="flex items-center gap-1 text-success">
                             <CheckCircle className="h-3 w-3" />
@@ -229,6 +230,10 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                             <Clock className="h-3 w-3" />
                             {medicationsToday.pending} pending
                         </span>
+                    )}
+                    {/* Show placeholder if no status to maintain height */}
+                    {medicationsToday.total === 0 && (
+                        <span className="text-text-muted">No medications today</span>
                     )}
                 </div>
                 <div className="h-1.5 bg-background-subtle rounded-full overflow-hidden">
