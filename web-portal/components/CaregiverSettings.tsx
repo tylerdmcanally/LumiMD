@@ -196,7 +196,7 @@ export function CaregiverSettings() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 justify-between sm:justify-end">
-                        <Badge size="sm" tone={isExpired ? 'error' : 'warning'} variant="soft">
+                        <Badge size="sm" tone={isExpired ? 'danger' : 'warning'} variant="soft">
                           {isExpired ? 'Expired' : 'Pending'}
                         </Badge>
                         <Button
