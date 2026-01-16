@@ -50,6 +50,9 @@ async function validateCaregiverAccess(
     caregiverId: string,
     patientId: string
 ): Promise<boolean> {
+    functions.logger.info(`[care] validateCaregiverAccess: caregiverId=${caregiverId}, patientId=${patientId}`);
+
+    // Method 1: Query by ownerId + caregiverUserId + status
     const sharesSnapshot = await getDb()
         .collection('shares')
         .where('ownerId', '==', patientId)
@@ -59,20 +62,42 @@ async function validateCaregiverAccess(
         .get();
 
     if (!sharesSnapshot.empty) {
+        functions.logger.info(`[care] Access granted via ownerId+caregiverUserId query`);
         return true;
     }
+    functions.logger.info(`[care] Method 1 failed: no match for ownerId+caregiverUserId query`);
 
-    // Fallback: check canonical share doc id
+    // Method 2: Check canonical share doc id
     const shareDocId = `${patientId}_${caregiverId}`;
+    functions.logger.info(`[care] Trying doc id: ${shareDocId}`);
     const shareDoc = await getDb().collection('shares').doc(shareDocId).get();
-    if (shareDoc.exists && shareDoc.data()?.status === 'accepted') {
-        return true;
+    if (shareDoc.exists) {
+        const data = shareDoc.data();
+        functions.logger.info(`[care] Found doc ${shareDocId}: status=${data?.status}, ownerId=${data?.ownerId}, caregiverUserId=${data?.caregiverUserId}`);
+        if (data?.status === 'accepted') {
+            functions.logger.info(`[care] Access granted via doc id lookup`);
+            return true;
+        }
+    } else {
+        functions.logger.info(`[care] Doc ${shareDocId} does not exist`);
     }
 
-    // Fallback: match on caregiver email if userId missing
+    // Method 3: Find any shares for this caregiver and log them
+    const allCaregiverShares = await getDb()
+        .collection('shares')
+        .where('caregiverUserId', '==', caregiverId)
+        .get();
+    functions.logger.info(`[care] All shares for caregiver ${caregiverId}: ${allCaregiverShares.size} found`);
+    allCaregiverShares.docs.forEach((doc) => {
+        const d = doc.data();
+        functions.logger.info(`[care]   Share ${doc.id}: ownerId=${d.ownerId}, status=${d.status}`);
+    });
+
+    // Method 4: Match on caregiver email if userId missing
     try {
         const caregiverAuth = await admin.auth().getUser(caregiverId);
         const caregiverEmail = caregiverAuth.email?.toLowerCase().trim();
+        functions.logger.info(`[care] Trying email fallback: ${caregiverEmail}`);
         if (caregiverEmail) {
             const emailMatchSnapshot = await getDb()
                 .collection('shares')
@@ -85,11 +110,13 @@ async function validateCaregiverAccess(
             if (!emailMatchSnapshot.empty) {
                 const matchDoc = emailMatchSnapshot.docs[0];
                 const data = matchDoc.data();
+                functions.logger.info(`[care] Found email match: ${matchDoc.id}`);
                 if (!data.caregiverUserId) {
                     await matchDoc.ref.update({
                         caregiverUserId: caregiverId,
                         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     });
+                    functions.logger.info(`[care] Backfilled caregiverUserId`);
                 }
                 return true;
             }
@@ -250,6 +277,49 @@ async function getPatientAlerts(patientId: string) {
 
     return alerts;
 }
+
+// =============================================================================
+// GET /v1/care/debug
+// Debug endpoint to inspect share data (remove after debugging)
+// =============================================================================
+
+careRouter.get('/debug', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        
+        // Get caregiver auth info
+        const caregiverAuth = await admin.auth().getUser(caregiverId);
+        
+        // Get all shares where user is caregiver (by userId)
+        const sharesByUserId = await getDb()
+            .collection('shares')
+            .where('caregiverUserId', '==', caregiverId)
+            .get();
+        
+        // Get all shares where user is caregiver (by email)
+        const sharesByEmail = await getDb()
+            .collection('shares')
+            .where('caregiverEmail', '==', caregiverAuth.email?.toLowerCase())
+            .get();
+        
+        // Get all shareInvites for this caregiver
+        const invitesByEmail = await getDb()
+            .collection('shareInvites')
+            .where('caregiverEmail', '==', caregiverAuth.email?.toLowerCase())
+            .get();
+        
+        res.json({
+            caregiverId,
+            caregiverEmail: caregiverAuth.email,
+            sharesByUserId: sharesByUserId.docs.map(d => ({ id: d.id, ...d.data() })),
+            sharesByEmail: sharesByEmail.docs.map(d => ({ id: d.id, ...d.data() })),
+            invitesByEmail: invitesByEmail.docs.map(d => ({ id: d.id, ...d.data() })),
+        });
+    } catch (error) {
+        functions.logger.error('[care] Debug error:', error);
+        res.status(500).json({ error: 'Debug failed' });
+    }
+});
 
 // =============================================================================
 // GET /v1/care/overview
