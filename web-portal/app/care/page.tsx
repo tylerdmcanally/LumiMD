@@ -2,7 +2,19 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Users, AlertCircle, Activity, ArrowRight, Loader2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import {
+    Users,
+    AlertCircle,
+    ArrowRight,
+    Loader2,
+    CheckCircle,
+    XCircle,
+    Clock,
+    Pill,
+    ClipboardList,
+    Calendar,
+    ChevronRight,
+} from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,10 +22,111 @@ import { useCareOverview, CarePatientOverview } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
 // =============================================================================
-// PatientOverviewCard Component
+// Alert Item Component
 // =============================================================================
 
-function PatientOverviewCard({ patient }: { patient: CarePatientOverview }) {
+function AlertItem({
+    alert,
+    patientName,
+    patientId,
+}: {
+    alert: { message: string; priority: 'high' | 'medium' | 'low' };
+    patientName: string;
+    patientId: string;
+}) {
+    const isHigh = alert.priority === 'high';
+
+    return (
+        <Link
+            href={`/care/${patientId}`}
+            className={cn(
+                'flex items-start gap-3 p-3 rounded-lg transition-colors',
+                isHigh
+                    ? 'bg-error/10 hover:bg-error/15'
+                    : 'bg-warning/10 hover:bg-warning/15'
+            )}
+        >
+            <AlertCircle
+                className={cn(
+                    'h-5 w-5 shrink-0 mt-0.5',
+                    isHigh ? 'text-error' : 'text-warning'
+                )}
+            />
+            <div className="flex-1 min-w-0">
+                <p className="font-medium text-text-primary truncate">{patientName}</p>
+                <p className="text-sm text-text-secondary">{alert.message}</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-text-muted shrink-0" />
+        </Link>
+    );
+}
+
+// =============================================================================
+// Needs Attention Panel (Right sidebar on desktop)
+// =============================================================================
+
+function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) {
+    const allAlerts = patients.flatMap((patient) =>
+        patient.alerts
+            .filter((a) => a.priority === 'high' || a.priority === 'medium')
+            .map((alert) => ({
+                ...alert,
+                patientName: patient.name,
+                patientId: patient.userId,
+            }))
+    );
+
+    const highPriorityCount = allAlerts.filter((a) => a.priority === 'high').length;
+
+    return (
+        <Card variant="elevated" padding="none" className="h-fit">
+            <div className="p-4 border-b border-border-light">
+                <div className="flex items-center justify-between">
+                    <h2 className="font-semibold text-text-primary flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-warning" />
+                        Needs Attention
+                    </h2>
+                    {highPriorityCount > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-error text-white rounded-full">
+                            {highPriorityCount} urgent
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            <div className="p-3">
+                {allAlerts.length === 0 ? (
+                    <div className="flex items-center gap-3 p-3 text-success">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="text-sm font-medium">All clear! No urgent items.</span>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {allAlerts.slice(0, 5).map((alert, idx) => (
+                            <AlertItem
+                                key={idx}
+                                alert={alert}
+                                patientName={alert.patientName}
+                                patientId={alert.patientId}
+                            />
+                        ))}
+                        {allAlerts.length > 5 && (
+                            <p className="text-sm text-text-muted text-center pt-2">
+                                + {allAlerts.length - 5} more alerts
+                            </p>
+                        )}
+                    </div>
+                )}
+            </div>
+        </Card>
+    );
+}
+
+// =============================================================================
+// Patient Card Component (Compact, information-dense)
+// =============================================================================
+
+function PatientCard({ patient }: { patient: CarePatientOverview }) {
     const { medicationsToday, pendingActions, alerts } = patient;
     const hasHighPriorityAlerts = alerts.some((a) => a.priority === 'high');
 
@@ -25,55 +138,80 @@ function PatientOverviewCard({ patient }: { patient: CarePatientOverview }) {
     return (
         <Card
             variant="elevated"
-            padding="md"
+            padding="none"
             className={cn(
-                'relative overflow-hidden',
-                hasHighPriorityAlerts && 'ring-2 ring-warning/50'
+                'relative overflow-hidden transition-shadow hover:shadow-lg',
+                hasHighPriorityAlerts && 'ring-2 ring-error/50'
             )}
         >
             {hasHighPriorityAlerts && (
-                <div className="absolute top-0 left-0 right-0 h-1 bg-warning" />
+                <div className="absolute top-0 left-0 right-0 h-1 bg-error" />
             )}
 
-            <div className="flex items-start justify-between mb-4">
+            {/* Header */}
+            <div className="p-4 pb-3">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-primary-pale text-brand-primary text-lg font-semibold">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-primary-pale text-brand-primary text-lg font-semibold shrink-0">
                         {patient.name?.charAt(0) || '?'}
                     </div>
-                    <div>
-                        <h3 className="font-semibold text-text-primary">
+                    <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-text-primary truncate">
                             {patient.name || 'Unknown'}
                         </h3>
-                        <p className="text-sm text-text-muted">
-                            {patient.email?.split('@')[0] || 'Shared with you'}
+                        <p className="text-sm text-text-muted truncate">
+                            {patient.email || 'Shared with you'}
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Medication Progress */}
-            <div className="mb-4">
-                <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-text-secondary">Today's Medications</span>
-                    <span className="font-medium text-text-primary">
-                        {medicationsToday.taken}/{medicationsToday.total}
-                    </span>
+            {/* Stats Grid */}
+            <div className="px-4 pb-3">
+                <div className="grid grid-cols-3 gap-2">
+                    {/* Medications */}
+                    <div className="bg-background-subtle rounded-lg p-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                            <Pill className="h-4 w-4 text-brand-primary" />
+                        </div>
+                        <p className="text-lg font-semibold text-text-primary">
+                            {medicationsToday.taken}/{medicationsToday.total}
+                        </p>
+                        <p className="text-xs text-text-muted">Meds Today</p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="bg-background-subtle rounded-lg p-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                            <ClipboardList className="h-4 w-4 text-warning" />
+                        </div>
+                        <p className={cn(
+                            'text-lg font-semibold',
+                            pendingActions > 0 ? 'text-warning' : 'text-text-primary'
+                        )}>
+                            {pendingActions}
+                        </p>
+                        <p className="text-xs text-text-muted">Actions</p>
+                    </div>
+
+                    {/* Alerts */}
+                    <div className="bg-background-subtle rounded-lg p-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                            <AlertCircle className="h-4 w-4 text-error" />
+                        </div>
+                        <p className={cn(
+                            'text-lg font-semibold',
+                            alerts.length > 0 ? 'text-error' : 'text-success'
+                        )}>
+                            {alerts.length}
+                        </p>
+                        <p className="text-xs text-text-muted">Alerts</p>
+                    </div>
                 </div>
-                <div className="h-2 bg-background-subtle rounded-full overflow-hidden">
-                    <div
-                        className={cn(
-                            'h-full rounded-full transition-all',
-                            medicationsToday.missed > 0
-                                ? 'bg-error'
-                                : medProgress === 100
-                                    ? 'bg-success'
-                                    : 'bg-brand-primary'
-                        )}
-                        style={{ width: `${medProgress}%` }}
-                    />
-                </div>
-                {/* Status breakdown */}
-                <div className="flex items-center gap-4 mt-2 text-xs">
+            </div>
+
+            {/* Medication Progress Bar */}
+            <div className="px-4 pb-3">
+                <div className="flex items-center gap-2 text-xs mb-1.5">
                     {medicationsToday.taken > 0 && (
                         <span className="flex items-center gap-1 text-success">
                             <CheckCircle className="h-3 w-3" />
@@ -93,94 +231,55 @@ function PatientOverviewCard({ patient }: { patient: CarePatientOverview }) {
                         </span>
                     )}
                 </div>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="bg-background-subtle rounded-lg p-3">
-                    <p className="text-xs text-text-muted mb-1">Pending Actions</p>
-                    <p
+                <div className="h-1.5 bg-background-subtle rounded-full overflow-hidden">
+                    <div
                         className={cn(
-                            'text-lg font-semibold',
-                            pendingActions > 0 ? 'text-warning' : 'text-text-primary'
+                            'h-full rounded-full transition-all',
+                            medicationsToday.missed > 0
+                                ? 'bg-error'
+                                : medProgress === 100
+                                    ? 'bg-success'
+                                    : 'bg-brand-primary'
                         )}
-                    >
-                        {pendingActions}
-                    </p>
-                </div>
-                <div className="bg-background-subtle rounded-lg p-3">
-                    <p className="text-xs text-text-muted mb-1">Alerts</p>
-                    <p
-                        className={cn(
-                            'text-lg font-semibold',
-                            alerts.length > 0 ? 'text-error' : 'text-success'
-                        )}
-                    >
-                        {alerts.length}
-                    </p>
+                        style={{ width: `${medProgress}%` }}
+                    />
                 </div>
             </div>
 
-            <Button variant="secondary" size="sm" className="w-full" asChild>
-                <Link href={`/care/${patient.userId}`}>
-                    View Details
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                </Link>
-            </Button>
-        </Card>
-    );
-}
-
-// =============================================================================
-// NeedsAttentionList Component
-// =============================================================================
-
-function NeedsAttentionList({ patients }: { patients: CarePatientOverview[] }) {
-    // Collect all high-priority alerts across patients
-    const allAlerts = patients.flatMap((patient) =>
-        patient.alerts
-            .filter((a) => a.priority === 'high' || a.priority === 'medium')
-            .map((alert) => ({
-                ...alert,
-                patientName: patient.name,
-                patientId: patient.userId,
-            }))
-    );
-
-    if (allAlerts.length === 0) {
-        return (
-            <Card variant="elevated" padding="md">
-                <div className="flex items-center gap-3 text-success">
-                    <CheckCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">No urgent items at this time</span>
-                </div>
-            </Card>
-        );
-    }
-
-    return (
-        <Card variant="elevated" padding="md" className="border-l-4 border-l-warning">
-            <ul className="space-y-3">
-                {allAlerts.map((alert, idx) => (
-                    <li key={idx} className="flex items-start gap-3">
-                        <AlertCircle
-                            className={cn(
-                                'h-5 w-5 shrink-0 mt-0.5',
-                                alert.priority === 'high' ? 'text-error' : 'text-warning'
-                            )}
-                        />
-                        <div>
-                            <Link
-                                href={`/care/${alert.patientId}`}
-                                className="font-medium text-text-primary hover:text-brand-primary"
-                            >
-                                {alert.patientName}
-                            </Link>
-                            <p className="text-sm text-text-secondary">{alert.message}</p>
-                        </div>
-                    </li>
-                ))}
-            </ul>
+            {/* Action Buttons */}
+            <div className="border-t border-border-light p-3 flex gap-2">
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    asChild
+                >
+                    <Link href={`/care/${patient.userId}/medications`}>
+                        <Pill className="h-4 w-4 mr-1.5" />
+                        Medications
+                    </Link>
+                </Button>
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    asChild
+                >
+                    <Link href={`/care/${patient.userId}/actions`}>
+                        <ClipboardList className="h-4 w-4 mr-1.5" />
+                        Actions
+                    </Link>
+                </Button>
+                <Button
+                    variant="primary"
+                    size="sm"
+                    asChild
+                >
+                    <Link href={`/care/${patient.userId}`}>
+                        <ArrowRight className="h-4 w-4" />
+                    </Link>
+                </Button>
+            </div>
         </Card>
     );
 }
@@ -195,7 +294,7 @@ export default function CareDashboardPage() {
 
     if (isLoading) {
         return (
-            <PageContainer maxWidth="lg">
+            <PageContainer maxWidth="xl">
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-primary" />
                 </div>
@@ -205,7 +304,7 @@ export default function CareDashboardPage() {
 
     if (error) {
         return (
-            <PageContainer maxWidth="lg">
+            <PageContainer maxWidth="xl">
                 <Card variant="elevated" padding="lg" className="text-center py-12">
                     <AlertCircle className="h-12 w-12 text-error mx-auto mb-4" />
                     <h2 className="text-xl font-semibold text-text-primary mb-2">
@@ -222,9 +321,9 @@ export default function CareDashboardPage() {
     const hasPatients = patients.length > 0;
 
     return (
-        <PageContainer maxWidth="lg">
+        <PageContainer maxWidth="xl">
             {/* Header */}
-            <div className="mb-8">
+            <div className="mb-6">
                 <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
                     Care Dashboard
                 </h1>
@@ -248,46 +347,30 @@ export default function CareDashboardPage() {
                         When someone shares their health information with you,
                         you'll see their care overview here.
                     </p>
-                    <Button variant="primary" asChild>
-                        <Link href="/dashboard">Go to My Health</Link>
-                    </Button>
                 </Card>
             ) : (
-                <>
-                    {/* Needs Attention Section */}
-                    <section className="mb-8">
-                        <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
-                            <AlertCircle className="h-5 w-5 text-warning" />
-                            Needs Attention
-                        </h2>
-                        <NeedsAttentionList patients={patients} />
-                    </section>
-
-                    {/* Patient Cards */}
-                    <section className="mb-8">
-                        <h2 className="text-lg font-semibold text-text-primary mb-4">
+                /* Two-column desktop layout */
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Left: Patient Cards (2/3 width on desktop) */}
+                    <div className="lg:col-span-2 space-y-4">
+                        <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+                            <Users className="h-5 w-5 text-brand-primary" />
                             Family Members
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {patients.map((patient) => (
-                                <PatientOverviewCard key={patient.userId} patient={patient} />
+                                <PatientCard key={patient.userId} patient={patient} />
                             ))}
                         </div>
-                    </section>
+                    </div>
 
-                    {/* Recent Activity - Placeholder for now */}
-                    <section>
-                        <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
-                            <Activity className="h-5 w-5 text-brand-primary" />
-                            Recent Activity
-                        </h2>
-                        <Card variant="elevated" padding="md">
-                            <p className="text-text-muted text-sm">
-                                Activity timeline coming in Phase 4.
-                            </p>
-                        </Card>
-                    </section>
-                </>
+                    {/* Right: Needs Attention Panel (1/3 width on desktop) */}
+                    <div className="lg:col-span-1">
+                        <div className="lg:sticky lg:top-24">
+                            <NeedsAttentionPanel patients={patients} />
+                        </div>
+                    </div>
+                </div>
             )}
         </PageContainer>
     );
