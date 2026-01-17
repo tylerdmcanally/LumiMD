@@ -104,7 +104,7 @@ export function useAddCaregiver() {
 
 /**
  * Invite a caregiver using the new token-based invite system
- * Creates invite via /v1/shares/invite and sends email
+ * Creates invite via /v1/shares/invite and sends email via web portal API
  */
 export function useInviteCaregiver() {
   const queryClient = useQueryClient();
@@ -114,9 +114,36 @@ export function useInviteCaregiver() {
       // Create the invite via new endpoint
       const invite = await api.shares.invite(payload);
 
-      // Note: Email sending should be handled by the caller or backend
-      // For mobile onboarding, we may skip email initially since
-      // the caregiver can be added to a list and invited later
+      // Send the invite email via web portal API
+      try {
+        const { cfg } = await import('../config');
+        const webPortalUrl = cfg.webPortalUrl || 'https://portal.lumimd.app';
+        const inviteLink = `${webPortalUrl}/care/invite/${invite.id}`;
+
+        const emailResponse = await fetch(`${webPortalUrl}/api/send-invite-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ownerName: invite.ownerName,
+            ownerEmail: invite.ownerEmail,
+            inviteeEmail: invite.caregiverEmail,
+            inviteLink,
+            message: payload.message,
+          }),
+        });
+
+        if (!emailResponse.ok) {
+          console.warn('[useInviteCaregiver] Failed to send invite email:', await emailResponse.text());
+          // Don't fail the mutation - invite was created successfully
+        } else {
+          console.log('[useInviteCaregiver] Invite email sent successfully');
+        }
+      } catch (emailError) {
+        console.warn('[useInviteCaregiver] Error sending invite email:', emailError);
+        // Don't fail the mutation - invite was created successfully
+      }
 
       return invite;
     },
