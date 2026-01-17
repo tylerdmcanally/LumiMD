@@ -83,7 +83,7 @@ export function UnverifiedEmailBanner() {
                             Please verify your email address
                         </p>
                         <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mt-0.5">
-                            Some features like caregiver sharing require a verified email. Check your inbox for the verification link.
+                            Verify your email to ensure you can recover your account. Check your inbox for the verification link.
                         </p>
                     </div>
 
