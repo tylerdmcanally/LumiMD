@@ -6,6 +6,7 @@ import { parseActionDueDate, resolveVisitReferenceDate } from '../utils/actionDu
 import { getAssemblyAIService } from './assemblyai';
 import { analyzeVisitWithDelta } from './lumibotAnalyzer';
 import { getNotificationService } from './notifications';
+import { sendVisitPdfToAllCaregivers } from './caregiverEmailService';
 
 
 const db = () => admin.firestore();
@@ -159,12 +160,22 @@ export async function summarizeVisit({
         const notificationService = getNotificationService();
         await notificationService.notifyVisitReady(visitData.userId, visitRef.id);
       })(),
+
+      // 5. Send visit summary emails to caregivers
+      (async () => {
+        const result = await sendVisitPdfToAllCaregivers(visitData.userId, visitRef.id);
+        if (result.sent > 0 || result.failed > 0) {
+          functions.logger.info(
+            `[visitProcessor] Caregiver emails for visit ${visitRef.id}: sent=${result.sent}, failed=${result.failed}`
+          );
+        }
+      })(),
     ]);
 
     // Log any failures (but don't fail the visit)
     postCommitResults.forEach((result, index) => {
       if (result.status === 'rejected') {
-        const opName = ['syncMedications', 'deleteTranscript', 'lumibotAnalysis', 'pushNotification'][index];
+        const opName = ['syncMedications', 'deleteTranscript', 'lumibotAnalysis', 'pushNotification', 'caregiverEmails'][index];
         functions.logger.warn(
           `[visitProcessor] Post-commit operation ${opName} failed for visit ${visitRef.id}:`,
           result.reason
