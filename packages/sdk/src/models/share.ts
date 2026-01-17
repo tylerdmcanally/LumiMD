@@ -30,5 +30,6 @@ export interface ShareInvite {
   createdAt?: string | null;
   expiresAt?: string | null;
   acceptedAt?: string | null;
+  emailSent?: boolean;        // Whether invite email was sent successfully
 }
 

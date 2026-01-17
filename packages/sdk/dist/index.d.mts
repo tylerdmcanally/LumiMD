@@ -141,6 +141,8 @@ interface UserProfile {
     allergies?: string[];
     tags?: string[];
     folders?: string[];
+    roles?: Array<'patient' | 'caregiver'>;
+    primaryRole?: 'patient' | 'caregiver' | null;
     createdAt?: string | null;
     updatedAt?: string | null;
     trialStartedAt?: string | null;
@@ -195,6 +197,7 @@ interface ShareInvite {
     createdAt?: string | null;
     expiresAt?: string | null;
     acceptedAt?: string | null;
+    emailSent?: boolean;
 }
 
 /**
