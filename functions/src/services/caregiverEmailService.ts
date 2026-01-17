@@ -341,7 +341,7 @@ export async function sendVisitPdfToCaregiver(
 
 /**
  * Send a visit summary PDF to all active caregivers for a user
- * Checks both the legacy user.caregivers array AND the shares collection
+ * Uses the shares collection as the canonical source for caregiver relationships
  */
 export async function sendVisitPdfToAllCaregivers(
   userId: string,
@@ -353,22 +353,8 @@ export async function sendVisitPdfToAllCaregivers(
   results: ShareResult[];
 }> {
   const caregivers: Caregiver[] = [];
-  const seenEmails = new Set<string>();
 
-  // Method 1: Get caregivers from legacy user.caregivers array
-  const userDoc = await getDb().collection('users').doc(userId).get();
-  if (userDoc.exists) {
-    const userData = userDoc.data() || {};
-    const legacyCaregivers: Caregiver[] = Array.isArray(userData.caregivers) ? userData.caregivers : [];
-    for (const c of legacyCaregivers) {
-      if (c.email && !seenEmails.has(c.email.toLowerCase())) {
-        seenEmails.add(c.email.toLowerCase());
-        caregivers.push(c);
-      }
-    }
-  }
-
-  // Method 2: Get caregivers from shares collection (new system)
+  // Get caregivers from shares collection
   const sharesSnapshot = await getDb()
     .collection('shares')
     .where('ownerId', '==', userId)
@@ -379,12 +365,9 @@ export async function sendVisitPdfToAllCaregivers(
     const share = shareDoc.data();
     const email = share.caregiverEmail?.toLowerCase();
     
-    // Skip if we already have this email from legacy caregivers
-    if (!email || seenEmails.has(email)) {
+    if (!email) {
       continue;
     }
-    
-    seenEmails.add(email);
     
     // Get caregiver user info if they have an account
     let caregiverName = 'Caregiver';
@@ -412,11 +395,9 @@ export async function sendVisitPdfToAllCaregivers(
     });
   }
 
-  functions.logger.info('[caregiverEmail] Found caregivers', {
+  functions.logger.info('[caregiverEmail] Found caregivers from shares', {
     userId,
-    legacyCount: userDoc.exists ? (userDoc.data()?.caregivers?.length || 0) : 0,
     sharesCount: sharesSnapshot.size,
-    totalUnique: caregivers.length,
   });
 
   // Filter to specific caregivers if provided
@@ -424,9 +405,6 @@ export async function sendVisitPdfToAllCaregivers(
   if (caregiverIds && caregiverIds.length > 0) {
     activeCaregivers = caregivers.filter(c => caregiverIds.includes(c.id) || (c.shareUserId && caregiverIds.includes(c.shareUserId)));
   }
-
-  // Filter out paused caregivers
-  activeCaregivers = activeCaregivers.filter(c => c.status !== 'paused');
 
   if (activeCaregivers.length === 0) {
     functions.logger.info('[caregiverEmail] No active caregivers to send to', { userId, visitId });

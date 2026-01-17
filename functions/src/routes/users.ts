@@ -34,19 +34,7 @@ const unregisterPushTokenSchema = z.object({
   token: z.string().min(1, 'Push token is required'),
 });
 
-// Caregiver schemas
-const addCaregiverSchema = z.object({
-  name: z.string().min(1).max(100),
-  email: z.string().email(),
-  relationship: z.string().max(50).optional(),
-});
-
-const updateCaregiverSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  relationship: z.string().max(50).optional(),
-});
-
-const MAX_CAREGIVERS = 5;
+// Legacy caregiver schemas removed - now using shares collection
 
 const sanitizeString = (value?: string | null) => {
   if (typeof value !== 'string') return undefined;
@@ -488,45 +476,66 @@ usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // =============================================================================
-// CAREGIVER MANAGEMENT
+// CAREGIVER MANAGEMENT (uses shares collection as canonical source)
 // =============================================================================
-
-interface Caregiver {
-  id: string;
-  name: string;
-  email: string;
-  relationship?: string;
-  status: 'pending' | 'active' | 'paused';
-  shareUserId?: string;
-  createdAt: admin.firestore.Timestamp;
-  emailPausedAt?: admin.firestore.Timestamp;
-}
 
 /**
  * GET /v1/users/me/caregivers
  * List all caregivers for the authenticated user
+ * Now uses shares collection as the canonical source
  */
 usersRouter.get('/me/caregivers', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    const userRef = getDb().collection('users').doc(userId);
-    const userDoc = await userRef.get();
 
-    if (!userDoc.exists) {
-      res.json({ caregivers: [], autoShareWithCaregivers: false });
-      return;
+    // Get caregivers from shares collection (outgoing shares where user is owner)
+    const sharesSnapshot = await getDb()
+      .collection('shares')
+      .where('ownerId', '==', userId)
+      .get();
+
+    // Also get pending invites
+    const invitesSnapshot = await getDb()
+      .collection('shareInvites')
+      .where('ownerId', '==', userId)
+      .where('status', '==', 'pending')
+      .get();
+
+    const caregivers = [];
+
+    // Add accepted shares as active caregivers
+    for (const doc of sharesSnapshot.docs) {
+      const share = doc.data();
+      if (share.status === 'accepted') {
+        caregivers.push({
+          id: doc.id,
+          name: share.caregiverEmail?.split('@')[0] || 'Caregiver',
+          email: share.caregiverEmail,
+          relationship: share.role || 'viewer',
+          status: 'active',
+          shareUserId: share.caregiverUserId,
+          createdAt: share.createdAt?.toDate?.()?.toISOString() ?? null,
+        });
+      }
     }
 
-    const data = userDoc.data() || {};
-    const caregivers = Array.isArray(data.caregivers) ? data.caregivers : [];
+    // Add pending invites
+    for (const doc of invitesSnapshot.docs) {
+      const invite = doc.data();
+      const email = invite.caregiverEmail || invite.inviteeEmail;
+      caregivers.push({
+        id: doc.id,
+        name: email?.split('@')[0] || 'Pending',
+        email,
+        relationship: invite.role || 'viewer',
+        status: 'pending',
+        createdAt: invite.createdAt?.toDate?.()?.toISOString() ?? null,
+      });
+    }
 
     res.json({
-      caregivers: caregivers.map((c: Caregiver) => ({
-        ...c,
-        createdAt: c.createdAt?.toDate?.()?.toISOString() ?? null,
-        emailPausedAt: c.emailPausedAt?.toDate?.()?.toISOString() ?? null,
-      })),
-      autoShareWithCaregivers: data.autoShareWithCaregivers ?? false,
+      caregivers,
+      autoShareWithCaregivers: false, // Deprecated field
     });
   } catch (error) {
     functions.logger.error('[users] Error listing caregivers:', error);
@@ -539,231 +548,72 @@ usersRouter.get('/me/caregivers', requireAuth, async (req: AuthRequest, res) => 
 
 /**
  * POST /v1/users/me/caregivers
- * Add a new caregiver
+ * Add a new caregiver - redirects to /v1/shares/invite
+ * @deprecated Use POST /v1/shares/invite instead
  */
 usersRouter.post('/me/caregivers', requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.uid;
-    const payload = addCaregiverSchema.parse(req.body);
-
-    const userRef = getDb().collection('users').doc(userId);
-    const userDoc = await userRef.get();
-    const data = userDoc.exists ? userDoc.data() || {} : {};
-    const caregivers: Caregiver[] = Array.isArray(data.caregivers) ? data.caregivers : [];
-
-    // Check caregiver limit
-    if (caregivers.length >= MAX_CAREGIVERS) {
-      res.status(400).json({
-        code: 'limit_reached',
-        message: `Maximum of ${MAX_CAREGIVERS} caregivers allowed`,
-      });
-      return;
-    }
-
-    // Check for duplicate email
-    const normalizedEmail = payload.email.toLowerCase().trim();
-    if (caregivers.some(c => c.email.toLowerCase() === normalizedEmail)) {
-      res.status(400).json({
-        code: 'duplicate_email',
-        message: 'A caregiver with this email already exists',
-      });
-      return;
-    }
-
-    const now = admin.firestore.Timestamp.now();
-    const newCaregiver: Caregiver = {
-      id: `cg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-      name: payload.name.trim(),
-      email: normalizedEmail,
-      relationship: payload.relationship?.trim() || undefined,
-      status: 'pending',
-      createdAt: now,
-    };
-
-    caregivers.push(newCaregiver);
-    await userRef.set({ caregivers, updatedAt: now }, { merge: true });
-
-    functions.logger.info(`[users] Added caregiver ${newCaregiver.id} for user ${userId}`);
-
-    // Create share invite record for auto-connection on signup
-    try {
-      const inviteRef = getDb().collection('shareInvites').doc(); // Auto-ID
-      await inviteRef.set({
-        ownerId: userId,
-        inviteeEmail: normalizedEmail,
-        role: 'caregiver', // standard role
-        caregiverId: newCaregiver.id,
-        status: 'pending',
-        createdAt: now,
-        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        updatedAt: now,
-      });
-      functions.logger.info(`[users] Created share invite ${inviteRef.id} for ${normalizedEmail}`);
-    } catch (err) {
-      functions.logger.error('[users] Failed to create share invite record:', err);
-      // Continue anyway, this is a "soft" failure
-    }
-
-    // Send invite email
-    try {
-      const { sendCaregiverInviteEmail } = await import('../services/caregiverEmailService');
-      await sendCaregiverInviteEmail(userId, newCaregiver);
-    } catch (err) {
-      functions.logger.error('[users] Failed to send invite email:', err);
-      // Continue, don't fail the request
-    }
-
-    res.status(201).json({
-      ...newCaregiver,
-      createdAt: newCaregiver.createdAt.toDate().toISOString(),
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        code: 'validation_failed',
-        message: 'Invalid request body',
-        details: error.errors,
-      });
-      return;
-    }
-
-    functions.logger.error('[users] Error adding caregiver:', error);
-    res.status(500).json({
-      code: 'server_error',
-      message: 'Failed to add caregiver',
-    });
-  }
+  // Redirect to the new shares-based invite system
+  res.status(410).json({
+    code: 'deprecated',
+    message: 'This endpoint is deprecated. Use POST /v1/shares/invite instead.',
+    newEndpoint: '/v1/shares/invite',
+  });
 });
 
 /**
  * PUT /v1/users/me/caregivers/:id
- * Update a caregiver's info
+ * @deprecated Caregiver management now uses shares collection
  */
 usersRouter.put('/me/caregivers/:id', requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const userId = req.user!.uid;
-    const caregiverId = req.params.id;
-    const payload = updateCaregiverSchema.parse(req.body);
-
-    const userRef = getDb().collection('users').doc(userId);
-    const userDoc = await userRef.get();
-
-    if (!userDoc.exists) {
-      res.status(404).json({
-        code: 'not_found',
-        message: 'Caregiver not found',
-      });
-      return;
-    }
-
-    const data = userDoc.data() || {};
-    const caregivers: Caregiver[] = Array.isArray(data.caregivers) ? data.caregivers : [];
-    const caregiverIndex = caregivers.findIndex(c => c.id === caregiverId);
-
-    if (caregiverIndex === -1) {
-      res.status(404).json({
-        code: 'not_found',
-        message: 'Caregiver not found',
-      });
-      return;
-    }
-
-    // Update caregiver fields
-    if (payload.name !== undefined) {
-      caregivers[caregiverIndex].name = payload.name.trim();
-    }
-    if (payload.relationship !== undefined) {
-      caregivers[caregiverIndex].relationship = payload.relationship.trim() || undefined;
-    }
-
-    const now = admin.firestore.Timestamp.now();
-    await userRef.set({ caregivers, updatedAt: now }, { merge: true });
-
-    functions.logger.info(`[users] Updated caregiver ${caregiverId} for user ${userId}`);
-
-    const updatedCaregiver = caregivers[caregiverIndex];
-    res.json({
-      ...updatedCaregiver,
-      createdAt: updatedCaregiver.createdAt?.toDate?.()?.toISOString() ?? null,
-      emailPausedAt: updatedCaregiver.emailPausedAt?.toDate?.()?.toISOString() ?? null,
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        code: 'validation_failed',
-        message: 'Invalid request body',
-        details: error.errors,
-      });
-      return;
-    }
-
-    functions.logger.error('[users] Error updating caregiver:', error);
-    res.status(500).json({
-      code: 'server_error',
-      message: 'Failed to update caregiver',
-    });
-  }
+  res.status(410).json({
+    code: 'deprecated',
+    message: 'This endpoint is deprecated. Manage caregivers via /v1/shares endpoints.',
+  });
 });
 
 /**
  * DELETE /v1/users/me/caregivers/:id
- * Remove a caregiver
+ * Remove a caregiver - now uses shares collection
  */
 usersRouter.delete('/me/caregivers/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const caregiverId = req.params.id;
-
-    const userRef = getDb().collection('users').doc(userId);
-    const userDoc = await userRef.get();
-
-    if (!userDoc.exists) {
-      res.status(404).json({
-        code: 'not_found',
-        message: 'Caregiver not found',
-      });
-      return;
-    }
-
-    const data = userDoc.data() || {};
-    const caregivers: Caregiver[] = Array.isArray(data.caregivers) ? data.caregivers : [];
-    const caregiverIndex = caregivers.findIndex(c => c.id === caregiverId);
-
-    if (caregiverIndex === -1) {
-      res.status(404).json({
-        code: 'not_found',
-        message: 'Caregiver not found',
-      });
-      return;
-    }
-
-    const removedCaregiver = caregivers[caregiverIndex];
-
-    // Remove from array
-    caregivers.splice(caregiverIndex, 1);
-
     const now = admin.firestore.Timestamp.now();
-    await userRef.set({ caregivers, updatedAt: now }, { merge: true });
 
-    // If caregiver had a linked account (shareUserId), revoke their share access
-    if (removedCaregiver.shareUserId) {
-      const shareId = `${userId}_${removedCaregiver.shareUserId}`;
-      const shareRef = getDb().collection('shares').doc(shareId);
-      const shareDoc = await shareRef.get();
+    // Check if it's a share ID (new system)
+    const shareRef = getDb().collection('shares').doc(caregiverId);
+    const shareDoc = await shareRef.get();
 
-      if (shareDoc.exists) {
-        await shareRef.update({
-          status: 'revoked',
-          revokedAt: now,
-          updatedAt: now,
-        });
-        functions.logger.info(`[users] Revoked share ${shareId} for removed caregiver`);
-      }
+    if (shareDoc.exists && shareDoc.data()?.ownerId === userId) {
+      await shareRef.update({
+        status: 'revoked',
+        revokedAt: now,
+        updatedAt: now,
+      });
+      functions.logger.info(`[users] Revoked share ${caregiverId} for user ${userId}`);
+      res.status(204).send();
+      return;
     }
 
-    functions.logger.info(`[users] Removed caregiver ${caregiverId} for user ${userId}`);
+    // Check if it's a pending invite
+    const inviteRef = getDb().collection('shareInvites').doc(caregiverId);
+    const inviteDoc = await inviteRef.get();
 
-    res.status(204).send();
+    if (inviteDoc.exists && inviteDoc.data()?.ownerId === userId) {
+      await inviteRef.update({
+        status: 'revoked',
+        updatedAt: now,
+      });
+      functions.logger.info(`[users] Revoked invite ${caregiverId} for user ${userId}`);
+      res.status(204).send();
+      return;
+    }
+
+    res.status(404).json({
+      code: 'not_found',
+      message: 'Caregiver not found',
+    });
   } catch (error) {
     functions.logger.error('[users] Error removing caregiver:', error);
     res.status(500).json({
