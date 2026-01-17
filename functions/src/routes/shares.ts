@@ -946,11 +946,7 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
     try {
       const resend = getResend();
       if (resend) {
-        const messageSection = data.message
-          ? `<p style="margin: 20px 0; padding: 15px; background-color: #f5f5f5; border-radius: 8px; font-style: italic; color: #666;">
-              "${data.message}"
-            </p>`
-          : '';
+        const hasMessage = !!data.message;
 
         const emailHtml = `
 <!DOCTYPE html>
@@ -959,35 +955,28 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <h1 style="color: #078A94; margin-top: 0; font-size: 28px; font-weight: 700;">
-      You've been invited to view health information
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.5; color: #333; max-width: 600px; margin: 0 auto; padding: 16px;">
+  <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    
+    <h1 style="color: #078A94; margin: 0 0 16px 0; font-size: 22px; font-weight: 700;">
+      ${ownerName} wants to share health info with you
     </h1>
     
-    <p style="font-size: 16px; color: #555; margin: 20px 0;">
-      <strong>${ownerName}</strong> (${ownerEmail}) wants to share their health information with you through LumiMD.
+    <p style="font-size: 15px; color: #555; margin: 0 0 20px 0;">
+      You've been invited to view <strong>${ownerName}'s</strong> medical visits, medications, and care tasks on LumiMD.
     </p>
 
-    ${messageSection}
-
-    <p style="font-size: 16px; color: #555; margin: 20px 0;">
-      As a caregiver, you'll be able to view their medical visits, medications, and action items in read-only mode. This helps you stay informed and provide better support.
-    </p>
-
-    <div style="margin: 30px 0; text-align: center;">
+    <div style="text-align: center; margin: 24px 0;">
       <a href="${inviteLink}" 
-         style="display: inline-block; background-color: #078A94; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+         style="display: inline-block; background-color: #078A94; color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
         Accept Invitation
       </a>
     </div>
 
-    <p style="font-size: 14px; color: #888; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
-      If you don't have a LumiMD account, you'll be prompted to create one when you click the link above. The invitation will automatically connect once you sign up.
-    </p>
+    ${hasMessage ? `<div style="margin: 16px 0; padding: 12px; background-color: #f8f9fa; border-radius: 8px; border-left: 3px solid #078A94;"><p style="margin: 0; font-size: 14px; color: #555; font-style: italic;">"${data.message}"</p></div>` : ''}
 
-    <p style="font-size: 14px; color: #888; margin-top: 10px;">
-      If you didn't expect this invitation, you can safely ignore this email.
+    <p style="font-size: 13px; color: #888; margin: 20px 0 0 0; padding-top: 16px; border-top: 1px solid #eee;">
+      New to LumiMD? You'll create a free account when you accept. Questions? Reply to this email.
     </p>
   </div>
 </body>
@@ -995,18 +984,13 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
         `.trim();
 
         const emailText = `
-You've been invited to view health information
+${ownerName} wants to share health info with you
 
-${ownerName} (${ownerEmail}) wants to share their health information with you through LumiMD.
-${data.message ? `\n\n"${data.message}"\n` : ''}
-As a caregiver, you'll be able to view their medical visits, medications, and action items in read-only mode. This helps you stay informed and provide better support.
+You've been invited to view ${ownerName}'s medical visits, medications, and care tasks on LumiMD.
+${hasMessage ? `\n"${data.message}"\n` : ''}
+Accept the invitation: ${inviteLink}
 
-Accept the invitation by clicking this link:
-${inviteLink}
-
-If you don't have a LumiMD account, you'll be prompted to create one when you click the link above. The invitation will automatically connect once you sign up.
-
-If you didn't expect this invitation, you can safely ignore this email.
+New to LumiMD? You'll create a free account when you accept.
         `.trim();
 
         await resend.emails.send({
