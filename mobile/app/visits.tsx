@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -18,6 +18,7 @@ import { EmptyState } from '../components/EmptyState';
 import { useVisits } from '../lib/api/hooks';
 import { openWebVisit, openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { useAuth } from '../contexts/AuthContext';
 
 dayjs.extend(relativeTime);
 
@@ -33,6 +34,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function VisitsScreen() {
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   const handleGoBack = () => {
     if (router.canGoBack()) {
@@ -49,6 +51,7 @@ export default function VisitsScreen() {
     error,
     refetch,
   } = useVisits({
+    enabled: isAuthenticated,
     staleTime: 60 * 1000,
   });
 
@@ -83,6 +86,20 @@ export default function VisitsScreen() {
       </View>
     );
   };
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace('/sign-in');
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  if (authLoading || !isAuthenticated) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <ErrorBoundary

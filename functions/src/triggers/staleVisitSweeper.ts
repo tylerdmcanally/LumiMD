@@ -163,10 +163,12 @@ async function recoverSummarizingVisit(
  */
 export const staleVisitSweeper = onSchedule(
     {
+        region: 'us-central1',
         schedule: 'every 10 minutes',
         timeZone: 'America/Chicago',
         memory: '256MiB',
         timeoutSeconds: 120,
+        maxInstances: 1,
     },
     async () => {
         const stats: StaleVisitStats = {

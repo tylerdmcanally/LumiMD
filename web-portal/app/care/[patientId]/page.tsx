@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import {
     ArrowLeft,
     Loader2,
@@ -23,13 +23,48 @@ import {
     Droplets,
     Scale,
     ArrowRight,
+    TrendingUp,
+    TrendingDown,
+    Minus,
+    Calendar,
+    Zap,
+    FileBarChart,
+    ListTodo,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { usePatientMedicationStatus, useCareQuickOverview } from '@/lib/api/hooks';
+import {
+    usePatientMedicationStatus,
+    useCareQuickOverview,
+    useCareTrends,
+    useUpcomingActions,
+    useRecentMedChanges,
+    useCareTasks,
+    useCreateCareTask,
+    useUpdateCareTask,
+    useDeleteCareTask,
+    CareTask,
+} from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 // =============================================================================
 // Patient Detail Page
@@ -49,6 +84,99 @@ export default function PatientDetailPage() {
         data: quickOverview,
         isLoading: overviewLoading,
     } = useCareQuickOverview(patientId);
+
+    // New data hooks for enhanced features
+    const { data: trendsData, isLoading: trendsLoading } = useCareTrends(patientId, { days: 30 });
+    const { data: upcomingActions, isLoading: actionsLoading } = useUpcomingActions(patientId, { limit: 5 });
+    const { data: medChanges, isLoading: medChangesLoading } = useRecentMedChanges(patientId, { days: 30 });
+    const { data: careTasks, isLoading: careTasksLoading, refetch: refetchTasks } = useCareTasks(patientId);
+
+    // Task mutations
+    const createTask = useCreateCareTask();
+    const updateTask = useUpdateCareTask();
+    const deleteTask = useDeleteCareTask();
+
+    // Task dialog state
+    const [isTaskDialogOpen, setIsTaskDialogOpen] = React.useState(false);
+    const [editingTask, setEditingTask] = React.useState<CareTask | null>(null);
+    const [taskForm, setTaskForm] = React.useState({
+        title: '',
+        description: '',
+        dueDate: '',
+        priority: 'medium' as 'high' | 'medium' | 'low',
+    });
+
+    const handleOpenTaskDialog = (task?: CareTask) => {
+        if (task) {
+            setEditingTask(task);
+            setTaskForm({
+                title: task.title,
+                description: task.description || '',
+                dueDate: task.dueDate ? task.dueDate.split('T')[0] : '',
+                priority: task.priority,
+            });
+        } else {
+            setEditingTask(null);
+            setTaskForm({ title: '', description: '', dueDate: '', priority: 'medium' });
+        }
+        setIsTaskDialogOpen(true);
+    };
+
+    const handleSaveTask = async () => {
+        if (!taskForm.title.trim()) return;
+
+        try {
+            if (editingTask) {
+                await updateTask.mutateAsync({
+                    patientId,
+                    taskId: editingTask.id,
+                    data: {
+                        title: taskForm.title,
+                        description: taskForm.description || undefined,
+                        dueDate: taskForm.dueDate || null,
+                        priority: taskForm.priority,
+                    },
+                });
+            } else {
+                await createTask.mutateAsync({
+                    patientId,
+                    title: taskForm.title,
+                    description: taskForm.description || undefined,
+                    dueDate: taskForm.dueDate || null,
+                    priority: taskForm.priority,
+                });
+            }
+            setIsTaskDialogOpen(false);
+            setEditingTask(null);
+            refetchTasks();
+        } catch (error) {
+            console.error('Failed to save task:', error);
+        }
+    };
+
+    const handleToggleTaskStatus = async (task: CareTask) => {
+        try {
+            await updateTask.mutateAsync({
+                patientId,
+                taskId: task.id,
+                data: {
+                    status: task.status === 'completed' ? 'pending' : 'completed',
+                },
+            });
+            refetchTasks();
+        } catch (error) {
+            console.error('Failed to update task:', error);
+        }
+    };
+
+    const handleDeleteTask = async (taskId: string) => {
+        try {
+            await deleteTask.mutateAsync({ patientId, taskId });
+            refetchTasks();
+        } catch (error) {
+            console.error('Failed to delete task:', error);
+        }
+    };
 
     const isLoading = medLoading || overviewLoading;
 
@@ -94,6 +222,10 @@ export default function PatientDetailPage() {
     const medProgress = medSummary.total > 0 
         ? Math.round((medSummary.taken / medSummary.total) * 100) 
         : 0;
+
+    // Coverage and trends data
+    const coverage = trendsData?.coverage;
+    const adherenceTrend = trendsData?.adherence;
 
     return (
         <PageContainer maxWidth="2xl">
@@ -301,6 +433,262 @@ export default function PatientDetailPage() {
                     </Card>
                 </div>
 
+                {/* Two-column grid for Upcoming Actions + Recent Med Changes */}
+                <div className="grid gap-6 lg:grid-cols-2">
+                    {/* Upcoming Action Items */}
+                    <section>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning-light text-warning-dark">
+                                    <ListTodo className="h-4 w-4" />
+                                </div>
+                                <h2 className="text-lg font-semibold text-text-primary">Upcoming Actions</h2>
+                            </div>
+                            <Link
+                                href={`/care/${patientId}/actions`}
+                                className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+                            >
+                                View all
+                                <ArrowRight className="h-3 w-3" />
+                            </Link>
+                        </div>
+                        <Card variant="elevated" padding="none" className="overflow-hidden">
+                            {actionsLoading ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
+                                </div>
+                            ) : !upcomingActions?.actions?.length ? (
+                                <div className="p-5 text-center">
+                                    <CheckCircle className="h-8 w-8 text-success mx-auto mb-2" />
+                                    <p className="text-sm text-text-secondary">No pending actions</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-border-light">
+                                    {upcomingActions.actions.slice(0, 4).map((action) => (
+                                        <div
+                                            key={action.id}
+                                            className={cn(
+                                                'flex items-start gap-3 px-4 py-3',
+                                                action.isOverdue && 'bg-error/5'
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                'w-2 h-2 rounded-full mt-2 shrink-0',
+                                                action.isOverdue ? 'bg-error' : action.daysUntilDue !== null && action.daysUntilDue <= 3 ? 'bg-warning' : 'bg-text-muted'
+                                            )} />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-text-primary line-clamp-2">
+                                                    {action.description}
+                                                </p>
+                                                <p className={cn(
+                                                    'text-xs mt-0.5',
+                                                    action.isOverdue ? 'text-error-dark font-medium' : 'text-text-muted'
+                                                )}>
+                                                    {action.isOverdue
+                                                        ? `Overdue by ${Math.abs(action.daysUntilDue || 0)} days`
+                                                        : action.dueAt
+                                                            ? `Due ${formatDistanceToNow(new Date(action.dueAt), { addSuffix: true })}`
+                                                            : 'No due date'}
+                                                </p>
+                                            </div>
+                                            {action.isOverdue && (
+                                                <Badge tone="danger" variant="soft" size="sm">
+                                                    Overdue
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {/* Summary footer */}
+                                    {upcomingActions.summary && (upcomingActions.summary.overdue > 0 || upcomingActions.summary.dueThisWeek > 0) && (
+                                        <div className="px-4 py-2 bg-background-subtle flex items-center justify-between text-xs">
+                                            <span className="text-text-muted">
+                                                {upcomingActions.summary.overdue > 0 && (
+                                                    <span className="text-error-dark font-medium mr-3">
+                                                        {upcomingActions.summary.overdue} overdue
+                                                    </span>
+                                                )}
+                                                {upcomingActions.summary.dueThisWeek > 0 && (
+                                                    <span>{upcomingActions.summary.dueThisWeek} due this week</span>
+                                                )}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </Card>
+                    </section>
+
+                    {/* Recent Medication Changes */}
+                    <section>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info-light text-info-dark">
+                                    <Zap className="h-4 w-4" />
+                                </div>
+                                <h2 className="text-lg font-semibold text-text-primary">Recent Med Changes</h2>
+                            </div>
+                            <Link
+                                href={`/care/${patientId}/medications`}
+                                className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+                            >
+                                View all
+                                <ArrowRight className="h-3 w-3" />
+                            </Link>
+                        </div>
+                        <Card variant="elevated" padding="none" className="overflow-hidden">
+                            {medChangesLoading ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
+                                </div>
+                            ) : !medChanges?.changes?.length ? (
+                                <div className="p-5 text-center">
+                                    <Pill className="h-8 w-8 text-text-muted mx-auto mb-2" />
+                                    <p className="text-sm text-text-secondary">No changes in the last 30 days</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-border-light">
+                                    {medChanges.changes.slice(0, 4).map((change) => (
+                                        <div key={`${change.id}-${change.changeType}`} className="flex items-center gap-3 px-4 py-3">
+                                            <div className={cn(
+                                                'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                                                change.changeType === 'started' && 'bg-success-light text-success-dark',
+                                                change.changeType === 'stopped' && 'bg-error-light text-error-dark',
+                                                change.changeType === 'modified' && 'bg-warning-light text-warning-dark'
+                                            )}>
+                                                {change.changeType === 'started' && <TrendingUp className="h-4 w-4" />}
+                                                {change.changeType === 'stopped' && <TrendingDown className="h-4 w-4" />}
+                                                {change.changeType === 'modified' && <Activity className="h-4 w-4" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-text-primary truncate">
+                                                    {change.name}
+                                                </p>
+                                                <p className="text-xs text-text-muted">
+                                                    {change.changeType === 'started' && 'Started'}
+                                                    {change.changeType === 'stopped' && 'Stopped'}
+                                                    {change.changeType === 'modified' && 'Modified'}
+                                                    {change.dose && ` · ${change.dose}`}
+                                                    {' · '}
+                                                    {formatDistanceToNow(new Date(change.changeDate), { addSuffix: true })}
+                                                </p>
+                                            </div>
+                                            <Badge
+                                                tone={change.changeType === 'started' ? 'success' : change.changeType === 'stopped' ? 'danger' : 'warning'}
+                                                variant="soft"
+                                                size="sm"
+                                            >
+                                                {change.changeType}
+                                            </Badge>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </Card>
+                    </section>
+                </div>
+
+                {/* Data Coverage Card */}
+                {coverage && (
+                    <section>
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                                <FileBarChart className="h-4 w-4" />
+                            </div>
+                            <h2 className="text-lg font-semibold text-text-primary">Data Coverage</h2>
+                            <span className="text-xs text-text-muted">(Last 30 days)</span>
+                        </div>
+                        <Card variant="elevated" padding="md">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                {/* Vitals Coverage */}
+                                <div className="text-center">
+                                    <div className={cn(
+                                        'text-2xl font-bold',
+                                        coverage.vitalsCoveragePercent >= 70 ? 'text-success-dark' :
+                                        coverage.vitalsCoveragePercent >= 40 ? 'text-warning-dark' : 'text-error-dark'
+                                    )}>
+                                        {coverage.vitalsCoveragePercent}%
+                                    </div>
+                                    <p className="text-xs text-text-muted">Vitals Logged</p>
+                                    <p className="text-xs text-text-muted">
+                                        {coverage.vitalsLogged}/{coverage.vitalsExpected} days
+                                    </p>
+                                </div>
+
+                                {/* Last Vital */}
+                                <div className="text-center">
+                                    <div className={cn(
+                                        'text-2xl font-bold',
+                                        coverage.daysWithoutVitals <= 3 ? 'text-success-dark' :
+                                        coverage.daysWithoutVitals <= 7 ? 'text-warning-dark' : 'text-error-dark'
+                                    )}>
+                                        {coverage.daysWithoutVitals}
+                                    </div>
+                                    <p className="text-xs text-text-muted">Days Since Vital</p>
+                                    {coverage.lastVitalDate && (
+                                        <p className="text-xs text-text-muted">
+                                            {format(new Date(coverage.lastVitalDate), 'MMM d')}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Last Visit */}
+                                <div className="text-center">
+                                    <div className={cn(
+                                        'text-2xl font-bold',
+                                        coverage.daysWithoutVisit <= 30 ? 'text-success-dark' :
+                                        coverage.daysWithoutVisit <= 90 ? 'text-warning-dark' : 'text-text-muted'
+                                    )}>
+                                        {coverage.daysWithoutVisit > 365 ? '365+' : coverage.daysWithoutVisit}
+                                    </div>
+                                    <p className="text-xs text-text-muted">Days Since Visit</p>
+                                    {coverage.lastVisitDate && (
+                                        <p className="text-xs text-text-muted">
+                                            {format(new Date(coverage.lastVisitDate), 'MMM d')}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Adherence Trend */}
+                                {adherenceTrend && (
+                                    <div className="text-center">
+                                        <div className="flex items-center justify-center gap-1">
+                                            <span className={cn(
+                                                'text-2xl font-bold',
+                                                adherenceTrend.current >= 80 ? 'text-success-dark' :
+                                                adherenceTrend.current >= 60 ? 'text-warning-dark' : 'text-error-dark'
+                                            )}>
+                                                {adherenceTrend.current}%
+                                            </span>
+                                            {adherenceTrend.direction === 'up' && <TrendingUp className="h-4 w-4 text-success" />}
+                                            {adherenceTrend.direction === 'down' && <TrendingDown className="h-4 w-4 text-error" />}
+                                            {adherenceTrend.direction === 'stable' && <Minus className="h-4 w-4 text-text-muted" />}
+                                        </div>
+                                        <p className="text-xs text-text-muted">Adherence</p>
+                                        {adherenceTrend.streak > 0 && (
+                                            <p className="text-xs text-success-dark font-medium">
+                                                {adherenceTrend.streak} day streak
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Stale data warning */}
+                            {coverage.isStale && (
+                                <div className="mt-4 p-3 rounded-lg bg-warning/10 border border-warning/20 flex items-center gap-3">
+                                    <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
+                                    <div>
+                                        <p className="text-sm font-medium text-warning-dark">Data is getting stale</p>
+                                        <p className="text-xs text-text-secondary">
+                                            No health readings in {coverage.daysWithoutVitals} days. Consider checking in.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    </section>
+                )}
+
                 {/* Recent Activity */}
                 {recentActivity.length > 0 && (
                     <section>
@@ -383,7 +771,214 @@ export default function PatientDetailPage() {
                         />
                     </div>
                 </section>
+
+                {/* Care Plan / My Tasks */}
+                <section>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                                <CheckSquare className="h-4 w-4" />
+                            </div>
+                            <h2 className="text-lg font-semibold text-text-primary">My Care Tasks</h2>
+                            {careTasks?.summary && (
+                                <Badge tone="neutral" variant="soft" size="sm">
+                                    {careTasks.summary.pending + careTasks.summary.inProgress} active
+                                </Badge>
+                            )}
+                        </div>
+                        <Button variant="primary" size="sm" onClick={() => handleOpenTaskDialog()}>
+                            + Add Task
+                        </Button>
+                    </div>
+                    <Card variant="elevated" padding="none" className="overflow-hidden">
+                        {careTasksLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
+                            </div>
+                        ) : !careTasks?.tasks?.length ? (
+                            <div className="p-8 text-center">
+                                <CheckSquare className="h-10 w-10 text-text-muted mx-auto mb-3" />
+                                <p className="text-sm font-medium text-text-primary mb-1">No tasks yet</p>
+                                <p className="text-xs text-text-secondary mb-4">
+                                    Create tasks to track things you need to do for this patient
+                                </p>
+                                <Button variant="secondary" size="sm" onClick={() => handleOpenTaskDialog()}>
+                                    Create your first task
+                                </Button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="divide-y divide-border-light">
+                                    {careTasks.tasks.map((task) => {
+                                        const isOverdue = task.status !== 'completed' && task.dueDate && new Date(task.dueDate) < new Date();
+                                        return (
+                                            <div
+                                                key={task.id}
+                                                className={cn(
+                                                    'flex items-start gap-3 px-4 py-3 group hover:bg-hover transition-colors',
+                                                    task.status === 'completed' && 'opacity-60',
+                                                    isOverdue && 'bg-error/5'
+                                                )}
+                                            >
+                                                <button
+                                                    onClick={() => handleToggleTaskStatus(task)}
+                                                    className={cn(
+                                                        'mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                                                        task.status === 'completed'
+                                                            ? 'bg-success border-success text-white'
+                                                            : 'border-border-medium hover:border-brand-primary'
+                                                    )}
+                                                >
+                                                    {task.status === 'completed' && <CheckCircle className="h-3 w-3" />}
+                                                </button>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={cn(
+                                                        'text-sm font-medium',
+                                                        task.status === 'completed' ? 'text-text-muted line-through' : 'text-text-primary'
+                                                    )}>
+                                                        {task.title}
+                                                    </p>
+                                                    {task.description && (
+                                                        <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">
+                                                            {task.description}
+                                                        </p>
+                                                    )}
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        {task.dueDate && (
+                                                            <span className={cn(
+                                                                'text-xs',
+                                                                isOverdue ? 'text-error-dark font-medium' : 'text-text-muted'
+                                                            )}>
+                                                                {isOverdue ? 'Overdue: ' : 'Due: '}
+                                                                {format(new Date(task.dueDate), 'MMM d')}
+                                                            </span>
+                                                        )}
+                                                        <Badge
+                                                            tone={task.priority === 'high' ? 'danger' : task.priority === 'low' ? 'neutral' : 'warning'}
+                                                            variant="soft"
+                                                            size="sm"
+                                                        >
+                                                            {task.priority}
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0"
+                                                        onClick={() => handleOpenTaskDialog(task)}
+                                                    >
+                                                        <Activity className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0 text-error hover:text-error-dark"
+                                                        onClick={() => handleDeleteTask(task.id)}
+                                                    >
+                                                        <XCircle className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {/* Summary footer */}
+                                {careTasks.summary && (
+                                    <div className="px-4 py-2 bg-background-subtle flex items-center justify-between text-xs border-t border-border-light">
+                                        <span className="text-text-muted">
+                                            {careTasks.summary.completed} completed
+                                            {careTasks.summary.overdue > 0 && (
+                                                <span className="text-error-dark font-medium ml-2">
+                                                    · {careTasks.summary.overdue} overdue
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </Card>
+                </section>
             </div>
+
+            {/* Task Dialog */}
+            <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {editingTask ? 'Edit Task' : 'Add Care Task'}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="task-title">Title</Label>
+                            <Input
+                                id="task-title"
+                                placeholder="What needs to be done?"
+                                value={taskForm.title}
+                                onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="task-description">Description (optional)</Label>
+                            <Textarea
+                                id="task-description"
+                                placeholder="Add more details..."
+                                value={taskForm.description}
+                                onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                                rows={3}
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="task-due">Due Date (optional)</Label>
+                                <Input
+                                    id="task-due"
+                                    type="date"
+                                    value={taskForm.dueDate}
+                                    onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="task-priority">Priority</Label>
+                                <Select
+                                    value={taskForm.priority}
+                                    onValueChange={(value: 'high' | 'medium' | 'low') => setTaskForm({ ...taskForm, priority: value })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="high">High</SelectItem>
+                                        <SelectItem value="medium">Medium</SelectItem>
+                                        <SelectItem value="low">Low</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="secondary" onClick={() => setIsTaskDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={handleSaveTask}
+                            disabled={!taskForm.title.trim() || createTask.isPending || updateTask.isPending}
+                        >
+                            {createTask.isPending || updateTask.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : editingTask ? (
+                                'Save Changes'
+                            ) : (
+                                'Add Task'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </PageContainer>
     );
 }

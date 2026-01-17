@@ -117,8 +117,19 @@ export default function SettingsScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            await signOut();
-            router.replace('/sign-in');
+            try {
+              if (pushToken) {
+                await unregisterPushToken(pushToken);
+              }
+            } catch (error) {
+              console.error('[Settings] Error unregistering push token during sign out:', error);
+            } finally {
+              await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
+              setPushToken(null);
+              setPushEnabled(false);
+              await signOut();
+              router.replace('/sign-in');
+            }
           },
         },
       ]
@@ -160,33 +171,22 @@ export default function SettingsScreen() {
       // Get auth token
       const token = await user.getIdToken();
 
-      // Fetch the PDF from API
-      const response = await fetch(
+      // Download PDF from API directly to file (avoids base64 conversion on RN)
+      const fileName = `LumiMD-Health-Report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      const fileUri = FileSystem.documentDirectory + fileName;
+      const response = await FileSystem.downloadAsync(
         `${process.env.EXPO_PUBLIC_API_BASE_URL}/v1/health-logs/provider-report`,
+        fileUri,
         {
-          method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }
       );
 
-      if (!response.ok) {
+      if (response.status !== 200) {
         throw new Error(`Request failed with status ${response.status}`);
       }
-
-      // Convert response to base64
-      const arrayBuffer = await response.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-
-      // Save to file
-      const fileName = `LumiMD-Health-Report-${new Date().toISOString().slice(0, 10)}.pdf`;
-      const fileUri = FileSystem.documentDirectory + fileName;
-      await FileSystem.writeAsStringAsync(fileUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
 
       // Share the file
       if (await Sharing.isAvailableAsync()) {

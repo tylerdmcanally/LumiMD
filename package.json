@@ -13,5 +13,14 @@
   },
   "dependencies": {
     "firebase-admin": "^13.6.0"
+  },
+  "overrides": {
+    "express": {
+      "body-parser": "1.20.4"
+    },
+    "body-parser": {
+      "qs": "6.14.1"
+    },
+    "qs": "6.14.1"
   }
 }

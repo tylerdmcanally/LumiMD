@@ -15,6 +15,12 @@ interface AnalyzeMedicationSafetyResponse {
 }
 
 export const analyzeMedicationSafety = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        maxInstances: 20,
+    },
     async (request): Promise<AnalyzeMedicationSafetyResponse> => {
         // Ensure user is authenticated
         if (!request.auth) {

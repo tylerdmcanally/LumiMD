@@ -39,7 +39,6 @@
 ```bash
 ASSEMBLYAI_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here
-VISIT_PROCESSING_WEBHOOK_SECRET=your_webhook_secret_here
 ```
 
 **Production (Firebase Functions config):**
@@ -47,13 +46,11 @@ VISIT_PROCESSING_WEBHOOK_SECRET=your_webhook_secret_here
 # Set via Firebase CLI:
 firebase functions:config:set \
   assemblyai.api_key="YOUR_KEY" \
-  openai.api_key="YOUR_KEY" \
-  webhook.visit_processing_secret="YOUR_SECRET"
+  openai.api_key="YOUR_KEY"
 
 # Or use Firebase Secret Manager (recommended):
 firebase functions:secrets:set ASSEMBLYAI_API_KEY
 firebase functions:secrets:set OPENAI_API_KEY
-firebase functions:secrets:set VISIT_PROCESSING_WEBHOOK_SECRET
 ```
 
 ---

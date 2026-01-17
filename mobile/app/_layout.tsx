@@ -68,8 +68,8 @@ function NotificationHandler() {
 
       const urgentActionsCount = Array.isArray(pendingActions)
         ? pendingActions.filter((action: any) => {
-          if (!action.dueDate) return true; // No due date = show in badge (needs attention)
-          const dueDate = new Date(action.dueDate);
+          if (!action.dueAt) return true; // No due date = show in badge (needs attention)
+          const dueDate = new Date(action.dueAt);
           return dueDate <= sevenDaysFromNow; // Due within 7 days or already overdue
         }).length
         : 0;
@@ -161,11 +161,12 @@ function NotificationHandler() {
       ) {
         // App has come to the foreground - refresh schedule and sync widget
         console.log('[AppState] App came to foreground, refreshing medication schedule');
-        refetchSchedule().then(() => {
+        refetchSchedule().then((result) => {
           // Widget sync will happen automatically via useWidgetSync in medication-schedule screen
           // But also sync here in case user doesn't open that screen
-          if (medicationSchedule) {
-            syncMedicationScheduleToWidget(medicationSchedule).catch(err => {
+          const latestSchedule = result?.data ?? medicationSchedule;
+          if (latestSchedule) {
+            syncMedicationScheduleToWidget(latestSchedule).catch(err => {
               console.warn('[AppState] Failed to sync widget on foreground:', err);
             });
           }

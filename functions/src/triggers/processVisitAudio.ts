@@ -76,8 +76,10 @@ async function findVisitDocument(
 
 export const processVisitAudio = onObjectFinalized(
   {
+    region: 'us-central1',
     timeoutSeconds: 60,
     memory: '512MiB',
+    maxInstances: 20,
   },
   async (event) => {
     const object = event.data;

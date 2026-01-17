@@ -47,24 +47,6 @@ Previous API keys were exposed in bash command history and need to be rotated im
    firebase deploy --only functions
    ```
 
-### 3. Rotate Webhook Secret (MEDIUM PRIORITY)
-
-A new webhook secret has been generated for you:
-```
-5805c3fda92781cc0734ac6bfc30668c3b02ecac0a403bded7cf8a75c2a23236
-```
-
-Update and deploy:
-```bash
-# Update functions/.env file
-vim functions/.env
-# Replace VISIT_PROCESSING_WEBHOOK_SECRET with the new value above
-
-# Deploy to Firebase
-firebase functions:config:set webhook.visit_processing_secret="5805c3fda92781cc0734ac6bfc30668c3b02ecac0a403bded7cf8a75c2a23236"
-firebase deploy --only functions
-```
-
 ## Verification Steps
 
 After rotating all keys:

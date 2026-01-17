@@ -1743,3 +1743,446 @@ export function useCareQuickOverview(patientId: string | undefined) {
     },
   });
 }
+
+// =============================================================================
+// Unified Caregiver Alerts (7-day window by default)
+// =============================================================================
+
+export type CareAlert = {
+  id: string;
+  type: 'missed_dose' | 'overdue_action' | 'health_warning' | 'no_data' | 'med_change';
+  severity: 'emergency' | 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  targetUrl?: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type CareAlertsResponse = {
+  alerts: CareAlert[];
+  summary: {
+    emergency: number;
+    high: number;
+    medium: number;
+    low: number;
+    total: number;
+  };
+  period: {
+    days: number;
+    from: string;
+    to: string;
+  };
+};
+
+export function useCareAlerts(
+  patientId: string | undefined,
+  options?: { days?: number }
+) {
+  const days = options?.days ?? 7;
+
+  return useQuery<CareAlertsResponse>({
+    queryKey: ['care-alerts', patientId, days],
+    staleTime: 30_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/alerts?days=${days}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch alerts');
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Caregiver Trends & Coverage (30-day window by default)
+// =============================================================================
+
+export type VitalTrend = {
+  current: number | null;
+  previous: number | null;
+  change: number | null;
+  changePercent: number | null;
+  direction: 'up' | 'down' | 'stable' | null;
+  alertLevel: 'normal' | 'caution' | 'warning' | 'emergency' | null;
+};
+
+export type CareTrendsResponse = {
+  vitals: {
+    bp: {
+      systolic: VitalTrend;
+      diastolic: VitalTrend;
+      latestReading: string | null;
+      latestDate: string | null;
+    };
+    glucose: VitalTrend & {
+      latestReading: string | null;
+      latestDate: string | null;
+    };
+    weight: VitalTrend & {
+      latestReading: string | null;
+      latestDate: string | null;
+    };
+  };
+  adherence: {
+    current: number;
+    previous: number;
+    change: number;
+    direction: 'up' | 'down' | 'stable';
+    streak: number;
+  };
+  actions: {
+    completed: number;
+    pending: number;
+    overdue: number;
+    completionRate: number;
+  };
+  coverage: {
+    vitalsLogged: number;
+    vitalsExpected: number;
+    vitalsCoveragePercent: number;
+    lastVitalDate: string | null;
+    lastVisitDate: string | null;
+    daysWithoutVitals: number;
+    daysWithoutVisit: number;
+    isStale: boolean;
+  };
+  period: {
+    days: number;
+    from: string;
+    to: string;
+  };
+};
+
+export function useCareTrends(
+  patientId: string | undefined,
+  options?: { days?: number }
+) {
+  const days = options?.days ?? 30;
+
+  return useQuery<CareTrendsResponse>({
+    queryKey: ['care-trends', patientId, days],
+    staleTime: 60_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/trends?days=${days}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch trends');
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Caregiver Tasks (Care Plan)
+// =============================================================================
+
+export type CareTask = {
+  id: string;
+  patientId: string;
+  caregiverId: string;
+  title: string;
+  description?: string;
+  dueDate?: string | null;
+  priority: 'high' | 'medium' | 'low';
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CareTasksResponse = {
+  tasks: CareTask[];
+  summary: {
+    pending: number;
+    inProgress: number;
+    completed: number;
+    overdue: number;
+  };
+};
+
+export function useCareTasks(
+  patientId: string | undefined,
+  options?: { status?: string }
+) {
+  return useQuery<CareTasksResponse>({
+    queryKey: ['care-tasks', patientId, options?.status],
+    staleTime: 30_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const params = new URLSearchParams();
+      if (options?.status) params.set('status', options.status);
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/tasks?${params.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch tasks');
+      return response.json();
+    },
+  });
+}
+
+export function useCreateCareTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      patientId,
+      title,
+      description,
+      dueDate,
+      priority,
+    }: {
+      patientId: string;
+      title: string;
+      description?: string;
+      dueDate?: string | null;
+      priority?: 'high' | 'medium' | 'low';
+    }) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/tasks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title, description, dueDate, priority }),
+      });
+
+      if (!response.ok) throw new Error('Failed to create task');
+      return response.json() as Promise<CareTask>;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['care-tasks', variables.patientId] });
+    },
+  });
+}
+
+export function useUpdateCareTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      patientId,
+      taskId,
+      data,
+    }: {
+      patientId: string;
+      taskId: string;
+      data: Partial<Pick<CareTask, 'title' | 'description' | 'dueDate' | 'priority' | 'status'>>;
+    }) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) throw new Error('Failed to update task');
+      return response.json() as Promise<CareTask>;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['care-tasks', variables.patientId] });
+    },
+  });
+}
+
+export function useDeleteCareTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      patientId,
+      taskId,
+    }: {
+      patientId: string;
+      taskId: string;
+    }) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) throw new Error('Failed to delete task');
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['care-tasks', variables.patientId] });
+    },
+  });
+}
+
+// =============================================================================
+// Recent Medication Changes Hook
+// =============================================================================
+
+export type RecentMedChange = {
+  id: string;
+  name: string;
+  changeType: 'started' | 'stopped' | 'modified';
+  changeDate: string;
+  dose?: string | null;
+  previousDose?: string | null;
+};
+
+export type RecentMedChangesResponse = {
+  changes: RecentMedChange[];
+  period: {
+    days: number;
+    from: string;
+    to: string;
+  };
+};
+
+export function useRecentMedChanges(
+  patientId: string | undefined,
+  options?: { days?: number }
+) {
+  const days = options?.days ?? 30;
+
+  return useQuery<RecentMedChangesResponse>({
+    queryKey: ['care-med-changes', patientId, days],
+    staleTime: 60_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/med-changes?days=${days}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch med changes');
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Upcoming Actions Hook
+// =============================================================================
+
+export type UpcomingAction = {
+  id: string;
+  description: string;
+  dueAt: string | null;
+  isOverdue: boolean;
+  daysUntilDue: number | null;
+  visitId?: string | null;
+  source?: string;
+};
+
+export type UpcomingActionsResponse = {
+  actions: UpcomingAction[];
+  summary: {
+    overdue: number;
+    dueToday: number;
+    dueThisWeek: number;
+    dueLater: number;
+  };
+};
+
+export function useUpcomingActions(
+  patientId: string | undefined,
+  options?: { limit?: number }
+) {
+  const limit = options?.limit ?? 5;
+
+  return useQuery<UpcomingActionsResponse>({
+    queryKey: ['care-upcoming-actions', patientId, limit],
+    staleTime: 30_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/upcoming-actions?limit=${limit}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch upcoming actions');
+      return response.json();
+    },
+  });
+}

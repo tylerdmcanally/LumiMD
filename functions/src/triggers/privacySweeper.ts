@@ -12,7 +12,16 @@ const db = () => admin.firestore();
  * 1. Checks for "orphaned" AssemblyAI transcripts that weren't deleted
  * 2. Checks for audio files that should have been deleted but weren't
  */
-export const privacyDataSweeper = onSchedule('every 24 hours', async (event) => {
+export const privacyDataSweeper = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 24 hours',
+    timeZone: 'America/Chicago',
+    memory: '512MiB',
+    timeoutSeconds: 300,
+    maxInstances: 1,
+  },
+  async () => {
   functions.logger.info('[PrivacyAudit] Starting daily privacy data sweep...');
   
   const assemblyAI = getAssemblyAIService();

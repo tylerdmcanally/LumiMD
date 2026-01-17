@@ -23,6 +23,7 @@ const MAX_DAILY_NUDGES = 3;
 const QUIET_HOURS_START = 21; // 9pm
 const QUIET_HOURS_END = 8;    // 8am
 const DEFAULT_TIMEZONE = 'America/Chicago';
+const LOCK_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 interface DueNudge {
     id: string;
@@ -111,6 +112,36 @@ function sortNudgesByPriority(nudges: DueNudge[]): DueNudge[] {
         const priorityA = NUDGE_TYPE_PRIORITY[a.type || ''] || 0;
         const priorityB = NUDGE_TYPE_PRIORITY[b.type || ''] || 0;
         return priorityB - priorityA;
+    });
+}
+
+async function acquireNudgeSendLock(nudgeId: string, now: admin.firestore.Timestamp): Promise<boolean> {
+    const nudgeRef = getNudgesCollection().doc(nudgeId);
+    const lockUntil = admin.firestore.Timestamp.fromMillis(now.toMillis() + LOCK_WINDOW_MS);
+
+    return getDb().runTransaction(async (tx) => {
+        const snapshot = await tx.get(nudgeRef);
+        if (!snapshot.exists) {
+            return false;
+        }
+
+        const data = snapshot.data();
+        if (data?.notificationSent === true) {
+            return false;
+        }
+
+        const existingLock = data?.notificationLockUntil as admin.firestore.Timestamp | undefined;
+        if (existingLock && existingLock.toMillis() > now.toMillis()) {
+            return false;
+        }
+
+        tx.update(nudgeRef, {
+            notificationLockUntil: lockUntil,
+            notificationLockAt: now,
+            updatedAt: now,
+        });
+
+        return true;
     });
 }
 
@@ -222,6 +253,14 @@ export async function processAndNotifyDueNudges(): Promise<{
 
                 // Send notification for each nudge
                 for (const nudge of nudgesToSend) {
+                    const lockAcquired = await acquireNudgeSendLock(nudge.id, now);
+                    if (!lockAcquired) {
+                        functions.logger.info(
+                            `[NudgeNotifications] Skipping nudge ${nudge.id} - send lock not acquired`,
+                        );
+                        continue;
+                    }
+
                     const payloads: PushNotificationPayload[] = tokens.map(({ token }) => ({
                         to: token,
                         title: nudge.title,
@@ -249,6 +288,8 @@ export async function processAndNotifyDueNudges(): Promise<{
                     batch.update(getNudgesCollection().doc(nudge.id), {
                         notificationSent: true,
                         notificationSentAt: now,
+                        notificationLockUntil: admin.firestore.FieldValue.delete(),
+                        notificationLockAt: admin.firestore.FieldValue.delete(),
                         updatedAt: now,
                     });
 

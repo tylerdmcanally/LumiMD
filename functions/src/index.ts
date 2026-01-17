@@ -259,9 +259,10 @@ app.use(errorHandler);
 // Export the API (v2)
 export const api = onRequest(
   {
+    region: 'us-central1',
     timeoutSeconds: 60,
     memory: '512MiB',
-    maxInstances: 100,
+    maxInstances: 40,
   },
   app
 );
@@ -269,10 +270,12 @@ export const api = onRequest(
 // Scheduled function to process nudge notifications every 15 minutes
 export const processNudgeNotifications = onSchedule(
   {
+    region: 'us-central1',
     schedule: 'every 15 minutes',
-    timeZone: 'America/Chicago',
+    timeZone: 'Etc/UTC',
     memory: '256MiB',
     timeoutSeconds: 60,
+    maxInstances: 1,
   },
   async () => {
     functions.logger.info('[Scheduler] Running nudge notification processor');
@@ -290,10 +293,12 @@ export const processNudgeNotifications = onSchedule(
 // Scheduled function to process medication reminders every 5 minutes
 export const processMedicationReminders = onSchedule(
   {
+    region: 'us-central1',
     schedule: 'every 5 minutes',
-    timeZone: 'America/Chicago',
+    timeZone: 'Etc/UTC',
     memory: '256MiB',
     timeoutSeconds: 60,
+    maxInstances: 1,
   },
   async () => {
     functions.logger.info('[Scheduler] Running medication reminder processor');
@@ -311,10 +316,12 @@ export const processMedicationReminders = onSchedule(
 // Scheduled function to create recurring condition check-in nudges (daily at 9 AM)
 export const processConditionReminders = onSchedule(
   {
-    schedule: 'every day 09:00',
-    timeZone: 'America/Chicago',
+    region: 'us-central1',
+    schedule: 'every hour',
+    timeZone: 'Etc/UTC',
     memory: '256MiB',
     timeoutSeconds: 120,
+    maxInstances: 1,
   },
   async () => {
     functions.logger.info('[Scheduler] Running condition reminder processor');

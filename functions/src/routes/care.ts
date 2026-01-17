@@ -2034,3 +2034,852 @@ function getHealthLogTypeLabel(type: string): string {
             return type;
     }
 }
+
+// =============================================================================
+// UNIFIED ALERTS API
+// Aggregated, prioritized alerts with 7-day default window
+// =============================================================================
+
+type CareAlert = {
+    id: string;
+    type: 'missed_dose' | 'overdue_action' | 'health_warning' | 'no_data' | 'med_change';
+    severity: 'emergency' | 'high' | 'medium' | 'low';
+    title: string;
+    description: string;
+    targetUrl?: string;
+    timestamp: string;
+    metadata?: Record<string, unknown>;
+};
+
+careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const days = Math.min(Math.max(parseInt(req.query.days as string) || 7, 1), 30);
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - days);
+
+        const alerts: CareAlert[] = [];
+
+        // 1. Check for missed doses today
+        const todayMedStatus = await getTodaysMedicationStatus(patientId);
+        if (todayMedStatus.missed > 0) {
+            alerts.push({
+                id: `missed-dose-${now.toISOString().split('T')[0]}`,
+                type: 'missed_dose',
+                severity: todayMedStatus.missed >= 3 ? 'high' : 'medium',
+                title: 'Missed Medications',
+                description: `${todayMedStatus.missed} medication dose${todayMedStatus.missed > 1 ? 's' : ''} missed today`,
+                targetUrl: `/care/${patientId}/medications`,
+                timestamp: now.toISOString(),
+                metadata: { missedCount: todayMedStatus.missed },
+            });
+        }
+
+        // 2. Check for overdue actions
+        const actionsSnapshot = await getDb()
+            .collection('actions')
+            .where('userId', '==', patientId)
+            .where('completed', '==', false)
+            .get();
+
+        const overdueActions = actionsSnapshot.docs.filter((doc) => {
+            const data = doc.data();
+            if (!data.dueAt) return false;
+            const dueDate = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? new Date(data.dueAt);
+            return dueDate < now;
+        });
+
+        overdueActions.forEach((doc) => {
+            const data = doc.data();
+            const dueDate = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? new Date(data.dueAt);
+            const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+            alerts.push({
+                id: `overdue-action-${doc.id}`,
+                type: 'overdue_action',
+                severity: daysOverdue >= 7 ? 'high' : daysOverdue >= 3 ? 'medium' : 'low',
+                title: 'Overdue Action Item',
+                description: `"${(data.description || 'Task').substring(0, 50)}" is ${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`,
+                targetUrl: `/care/${patientId}/actions`,
+                timestamp: dueDate.toISOString(),
+                metadata: { actionId: doc.id, daysOverdue },
+            });
+        });
+
+        // 3. Check for health warnings in the period
+        const healthLogsSnapshot = await getDb()
+            .collection('healthLogs')
+            .where('userId', '==', patientId)
+            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+            .orderBy('createdAt', 'desc')
+            .limit(50)
+            .get();
+
+        healthLogsSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            if (data.alertLevel === 'emergency' || data.alertLevel === 'warning') {
+                const createdAt = data.createdAt?.toDate?.()?.toISOString() || now.toISOString();
+                alerts.push({
+                    id: `health-warning-${doc.id}`,
+                    type: 'health_warning',
+                    severity: data.alertLevel === 'emergency' ? 'emergency' : 'high',
+                    title: `${data.alertLevel === 'emergency' ? 'Critical' : 'Concerning'} Health Reading`,
+                    description: `${getHealthLogTypeLabel(data.type)}: ${formatHealthValue(data.type, data.value)}`,
+                    targetUrl: `/care/${patientId}/health`,
+                    timestamp: createdAt,
+                    metadata: { logId: doc.id, type: data.type, value: data.value },
+                });
+            }
+        });
+
+        // 4. Check for data staleness (no vitals in 10+ days)
+        const lastHealthLog = healthLogsSnapshot.docs[0];
+        if (!lastHealthLog) {
+            alerts.push({
+                id: `no-data-vitals`,
+                type: 'no_data',
+                severity: 'low',
+                title: 'No Recent Health Data',
+                description: `No health readings recorded in the last ${days} days`,
+                targetUrl: `/care/${patientId}/health`,
+                timestamp: now.toISOString(),
+            });
+        } else {
+            const lastDate = lastHealthLog.data().createdAt?.toDate?.() || now;
+            const daysSinceVitals = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysSinceVitals >= 10) {
+                alerts.push({
+                    id: `stale-vitals`,
+                    type: 'no_data',
+                    severity: daysSinceVitals >= 14 ? 'medium' : 'low',
+                    title: 'Health Data Getting Stale',
+                    description: `No health readings in ${daysSinceVitals} days`,
+                    targetUrl: `/care/${patientId}/health`,
+                    timestamp: lastDate.toISOString(),
+                    metadata: { daysSinceVitals },
+                });
+            }
+        }
+
+        // 5. Check for recent medication changes (started/stopped in last 7 days)
+        const medsSnapshot = await getDb()
+            .collection('medications')
+            .where('userId', '==', patientId)
+            .get();
+
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        medsSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            const startedAt = data.startedAt?.toDate?.();
+            const stoppedAt = data.stoppedAt?.toDate?.();
+
+            if (startedAt && startedAt >= sevenDaysAgo) {
+                alerts.push({
+                    id: `med-started-${doc.id}`,
+                    type: 'med_change',
+                    severity: 'low',
+                    title: 'New Medication Started',
+                    description: `${data.name} was started${data.dose ? ` (${data.dose})` : ''}`,
+                    targetUrl: `/care/${patientId}/medications`,
+                    timestamp: startedAt.toISOString(),
+                    metadata: { medicationId: doc.id, changeType: 'started' },
+                });
+            }
+
+            if (stoppedAt && stoppedAt >= sevenDaysAgo) {
+                alerts.push({
+                    id: `med-stopped-${doc.id}`,
+                    type: 'med_change',
+                    severity: 'medium',
+                    title: 'Medication Discontinued',
+                    description: `${data.name} was stopped`,
+                    targetUrl: `/care/${patientId}/medications`,
+                    timestamp: stoppedAt.toISOString(),
+                    metadata: { medicationId: doc.id, changeType: 'stopped' },
+                });
+            }
+        });
+
+        // Sort by severity then timestamp
+        const severityOrder: Record<string, number> = { emergency: 0, high: 1, medium: 2, low: 3 };
+        alerts.sort((a, b) => {
+            const sevDiff = severityOrder[a.severity] - severityOrder[b.severity];
+            if (sevDiff !== 0) return sevDiff;
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+
+        // Build summary
+        const summary = {
+            emergency: alerts.filter((a) => a.severity === 'emergency').length,
+            high: alerts.filter((a) => a.severity === 'high').length,
+            medium: alerts.filter((a) => a.severity === 'medium').length,
+            low: alerts.filter((a) => a.severity === 'low').length,
+            total: alerts.length,
+        };
+
+        res.json({
+            alerts,
+            summary,
+            period: {
+                days,
+                from: startDate.toISOString(),
+                to: now.toISOString(),
+            },
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching alerts:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to fetch alerts' });
+    }
+});
+
+// =============================================================================
+// TRENDS & COVERAGE API
+// 30-day trends for vitals, adherence, actions + data coverage metrics
+// =============================================================================
+
+careRouter.get('/:patientId/trends', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 7), 90);
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - days);
+        const midDate = new Date(now);
+        midDate.setDate(midDate.getDate() - Math.floor(days / 2));
+
+        // Fetch health logs
+        const healthLogsSnapshot = await getDb()
+            .collection('healthLogs')
+            .where('userId', '==', patientId)
+            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+            .orderBy('createdAt', 'desc')
+            .get();
+
+        const healthLogs = healthLogsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                type: data.type,
+                value: data.value,
+                alertLevel: data.alertLevel,
+                createdAt: data.createdAt?.toDate?.() || now,
+            };
+        });
+
+        // Split into recent and older halves
+        const recentLogs = healthLogs.filter((l) => l.createdAt >= midDate);
+        const olderLogs = healthLogs.filter((l) => l.createdAt < midDate);
+
+        // Calculate BP trends
+        const recentBpSystolic = recentLogs.filter((l) => l.type === 'bp').map((l) => l.value?.systolic).filter(Boolean);
+        const olderBpSystolic = olderLogs.filter((l) => l.type === 'bp').map((l) => l.value?.systolic).filter(Boolean);
+        const recentBpDiastolic = recentLogs.filter((l) => l.type === 'bp').map((l) => l.value?.diastolic).filter(Boolean);
+        const olderBpDiastolic = olderLogs.filter((l) => l.type === 'bp').map((l) => l.value?.diastolic).filter(Boolean);
+
+        const latestBp = healthLogs.find((l) => l.type === 'bp');
+
+        const bpTrend = {
+            systolic: calculateVitalTrend(recentBpSystolic, olderBpSystolic),
+            diastolic: calculateVitalTrend(recentBpDiastolic, olderBpDiastolic),
+            latestReading: latestBp ? `${latestBp.value?.systolic}/${latestBp.value?.diastolic}` : null,
+            latestDate: latestBp?.createdAt.toISOString() || null,
+        };
+
+        // Calculate glucose trends
+        const recentGlucose = recentLogs.filter((l) => l.type === 'glucose').map((l) => l.value?.reading).filter(Boolean);
+        const olderGlucose = olderLogs.filter((l) => l.type === 'glucose').map((l) => l.value?.reading).filter(Boolean);
+        const latestGlucose = healthLogs.find((l) => l.type === 'glucose');
+
+        const glucoseTrend = {
+            ...calculateVitalTrend(recentGlucose, olderGlucose),
+            latestReading: latestGlucose ? `${latestGlucose.value?.reading} mg/dL` : null,
+            latestDate: latestGlucose?.createdAt.toISOString() || null,
+        };
+
+        // Calculate weight trends
+        const recentWeight = recentLogs.filter((l) => l.type === 'weight').map((l) => l.value?.weight).filter(Boolean);
+        const olderWeight = olderLogs.filter((l) => l.type === 'weight').map((l) => l.value?.weight).filter(Boolean);
+        const latestWeight = healthLogs.find((l) => l.type === 'weight');
+
+        const weightTrend = {
+            ...calculateVitalTrend(recentWeight, olderWeight),
+            latestReading: latestWeight ? `${latestWeight.value?.weight} ${latestWeight.value?.unit || 'lbs'}` : null,
+            latestDate: latestWeight?.createdAt.toISOString() || null,
+        };
+
+        // Fetch medication adherence data
+        let adherenceData = {
+            current: 0,
+            previous: 0,
+            change: 0,
+            direction: 'stable' as 'up' | 'down' | 'stable',
+            streak: 0,
+        };
+
+        try {
+            const medLogsSnapshot = await getDb()
+                .collection('medicationLogs')
+                .where('userId', '==', patientId)
+                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
+                .orderBy('createdAt', 'desc')
+                .get();
+
+            const medLogs = medLogsSnapshot.docs.map((doc) => ({
+                action: doc.data().action,
+                createdAt: doc.data().createdAt?.toDate?.() || now,
+            }));
+
+            const recentMedLogs = medLogs.filter((l) => l.createdAt >= midDate);
+            const olderMedLogs = medLogs.filter((l) => l.createdAt < midDate);
+
+            const recentTaken = recentMedLogs.filter((l) => l.action === 'taken').length;
+            const recentTotal = recentMedLogs.length;
+            const olderTaken = olderMedLogs.filter((l) => l.action === 'taken').length;
+            const olderTotal = olderMedLogs.length;
+
+            const currentRate = recentTotal > 0 ? Math.round((recentTaken / recentTotal) * 100) : 0;
+            const previousRate = olderTotal > 0 ? Math.round((olderTaken / olderTotal) * 100) : 0;
+
+            // Calculate streak
+            let streak = 0;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            for (let i = 0; i < days; i++) {
+                const checkDate = new Date(today);
+                checkDate.setDate(checkDate.getDate() - i);
+                const dateStr = checkDate.toISOString().split('T')[0];
+                const dayLogs = medLogs.filter((l) => l.createdAt.toISOString().split('T')[0] === dateStr);
+                const dayTaken = dayLogs.filter((l) => l.action === 'taken').length;
+                if (dayTaken > 0 && dayLogs.length > 0 && dayTaken === dayLogs.length) {
+                    streak++;
+                } else if (dayLogs.length > 0) {
+                    break;
+                }
+            }
+
+            adherenceData = {
+                current: currentRate,
+                previous: previousRate,
+                change: currentRate - previousRate,
+                direction: currentRate > previousRate ? 'up' : currentRate < previousRate ? 'down' : 'stable',
+                streak,
+            };
+        } catch (err) {
+            functions.logger.warn('[care] Error fetching adherence data:', err);
+        }
+
+        // Fetch actions data
+        const actionsSnapshot = await getDb()
+            .collection('actions')
+            .where('userId', '==', patientId)
+            .get();
+
+        const actions = actionsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                completed: data.completed,
+                completedAt: data.completedAt?.toDate?.(),
+                dueAt: data.dueAt ? (typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.()) : null,
+            };
+        });
+
+        const completedInPeriod = actions.filter((a) => a.completed && a.completedAt && a.completedAt >= startDate).length;
+        const pending = actions.filter((a) => !a.completed).length;
+        const overdue = actions.filter((a) => !a.completed && a.dueAt && a.dueAt < now).length;
+        const totalActions = actions.length;
+        const completionRate = totalActions > 0 ? Math.round((actions.filter((a) => a.completed).length / totalActions) * 100) : 0;
+
+        const actionsData = {
+            completed: completedInPeriod,
+            pending,
+            overdue,
+            completionRate,
+        };
+
+        // Calculate coverage metrics
+        const uniqueVitalDays = new Set(healthLogs.map((l) => l.createdAt.toISOString().split('T')[0])).size;
+        const expectedVitalDays = days;
+        const vitalsCoveragePercent = Math.round((uniqueVitalDays / expectedVitalDays) * 100);
+
+        // Get last visit date
+        const lastVisitSnapshot = await getDb()
+            .collection('visits')
+            .where('userId', '==', patientId)
+            .orderBy('createdAt', 'desc')
+            .limit(1)
+            .get();
+
+        const lastVisit = lastVisitSnapshot.docs[0]?.data();
+        const lastVisitDate = lastVisit?.visitDate?.toDate?.() || lastVisit?.createdAt?.toDate?.() || null;
+
+        const lastVitalDate = healthLogs[0]?.createdAt || null;
+        const daysWithoutVitals = lastVitalDate ? Math.floor((now.getTime() - lastVitalDate.getTime()) / (1000 * 60 * 60 * 24)) : days;
+        const daysWithoutVisit = lastVisitDate ? Math.floor((now.getTime() - lastVisitDate.getTime()) / (1000 * 60 * 60 * 24)) : 999;
+
+        const coverage = {
+            vitalsLogged: uniqueVitalDays,
+            vitalsExpected: expectedVitalDays,
+            vitalsCoveragePercent,
+            lastVitalDate: lastVitalDate?.toISOString() || null,
+            lastVisitDate: lastVisitDate?.toISOString() || null,
+            daysWithoutVitals,
+            daysWithoutVisit,
+            isStale: daysWithoutVitals >= 10,
+        };
+
+        res.json({
+            vitals: {
+                bp: bpTrend,
+                glucose: glucoseTrend,
+                weight: weightTrend,
+            },
+            adherence: adherenceData,
+            actions: actionsData,
+            coverage,
+            period: {
+                days,
+                from: startDate.toISOString(),
+                to: now.toISOString(),
+            },
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching trends:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to fetch trends' });
+    }
+});
+
+/**
+ * Calculate vital trend from recent and older values
+ */
+function calculateVitalTrend(recent: number[], older: number[]): {
+    current: number | null;
+    previous: number | null;
+    change: number | null;
+    changePercent: number | null;
+    direction: 'up' | 'down' | 'stable' | null;
+    alertLevel: string | null;
+} {
+    const currentAvg = recent.length > 0 ? Math.round(recent.reduce((a, b) => a + b, 0) / recent.length) : null;
+    const previousAvg = older.length > 0 ? Math.round(older.reduce((a, b) => a + b, 0) / older.length) : null;
+
+    if (currentAvg === null) {
+        return { current: null, previous: previousAvg, change: null, changePercent: null, direction: null, alertLevel: null };
+    }
+
+    const change = previousAvg !== null ? currentAvg - previousAvg : null;
+    const changePercent = previousAvg !== null && previousAvg > 0 ? Math.round((change! / previousAvg) * 100) : null;
+
+    let direction: 'up' | 'down' | 'stable' | null = null;
+    if (changePercent !== null) {
+        if (changePercent > 5) direction = 'up';
+        else if (changePercent < -5) direction = 'down';
+        else direction = 'stable';
+    }
+
+    return { current: currentAvg, previous: previousAvg, change, changePercent, direction, alertLevel: null };
+}
+
+// =============================================================================
+// RECENT MEDICATION CHANGES API
+// Started/stopped/modified medications in the last N days
+// =============================================================================
+
+careRouter.get('/:patientId/med-changes', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 90);
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - days);
+
+        const medsSnapshot = await getDb()
+            .collection('medications')
+            .where('userId', '==', patientId)
+            .get();
+
+        const changes: Array<{
+            id: string;
+            name: string;
+            changeType: 'started' | 'stopped' | 'modified';
+            changeDate: string;
+            dose?: string | null;
+            previousDose?: string | null;
+        }> = [];
+
+        medsSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            const startedAt = data.startedAt?.toDate?.();
+            const stoppedAt = data.stoppedAt?.toDate?.();
+            const changedAt = data.changedAt?.toDate?.();
+
+            if (startedAt && startedAt >= startDate) {
+                changes.push({
+                    id: doc.id,
+                    name: data.name || 'Unknown',
+                    changeType: 'started',
+                    changeDate: startedAt.toISOString(),
+                    dose: data.dose || null,
+                });
+            }
+
+            if (stoppedAt && stoppedAt >= startDate) {
+                changes.push({
+                    id: doc.id,
+                    name: data.name || 'Unknown',
+                    changeType: 'stopped',
+                    changeDate: stoppedAt.toISOString(),
+                    dose: data.dose || null,
+                });
+            }
+
+            if (changedAt && changedAt >= startDate && !startedAt?.getTime?.() && !stoppedAt?.getTime?.()) {
+                changes.push({
+                    id: doc.id,
+                    name: data.name || 'Unknown',
+                    changeType: 'modified',
+                    changeDate: changedAt.toISOString(),
+                    dose: data.dose || null,
+                    previousDose: data.previousDose || null,
+                });
+            }
+        });
+
+        // Sort by date (most recent first)
+        changes.sort((a, b) => new Date(b.changeDate).getTime() - new Date(a.changeDate).getTime());
+
+        res.json({
+            changes,
+            period: {
+                days,
+                from: startDate.toISOString(),
+                to: now.toISOString(),
+            },
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching med changes:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to fetch medication changes' });
+    }
+});
+
+// =============================================================================
+// UPCOMING ACTIONS API
+// Pending actions sorted by due date with overdue highlighting
+// =============================================================================
+
+careRouter.get('/:patientId/upcoming-actions', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 5, 1), 20);
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        const now = new Date();
+        const today = new Date(now);
+        today.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(today);
+        endOfWeek.setDate(endOfWeek.getDate() + 7);
+
+        const actionsSnapshot = await getDb()
+            .collection('actions')
+            .where('userId', '==', patientId)
+            .where('completed', '==', false)
+            .get();
+
+        const actions = actionsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            let dueAt: Date | null = null;
+            if (data.dueAt) {
+                dueAt = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? null;
+            }
+
+            const isOverdue = dueAt ? dueAt < now : false;
+            const daysUntilDue = dueAt ? Math.ceil((dueAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+            return {
+                id: doc.id,
+                description: data.description || data.text || 'Unknown task',
+                dueAt: dueAt?.toISOString() || null,
+                isOverdue,
+                daysUntilDue,
+                visitId: data.visitId || null,
+                source: data.source || 'manual',
+            };
+        });
+
+        // Sort: overdue first (by how overdue), then upcoming (by soonest)
+        actions.sort((a, b) => {
+            if (a.isOverdue && !b.isOverdue) return -1;
+            if (!a.isOverdue && b.isOverdue) return 1;
+            if (a.daysUntilDue === null && b.daysUntilDue !== null) return 1;
+            if (a.daysUntilDue !== null && b.daysUntilDue === null) return -1;
+            return (a.daysUntilDue || 0) - (b.daysUntilDue || 0);
+        });
+
+        // Calculate summary
+        const summary = {
+            overdue: actions.filter((a) => a.isOverdue).length,
+            dueToday: actions.filter((a) => !a.isOverdue && a.daysUntilDue !== null && a.daysUntilDue <= 0).length,
+            dueThisWeek: actions.filter((a) => !a.isOverdue && a.daysUntilDue !== null && a.daysUntilDue > 0 && a.daysUntilDue <= 7).length,
+            dueLater: actions.filter((a) => !a.isOverdue && (a.daysUntilDue === null || a.daysUntilDue > 7)).length,
+        };
+
+        res.json({
+            actions: actions.slice(0, limit),
+            summary,
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching upcoming actions:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to fetch upcoming actions' });
+    }
+});
+
+// =============================================================================
+// CAREGIVER TASKS API (Care Plan)
+// CRUD for caregiver-created tasks
+// =============================================================================
+
+// GET /v1/care/:patientId/tasks
+careRouter.get('/:patientId/tasks', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const statusFilter = req.query.status as string | undefined;
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        let query = getDb()
+            .collection('careTasks')
+            .where('patientId', '==', patientId)
+            .where('caregiverId', '==', caregiverId);
+
+        if (statusFilter && ['pending', 'in_progress', 'completed', 'cancelled'].includes(statusFilter)) {
+            query = query.where('status', '==', statusFilter);
+        }
+
+        const snapshot = await query.orderBy('createdAt', 'desc').get();
+
+        const now = new Date();
+        const tasks = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            const dueDate = data.dueDate?.toDate?.();
+            return {
+                id: doc.id,
+                patientId: data.patientId,
+                caregiverId: data.caregiverId,
+                title: data.title,
+                description: data.description || null,
+                dueDate: dueDate?.toISOString() || null,
+                priority: data.priority || 'medium',
+                status: data.status || 'pending',
+                completedAt: data.completedAt?.toDate?.()?.toISOString() || null,
+                createdAt: data.createdAt?.toDate?.()?.toISOString() || now.toISOString(),
+                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || now.toISOString(),
+            };
+        });
+
+        // Calculate summary
+        const summary = {
+            pending: tasks.filter((t) => t.status === 'pending').length,
+            inProgress: tasks.filter((t) => t.status === 'in_progress').length,
+            completed: tasks.filter((t) => t.status === 'completed').length,
+            overdue: tasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled' && t.dueDate && new Date(t.dueDate) < now).length,
+        };
+
+        res.json({ tasks, summary });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching tasks:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to fetch tasks' });
+    }
+});
+
+// POST /v1/care/:patientId/tasks
+careRouter.post('/:patientId/tasks', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const patientId = req.params.patientId;
+        const { title, description, dueDate, priority } = req.body;
+
+        if (!title || typeof title !== 'string' || title.trim().length === 0) {
+            res.status(400).json({ code: 'invalid_request', message: 'Title is required' });
+            return;
+        }
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const taskData: Record<string, unknown> = {
+            patientId,
+            caregiverId,
+            title: title.trim(),
+            description: description?.trim() || null,
+            dueDate: dueDate ? admin.firestore.Timestamp.fromDate(new Date(dueDate)) : null,
+            priority: ['high', 'medium', 'low'].includes(priority) ? priority : 'medium',
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        const docRef = await getDb().collection('careTasks').add(taskData);
+        const createdDoc = await docRef.get();
+        const data = createdDoc.data();
+
+        res.status(201).json({
+            id: docRef.id,
+            patientId: data?.patientId,
+            caregiverId: data?.caregiverId,
+            title: data?.title,
+            description: data?.description,
+            dueDate: data?.dueDate?.toDate?.()?.toISOString() || null,
+            priority: data?.priority,
+            status: data?.status,
+            completedAt: null,
+            createdAt: data?.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+            updatedAt: data?.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error creating task:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to create task' });
+    }
+});
+
+// PATCH /v1/care/:patientId/tasks/:taskId
+careRouter.patch('/:patientId/tasks/:taskId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const { patientId, taskId } = req.params;
+        const { title, description, dueDate, priority, status } = req.body;
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        const taskRef = getDb().collection('careTasks').doc(taskId);
+        const taskDoc = await taskRef.get();
+
+        if (!taskDoc.exists) {
+            res.status(404).json({ code: 'not_found', message: 'Task not found' });
+            return;
+        }
+
+        const taskData = taskDoc.data();
+        if (taskData?.caregiverId !== caregiverId || taskData?.patientId !== patientId) {
+            res.status(403).json({ code: 'forbidden', message: 'Not authorized to modify this task' });
+            return;
+        }
+
+        const updateData: Record<string, unknown> = {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (typeof title === 'string') updateData.title = title.trim();
+        if (typeof description === 'string') updateData.description = description.trim() || null;
+        if (dueDate !== undefined) {
+            updateData.dueDate = dueDate ? admin.firestore.Timestamp.fromDate(new Date(dueDate)) : null;
+        }
+        if (['high', 'medium', 'low'].includes(priority)) updateData.priority = priority;
+        if (['pending', 'in_progress', 'completed', 'cancelled'].includes(status)) {
+            updateData.status = status;
+            if (status === 'completed') {
+                updateData.completedAt = admin.firestore.FieldValue.serverTimestamp();
+            } else {
+                updateData.completedAt = null;
+            }
+        }
+
+        await taskRef.update(updateData);
+        const updatedDoc = await taskRef.get();
+        const data = updatedDoc.data();
+
+        res.json({
+            id: taskId,
+            patientId: data?.patientId,
+            caregiverId: data?.caregiverId,
+            title: data?.title,
+            description: data?.description,
+            dueDate: data?.dueDate?.toDate?.()?.toISOString() || null,
+            priority: data?.priority,
+            status: data?.status,
+            completedAt: data?.completedAt?.toDate?.()?.toISOString() || null,
+            createdAt: data?.createdAt?.toDate?.()?.toISOString() || null,
+            updatedAt: data?.updatedAt?.toDate?.()?.toISOString() || null,
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error updating task:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to update task' });
+    }
+});
+
+// DELETE /v1/care/:patientId/tasks/:taskId
+careRouter.delete('/:patientId/tasks/:taskId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const { patientId, taskId } = req.params;
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
+            return;
+        }
+
+        const taskRef = getDb().collection('careTasks').doc(taskId);
+        const taskDoc = await taskRef.get();
+
+        if (!taskDoc.exists) {
+            res.status(404).json({ code: 'not_found', message: 'Task not found' });
+            return;
+        }
+
+        const taskData = taskDoc.data();
+        if (taskData?.caregiverId !== caregiverId || taskData?.patientId !== patientId) {
+            res.status(403).json({ code: 'forbidden', message: 'Not authorized to delete this task' });
+            return;
+        }
+
+        await taskRef.delete();
+        res.json({ success: true });
+    } catch (error) {
+        functions.logger.error('[care] Error deleting task:', error);
+        res.status(500).json({ code: 'server_error', message: 'Failed to delete task' });
+    }
+});

@@ -15,6 +15,7 @@ const getUsersCollection = () => getDb().collection('users');
 
 
 const DEFAULT_TIMEZONE = 'America/Chicago';
+const LOCK_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 interface MedicationReminderDoc {
     userId: string;
@@ -24,6 +25,8 @@ interface MedicationReminderDoc {
     times: string[];
     enabled: boolean;
     lastSentAt?: admin.firestore.Timestamp;
+    lastSentLockUntil?: admin.firestore.Timestamp;
+    lastSentLockAt?: admin.firestore.Timestamp;
 }
 
 /**
@@ -83,6 +86,35 @@ function wasRecentlySent(lastSentAt: admin.firestore.Timestamp | undefined): boo
 
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
     return lastSentAt.toDate() > thirtyMinutesAgo;
+}
+
+async function acquireReminderSendLock(
+    reminderId: string,
+    now: admin.firestore.Timestamp,
+): Promise<boolean> {
+    const reminderRef = getRemindersCollection().doc(reminderId);
+    const lockUntil = admin.firestore.Timestamp.fromMillis(now.toMillis() + LOCK_WINDOW_MS);
+
+    return getDb().runTransaction(async (tx) => {
+        const snapshot = await tx.get(reminderRef);
+        if (!snapshot.exists) {
+            return false;
+        }
+
+        const data = snapshot.data() as MedicationReminderDoc | undefined;
+        const existingLock = data?.lastSentLockUntil as admin.firestore.Timestamp | undefined;
+        if (existingLock && existingLock.toMillis() > now.toMillis()) {
+            return false;
+        }
+
+        tx.update(reminderRef, {
+            lastSentLockUntil: lockUntil,
+            lastSentLockAt: now,
+            updatedAt: now,
+        });
+
+        return true;
+    });
 }
 
 /**
@@ -214,6 +246,14 @@ export async function processAndNotifyMedicationReminders(): Promise<{
 
             // Send notification for each due medication
             for (const reminder of reminders) {
+                const lockAcquired = await acquireReminderSendLock(reminder.id, now);
+                if (!lockAcquired) {
+                    functions.logger.info(
+                        `[MedReminders] Skipping reminder ${reminder.id} - send lock not acquired`,
+                    );
+                    continue;
+                }
+
                 const doseText = reminder.medicationDose ? ` (${reminder.medicationDose})` : '';
                 const notificationBody = `Time to take your ${reminder.medicationName}${doseText}`;
 
@@ -242,7 +282,12 @@ export async function processAndNotifyMedicationReminders(): Promise<{
                 });
 
                 // Update lastSentAt
-                batch.update(getRemindersCollection().doc(reminder.id), { lastSentAt: now });
+                batch.update(getRemindersCollection().doc(reminder.id), {
+                    lastSentAt: now,
+                    lastSentLockUntil: admin.firestore.FieldValue.delete(),
+                    lastSentLockAt: admin.firestore.FieldValue.delete(),
+                    updatedAt: now,
+                });
 
                 stats.processed++;
                 if (successCount > 0) {

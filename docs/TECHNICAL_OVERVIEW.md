@@ -537,7 +537,6 @@ FLOW                                 CODE PATH
 | `ASSEMBLYAI_API_KEY` | `functions/.env` | Server-side only |
 | `RESEND_API_KEY` | `functions/.env`, `web-portal/.env.local` | For email sending |
 | `FIREBASE_*` | `mobile/.env`, `web-portal/.env.local` | Client-side (public keys) |
-| `VISIT_PROCESSING_WEBHOOK_SECRET` | `functions/.env` | Validates AssemblyAI webhooks |
 
 ### Failure Handling
 
@@ -561,7 +560,6 @@ OPENAI_API_KEY=sk-...              # OpenAI API key
 OPENAI_MODEL=gpt-4o                # Model to use (gpt-4o recommended)
 ASSEMBLYAI_API_KEY=...             # AssemblyAI API key
 RESEND_API_KEY=re_...              # Resend email API key
-VISIT_PROCESSING_WEBHOOK_SECRET=... # Webhook validation secret
 
 # Optional
 ALLOWED_ORIGINS=https://lumimd.app  # CORS allowed origins

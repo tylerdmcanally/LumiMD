@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { formatDistanceToNow } from 'date-fns';
 import {
     Users,
     AlertCircle,
@@ -12,19 +13,102 @@ import {
     Clock,
     Pill,
     ClipboardList,
-    Calendar,
     ChevronRight,
+    AlertTriangle,
+    Heart,
+    Zap,
+    TrendingUp,
+    TrendingDown,
+    Minus,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useCareOverview, CarePatientOverview } from '@/lib/api/hooks';
+import { Badge } from '@/components/ui/badge';
+import { useCareOverview, CarePatientOverview, useCareAlerts, CareAlert } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
 // =============================================================================
-// Alert Item Component
+// Enhanced Alert Item Component
 // =============================================================================
 
+function getAlertIcon(type: CareAlert['type']) {
+    switch (type) {
+        case 'missed_dose':
+            return <Pill className="h-4 w-4" />;
+        case 'overdue_action':
+            return <ClipboardList className="h-4 w-4" />;
+        case 'health_warning':
+            return <Heart className="h-4 w-4" />;
+        case 'no_data':
+            return <Clock className="h-4 w-4" />;
+        case 'med_change':
+            return <Zap className="h-4 w-4" />;
+        default:
+            return <AlertCircle className="h-4 w-4" />;
+    }
+}
+
+function getSeverityStyles(severity: CareAlert['severity']) {
+    switch (severity) {
+        case 'emergency':
+            return { bg: 'bg-error/15', border: 'border-error/30', text: 'text-error-dark', icon: 'text-error' };
+        case 'high':
+            return { bg: 'bg-error/10', border: 'border-error/20', text: 'text-error-dark', icon: 'text-error' };
+        case 'medium':
+            return { bg: 'bg-warning/10', border: 'border-warning/20', text: 'text-warning-dark', icon: 'text-warning' };
+        case 'low':
+            return { bg: 'bg-brand-primary-pale', border: 'border-brand-primary/20', text: 'text-text-primary', icon: 'text-brand-primary' };
+    }
+}
+
+function EnhancedAlertItem({
+    alert,
+    patientName,
+}: {
+    alert: CareAlert;
+    patientName?: string;
+}) {
+    const styles = getSeverityStyles(alert.severity);
+
+    return (
+        <Link
+            href={alert.targetUrl || '#'}
+            className={cn(
+                'flex items-start gap-3 p-3 rounded-lg border transition-all hover:shadow-sm',
+                styles.bg,
+                styles.border
+            )}
+        >
+            <div className={cn('mt-0.5 shrink-0', styles.icon)}>
+                {getAlertIcon(alert.type)}
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                    <p className={cn('font-medium text-sm', styles.text)}>
+                        {alert.title}
+                    </p>
+                    {alert.severity === 'emergency' && (
+                        <Badge tone="danger" variant="solid" size="sm">
+                            Urgent
+                        </Badge>
+                    )}
+                </div>
+                <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
+                    {alert.description}
+                </p>
+                {patientName && (
+                    <p className="text-xs text-text-muted mt-1">
+                        {patientName}
+                    </p>
+                )}
+            </div>
+            <ChevronRight className="h-4 w-4 text-text-muted shrink-0 mt-0.5" />
+        </Link>
+    );
+}
+
+// Legacy alert item for backward compatibility
 function AlertItem({
     alert,
     patientName,
@@ -62,11 +146,40 @@ function AlertItem({
 }
 
 // =============================================================================
-// Needs Attention Panel (Right sidebar on desktop)
+// Enhanced Needs Attention Panel (Right sidebar on desktop)
+// Uses unified alerts API for all patients
 // =============================================================================
 
 function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) {
-    const allAlerts = patients.flatMap((patient) =>
+    // Fetch unified alerts for each patient
+    const alertQueries = patients.map((p) => useCareAlerts(p.userId, { days: 7 }));
+    const isLoadingAlerts = alertQueries.some((q) => q.isLoading);
+
+    // Aggregate all alerts across patients
+    const allAlerts: Array<CareAlert & { patientName: string; patientId: string }> = [];
+    
+    alertQueries.forEach((query, idx) => {
+        if (query.data?.alerts) {
+            query.data.alerts.forEach((alert) => {
+                allAlerts.push({
+                    ...alert,
+                    patientName: patients[idx].name,
+                    patientId: patients[idx].userId,
+                });
+            });
+        }
+    });
+
+    // Sort by severity
+    const severityOrder: Record<string, number> = { emergency: 0, high: 1, medium: 2, low: 3 };
+    allAlerts.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+    const emergencyCount = allAlerts.filter((a) => a.severity === 'emergency').length;
+    const highCount = allAlerts.filter((a) => a.severity === 'high').length;
+    const urgentCount = emergencyCount + highCount;
+
+    // Fallback to legacy alerts if new API not loaded yet
+    const legacyAlerts = patients.flatMap((patient) =>
         patient.alerts
             .filter((a) => a.priority === 'high' || a.priority === 'medium')
             .map((alert) => ({
@@ -76,33 +189,76 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
             }))
     );
 
-    const highPriorityCount = allAlerts.filter((a) => a.priority === 'high').length;
+    const displayAlerts = allAlerts.length > 0 ? allAlerts : [];
+    const hasAlerts = displayAlerts.length > 0 || legacyAlerts.length > 0;
 
     return (
         <Card variant="elevated" padding="none" className="h-fit">
             <div className="p-4 border-b border-border-light">
                 <div className="flex items-center justify-between">
                     <h2 className="font-semibold text-text-primary flex items-center gap-2">
-                        <AlertCircle className="h-5 w-5 text-warning" />
+                        <AlertTriangle className={cn(
+                            'h-5 w-5',
+                            urgentCount > 0 ? 'text-error' : 'text-warning'
+                        )} />
                         Needs Attention
                     </h2>
-                    {highPriorityCount > 0 && (
-                        <span className="px-2 py-0.5 text-xs font-medium bg-error text-white rounded-full">
-                            {highPriorityCount} urgent
-                        </span>
+                    {urgentCount > 0 && (
+                        <Badge tone="danger" variant="solid" size="sm">
+                            {urgentCount} urgent
+                        </Badge>
                     )}
                 </div>
+                {/* Summary badges */}
+                {displayAlerts.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                        {emergencyCount > 0 && (
+                            <Badge tone="danger" variant="soft" size="sm">
+                                {emergencyCount} critical
+                            </Badge>
+                        )}
+                        {highCount > 0 && (
+                            <Badge tone="warning" variant="soft" size="sm">
+                                {highCount} high
+                            </Badge>
+                        )}
+                        {allAlerts.filter((a) => a.severity === 'medium').length > 0 && (
+                            <Badge tone="neutral" variant="soft" size="sm">
+                                {allAlerts.filter((a) => a.severity === 'medium').length} medium
+                            </Badge>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="p-3">
-                {allAlerts.length === 0 ? (
+                {isLoadingAlerts ? (
+                    <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
+                    </div>
+                ) : !hasAlerts ? (
                     <div className="flex items-center gap-3 p-3 text-success">
                         <CheckCircle className="h-5 w-5" />
                         <span className="text-sm font-medium">All clear! No urgent items.</span>
                     </div>
+                ) : displayAlerts.length > 0 ? (
+                    <div className="space-y-2">
+                        {displayAlerts.slice(0, 6).map((alert) => (
+                            <EnhancedAlertItem
+                                key={alert.id}
+                                alert={alert}
+                                patientName={patients.length > 1 ? alert.patientName : undefined}
+                            />
+                        ))}
+                        {displayAlerts.length > 6 && (
+                            <p className="text-sm text-text-muted text-center pt-2">
+                                + {displayAlerts.length - 6} more alerts
+                            </p>
+                        )}
+                    </div>
                 ) : (
                     <div className="space-y-2">
-                        {allAlerts.slice(0, 5).map((alert, idx) => (
+                        {legacyAlerts.slice(0, 5).map((alert, idx) => (
                             <AlertItem
                                 key={idx}
                                 alert={alert}
@@ -110,9 +266,9 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
                                 patientId={alert.patientId}
                             />
                         ))}
-                        {allAlerts.length > 5 && (
+                        {legacyAlerts.length > 5 && (
                             <p className="text-sm text-text-muted text-center pt-2">
-                                + {allAlerts.length - 5} more alerts
+                                + {legacyAlerts.length - 5} more alerts
                             </p>
                         )}
                     </div>
@@ -123,12 +279,44 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
 }
 
 // =============================================================================
+// Trend Indicator Component
+// =============================================================================
+
+function TrendIndicator({ 
+    direction, 
+    size = 'sm' 
+}: { 
+    direction: 'up' | 'down' | 'stable' | null; 
+    size?: 'sm' | 'md';
+}) {
+    if (!direction) return null;
+    
+    const sizeClasses = size === 'sm' ? 'h-3 w-3' : 'h-4 w-4';
+    
+    switch (direction) {
+        case 'up':
+            return <TrendingUp className={cn(sizeClasses, 'text-error')} />;
+        case 'down':
+            return <TrendingDown className={cn(sizeClasses, 'text-success')} />;
+        case 'stable':
+            return <Minus className={cn(sizeClasses, 'text-text-muted')} />;
+        default:
+            return null;
+    }
+}
+
+// =============================================================================
 // Patient Card Component (Compact, information-dense)
 // =============================================================================
 
 function PatientCard({ patient }: { patient: CarePatientOverview }) {
     const { medicationsToday, pendingActions, alerts } = patient;
     const hasHighPriorityAlerts = alerts.some((a) => a.priority === 'high');
+
+    // Fetch alerts count from new API
+    const { data: alertsData } = useCareAlerts(patient.userId, { days: 7 });
+    const alertCount = alertsData?.summary?.total ?? alerts.length;
+    const hasUrgent = (alertsData?.summary?.emergency ?? 0) + (alertsData?.summary?.high ?? 0) > 0 || hasHighPriorityAlerts;
 
     const medProgress =
         medicationsToday.total > 0
@@ -141,10 +329,10 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
             padding="none"
             className={cn(
                 'relative overflow-hidden transition-shadow hover:shadow-lg',
-                hasHighPriorityAlerts && 'ring-2 ring-error/50'
+                hasUrgent && 'ring-2 ring-error/50'
             )}
         >
-            {hasHighPriorityAlerts && (
+            {hasUrgent && (
                 <div className="absolute top-0 left-0 right-0 h-1 bg-error" />
             )}
 
@@ -196,13 +384,16 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                     {/* Alerts */}
                     <div className="bg-background-subtle rounded-lg p-2.5 text-center">
                         <div className="flex items-center justify-center gap-1 mb-1">
-                            <AlertCircle className="h-4 w-4 text-error" />
+                            <AlertTriangle className={cn(
+                                'h-4 w-4',
+                                hasUrgent ? 'text-error' : alertCount > 0 ? 'text-warning' : 'text-text-muted'
+                            )} />
                         </div>
                         <p className={cn(
                             'text-lg font-semibold',
-                            alerts.length > 0 ? 'text-error' : 'text-success'
+                            hasUrgent ? 'text-error' : alertCount > 0 ? 'text-warning' : 'text-success'
                         )}>
-                            {alerts.length}
+                            {alertCount}
                         </p>
                         <p className="text-xs text-text-muted">Alerts</p>
                     </div>

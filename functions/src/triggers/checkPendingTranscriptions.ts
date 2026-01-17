@@ -26,10 +26,12 @@ const formatTranscriptAndText = (
 
 export const checkPendingTranscriptions = onSchedule(
   {
+    region: 'us-central1',
     schedule: 'every minute',
     timeZone: 'Etc/UTC',
     timeoutSeconds: 300,
     memory: '512MiB',
+    maxInstances: 1,
   },
   async () => {
     const snapshot = await db()

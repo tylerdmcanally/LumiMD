@@ -5,7 +5,6 @@
  * Required environment variables:
  * - OPENAI_API_KEY: For AI summaries
  * - ASSEMBLYAI_API_KEY: For audio transcription
- * - VISIT_PROCESSING_WEBHOOK_SECRET: For secure webhook calls
  * - STORAGE_BUCKET: Firebase Storage bucket name
  * - ALLOWED_ORIGINS: Comma-separated list of allowed CORS origins
  *
@@ -30,7 +29,6 @@ export const storageConfig = {
 };
 
 export const webhookConfig = {
-  visitProcessingSecret: process.env.VISIT_PROCESSING_WEBHOOK_SECRET || '',
   assemblyaiWebhookSecret: process.env.ASSEMBLYAI_WEBHOOK_SECRET || '',
 };
 

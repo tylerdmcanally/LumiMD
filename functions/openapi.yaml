@@ -489,30 +489,6 @@ paths:
         '404':
           description: Token not found
 
-  # ==================== Webhooks ====================
-  /v1/webhooks/visit-processed:
-    post:
-      tags: [webhooks]
-      summary: Persist processed visit payload (internal)
-      description: |
-        Internal webhook used by the processing pipeline.
-        Requires X-Webhook-Secret header.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VisitProcessed'
-      responses:
-        '200':
-          description: Visit updated successfully
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          description: Invalid webhook secret
-        '500':
-          $ref: '#/components/responses/ServerError'
-
 # ==================== Components ====================
 components:
   securitySchemes:
@@ -679,25 +655,6 @@ components:
         createdAt:
           type: string
           format: date-time
-
-    VisitProcessed:
-      type: object
-      required: [visitId, transcriptUrl, summary]
-      properties:
-        visitId:
-          type: string
-        transcriptUrl:
-          type: string
-          format: uri
-          example: "https://storage.googleapis.com/..."
-        summary:
-          allOf:
-            - $ref: '#/components/schemas/VisitSummary'
-            - required: [chiefConcern, plan]
-        actions:
-          type: array
-          items:
-            $ref: '#/components/schemas/ActionItemInput'
 
   responses:
     Unauthorized:

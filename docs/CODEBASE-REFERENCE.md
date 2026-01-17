@@ -172,7 +172,6 @@ Base URL: `https://us-central1-lumimd-dev.cloudfunctions.net/api`
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/assemblyai` | AssemblyAI transcription callback |
-| POST | `/visit-processed` | Internal processing webhook |
 
 ---
 
@@ -464,9 +463,6 @@ ASSEMBLYAI_API_KEY=
 
 # Email
 RESEND_API_KEY=
-
-# Webhooks
-VISIT_PROCESSING_WEBHOOK_SECRET=
 
 # Monitoring
 SENTRY_DSN=

@@ -15,6 +15,47 @@ import { findMedicationClass } from '../data/medicationClasses';
 // =============================================================================
 
 const STALE_THRESHOLD_DAYS = 5; // Create reminder if no log in this many days
+const DEFAULT_TIMEZONE = 'America/Chicago';
+const TARGET_LOCAL_HOUR = 9; // 9 AM local
+const TARGET_LOCAL_MINUTE = 0;
+const WINDOW_MINUTES = 30; // Allow for scheduler drift
+
+const getUserTimezone = async (
+    db: admin.firestore.Firestore,
+    userId: string,
+): Promise<string> => {
+    try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        const timezone = userDoc.data()?.timezone;
+        if (timezone && typeof timezone === 'string') {
+            return timezone;
+        }
+    } catch (error) {
+        functions.logger.warn(`[ConditionReminder] Could not fetch timezone for user ${userId}:`, error);
+    }
+    return DEFAULT_TIMEZONE;
+};
+
+const getCurrentTimeInTimezone = (timezone: string): { hour: number; minute: number } => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+    }).formatToParts(now);
+
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+    return { hour, minute };
+};
+
+const isWithinLocalReminderWindow = (timezone: string): boolean => {
+    const { hour, minute } = getCurrentTimeInTimezone(timezone);
+    const currentMinutes = hour * 60 + minute;
+    const targetMinutes = TARGET_LOCAL_HOUR * 60 + TARGET_LOCAL_MINUTE;
+    return Math.abs(currentMinutes - targetMinutes) <= WINDOW_MINUTES;
+};
 
 // =============================================================================
 // Types
@@ -60,7 +101,19 @@ export async function processConditionReminders(): Promise<ProcessingResult> {
 
         functions.logger.info(`[ConditionReminder] Checking ${usersWithMeds.length} users with trackable medications`);
 
+        const timezoneCache = new Map<string, string>();
+
         for (const userData of usersWithMeds) {
+            let userTimezone = timezoneCache.get(userData.userId);
+            if (!userTimezone) {
+                userTimezone = await getUserTimezone(db, userData.userId);
+                timezoneCache.set(userData.userId, userTimezone);
+            }
+
+            if (!isWithinLocalReminderWindow(userTimezone)) {
+                continue;
+            }
+
             // Skip if they have a recent log
             if (userData.daysSinceLastLog !== null && userData.daysSinceLastLog < STALE_THRESHOLD_DAYS) {
                 result.skippedRecentLog++;

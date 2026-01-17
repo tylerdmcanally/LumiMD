@@ -13,9 +13,11 @@ const hasTranscript = (visitData: FirebaseFirestore.DocumentData): boolean => {
 
 export const summarizeVisitTrigger = onDocumentUpdated(
   {
+    region: 'us-central1',
     document: 'visits/{visitId}',
     timeoutSeconds: 300,
     memory: '512MiB',
+    maxInstances: 10,
   },
   async (event) => {
     const change = event.data;

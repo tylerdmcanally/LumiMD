@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import { useCompleteAction } from '../lib/api/mutations';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { addActionToCalendar, removeCalendarEvent } from '../lib/calendar';
 import { api } from '../lib/api/client';
+import { useAuth } from '../contexts/AuthContext';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';
@@ -43,6 +44,7 @@ const getActionTitle = (description?: string | null) => {
 
 export default function ActionsScreen() {
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [showCompleted, setShowCompleted] = useState(false);
   const queryClient = useQueryClient();
   const platformKey = Platform.OS === 'ios' ? 'ios' : 'android';
@@ -54,10 +56,25 @@ export default function ActionsScreen() {
     error,
     refetch,
   } = useActionItems({
+    enabled: isAuthenticated,
     staleTime: 2 * 60 * 1000,
   });
 
   const { mutate: toggleAction, isPending: isUpdating } = useCompleteAction();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace('/sign-in');
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  if (authLoading || !isAuthenticated) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
 
   const pendingActions = useMemo(() => {
     if (!Array.isArray(actions)) return [];

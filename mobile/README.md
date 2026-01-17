@@ -212,6 +212,20 @@ open -a Simulator
 3. Start an emulator
 4. Then run `npm run android`
 
+## ✅ Testing
+
+Run the Jest suite from the `mobile/` directory:
+
+```bash
+npm test
+```
+
+Watch mode:
+
+```bash
+npm run test:watch
+```
+
 ## 📱 Testing on Physical Device
 
 ### iOS
