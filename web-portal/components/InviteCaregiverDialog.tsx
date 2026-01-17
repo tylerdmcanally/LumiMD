@@ -17,8 +17,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/client';
-import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
-import { auth } from '@/lib/firebase';
 
 interface InviteCaregiverDialogProps {
   open: boolean;
@@ -29,39 +27,14 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
   const [email, setEmail] = React.useState('');
   const [message, setMessage] = React.useState('');
   const queryClient = useQueryClient();
-  const currentUser = useCurrentUser();
 
   const inviteMutation = useMutation({
     mutationFn: async (data: { caregiverEmail: string; message?: string }) => {
-      // Create the invite using new token-based endpoint
+      // Create the invite - backend handles email sending
       const invite = await api.shares.invite(data);
 
-      // Then send the email via Vercel API route
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://portal.lumimd.app';
-      const inviteLink = `${appUrl}/care/invite/${invite.id}`;
-
-      try {
-        const emailResponse = await fetch('/api/send-invite-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ownerName: invite.ownerName,
-            ownerEmail: invite.ownerEmail,
-            inviteeEmail: invite.caregiverEmail,
-            inviteLink,
-            message: data.message,
-          }),
-        });
-
-        if (!emailResponse.ok) {
-          const error = await emailResponse.json();
-          console.error('[InviteCaregiverDialog] Email sending failed:', error);
-          toast.warning('Invitation created, but email could not be sent', {
-            description: 'The invite was created successfully, but we encountered an issue sending the email. You may need to resend it.',
-          });
-        }
-      } catch (emailError) {
-        console.error('[InviteCaregiverDialog] Error calling email API:', emailError);
+      // Check if email was sent successfully
+      if (invite.emailSent === false) {
         toast.warning('Invitation created, but email could not be sent', {
           description: 'The invite was created successfully, but we encountered an issue sending the email. You may need to resend it.',
         });
@@ -69,20 +42,23 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
 
       return invite;
     },
-    onSuccess: () => {
-      toast.success('Invitation sent!', {
-        description: 'The caregiver will receive an email with instructions to access your health information.',
-      });
+    onSuccess: (invite) => {
+      if (invite.emailSent !== false) {
+        toast.success('Invitation sent!', {
+          description: 'The caregiver will receive an email with instructions to access your health information.',
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['shares'] });
+      queryClient.invalidateQueries({ queryKey: ['share-invites'] });
       setEmail('');
       setMessage('');
       onOpenChange(false);
     },
     onError: (error: any) => {
       console.error('[InviteCaregiverDialog] Error sending invite:', error);
-      const message = error?.userMessage || error?.message || 'Failed to send invitation';
+      const errorMessage = error?.userMessage || error?.message || 'Failed to send invitation';
       const details = error?.code ? ` (${error.code})` : '';
-      toast.error(message + details, {
+      toast.error(errorMessage + details, {
         description: error?.status === 404
           ? 'The API endpoint was not found. Please check your configuration.'
           : error?.status === 401 || error?.status === 403
@@ -102,45 +78,6 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       toast.error('Please enter a valid email address');
-      return;
-    }
-
-    // Check email verification
-    const user = auth.currentUser;
-    if (!user?.emailVerified) {
-      toast.error('Please verify your email before inviting caregivers', {
-        description: 'Check your inbox for the verification email.',
-        action: {
-          label: 'Resend',
-          onClick: async () => {
-            if (!user) return;
-            try {
-              const idToken = await user.getIdToken();
-              const response = await fetch('/api/send-verification-email', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${idToken}`,
-                },
-                body: JSON.stringify({
-                  userId: user.uid,
-                  email: user.email,
-                }),
-              });
-
-              if (!response.ok) {
-                throw new Error('Failed to send verification email');
-              }
-
-              toast.success('Verification email sent!', {
-                description: 'Check your inbox to verify your email.',
-              });
-            } catch (error) {
-              toast.error('Failed to send verification email');
-            }
-          },
-        },
-      });
       return;
     }
 

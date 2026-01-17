@@ -3,10 +3,28 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
+import { Resend } from 'resend';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
 import { shareLimiter } from '../middlewares/rateLimit';
 
 export const sharesRouter = Router();
+
+// Lazy-load Resend client
+let resendClient: Resend | null = null;
+function getResend(): Resend | null {
+  if (!resendClient) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      functions.logger.warn('[shares] RESEND_API_KEY not configured, emails will not be sent');
+      return null;
+    }
+    resendClient = new Resend(apiKey);
+  }
+  return resendClient;
+}
+
+// Web portal URL for invite links
+const WEB_PORTAL_URL = process.env.WEB_PORTAL_URL || 'https://portal.lumimd.app';
 
 const getDb = () => admin.firestore();
 
@@ -921,7 +939,93 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
 
     functions.logger.info(`[shares] Created invite ${inviteToken} from ${ownerId} to ${caregiverEmail}`);
 
-    // Return invite for frontend to send email
+    // Send invite email directly from backend
+    const inviteLink = `${WEB_PORTAL_URL}/care/invite/${inviteToken}`;
+    let emailSent = false;
+    
+    try {
+      const resend = getResend();
+      if (resend) {
+        const messageSection = data.message
+          ? `<p style="margin: 20px 0; padding: 15px; background-color: #f5f5f5; border-radius: 8px; font-style: italic; color: #666;">
+              "${data.message}"
+            </p>`
+          : '';
+
+        const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background-color: #ffffff; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <h1 style="color: #078A94; margin-top: 0; font-size: 28px; font-weight: 700;">
+      You've been invited to view health information
+    </h1>
+    
+    <p style="font-size: 16px; color: #555; margin: 20px 0;">
+      <strong>${ownerName}</strong> (${ownerEmail}) wants to share their health information with you through LumiMD.
+    </p>
+
+    ${messageSection}
+
+    <p style="font-size: 16px; color: #555; margin: 20px 0;">
+      As a caregiver, you'll be able to view their medical visits, medications, and action items in read-only mode. This helps you stay informed and provide better support.
+    </p>
+
+    <div style="margin: 30px 0; text-align: center;">
+      <a href="${inviteLink}" 
+         style="display: inline-block; background-color: #078A94; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+        Accept Invitation
+      </a>
+    </div>
+
+    <p style="font-size: 14px; color: #888; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+      If you don't have a LumiMD account, you'll be prompted to create one when you click the link above. The invitation will automatically connect once you sign up.
+    </p>
+
+    <p style="font-size: 14px; color: #888; margin-top: 10px;">
+      If you didn't expect this invitation, you can safely ignore this email.
+    </p>
+  </div>
+</body>
+</html>
+        `.trim();
+
+        const emailText = `
+You've been invited to view health information
+
+${ownerName} (${ownerEmail}) wants to share their health information with you through LumiMD.
+${data.message ? `\n\n"${data.message}"\n` : ''}
+As a caregiver, you'll be able to view their medical visits, medications, and action items in read-only mode. This helps you stay informed and provide better support.
+
+Accept the invitation by clicking this link:
+${inviteLink}
+
+If you don't have a LumiMD account, you'll be prompted to create one when you click the link above. The invitation will automatically connect once you sign up.
+
+If you didn't expect this invitation, you can safely ignore this email.
+        `.trim();
+
+        await resend.emails.send({
+          from: 'LumiMD <no-reply@lumimd.app>',
+          to: caregiverEmail,
+          subject: `${ownerName} wants to share their health information with you`,
+          html: emailHtml,
+          text: emailText,
+        });
+
+        emailSent = true;
+        functions.logger.info(`[shares] Sent invite email to ${caregiverEmail}`);
+      }
+    } catch (emailError) {
+      functions.logger.error(`[shares] Failed to send invite email to ${caregiverEmail}:`, emailError);
+      // Don't fail the request - invite was created successfully
+    }
+
+    // Return invite with email status
     res.status(201).json({
       id: inviteToken,
       ownerId,
@@ -933,6 +1037,7 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       message: data.message || null,
       createdAt: now.toDate().toISOString(),
       expiresAt: expiresAt.toDate().toISOString(),
+      emailSent,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

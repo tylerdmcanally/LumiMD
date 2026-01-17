@@ -104,45 +104,20 @@ export function useAddCaregiver() {
 
 /**
  * Invite a caregiver using the new token-based invite system
- * Creates invite via /v1/shares/invite and sends email via web portal API
+ * Creates invite via /v1/shares/invite - backend handles email sending
  */
 export function useInviteCaregiver() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (payload: { caregiverEmail: string; message?: string }) => {
-      // Create the invite via new endpoint
+      // Create the invite - backend handles email sending
       const invite = await api.shares.invite(payload);
 
-      // Send the invite email via web portal API
-      try {
-        const { cfg } = await import('../config');
-        const webPortalUrl = cfg.webPortalUrl || 'https://portal.lumimd.app';
-        const inviteLink = `${webPortalUrl}/care/invite/${invite.id}`;
-
-        const emailResponse = await fetch(`${webPortalUrl}/api/send-invite-email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ownerName: invite.ownerName,
-            ownerEmail: invite.ownerEmail,
-            inviteeEmail: invite.caregiverEmail,
-            inviteLink,
-            message: payload.message,
-          }),
-        });
-
-        if (!emailResponse.ok) {
-          console.warn('[useInviteCaregiver] Failed to send invite email:', await emailResponse.text());
-          // Don't fail the mutation - invite was created successfully
-        } else {
-          console.log('[useInviteCaregiver] Invite email sent successfully');
-        }
-      } catch (emailError) {
-        console.warn('[useInviteCaregiver] Error sending invite email:', emailError);
-        // Don't fail the mutation - invite was created successfully
+      if (invite.emailSent) {
+        console.log('[useInviteCaregiver] Invite created and email sent successfully');
+      } else {
+        console.warn('[useInviteCaregiver] Invite created but email was not sent');
       }
 
       return invite;
