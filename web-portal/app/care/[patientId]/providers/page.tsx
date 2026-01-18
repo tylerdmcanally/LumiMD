@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Users,
 } from 'lucide-react';
-import { PageContainer } from '@/components/layout/PageContainer';
+import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCareVisits } from '@/lib/api/hooks';
@@ -142,27 +142,23 @@ export default function ProvidersPage() {
       <div className="space-y-6">
         {/* Back Button */}
         <Button variant="ghost" size="sm" asChild>
-          <Link href={`/care/${patientId}`} className="flex items-center text-brand-primary hover:text-brand-primary-dark">
+          <Link href={`/care/${patientId}`} className="flex items-center text-text-secondary hover:text-brand-primary">
             <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
             <span>Back to Overview</span>
           </Link>
         </Button>
 
         {/* Header */}
-        <header className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
-            Care Team
-          </h1>
-          <p className="text-text-secondary">
-            {providers.length} provider{providers.length !== 1 ? 's' : ''} across {providersBySpecialty.length} specialt{providersBySpecialty.length !== 1 ? 'ies' : 'y'}
-          </p>
-        </header>
+        <PageHeader
+          title="Care Team"
+          subtitle={`${providers.length} provider${providers.length !== 1 ? 's' : ''} across ${providersBySpecialty.length} specialt${providersBySpecialty.length !== 1 ? 'ies' : 'y'}`}
+        />
 
         {/* Empty State */}
         {providers.length === 0 ? (
           <Card variant="elevated" padding="lg" className="text-center py-16">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-primary-pale mx-auto mb-4">
-              <Users className="h-8 w-8 text-brand-primary" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background-subtle mx-auto mb-4">
+              <Users className="h-8 w-8 text-text-muted" />
             </div>
             <h2 className="text-xl font-semibold text-text-primary mb-2">
               No providers yet
@@ -242,7 +238,7 @@ function ProviderCard({
               </span>
             </div>
           </div>
-          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-background-subtle group-hover:bg-brand-primary-pale transition-colors shrink-0">
+          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-background-subtle group-hover:bg-hover transition-colors shrink-0">
             <ChevronRight className="h-4 w-4 text-text-muted group-hover:text-brand-primary transition-colors" />
           </div>
         </div>

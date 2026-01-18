@@ -80,6 +80,21 @@ function getTrend(values: number[]): 'up' | 'down' | 'stable' {
     return diff > 0 ? 'up' : 'down';
 }
 
+const chartTheme = {
+    grid: 'var(--color-border)',
+    tick: 'var(--color-text-tertiary)',
+    surface: 'var(--color-surface)',
+    border: 'var(--color-border)',
+    shadow: 'var(--shadow-sm)',
+    systolic: 'var(--color-error)',
+    diastolic: 'var(--color-info)',
+    glucose: 'var(--color-info)',
+    weight: 'var(--color-success)',
+    adherence: 'var(--color-brand-accent)',
+    target: 'var(--color-success)',
+    caution: 'var(--color-warning)',
+};
+
 function TrendIcon({ trend, goodDirection }: { trend: 'up' | 'down' | 'stable'; goodDirection: 'down' | 'stable' }) {
     if (trend === 'stable') {
         return <Minus className="h-4 w-4 text-text-secondary" />;
@@ -172,7 +187,7 @@ function LogReadingModal({
                             onClick={() => setSelectedType('bp')}
                             className="w-full flex items-center gap-4 p-4 rounded-xl border border-border-light hover:bg-hover transition-colors"
                         >
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-100 text-rose-600">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-error-light text-error-dark">
                                 <Activity className="h-5 w-5" />
                             </div>
                             <span className="font-medium text-text-primary">Blood Pressure</span>
@@ -181,7 +196,7 @@ function LogReadingModal({
                             onClick={() => setSelectedType('glucose')}
                             className="w-full flex items-center gap-4 p-4 rounded-xl border border-border-light hover:bg-hover transition-colors"
                         >
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info-light text-info-dark">
                                 <Droplets className="h-5 w-5" />
                             </div>
                             <span className="font-medium text-text-primary">Blood Glucose</span>
@@ -190,7 +205,7 @@ function LogReadingModal({
                             onClick={() => setSelectedType('weight')}
                             className="w-full flex items-center gap-4 p-4 rounded-xl border border-border-light hover:bg-hover transition-colors"
                         >
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success-light text-success-dark">
                                 <Scale className="h-5 w-5" />
                             </div>
                             <span className="font-medium text-text-primary">Weight</span>
@@ -567,7 +582,7 @@ export default function HealthDashboardPage() {
                         {bpStats && (
                             <Card variant="elevated" padding="lg">
                                 <div className="flex items-start gap-4">
-                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-error-light text-error-dark">
                                         <Activity className="h-6 w-6" />
                                     </div>
                                     <div className="flex-1">
@@ -590,7 +605,7 @@ export default function HealthDashboardPage() {
                         {glucoseStats && (
                             <Card variant="elevated" padding="lg">
                                 <div className="flex items-start gap-4">
-                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-info-light text-info-dark">
                                         <Droplets className="h-6 w-6" />
                                     </div>
                                     <div className="flex-1">
@@ -613,7 +628,7 @@ export default function HealthDashboardPage() {
                         {weightStats && (
                             <Card variant="elevated" padding="lg">
                                 <div className="flex items-start gap-4">
-                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-green-100 text-green-600">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-success-light text-success-dark">
                                         <Scale className="h-6 w-6" />
                                     </div>
                                     <div className="flex-1">
@@ -636,7 +651,7 @@ export default function HealthDashboardPage() {
                         {compliance?.hasReminders && (
                             <Card variant="elevated" padding="lg">
                                 <div className="flex items-start gap-4">
-                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-primary">
                                         <Pill className="h-6 w-6" />
                                     </div>
                                     <div className="flex-1">
@@ -689,7 +704,7 @@ export default function HealthDashboardPage() {
                                             insight.type === 'positive' && 'bg-success-light text-success-dark',
                                             insight.type === 'attention' && 'bg-warning-light text-warning-dark',
                                             insight.type === 'tip' && 'bg-brand-primary-light text-brand-primary',
-                                            insight.type === 'neutral' && 'bg-gray-100 text-gray-600',
+                                            insight.type === 'neutral' && 'bg-background-subtle text-text-muted',
                                         )}>
                                             {insight.type === 'positive' && '✓'}
                                             {insight.type === 'attention' && '!'}
@@ -721,24 +736,24 @@ export default function HealthDashboardPage() {
                             <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={bpData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                                         <XAxis
                                             dataKey="dateLabel"
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                         />
                                         <YAxis
                                             domain={[60, 180]}
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                             axisLine={false}
                                         />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#fff',
-                                                border: '1px solid #e5e7eb',
+                                                backgroundColor: chartTheme.surface,
+                                                border: `1px solid ${chartTheme.border}`,
                                                 borderRadius: '8px',
-                                                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                                boxShadow: chartTheme.shadow,
                                             }}
                                             labelStyle={{ fontWeight: 600 }}
                                             formatter={(value: any, name: any) => [
@@ -750,33 +765,33 @@ export default function HealthDashboardPage() {
                                         {/* Healthy systolic range (90-120) */}
                                         <ReferenceLine
                                             y={120}
-                                            stroke="#22c55e"
+                                            stroke={chartTheme.target}
                                             strokeDasharray="5 5"
-                                            label={{ value: 'Systolic target (120)', position: 'insideTopRight', fill: '#22c55e', fontSize: 11 }}
+                                            label={{ value: 'Systolic target (120)', position: 'insideTopRight', fill: chartTheme.target, fontSize: 11 }}
                                         />
                                         {/* Healthy diastolic (80) */}
                                         <ReferenceLine
                                             y={80}
-                                            stroke="#3b82f6"
+                                            stroke={chartTheme.diastolic}
                                             strokeDasharray="5 5"
-                                            label={{ value: 'Diastolic target (80)', position: 'insideBottomRight', fill: '#3b82f6', fontSize: 11 }}
+                                            label={{ value: 'Diastolic target (80)', position: 'insideBottomRight', fill: chartTheme.diastolic, fontSize: 11 }}
                                         />
                                         {/* Systolic line - render first so shows first in tooltip */}
                                         <Line
                                             type="monotone"
                                             dataKey="systolic"
-                                            stroke="#f43f5e"
+                                            stroke={chartTheme.systolic}
                                             strokeWidth={2}
-                                            dot={{ fill: '#f43f5e', strokeWidth: 0, r: 4 }}
+                                            dot={{ fill: chartTheme.systolic, strokeWidth: 0, r: 4 }}
                                             name="Systolic"
                                         />
                                         {/* Diastolic line */}
                                         <Line
                                             type="monotone"
                                             dataKey="diastolic"
-                                            stroke="#3b82f6"
+                                            stroke={chartTheme.diastolic}
                                             strokeWidth={2}
-                                            dot={{ fill: '#3b82f6', strokeWidth: 0, r: 4 }}
+                                            dot={{ fill: chartTheme.diastolic, strokeWidth: 0, r: 4 }}
                                             name="Diastolic"
                                         />
                                     </LineChart>
@@ -785,11 +800,11 @@ export default function HealthDashboardPage() {
                             {/* Legend */}
                             <div className="flex items-center justify-center gap-6 mt-4 text-sm">
                                 <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-rose-500" />
+                                    <div className="w-3 h-3 rounded-full bg-error" />
                                     <span className="text-text-secondary">Systolic (top number)</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-blue-500" />
+                                    <div className="w-3 h-3 rounded-full bg-info" />
                                     <span className="text-text-secondary">Diastolic (bottom number)</span>
                                 </div>
                             </div>
@@ -807,35 +822,35 @@ export default function HealthDashboardPage() {
                             <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={glucoseData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                                         <XAxis
                                             dataKey="dateLabel"
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                         />
                                         <YAxis
                                             domain={[60, 250]}
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                             axisLine={false}
                                         />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#fff',
-                                                border: '1px solid #e5e7eb',
+                                                backgroundColor: chartTheme.surface,
+                                                border: `1px solid ${chartTheme.border}`,
                                                 borderRadius: '8px',
-                                                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                                boxShadow: chartTheme.shadow,
                                             }}
                                             labelStyle={{ fontWeight: 600 }}
                                         />
-                                        <ReferenceLine y={70} stroke="#fbbf24" strokeDasharray="5 5" />
-                                        <ReferenceLine y={130} stroke="#fbbf24" strokeDasharray="5 5" />
+                                        <ReferenceLine y={70} stroke={chartTheme.caution} strokeDasharray="5 5" />
+                                        <ReferenceLine y={130} stroke={chartTheme.caution} strokeDasharray="5 5" />
                                         <Line
                                             type="monotone"
                                             dataKey="reading"
-                                            stroke="#3b82f6"
+                                            stroke={chartTheme.glucose}
                                             strokeWidth={2}
-                                            dot={{ fill: '#3b82f6', strokeWidth: 0, r: 4 }}
+                                            dot={{ fill: chartTheme.glucose, strokeWidth: 0, r: 4 }}
                                             name="Glucose"
                                         />
                                     </LineChart>
@@ -855,24 +870,24 @@ export default function HealthDashboardPage() {
                             <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={weightData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                                         <XAxis
                                             dataKey="dateLabel"
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                         />
                                         <YAxis
                                             domain={['dataMin - 10', 'dataMax + 10']}
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                             axisLine={false}
                                         />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#fff',
-                                                border: '1px solid #e5e7eb',
+                                                backgroundColor: chartTheme.surface,
+                                                border: `1px solid ${chartTheme.border}`,
                                                 borderRadius: '8px',
-                                                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                                boxShadow: chartTheme.shadow,
                                             }}
                                             labelStyle={{ fontWeight: 600 }}
                                             formatter={(value) => [`${value} lbs`, 'Weight']}
@@ -880,9 +895,9 @@ export default function HealthDashboardPage() {
                                         <Line
                                             type="monotone"
                                             dataKey="weight"
-                                            stroke="#22c55e"
+                                            stroke={chartTheme.weight}
                                             strokeWidth={2}
-                                            dot={{ fill: '#22c55e', strokeWidth: 0, r: 4 }}
+                                            dot={{ fill: chartTheme.weight, strokeWidth: 0, r: 4 }}
                                             name="Weight"
                                         />
                                     </LineChart>
@@ -905,25 +920,25 @@ export default function HealthDashboardPage() {
                                         ...d,
                                         dateLabel: format(new Date(d.date), 'MMM d'),
                                     }))} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                                         <XAxis
                                             dataKey="dateLabel"
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                         />
                                         <YAxis
                                             domain={[0, 100]}
-                                            tick={{ fontSize: 12, fill: '#6b7280' }}
+                                            tick={{ fontSize: 12, fill: chartTheme.tick }}
                                             tickLine={false}
                                             axisLine={false}
                                             tickFormatter={(v) => `${v}%`}
                                         />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#fff',
-                                                border: '1px solid #e5e7eb',
+                                                backgroundColor: chartTheme.surface,
+                                                border: `1px solid ${chartTheme.border}`,
                                                 borderRadius: '8px',
-                                                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                                                boxShadow: chartTheme.shadow,
                                             }}
                                             labelStyle={{ fontWeight: 600 }}
                                             formatter={(value: any, _name: any, props: any) => [
@@ -931,13 +946,13 @@ export default function HealthDashboardPage() {
                                                 'Adherence'
                                             ]}
                                         />
-                                        <ReferenceLine y={80} stroke="#22c55e" strokeDasharray="5 5" label={{ value: '80% target', fill: '#22c55e', fontSize: 11 }} />
+                                        <ReferenceLine y={80} stroke={chartTheme.target} strokeDasharray="5 5" label={{ value: '80% target', fill: chartTheme.target, fontSize: 11 }} />
                                         <Line
                                             type="monotone"
                                             dataKey="adherence"
-                                            stroke="#a855f7"
+                                            stroke={chartTheme.adherence}
                                             strokeWidth={2}
-                                            dot={{ fill: '#a855f7', strokeWidth: 0, r: 4 }}
+                                            dot={{ fill: chartTheme.adherence, strokeWidth: 0, r: 4 }}
                                             name="Adherence"
                                         />
                                     </LineChart>

@@ -15,7 +15,7 @@ import {
   Stethoscope,
   TrendingUp,
 } from 'lucide-react';
-import { PageContainer } from '@/components/layout/PageContainer';
+import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -177,27 +177,23 @@ export default function ConditionsPage() {
       <div className="space-y-6">
         {/* Back Button */}
         <Button variant="ghost" size="sm" asChild>
-          <Link href={`/care/${patientId}`} className="flex items-center text-brand-primary hover:text-brand-primary-dark">
+          <Link href={`/care/${patientId}`} className="flex items-center text-text-secondary hover:text-brand-primary">
             <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
             <span>Back to Overview</span>
           </Link>
         </Button>
 
         {/* Header */}
-        <header className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
-            Conditions & Diagnoses
-          </h1>
-          <p className="text-text-secondary">
-            {conditions.length} condition{conditions.length !== 1 ? 's' : ''} tracked across {visits?.length ?? 0} visit{(visits?.length ?? 0) !== 1 ? 's' : ''}
-          </p>
-        </header>
+        <PageHeader
+          title="Conditions & Diagnoses"
+          subtitle={`${conditions.length} condition${conditions.length !== 1 ? 's' : ''} tracked across ${visits?.length ?? 0} visit${(visits?.length ?? 0) !== 1 ? 's' : ''}`}
+        />
 
         {/* Empty State */}
         {conditions.length === 0 ? (
           <Card variant="elevated" padding="lg" className="text-center py-16">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-primary-pale mx-auto mb-4">
-              <Activity className="h-8 w-8 text-brand-primary" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background-subtle mx-auto mb-4">
+              <Activity className="h-8 w-8 text-text-muted" />
             </div>
             <h2 className="text-xl font-semibold text-text-primary mb-2">
               No conditions tracked yet

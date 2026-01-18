@@ -250,7 +250,7 @@ export default function CareVisitDetailPage() {
         {/* Back Button */}
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" asChild>
-            <Link href={`/care/${patientId}/visits`} className="flex items-center text-brand-primary hover:text-brand-primary-dark">
+            <Link href={`/care/${patientId}/visits`} className="flex items-center text-text-secondary hover:text-brand-primary">
               <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
               <span>Back to visits</span>
             </Link>
@@ -280,25 +280,25 @@ export default function CareVisitDetailPage() {
         {/* Highlight Cards */}
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <HighlightCard
-            icon={<Calendar className="h-4 w-4 text-brand-primary" />}
+            icon={<Calendar className="h-4 w-4 text-text-muted" />}
             label="Visit Date"
             value={formattedDate || 'Not recorded'}
             onEdit={handleOpenEdit}
           />
           <HighlightCard
-            icon={<Stethoscope className="h-4 w-4 text-brand-primary" />}
+            icon={<Stethoscope className="h-4 w-4 text-text-muted" />}
             label="Provider"
             value={visit.provider || 'Not recorded'}
             onEdit={handleOpenEdit}
           />
           <HighlightCard
-            icon={<Sparkles className="h-4 w-4 text-brand-primary" />}
+            icon={<Sparkles className="h-4 w-4 text-text-muted" />}
             label="Specialty"
             value={visit.specialty || 'Not recorded'}
             onEdit={handleOpenEdit}
           />
           <HighlightCard
-            icon={<MapPin className="h-4 w-4 text-brand-primary" />}
+            icon={<MapPin className="h-4 w-4 text-text-muted" />}
             label="Location"
             value={visit.location || 'Not recorded'}
             onEdit={handleOpenEdit}
@@ -311,7 +311,7 @@ export default function CareVisitDetailPage() {
           <div className="relative z-10 p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-4">
               <div className="space-y-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-brand-primary shadow-sm">
+                <span className="inline-flex items-center gap-1 rounded-full bg-surface/80 px-3 py-1 text-xs font-semibold text-text-secondary shadow-sm">
                   <Sparkles className="h-3 w-3" />
                   AI Summary
                 </span>
@@ -375,7 +375,7 @@ export default function CareVisitDetailPage() {
           <Card variant="elevated" padding="none" className="overflow-hidden">
             <div className="border-b border-border-light bg-background-subtle/50 px-5 py-4">
               <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-                <Stethoscope className="h-5 w-5 text-brand-primary" />
+                <Stethoscope className="h-5 w-5 text-text-muted" />
                 Diagnoses
               </h2>
               <p className="text-sm text-text-secondary mt-1">

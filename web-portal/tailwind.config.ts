@@ -16,65 +16,70 @@ const config: Config = {
       colors: {
         // Brand Colors
         brand: {
-          primary: '#40C9D0',
-          'primary-dark': '#078A94',
-          accent: '#0A99A4',
-          secondary: '#89D8C6',
-          'primary-light': '#5DD3D9',
-          'primary-pale': '#E1F9FA',
-          'accent-light': '#BEE7DF',
+          primary: 'var(--color-brand-primary)',
+          'primary-dark': 'var(--color-brand-primary-dark)',
+          accent: 'var(--color-brand-accent)',
+          secondary: 'var(--color-brand-secondary)',
+          'primary-light': 'var(--color-brand-primary-light)',
+          'primary-pale': 'var(--color-brand-primary-pale)',
+          'accent-light': 'var(--color-brand-accent-light)',
         },
 
         // Background
         background: {
-          DEFAULT: '#F8FAFB',
-          subtle: '#F3F5F7',
+          DEFAULT: 'var(--color-background)',
+          subtle: 'var(--color-background-subtle)',
         },
 
         // Surface
-        surface: '#FFFFFF',
+        surface: {
+          DEFAULT: 'var(--color-surface)',
+          elevated: 'var(--color-surface-elevated)',
+          muted: 'var(--color-surface-muted)',
+        },
 
         // Text
         text: {
-          primary: '#1A2332',
-          secondary: '#4A5568',
-          tertiary: '#6B7280',
-          muted: '#9CA3AF',
-          inverse: '#FFFFFF',
+          primary: 'var(--color-text-primary)',
+          secondary: 'var(--color-text-secondary)',
+          tertiary: 'var(--color-text-tertiary)',
+          muted: 'var(--color-text-muted)',
+          inverse: 'var(--color-text-inverse)',
         },
 
         // Status
         success: {
-          DEFAULT: '#34D399',
-          light: '#D1FAE5',
-          dark: '#059669',
+          DEFAULT: 'var(--color-success)',
+          light: 'var(--color-success-light)',
+          dark: 'var(--color-success-dark)',
         },
         warning: {
-          DEFAULT: '#FBBF24',
-          light: '#FEF3C7',
-          dark: '#D97706',
+          DEFAULT: 'var(--color-warning)',
+          light: 'var(--color-warning-light)',
+          dark: 'var(--color-warning-dark)',
         },
         error: {
-          DEFAULT: '#F87171',
-          light: '#FEE2E2',
-          dark: '#DC2626',
+          DEFAULT: 'var(--color-error)',
+          light: 'var(--color-error-light)',
+          dark: 'var(--color-error-dark)',
         },
         info: {
-          DEFAULT: '#60A5FA',
-          light: '#DBEAFE',
-          dark: '#2563EB',
+          DEFAULT: 'var(--color-info)',
+          light: 'var(--color-info-light)',
+          dark: 'var(--color-info-dark)',
         },
 
         // Semantic
         border: {
-          DEFAULT: 'rgba(26, 35, 50, 0.08)',
-          light: 'rgba(26, 35, 50, 0.04)',
+          DEFAULT: 'var(--color-border)',
+          light: 'var(--color-border-light)',
+          subtle: 'var(--color-border-subtle)',
         },
-        divider: 'rgba(26, 35, 50, 0.06)',
-        overlay: 'rgba(26, 35, 50, 0.40)',
-        hover: 'rgba(64, 201, 208, 0.10)',
-        pressed: 'rgba(64, 201, 208, 0.18)',
-        focus: 'rgba(64, 201, 208, 0.26)',
+        divider: 'var(--color-divider)',
+        overlay: 'var(--color-overlay)',
+        hover: 'var(--color-hover)',
+        pressed: 'var(--color-pressed)',
+        focus: 'var(--color-focus)',
       },
 
       // Border Radius - Soft, Approachable

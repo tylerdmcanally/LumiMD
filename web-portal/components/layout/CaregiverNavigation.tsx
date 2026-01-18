@@ -123,7 +123,7 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
                             <span className="text-2xl font-black tracking-tight text-brand-primary leading-none">
                                 LumiMD
                             </span>
-                            <span className="hidden sm:inline-block text-sm font-medium text-text-muted bg-brand-primary-pale px-2 py-0.5 rounded-full">
+                            <span className="hidden sm:inline-block text-sm font-medium text-text-tertiary bg-background-subtle px-2 py-0.5 rounded-full">
                                 Care
                             </span>
                         </Link>
@@ -142,10 +142,10 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
                                     key={item.href}
                                     href={item.href}
                                     className={cn(
-                                        'flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150',
+                                        'flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150 border border-transparent',
                                         isActive
-                                            ? 'bg-brand-primary text-white shadow-sm'
-                                            : 'text-text-secondary hover:bg-hover hover:text-brand-primary'
+                                            ? 'bg-background-subtle text-text-primary border-border-light shadow-sm'
+                                            : 'text-text-secondary hover:bg-hover hover:text-text-primary'
                                     )}
                                     aria-current={isActive ? 'page' : undefined}
                                 >
@@ -164,7 +164,7 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleSwitchToMyHealth}
-                                className="hidden md:flex items-center gap-2 text-text-secondary hover:text-brand-primary"
+                                className="hidden md:flex items-center gap-2 text-text-secondary hover:text-text-primary"
                             >
                                 <ArrowLeftRight className="h-4 w-4" />
                                 <span>My Health</span>
@@ -181,7 +181,7 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
                                     userMenuOpen && 'bg-hover'
                                 )}
                             >
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-primary-pale text-brand-primary">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-background-subtle text-text-secondary">
                                     <User className="h-4 w-4" />
                                 </div>
                                 <span className="hidden sm:block text-sm font-medium">{displayName}</span>

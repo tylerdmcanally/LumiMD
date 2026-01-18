@@ -66,14 +66,14 @@ export function WelcomeCards() {
 function WelcomeCardItem({ card }: { card: WelcomeCard }) {
     const variantStyles = {
         primary: 'border-brand-primary/20 bg-brand-primary/5 hover:bg-brand-primary/10 hover:border-brand-primary/30',
-        secondary: 'border-blue-500/20 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-500/30 dark:bg-blue-950/20 dark:hover:bg-blue-950/30',
-        tertiary: 'border-purple-500/20 bg-purple-50/50 hover:bg-purple-50 hover:border-purple-500/30 dark:bg-purple-950/20 dark:hover:bg-purple-950/30',
+        secondary: 'border-brand-secondary/30 bg-brand-primary-pale/70 hover:bg-brand-primary-pale hover:border-brand-secondary/40',
+        tertiary: 'border-brand-accent/20 bg-brand-accent/5 hover:bg-brand-accent/10 hover:border-brand-accent/30',
     };
 
     const iconStyles = {
         primary: 'bg-brand-primary/10 text-brand-primary',
-        secondary: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-        tertiary: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
+        secondary: 'bg-brand-secondary/15 text-brand-primary-dark',
+        tertiary: 'bg-brand-accent/10 text-brand-accent',
     };
 
     const content = (

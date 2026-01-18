@@ -68,21 +68,21 @@ export function UnverifiedEmailBanner() {
     return (
         <div
             className={cn(
-                'bg-amber-50/90 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-800/30',
+                'bg-warning-light/80 dark:bg-warning/10 border-b border-warning/30',
                 'px-4 py-3',
             )}
         >
             <div className="max-w-8xl mx-auto">
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40 shrink-0">
-                        <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-warning/15 shrink-0">
+                        <AlertCircle className="h-4 w-4 text-warning-dark" />
                     </div>
 
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                        <p className="text-sm font-medium text-warning-dark">
                             Please verify your email address
                         </p>
-                        <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mt-0.5">
+                        <p className="text-xs text-warning-dark/80 mt-0.5">
                             Verify your email to ensure you can recover your account. Check your inbox for the verification link.
                         </p>
                     </div>
@@ -94,7 +94,7 @@ export function UnverifiedEmailBanner() {
                             onClick={handleResend}
                             loading={isSending}
                             disabled={isSending}
-                            className="text-amber-700 hover:text-amber-900 hover:bg-amber-100 dark:text-amber-300 dark:hover:text-amber-100 dark:hover:bg-amber-900/40"
+                            className="text-warning-dark hover:text-warning-dark hover:bg-warning/10"
                         >
                             <Mail className="h-4 w-4 mr-2" />
                             Resend
@@ -102,7 +102,7 @@ export function UnverifiedEmailBanner() {
 
                         <button
                             onClick={handleDismiss}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-amber-600 hover:text-amber-900 hover:bg-amber-100 dark:text-amber-400 dark:hover:text-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-warning-dark hover:text-warning-dark hover:bg-warning/10 transition-colors"
                             aria-label="Dismiss"
                         >
                             <X className="h-4 w-4" />

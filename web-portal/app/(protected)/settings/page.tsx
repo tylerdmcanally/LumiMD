@@ -659,9 +659,9 @@ function AIDetectedConditionsCard() {
     };
 
     const statusColors = {
-        active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-        resolved: 'bg-gray-100 text-gray-600 border-gray-200',
-        monitoring: 'bg-amber-100 text-amber-700 border-amber-200',
+        active: 'bg-success-light text-success-dark border-success/30',
+        resolved: 'bg-background-subtle text-text-secondary border-border-light',
+        monitoring: 'bg-warning-light text-warning-dark border-warning/30',
     };
 
     if (isLoading) {

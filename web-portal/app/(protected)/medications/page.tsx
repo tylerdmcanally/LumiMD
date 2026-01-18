@@ -569,10 +569,10 @@ function MedicationRow({
   }, 'low') : null;
 
   const warningConfig = highestSeverity ? ({
-    critical: { icon: ShieldAlert, label: 'Critical', className: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100', iconClassName: 'text-red-600' },
-    high: { icon: AlertTriangle, label: 'High', className: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100', iconClassName: 'text-orange-600' },
-    moderate: { icon: AlertCircle, label: 'Moderate', className: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100', iconClassName: 'text-yellow-600' },
-    low: { icon: Info, label: 'Low', className: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100', iconClassName: 'text-blue-600' },
+    critical: { icon: ShieldAlert, label: 'Critical', className: 'bg-error-light text-error-dark border-error/30 hover:bg-error/20', iconClassName: 'text-error-dark' },
+    high: { icon: AlertTriangle, label: 'High', className: 'bg-warning-light text-warning-dark border-warning/30 hover:bg-warning/20', iconClassName: 'text-warning-dark' },
+    moderate: { icon: AlertCircle, label: 'Moderate', className: 'bg-warning-light/70 text-warning-dark border-warning/20 hover:bg-warning/10', iconClassName: 'text-warning-dark' },
+    low: { icon: Info, label: 'Low', className: 'bg-info-light text-info-dark border-info/30 hover:bg-info/15', iconClassName: 'text-info-dark' },
   } as const)[highestSeverity as 'critical' | 'high' | 'moderate' | 'low'] : null;
 
   return (
@@ -843,10 +843,10 @@ function MedicationCard({
   }, 'low') : null;
 
   const warningConfig = highestSeverity ? ({
-    critical: { icon: ShieldAlert, label: 'Critical', className: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100', iconClassName: 'text-red-600' },
-    high: { icon: AlertTriangle, label: 'High', className: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100', iconClassName: 'text-orange-600' },
-    moderate: { icon: AlertCircle, label: 'Moderate', className: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100', iconClassName: 'text-yellow-600' },
-    low: { icon: Info, label: 'Low', className: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100', iconClassName: 'text-blue-600' },
+    critical: { icon: ShieldAlert, label: 'Critical', className: 'bg-error-light text-error-dark border-error/30 hover:bg-error/20', iconClassName: 'text-error-dark' },
+    high: { icon: AlertTriangle, label: 'High', className: 'bg-warning-light text-warning-dark border-warning/30 hover:bg-warning/20', iconClassName: 'text-warning-dark' },
+    moderate: { icon: AlertCircle, label: 'Moderate', className: 'bg-warning-light/70 text-warning-dark border-warning/20 hover:bg-warning/10', iconClassName: 'text-warning-dark' },
+    low: { icon: Info, label: 'Low', className: 'bg-info-light text-info-dark border-info/30 hover:bg-info/15', iconClassName: 'text-info-dark' },
   } as const)[highestSeverity as 'critical' | 'high' | 'moderate' | 'low'] : null;
 
   const handleCardClick = () => {
@@ -1445,10 +1445,10 @@ function MedicationWarningDialog({ data, onClose }: MedicationWarningDialogProps
 
   // Severity-based styling
   const severityColors = {
-    critical: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900', badge: 'bg-red-100 text-red-800' },
-    high: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-900', badge: 'bg-orange-100 text-orange-800' },
-    moderate: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-900', badge: 'bg-yellow-100 text-yellow-800' },
-    low: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', badge: 'bg-blue-100 text-blue-800' },
+    critical: { bg: 'bg-error-light', border: 'border-error/30', text: 'text-error-dark', badge: 'bg-error/15 text-error-dark' },
+    high: { bg: 'bg-warning-light', border: 'border-warning/30', text: 'text-warning-dark', badge: 'bg-warning/15 text-warning-dark' },
+    moderate: { bg: 'bg-warning-light/70', border: 'border-warning/20', text: 'text-warning-dark', badge: 'bg-warning/10 text-warning-dark' },
+    low: { bg: 'bg-info-light', border: 'border-info/30', text: 'text-info-dark', badge: 'bg-info/15 text-info-dark' },
   };
 
   // Icons for each severity
@@ -1538,7 +1538,7 @@ function MedicationWarningDialog({ data, onClose }: MedicationWarningDialogProps
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-gray-200">
+                  <div className="pt-2 border-t border-border-light">
                     <div className="text-sm font-semibold text-text-primary mb-1">Recommendation:</div>
                     <div className="text-sm text-text-secondary font-medium">{warning.recommendation}</div>
                   </div>

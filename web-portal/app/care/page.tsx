@@ -21,7 +21,7 @@ import {
     TrendingDown,
     Minus,
 } from 'lucide-react';
-import { PageContainer } from '@/components/layout/PageContainer';
+import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -58,7 +58,7 @@ function getSeverityStyles(severity: CareAlert['severity']) {
         case 'medium':
             return { bg: 'bg-warning/10', border: 'border-warning/20', text: 'text-warning-dark', icon: 'text-warning' };
         case 'low':
-            return { bg: 'bg-brand-primary-pale', border: 'border-brand-primary/20', text: 'text-text-primary', icon: 'text-brand-primary' };
+            return { bg: 'bg-background-subtle', border: 'border-border-light', text: 'text-text-secondary', icon: 'text-text-muted' };
     }
 }
 
@@ -359,7 +359,7 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                     {/* Medications */}
                     <div className="bg-background-subtle rounded-lg p-2.5 text-center">
                         <div className="flex items-center justify-center gap-1 mb-1">
-                            <Pill className="h-4 w-4 text-brand-primary" />
+                            <Pill className="h-4 w-4 text-text-muted" />
                         </div>
                         <p className="text-lg font-semibold text-text-primary">
                             {medicationsToday.taken}/{medicationsToday.total}
@@ -370,7 +370,7 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                     {/* Actions */}
                     <div className="bg-background-subtle rounded-lg p-2.5 text-center">
                         <div className="flex items-center justify-center gap-1 mb-1">
-                            <ClipboardList className="h-4 w-4 text-warning" />
+                            <ClipboardList className="h-4 w-4 text-text-muted" />
                         </div>
                         <p className={cn(
                             'text-lg font-semibold',
@@ -519,17 +519,15 @@ export default function CareDashboardPage() {
 
     return (
         <PageContainer maxWidth="xl">
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
-                    Care Dashboard
-                </h1>
-                <p className="text-text-secondary mt-1">
-                    {hasPatients
+            <PageHeader
+                title="Care Dashboard"
+                subtitle={
+                    hasPatients
                         ? `Managing ${patients.length} family member${patients.length > 1 ? 's' : ''}`
-                        : 'No shared patients yet'}
-                </p>
-            </div>
+                        : 'No shared patients yet'
+                }
+                className="mb-6"
+            />
 
             {!hasPatients ? (
                 /* Empty State */
@@ -551,7 +549,7 @@ export default function CareDashboardPage() {
                     {/* Left: Patient Cards (2/3 width on desktop) */}
                     <div className="lg:col-span-2">
                         <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2 mb-4">
-                            <Users className="h-5 w-5 text-brand-primary" />
+                            <Users className="h-5 w-5 text-text-muted" />
                             Family Members
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

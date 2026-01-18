@@ -12,7 +12,7 @@ import {
     Clock,
     AlertTriangle,
 } from 'lucide-react';
-import { PageContainer } from '@/components/layout/PageContainer';
+import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCareMedications } from '@/lib/api/hooks';
@@ -63,21 +63,18 @@ export default function PatientMedicationsPage() {
         <PageContainer maxWidth="lg">
             {/* Back Button */}
             <Button variant="ghost" size="sm" className="mb-4" asChild>
-                <Link href={`/care/${patientId}`} className="flex items-center">
+                <Link href={`/care/${patientId}`} className="flex items-center text-text-secondary hover:text-brand-primary">
                     <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
                     <span>Back to Overview</span>
                 </Link>
             </Button>
 
             {/* Header */}
-            <div className="mb-8">
-                <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
-                    Medications
-                </h1>
-                <p className="text-text-secondary mt-1">
-                    {activeMeds.length} active medication{activeMeds.length !== 1 ? 's' : ''}
-                </p>
-            </div>
+            <PageHeader
+                title="Medications"
+                subtitle={`${activeMeds.length} active medication${activeMeds.length !== 1 ? 's' : ''}`}
+                className="mb-8"
+            />
 
             {medications?.length === 0 ? (
                 <Card variant="elevated" padding="lg" className="text-center py-12">
@@ -101,7 +98,7 @@ export default function PatientMedicationsPage() {
                                 {activeMeds.map((med) => (
                                     <Card key={med.id} variant="elevated" padding="md">
                                         <div className="flex items-start gap-4">
-                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary shrink-0">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted shrink-0">
                                                 <Pill className="h-5 w-5" />
                                             </div>
                                             <div className="flex-1 min-w-0">

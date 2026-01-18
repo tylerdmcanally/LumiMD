@@ -25,7 +25,7 @@ export default function PrivacyPolicyPage() {
         <div className="bg-surface rounded-2xl shadow-elevated p-8 sm:p-10 space-y-10 border border-border-light">
           {/* TODO: REMOVE THIS BETA SECTION BEFORE PUBLIC LAUNCH */}
           {/* Beta Program Notice */}
-          <section className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded">
+          <section className="bg-warning-light/60 border-l-4 border-warning p-6 rounded">
             <h2 className="text-xl font-semibold text-text-primary mb-3">
               Beta Program Notice
             </h2>

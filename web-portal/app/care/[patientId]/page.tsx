@@ -233,20 +233,22 @@ export default function PatientDetailPage() {
                 {/* Hero Header */}
                 <div className="rounded-2xl bg-hero-brand p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
                     <Button variant="ghost" size="sm" asChild className="mb-3 -ml-2">
-                        <Link href="/care" className="inline-flex items-center gap-2 text-brand-primary-dark hover:text-brand-primary">
+                        <Link href="/care" className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-primary">
                             <ArrowLeft className="h-4 w-4" />
                             <span>Back to Care Dashboard</span>
                         </Link>
                     </Button>
-                    <span className="text-sm font-medium text-brand-primary-dark uppercase tracking-wider">
-                        Patient Overview
-                    </span>
-                    <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
-                        Quick Summary
-                    </h1>
-                    <p className="text-text-secondary mt-1">
-                        Today's snapshot ({medStatus?.date})
-                    </p>
+                    <div className="space-y-1">
+                        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                            Patient Overview
+                        </span>
+                        <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
+                            Quick Summary
+                        </h1>
+                        <p className="text-sm text-text-secondary">
+                            Today's snapshot ({medStatus?.date})
+                        </p>
+                    </div>
                 </div>
 
                 {/* Needs Attention Banner */}
@@ -317,14 +319,14 @@ export default function PatientDetailPage() {
                     <Card variant="elevated" padding="lg">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                                     <Pill className="h-5 w-5" />
                                 </div>
                                 <h2 className="text-lg font-semibold text-text-primary">Today's Medications</h2>
                             </div>
                             <Link 
                                 href={`/care/${patientId}/medications`}
-                                className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+                                className="text-sm font-medium text-text-secondary hover:text-brand-primary flex items-center gap-1"
                             >
                                 View all
                                 <ArrowRight className="h-4 w-4" />
@@ -391,14 +393,14 @@ export default function PatientDetailPage() {
                     <Card variant="elevated" padding="lg">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-error-light text-error-dark">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                                     <Heart className="h-5 w-5" />
                                 </div>
                                 <h2 className="text-lg font-semibold text-text-primary">Health Snapshot</h2>
                             </div>
                             <Link 
                                 href={`/care/${patientId}/health`}
-                                className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+                                className="text-sm font-medium text-text-secondary hover:text-brand-primary flex items-center gap-1"
                             >
                                 View details
                                 <ArrowRight className="h-4 w-4" />
@@ -439,14 +441,14 @@ export default function PatientDetailPage() {
                     <section>
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning-light text-warning-dark">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                                     <ListTodo className="h-4 w-4" />
                                 </div>
                                 <h2 className="text-lg font-semibold text-text-primary">Upcoming Actions</h2>
                             </div>
                             <Link
                                 href={`/care/${patientId}/actions`}
-                                className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+                                className="text-sm font-medium text-text-secondary hover:text-brand-primary flex items-center gap-1"
                             >
                                 View all
                                 <ArrowRight className="h-3 w-3" />
@@ -522,14 +524,14 @@ export default function PatientDetailPage() {
                     <section>
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info-light text-info-dark">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                                     <Zap className="h-4 w-4" />
                                 </div>
                                 <h2 className="text-lg font-semibold text-text-primary">Recent Med Changes</h2>
                             </div>
                             <Link
                                 href={`/care/${patientId}/medications`}
-                                className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+                                className="text-sm font-medium text-text-secondary hover:text-brand-primary flex items-center gap-1"
                             >
                                 View all
                                 <ArrowRight className="h-3 w-3" />
@@ -591,7 +593,7 @@ export default function PatientDetailPage() {
                 {coverage && (
                     <section>
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                                 <FileBarChart className="h-4 w-4" />
                             </div>
                             <h2 className="text-lg font-semibold text-text-primary">Data Coverage</h2>
@@ -693,7 +695,7 @@ export default function PatientDetailPage() {
                 {recentActivity.length > 0 && (
                     <section>
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                                 <Clock className="h-4 w-4" />
                             </div>
                             <h2 className="text-lg font-semibold text-text-primary">Recent Activity</h2>
@@ -706,8 +708,8 @@ export default function PatientDetailPage() {
                                             'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
                                             activity.type === 'med_taken' && 'bg-success-light text-success-dark',
                                             activity.type === 'med_skipped' && 'bg-warning-light text-warning-dark',
-                                            activity.type === 'health_log' && 'bg-brand-primary-pale text-brand-primary',
-                                            activity.type === 'visit' && 'bg-info-light text-info-dark'
+                                            activity.type === 'health_log' && 'bg-background-subtle text-text-muted',
+                                            activity.type === 'visit' && 'bg-background-subtle text-text-muted'
                                         )}>
                                             {activity.type === 'med_taken' && <CheckCircle className="h-5 w-5" />}
                                             {activity.type === 'med_skipped' && <XCircle className="h-5 w-5" />}
@@ -776,7 +778,7 @@ export default function PatientDetailPage() {
                 <section>
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                                 <CheckSquare className="h-4 w-4" />
                             </div>
                             <h2 className="text-lg font-semibold text-text-primary">My Care Tasks</h2>
@@ -1006,11 +1008,11 @@ function HealthSnapshotItem({
     const isCaution = alertLevel === 'caution';
 
     const variantClasses = {
-        brand: 'bg-brand-primary-pale text-brand-primary',
-        error: 'bg-error-light text-error-dark',
-        info: 'bg-info-light text-info-dark',
-        success: 'bg-success-light text-success-dark',
-        warning: 'bg-warning-light text-warning-dark',
+        brand: 'bg-background-subtle text-text-muted',
+        error: 'bg-background-subtle text-text-muted',
+        info: 'bg-background-subtle text-text-muted',
+        success: 'bg-background-subtle text-text-muted',
+        warning: 'bg-background-subtle text-text-muted',
     };
 
     return (
@@ -1060,11 +1062,11 @@ function QuickActionCard({
     variant: 'brand' | 'error' | 'info' | 'success' | 'warning';
 }) {
     const variantClasses = {
-        brand: 'bg-brand-primary-pale text-brand-primary',
-        error: 'bg-error-light text-error-dark',
-        info: 'bg-info-light text-info-dark',
-        success: 'bg-success-light text-success-dark',
-        warning: 'bg-warning-light text-warning-dark',
+        brand: 'bg-background-subtle text-text-muted',
+        error: 'bg-background-subtle text-text-muted',
+        info: 'bg-background-subtle text-text-muted',
+        success: 'bg-background-subtle text-text-muted',
+        warning: 'bg-background-subtle text-text-muted',
     };
 
     return (

@@ -42,15 +42,15 @@ import {
 import { useCareHealthLogs, type HealthLogEntry } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
-// Brand colors from design tokens
-const BRAND_COLORS = {
-  primary: '#40C9D0',
-  primaryDark: '#078A94',
-  secondary: '#89D8C6',
-  accent: '#0A99A4',
-  success: '#34D399',
-  warning: '#FBBF24',
-  error: '#F87171',
+const chartTheme = {
+  primary: 'var(--color-brand-primary)',
+  accent: 'var(--color-brand-accent)',
+  secondary: 'var(--color-brand-secondary)',
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  error: 'var(--color-error)',
+  grid: 'var(--color-border)',
+  tick: 'var(--color-text-tertiary)',
 };
 
 type MetricType = 'bp' | 'glucose' | 'weight';
@@ -120,20 +120,20 @@ export default function HealthMetricsPage() {
         {/* Hero Header */}
         <div className="rounded-2xl bg-hero-brand p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
           <Button variant="ghost" size="sm" asChild className="mb-3 -ml-2">
-            <Link href={`/care/${patientId}`} className="inline-flex items-center gap-2 text-brand-primary-dark hover:text-brand-primary">
+            <Link href={`/care/${patientId}`} className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-primary">
               <ArrowLeft className="h-4 w-4" />
               <span>Back to Overview</span>
             </Link>
           </Button>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <span className="text-sm font-medium text-brand-primary-dark uppercase tracking-wider">
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                 Health Tracking
               </span>
               <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
                 Health Metrics
               </h1>
-              <p className="text-text-secondary mt-1">
+              <p className="text-sm text-text-secondary mt-1">
                 Track blood pressure, glucose, and weight trends
               </p>
             </div>
@@ -237,15 +237,15 @@ export default function HealthMetricsPage() {
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(26, 35, 50, 0.08)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                     <XAxis 
                       dataKey="date" 
-                      stroke="#9CA3AF" 
+                      stroke={chartTheme.tick} 
                       fontSize={12}
                       tickLine={false}
                     />
                     <YAxis 
-                      stroke="#9CA3AF" 
+                      stroke={chartTheme.tick} 
                       fontSize={12}
                       tickLine={false}
                       domain={getYAxisDomain(selectedMetric)}
@@ -258,21 +258,21 @@ export default function HealthMetricsPage() {
                         <Line
                           type="monotone"
                           dataKey="systolic"
-                          stroke={BRAND_COLORS.error}
+                          stroke={chartTheme.error}
                           strokeWidth={2}
-                          dot={{ fill: BRAND_COLORS.error, strokeWidth: 0, r: 4 }}
+                          dot={{ fill: chartTheme.error, strokeWidth: 0, r: 4 }}
                           name="Systolic"
                         />
                         <Line
                           type="monotone"
                           dataKey="diastolic"
-                          stroke={BRAND_COLORS.primary}
+                          stroke={chartTheme.primary}
                           strokeWidth={2}
-                          dot={{ fill: BRAND_COLORS.primary, strokeWidth: 0, r: 4 }}
+                          dot={{ fill: chartTheme.primary, strokeWidth: 0, r: 4 }}
                           name="Diastolic"
                         />
-                        <ReferenceLine y={120} stroke={BRAND_COLORS.warning} strokeDasharray="5 5" />
-                        <ReferenceLine y={80} stroke={BRAND_COLORS.warning} strokeDasharray="5 5" />
+                        <ReferenceLine y={120} stroke={chartTheme.warning} strokeDasharray="5 5" />
+                        <ReferenceLine y={80} stroke={chartTheme.warning} strokeDasharray="5 5" />
                       </>
                     )}
                     {selectedMetric === 'glucose' && (
@@ -280,22 +280,22 @@ export default function HealthMetricsPage() {
                         <Line
                           type="monotone"
                           dataKey="reading"
-                          stroke={BRAND_COLORS.accent}
+                          stroke={chartTheme.accent}
                           strokeWidth={2}
-                          dot={{ fill: BRAND_COLORS.accent, strokeWidth: 0, r: 4 }}
+                          dot={{ fill: chartTheme.accent, strokeWidth: 0, r: 4 }}
                           name="Glucose"
                         />
-                        <ReferenceLine y={100} stroke={BRAND_COLORS.success} strokeDasharray="5 5" />
-                        <ReferenceLine y={140} stroke={BRAND_COLORS.warning} strokeDasharray="5 5" />
+                        <ReferenceLine y={100} stroke={chartTheme.success} strokeDasharray="5 5" />
+                        <ReferenceLine y={140} stroke={chartTheme.warning} strokeDasharray="5 5" />
                       </>
                     )}
                     {selectedMetric === 'weight' && (
                       <Line
                         type="monotone"
                         dataKey="weight"
-                        stroke={BRAND_COLORS.secondary}
+                        stroke={chartTheme.secondary}
                         strokeWidth={2}
-                        dot={{ fill: BRAND_COLORS.secondary, strokeWidth: 0, r: 4 }}
+                        dot={{ fill: chartTheme.secondary, strokeWidth: 0, r: 4 }}
                         name="Weight"
                       />
                     )}
@@ -305,7 +305,7 @@ export default function HealthMetricsPage() {
             ) : (
               <div className="h-72 flex items-center justify-center text-text-muted">
                 <div className="text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary mx-auto mb-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-background-subtle text-text-muted mx-auto mb-3">
                     <Calendar className="h-6 w-6" />
                   </div>
                   <p>No {selectedMetric === 'bp' ? 'blood pressure' : selectedMetric} readings in this period</p>
@@ -371,11 +371,11 @@ function MetricCard({
   const isAlert = alertLevel === 'warning' || alertLevel === 'emergency';
 
   const variantClasses = {
-    brand: 'bg-brand-primary-pale text-brand-primary',
-    error: 'bg-error-light text-error-dark',
-    info: 'bg-info-light text-info-dark',
-    success: 'bg-success-light text-success-dark',
-    warning: 'bg-warning-light text-warning-dark',
+    brand: 'bg-background-subtle text-text-muted',
+    error: 'bg-background-subtle text-text-muted',
+    info: 'bg-background-subtle text-text-muted',
+    success: 'bg-background-subtle text-text-muted',
+    warning: 'bg-background-subtle text-text-muted',
   };
 
   return (
@@ -506,14 +506,14 @@ function CustomTooltip({ active, payload, metric }: any) {
       {metric === 'bp' && (
         <>
           <p className="text-sm"><span className="text-error">Systolic:</span> {data.systolic}</p>
-          <p className="text-sm"><span className="text-brand-primary">Diastolic:</span> {data.diastolic}</p>
+          <p className="text-sm"><span className="text-info">Diastolic:</span> {data.diastolic}</p>
         </>
       )}
       {metric === 'glucose' && (
         <p className="text-sm"><span className="text-brand-accent">Glucose:</span> {data.reading} mg/dL</p>
       )}
       {metric === 'weight' && (
-        <p className="text-sm"><span className="text-brand-secondary">Weight:</span> {data.weight} {data.unit}</p>
+        <p className="text-sm"><span className="text-text-secondary">Weight:</span> {data.weight} {data.unit}</p>
       )}
     </div>
   );

@@ -191,14 +191,14 @@ export default function CareInvitePage() {
   return (
     <PageContainer maxWidth="lg">
       <Card variant="elevated" padding="lg" className="text-center py-12">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-primary-pale mx-auto mb-4">
-          <Users className="h-8 w-8 text-brand-primary" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background-subtle mx-auto mb-4">
+          <Users className="h-8 w-8 text-text-secondary" />
         </div>
         <h1 className="text-2xl font-semibold text-text-primary mb-2">
           You're invited to be a caregiver
         </h1>
         <p className="text-text-secondary mb-2">
-          <span className="font-semibold text-brand-primary">{inviteInfo?.ownerName || 'Someone'}</span> has invited you to view their health information.
+          <span className="font-semibold text-text-primary">{inviteInfo?.ownerName || 'Someone'}</span> has invited you to view their health information.
         </p>
         <p className="text-sm text-text-muted mb-6">
           Create an account to access their visits, medications, and action items.

@@ -153,9 +153,9 @@ function CareSignUpContent() {
         <Card variant="elevated" padding="lg" className="shadow-floating">
           <div className="space-y-6">
             {inviteInfo?.ownerName && (
-              <div className="rounded-lg bg-brand-primary/10 p-4 text-sm border border-brand-primary/20">
+              <div className="rounded-lg bg-background-subtle p-4 text-sm border border-border-light">
                 <p className="text-text-secondary">
-                  <span className="font-semibold text-brand-primary">{inviteInfo.ownerName}</span> has invited you to be their caregiver.
+                  <span className="font-semibold text-text-primary">{inviteInfo.ownerName}</span> has invited you to be their caregiver.
                 </p>
                 <p className="text-text-muted mt-1">
                   You'll be able to view their visits, medications, and action items.

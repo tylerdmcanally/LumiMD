@@ -67,7 +67,7 @@ export function CaregiverMobileSidebar({ open, onClose, hasPatientRole = false }
                         <span className="text-xl font-black tracking-tight text-brand-primary">
                             LumiMD
                         </span>
-                        <span className="text-xs font-medium text-text-muted bg-brand-primary-pale px-2 py-0.5 rounded-full">
+                        <span className="text-xs font-medium text-text-tertiary bg-background-subtle px-2 py-0.5 rounded-full">
                             Care
                         </span>
                     </div>
@@ -105,7 +105,7 @@ export function CaregiverMobileSidebar({ open, onClose, hasPatientRole = false }
                         <div className="p-4">
                             <button
                                 onClick={handleSwitchToMyHealth}
-                                className="flex items-center gap-3 px-4 py-3 rounded-lg w-full text-text-secondary hover:bg-hover hover:text-brand-primary transition-colors"
+                                className="flex items-center gap-3 px-4 py-3 rounded-lg w-full text-text-secondary hover:bg-hover hover:text-text-primary transition-colors"
                             >
                                 <ArrowLeftRight className="h-5 w-5" />
                                 <span className="font-medium">Switch to My Health</span>

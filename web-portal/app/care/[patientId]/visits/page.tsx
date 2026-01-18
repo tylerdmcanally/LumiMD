@@ -24,7 +24,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
-import { PageContainer } from '@/components/layout/PageContainer';
+import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -460,42 +460,39 @@ export default function PatientVisitsPage() {
       <div className="space-y-6">
         {/* Back Button */}
         <Button variant="ghost" size="sm" asChild>
-          <Link href={`/care/${patientId}`} className="flex items-center text-brand-primary hover:text-brand-primary-dark">
+          <Link href={`/care/${patientId}`} className="flex items-center text-text-secondary hover:text-brand-primary">
             <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
             <span>Back to Overview</span>
           </Link>
         </Button>
 
         {/* Header */}
-        <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
-              Visit History
-            </h1>
-            <p className="text-text-secondary">
-              {isFilterActive 
-                ? `Showing ${filteredCount} of ${totalVisits} visit${totalVisits !== 1 ? 's' : ''}`
-                : `${totalVisits} visit${totalVisits !== 1 ? 's' : ''} recorded`
-              }
-            </p>
-          </div>
-          {totalVisits > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExport}
-              disabled={isExporting}
-              className="self-start flex items-center gap-2"
-            >
-              {isExporting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              <span>Export Summary</span>
-            </Button>
-          )}
-        </header>
+        <PageHeader
+          title="Visit History"
+          subtitle={
+            isFilterActive
+              ? `Showing ${filteredCount} of ${totalVisits} visit${totalVisits !== 1 ? 's' : ''}`
+              : `${totalVisits} visit${totalVisits !== 1 ? 's' : ''} recorded`
+          }
+          actions={
+            totalVisits > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="flex items-center gap-2"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                <span>Export Summary</span>
+              </Button>
+            ) : null
+          }
+        />
 
         {/* Filters */}
         {totalVisits > 0 && (
@@ -596,8 +593,8 @@ export default function PatientVisitsPage() {
         {/* Empty State */}
         {totalVisits === 0 ? (
           <Card variant="elevated" padding="lg" className="text-center py-16">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-primary-pale mx-auto mb-4">
-              <Stethoscope className="h-8 w-8 text-brand-primary" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background-subtle mx-auto mb-4">
+              <Stethoscope className="h-8 w-8 text-text-muted" />
             </div>
             <h2 className="text-xl font-semibold text-text-primary mb-2">
               No visits yet
@@ -708,7 +705,7 @@ export default function PatientVisitsPage() {
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-brand-primary" />
+              <FileText className="h-5 w-5 text-text-muted" />
               Care Summary Export
             </DialogTitle>
             <DialogDescription>
@@ -764,7 +761,7 @@ export default function PatientVisitsPage() {
 
 function StatBox({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-white rounded-lg p-3 text-center border border-border-light">
+    <div className="bg-surface rounded-lg p-3 text-center border border-border-light">
       <p className="text-2xl font-bold text-text-primary">{value}</p>
       <p className="text-xs text-text-muted">{label}</p>
     </div>

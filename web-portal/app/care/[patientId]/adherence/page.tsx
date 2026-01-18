@@ -30,15 +30,13 @@ import {
 import { useCareMedicationAdherence, type MedicationAdherenceData } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
-// Brand colors from design tokens
-const BRAND_COLORS = {
-  primary: '#40C9D0',
-  primaryDark: '#078A94',
-  secondary: '#89D8C6',
-  accent: '#0A99A4',
-  success: '#34D399',
-  warning: '#FBBF24',
-  error: '#F87171',
+const chartTheme = {
+  primary: 'var(--color-brand-primary)',
+  accent: 'var(--color-brand-accent)',
+  secondary: 'var(--color-brand-secondary)',
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  error: 'var(--color-error)',
 };
 
 export default function MedicationAdherencePage() {
@@ -98,20 +96,20 @@ export default function MedicationAdherencePage() {
         {/* Hero Header */}
         <div className="rounded-2xl bg-hero-brand p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
           <Button variant="ghost" size="sm" asChild className="mb-3 -ml-2">
-            <Link href={`/care/${patientId}`} className="inline-flex items-center gap-2 text-brand-primary-dark hover:text-brand-primary">
+            <Link href={`/care/${patientId}`} className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-primary">
               <ArrowLeft className="h-4 w-4" />
               <span>Back to Overview</span>
             </Link>
           </Button>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <span className="text-sm font-medium text-brand-primary-dark uppercase tracking-wider">
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                 Compliance Tracking
               </span>
               <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
                 Medication Adherence
               </h1>
-              <p className="text-text-secondary mt-1">
+              <p className="text-sm text-text-secondary mt-1">
                 Track medication compliance patterns over time
               </p>
             </div>
@@ -134,7 +132,7 @@ export default function MedicationAdherencePage() {
           <Card variant="elevated" padding="lg" className="lg:col-span-1">
             <div className="text-center">
               <div className="flex items-center justify-center gap-2 mb-6">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                   <TrendingUp className="h-5 w-5" />
                 </div>
                 <h2 className="text-sm font-medium text-text-secondary">Overall Adherence</h2>
@@ -146,7 +144,7 @@ export default function MedicationAdherencePage() {
                     cx="72"
                     cy="72"
                     r="64"
-                    stroke="rgba(26, 35, 50, 0.06)"
+                    stroke="var(--color-border)"
                     strokeWidth="12"
                     fill="none"
                   />
@@ -190,7 +188,7 @@ export default function MedicationAdherencePage() {
           {/* Calendar Heatmap */}
           <Card variant="elevated" padding="lg" className="lg:col-span-2">
             <div className="flex items-center gap-2 mb-6">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                 <Calendar className="h-5 w-5" />
               </div>
               <h2 className="text-sm font-medium text-text-secondary">Daily Adherence</h2>
@@ -251,7 +249,7 @@ export default function MedicationAdherencePage() {
             ) : (
               <div className="h-40 flex items-center justify-center text-text-muted">
                 <div className="text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary mx-auto mb-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-background-subtle text-text-muted mx-auto mb-3">
                     <Calendar className="h-6 w-6" />
                   </div>
                   <p>No adherence data available for this period</p>
@@ -267,7 +265,7 @@ export default function MedicationAdherencePage() {
             <h2 className="text-lg font-semibold text-text-primary">By Medication</h2>
             <Link 
               href={`/care/${patientId}/medications`}
-              className="text-sm font-medium text-brand-primary hover:underline flex items-center gap-1"
+              className="text-sm font-medium text-text-secondary hover:text-brand-primary flex items-center gap-1"
             >
               View all
               <ArrowRight className="h-4 w-4" />
@@ -277,7 +275,7 @@ export default function MedicationAdherencePage() {
             <div className="divide-y divide-border-light">
               {byMedication.length === 0 ? (
                 <div className="p-8 text-center text-text-muted">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary mx-auto mb-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-background-subtle text-text-muted mx-auto mb-3">
                     <Pill className="h-6 w-6" />
                   </div>
                   <p>No medication data available</p>
@@ -295,7 +293,7 @@ export default function MedicationAdherencePage() {
         {patterns.insights.length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning-light text-warning-dark">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
                 <Lightbulb className="h-4 w-4" />
               </div>
               <h2 className="text-lg font-semibold text-text-primary">Patterns Detected</h2>
@@ -334,7 +332,7 @@ function MedicationAdherenceRow({
   return (
     <div className="p-5 hover:bg-hover transition-colors">
       <div className="flex items-center gap-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary shrink-0">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted shrink-0">
           <Pill className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -381,9 +379,9 @@ function MedicationAdherenceRow({
 // Helper Functions
 
 function getAdherenceColor(rate: number): string {
-  if (rate >= 80) return BRAND_COLORS.success;
-  if (rate >= 60) return BRAND_COLORS.warning;
-  return BRAND_COLORS.error;
+  if (rate >= 80) return chartTheme.success;
+  if (rate >= 60) return chartTheme.warning;
+  return chartTheme.error;
 }
 
 function getHeatmapColor(rate: number): string {

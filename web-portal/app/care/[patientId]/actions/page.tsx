@@ -13,7 +13,7 @@ import {
     Circle,
     Clock,
 } from 'lucide-react';
-import { PageContainer } from '@/components/layout/PageContainer';
+import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCareActions } from '@/lib/api/hooks';
@@ -71,21 +71,18 @@ export default function PatientActionsPage() {
         <PageContainer maxWidth="lg">
             {/* Back Button */}
             <Button variant="ghost" size="sm" className="mb-4" asChild>
-                <Link href={`/care/${patientId}`} className="flex items-center">
+                <Link href={`/care/${patientId}`} className="flex items-center text-text-secondary hover:text-brand-primary">
                     <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
                     <span>Back to Overview</span>
                 </Link>
             </Button>
 
             {/* Header */}
-            <div className="mb-8">
-                <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
-                    Action Items
-                </h1>
-                <p className="text-text-secondary mt-1">
-                    {pendingActions.length} pending action{pendingActions.length !== 1 ? 's' : ''}
-                </p>
-            </div>
+            <PageHeader
+                title="Action Items"
+                subtitle={`${pendingActions.length} pending action${pendingActions.length !== 1 ? 's' : ''}`}
+                className="mb-8"
+            />
 
             {actions?.length === 0 ? (
                 <Card variant="elevated" padding="lg" className="text-center py-12">
