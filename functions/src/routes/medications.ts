@@ -126,6 +126,7 @@ medicationsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
         lastSyncedAt: data.lastSyncedAt?.toDate()?.toISOString() || null,
         // Include safety warnings
         medicationWarning: data.medicationWarning || null,
+        warningAcknowledgedAt: data.warningAcknowledgedAt?.toDate()?.toISOString() || null,
         needsConfirmation: data.needsConfirmation || false,
         medicationStatus: data.medicationStatus || null,
       };
@@ -182,6 +183,7 @@ medicationsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       changedAt: medication.changedAt?.toDate()?.toISOString() || null,
       lastSyncedAt: medication.lastSyncedAt?.toDate()?.toISOString() || null,
       medicationWarning: medication.medicationWarning || null,
+      warningAcknowledgedAt: medication.warningAcknowledgedAt?.toDate()?.toISOString() || null,
       needsConfirmation: medication.needsConfirmation || false,
       medicationStatus: medication.medicationStatus || null,
     });
@@ -324,6 +326,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       changedAt: medication.changedAt?.toDate()?.toISOString() || null,
       lastSyncedAt: medication.lastSyncedAt?.toDate()?.toISOString() || null,
       medicationWarning: medication.medicationWarning || null,
+      warningAcknowledgedAt: null, // New medication, not yet acknowledged
       needsConfirmation: medication.needsConfirmation || false,
       medicationStatus: medication.medicationStatus || null,
       autoCreatedReminder: autoCreatedReminder,
@@ -459,6 +462,76 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     await clearMedicationSafetyCacheForUser(userId);
 
+    // Sync reminder name/dose if medication name or dose was updated
+    if (data.name !== undefined || data.dose !== undefined) {
+      const remindersSnapshot = await getDb()
+        .collection('medicationReminders')
+        .where('userId', '==', userId)
+        .where('medicationId', '==', medId)
+        .get();
+
+      if (!remindersSnapshot.empty) {
+        const reminderUpdates: Record<string, unknown> = {
+          updatedAt: admin.firestore.Timestamp.now(),
+        };
+        if (data.name !== undefined) {
+          reminderUpdates.medicationName = data.name;
+        }
+        if (data.dose !== undefined) {
+          reminderUpdates.medicationDose = data.dose || null;
+        }
+
+        const reminderBatch = getDb().batch();
+        remindersSnapshot.docs.forEach(doc => reminderBatch.update(doc.ref, reminderUpdates));
+        await reminderBatch.commit();
+        functions.logger.info(`[medications] Synced name/dose to ${remindersSnapshot.size} reminder(s) for medication ${medId}`);
+      }
+    }
+
+    // If frequency changed, update reminder times to match new frequency
+    if (data.frequency !== undefined && data.frequency !== medication.frequency) {
+      const newDefaultTimes = getDefaultReminderTimes(data.frequency);
+      
+      // Only auto-update if we have a clear mapping for the new frequency
+      if (newDefaultTimes) {
+        const remindersSnapshot = await getDb()
+          .collection('medicationReminders')
+          .where('userId', '==', userId)
+          .where('medicationId', '==', medId)
+          .get();
+
+        if (!remindersSnapshot.empty) {
+          const reminderBatch = getDb().batch();
+          remindersSnapshot.docs.forEach(doc => {
+            reminderBatch.update(doc.ref, {
+              times: newDefaultTimes,
+              updatedAt: admin.firestore.Timestamp.now(),
+            });
+          });
+          await reminderBatch.commit();
+          functions.logger.info(
+            `[medications] Updated reminder times for ${medId} to ${newDefaultTimes.join(', ')} based on new frequency: ${data.frequency}`
+          );
+        }
+      } else if (newDefaultTimes === null) {
+        // Frequency changed to PRN/as-needed - disable reminders
+        const remindersSnapshot = await getDb()
+          .collection('medicationReminders')
+          .where('userId', '==', userId)
+          .where('medicationId', '==', medId)
+          .get();
+
+        if (!remindersSnapshot.empty) {
+          const reminderBatch = getDb().batch();
+          remindersSnapshot.docs.forEach(doc => reminderBatch.delete(doc.ref));
+          await reminderBatch.commit();
+          functions.logger.info(
+            `[medications] Deleted reminders for ${medId} - frequency changed to PRN/as-needed`
+          );
+        }
+      }
+    }
+
     // If medication was stopped (active changed to false), clear pending nudges and reminders
     if (data.active === false && medication.active !== false) {
       const nudgesSnapshot = await getDb()
@@ -505,6 +578,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       changedAt: updatedMed.changedAt?.toDate()?.toISOString() || null,
       lastSyncedAt: updatedMed.lastSyncedAt?.toDate()?.toISOString() || null,
       medicationWarning: updatedMed.medicationWarning || null,
+      warningAcknowledgedAt: updatedMed.warningAcknowledgedAt?.toDate()?.toISOString() || null,
       needsConfirmation: updatedMed.needsConfirmation || false,
       medicationStatus: updatedMed.medicationStatus || null,
     });
@@ -522,6 +596,67 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to update medication',
+    });
+  }
+});
+
+/**
+ * POST /v1/meds/:id/acknowledge-warnings
+ * Acknowledge non-critical medication warnings (clears badge for moderate/low severity)
+ * Critical warnings cannot be acknowledged - they always persist
+ */
+medicationsRouter.post('/:id/acknowledge-warnings', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const medId = req.params.id;
+
+    const medDoc = await getDb().collection('medications').doc(medId).get();
+    if (!medDoc.exists) {
+      res.status(404).json({ code: 'not_found', message: 'Medication not found' });
+      return;
+    }
+
+    const medication = medDoc.data()!;
+    if (medication.userId !== userId) {
+      res.status(403).json({ code: 'forbidden', message: 'Not your medication' });
+      return;
+    }
+
+    const warnings = medication.medicationWarning || [];
+    
+    // Check if there are any non-critical warnings to acknowledge
+    const hasNonCriticalWarnings = warnings.some(
+      (w: { severity: string }) => w.severity !== 'critical'
+    );
+
+    if (!hasNonCriticalWarnings) {
+      res.status(200).json({ 
+        acknowledged: false, 
+        message: 'No non-critical warnings to acknowledge' 
+      });
+      return;
+    }
+
+    // Update the medication with acknowledgment timestamp
+    const now = admin.firestore.Timestamp.now();
+    await medDoc.ref.update({
+      warningAcknowledgedAt: now,
+      updatedAt: now,
+    });
+
+    functions.logger.info(
+      `[medications] User ${userId} acknowledged warnings for medication ${medId}`
+    );
+
+    res.json({
+      acknowledged: true,
+      acknowledgedAt: now.toDate().toISOString(),
+    });
+  } catch (error) {
+    functions.logger.error('[medications] Error acknowledging warnings:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to acknowledge warnings',
     });
   }
 });

@@ -903,6 +903,8 @@ export type CarePatientOverview = {
     priority: 'high' | 'medium' | 'low';
     message: string;
   }>;
+  /** ISO timestamp of when patient last opened the app */
+  lastActive?: string | null;
 };
 
 export type CareOverviewData = {

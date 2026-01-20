@@ -117,19 +117,11 @@ export default function SettingsScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            try {
-              if (pushToken) {
-                await unregisterPushToken(pushToken);
-              }
-            } catch (error) {
-              console.error('[Settings] Error unregistering push token during sign out:', error);
-            } finally {
-              await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
-              setPushToken(null);
-              setPushEnabled(false);
-              await signOut();
-              router.replace('/sign-in');
-            }
+            // Token cleanup is now handled centrally in AuthContext.signOut()
+            setPushToken(null);
+            setPushEnabled(false);
+            await signOut();
+            router.replace('/sign-in');
           },
         },
       ]

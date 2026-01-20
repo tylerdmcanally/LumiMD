@@ -35,6 +35,8 @@ export interface Medication {
     conflictingMedication?: string;
     allergen?: string;
   }> | null;
+  /** ISO timestamp of when non-critical warnings were acknowledged */
+  warningAcknowledgedAt?: string | null;
   [key: string]: unknown;
 }
 

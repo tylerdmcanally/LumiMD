@@ -119,13 +119,13 @@ function formatTime(time: string): string {
  */
 function reloadWidgetTimelines() {
     try {
-        // Use WidgetKit native module if available
-        const { WidgetKit } = NativeModules;
-        if (WidgetKit?.reloadAllTimelines) {
-            WidgetKit.reloadAllTimelines();
+        // Use LumiWidgetKit native module (registered via config plugin)
+        const { LumiWidgetKit } = NativeModules;
+        if (LumiWidgetKit?.reloadAllTimelines) {
+            LumiWidgetKit.reloadAllTimelines();
         }
     } catch (e) {
-        // WidgetKit module may not be available
-        console.log('[WidgetSync] WidgetKit reload not available');
+        // LumiWidgetKit module may not be available (e.g., Android, old build)
+        console.log('[WidgetSync] LumiWidgetKit reload not available');
     }
 }

@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   onAuthStateChange,
   signInWithEmail,
@@ -12,6 +13,14 @@ import {
   signOut as authSignOut,
   getCurrentUser
 } from '../lib/auth';
+import { 
+  unregisterAllPushTokens, 
+  cancelAllScheduledNotifications, 
+  dismissAllNotifications,
+  clearBadge 
+} from '../lib/notifications';
+
+const PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
 
 interface AuthContextType {
   user: FirebaseAuthTypes.User | null;
@@ -66,9 +75,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      // Unregister ALL push tokens before signing out (while we still have auth)
+      // This prevents notifications meant for this user from going to the next user on this device
+      console.log('[AuthContext] Unregistering all push tokens before sign out...');
+      await unregisterAllPushTokens();
+      
+      // Cancel any pending local notifications (e.g., snoozed reminders)
+      await cancelAllScheduledNotifications();
+      
+      // Dismiss any delivered notifications still in notification center
+      await dismissAllNotifications();
+      
+      // Clear app badge
+      await clearBadge();
+      
+      // Clear local push token storage
+      await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
+      
+      // Now sign out of Firebase
       await authSignOut();
+      console.log('[AuthContext] Sign out complete');
     } catch (err) {
       console.error('[AuthContext] Sign out error:', err);
+      // Still try to sign out of Firebase even if token cleanup failed
+      try {
+        await authSignOut();
+      } catch (authErr) {
+        console.error('[AuthContext] Firebase sign out also failed:', authErr);
+      }
     }
   };
 

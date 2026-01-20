@@ -545,3 +545,20 @@ export async function cleanupOrphanedNudges(): Promise<{ deleted: number } | nul
     return null;
   }
 }
+
+// =============================================================================
+// Medication Warning Acknowledgment Hook
+// =============================================================================
+
+export function useAcknowledgeMedicationWarnings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (medicationId: string) =>
+      api.medications.acknowledgeWarnings(medicationId),
+    onSuccess: () => {
+      // Invalidate medications to refresh the warningAcknowledgedAt field
+      queryClient.invalidateQueries({ queryKey: ['medications'] });
+    },
+  });
+}

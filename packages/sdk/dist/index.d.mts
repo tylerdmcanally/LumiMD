@@ -110,6 +110,8 @@ interface Medication {
         conflictingMedication?: string;
         allergen?: string;
     }> | null;
+    /** ISO timestamp of when non-critical warnings were acknowledged */
+    warningAcknowledgedAt?: string | null;
     [key: string]: unknown;
 }
 
@@ -367,6 +369,11 @@ declare function createApiClient(config: ApiClientConfig): {
         create: (data: Partial<Medication>) => Promise<Medication>;
         update: (id: string, data: Partial<Medication>) => Promise<Medication>;
         delete: (id: string) => Promise<void>;
+        /** Acknowledge non-critical medication warnings (clears badge for moderate/low) */
+        acknowledgeWarnings: (id: string) => Promise<{
+            acknowledged: boolean;
+            acknowledgedAt?: string;
+        }>;
     };
     user: {
         getProfile: () => Promise<UserProfile>;
@@ -379,6 +386,8 @@ declare function createApiClient(config: ApiClientConfig): {
         unregisterPushToken: (data: {
             token: string;
         }) => Promise<void>;
+        /** Delete ALL push tokens for the current user (used during logout) */
+        unregisterAllPushTokens: () => Promise<void>;
         exportData: () => Promise<any>;
         deleteAccount: () => Promise<void>;
         listCaregivers: () => Promise<{

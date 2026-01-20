@@ -262,6 +262,10 @@ function createApiClient(config) {
       }),
       delete: (id) => apiRequest(`/v1/meds/${id}`, {
         method: "DELETE"
+      }),
+      /** Acknowledge non-critical medication warnings (clears badge for moderate/low) */
+      acknowledgeWarnings: (id) => apiRequest(`/v1/meds/${id}/acknowledge-warnings`, {
+        method: "POST"
       })
     },
     // User Profile
@@ -278,6 +282,10 @@ function createApiClient(config) {
       unregisterPushToken: (data) => apiRequest("/v1/users/push-tokens", {
         method: "DELETE",
         body: JSON.stringify(data)
+      }),
+      /** Delete ALL push tokens for the current user (used during logout) */
+      unregisterAllPushTokens: () => apiRequest("/v1/users/push-tokens/all", {
+        method: "DELETE"
       }),
       exportData: () => apiRequest("/v1/users/me/export", {
         method: "GET"

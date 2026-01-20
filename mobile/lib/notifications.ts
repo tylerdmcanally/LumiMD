@@ -111,6 +111,20 @@ export async function unregisterPushToken(token: string): Promise<void> {
 }
 
 /**
+ * Unregister ALL push tokens for the current user from backend
+ * Used during logout to ensure no stale tokens remain
+ */
+export async function unregisterAllPushTokens(): Promise<void> {
+  try {
+    await api.user.unregisterAllPushTokens();
+    console.log('[Notifications] All push tokens unregistered successfully');
+  } catch (error) {
+    console.error('[Notifications] Error unregistering all push tokens:', error);
+    // Don't throw - we still want to complete logout even if this fails
+  }
+}
+
+/**
  * Update app badge count
  */
 export async function setBadgeCount(count: number): Promise<void> {
@@ -183,5 +197,30 @@ export async function cancelScheduledNotification(notificationId: string): Promi
     console.log('[Notifications] Cancelled scheduled notification:', notificationId);
   } catch (error) {
     console.error('[Notifications] Error cancelling notification:', error);
+  }
+}
+
+/**
+ * Cancel ALL scheduled notifications
+ * Used during logout to prevent snoozed reminders from firing for wrong user
+ */
+export async function cancelAllScheduledNotifications(): Promise<void> {
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    console.log('[Notifications] Cancelled all scheduled notifications');
+  } catch (error) {
+    console.error('[Notifications] Error cancelling all notifications:', error);
+  }
+}
+
+/**
+ * Dismiss all delivered notifications from notification center
+ */
+export async function dismissAllNotifications(): Promise<void> {
+  try {
+    await Notifications.dismissAllNotificationsAsync();
+    console.log('[Notifications] Dismissed all notifications');
+  } catch (error) {
+    console.error('[Notifications] Error dismissing notifications:', error);
   }
 }

@@ -400,6 +400,26 @@ careRouter.get('/overview', requireAuth, async (req: AuthRequest, res) => {
                     getPatientAlerts(patientId),
                 ]);
 
+                // Get last active timestamp from push tokens
+                let lastActive: string | null = null;
+                try {
+                    const pushTokensSnapshot = await getDb()
+                        .collection('users')
+                        .doc(patientId)
+                        .collection('pushTokens')
+                        .orderBy('lastActive', 'desc')
+                        .limit(1)
+                        .get();
+                    
+                    if (!pushTokensSnapshot.empty) {
+                        const tokenData = pushTokensSnapshot.docs[0].data();
+                        lastActive = tokenData.lastActive?.toDate?.()?.toISOString() || null;
+                    }
+                } catch (e) {
+                    // Push token collection may not exist yet
+                    functions.logger.debug(`[care] Could not fetch lastActive for ${patientId}:`, e);
+                }
+
                 // Get owner auth info for name/email
                 let name = profile?.preferredName || profile?.firstName;
                 let email = share.ownerEmail;
@@ -421,6 +441,7 @@ careRouter.get('/overview', requireAuth, async (req: AuthRequest, res) => {
                     medicationsToday,
                     pendingActions,
                     alerts,
+                    lastActive,
                 };
             })
         );
@@ -1592,25 +1613,29 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
                 ? med.times.length * daysNum 
                 : (taken + skipped);
             
-            // Calculate current streak
+            // Calculate current streak using scheduledDate (patient's local date)
+            // This ensures timezone-correct streak tracking
             let streak = 0;
-            const sortedLogs = medLogs
-                .filter((l) => l.action === 'taken')
-                .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+            const takenLogs = medLogs.filter((l) => l.action === 'taken');
             
-            if (sortedLogs.length > 0) {
+            if (takenLogs.length > 0) {
+                // Get unique dates where medication was taken (using scheduledDate)
+                const takenDates = new Set<string>();
+                takenLogs.forEach((l) => {
+                    // Prefer scheduledDate (patient's local date), fallback to createdAt date
+                    const logDate = l.scheduledDate || l.createdAt.toISOString().split('T')[0];
+                    takenDates.add(logDate);
+                });
+
+                // Check consecutive days starting from today
                 const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                let checkDate = new Date(today);
-                
                 for (let i = 0; i < daysNum; i++) {
+                    const checkDate = new Date(today);
+                    checkDate.setDate(checkDate.getDate() - i);
                     const dateStr = checkDate.toISOString().split('T')[0];
-                    const hasLog = sortedLogs.some((l) => 
-                        l.createdAt.toISOString().split('T')[0] === dateStr
-                    );
-                    if (hasLog) {
+                    
+                    if (takenDates.has(dateStr)) {
                         streak++;
-                        checkDate.setDate(checkDate.getDate() - 1);
                     } else {
                         break;
                     }
@@ -1669,6 +1694,8 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
             date.setHours(0, 0, 0, 0);
             const dateStr = date.toISOString().split('T')[0];
 
+            // Filter logs for this day using scheduledDate (patient's local date)
+            // Falls back to createdAt UTC date for older logs without scheduledDate
             const dayLogs = logs.filter((l) => {
                 const logDate = l.scheduledDate || l.createdAt.toISOString().split('T')[0];
                 return logDate === dateStr;
@@ -2084,6 +2111,61 @@ careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) 
             });
         }
 
+        // 1b. Check 7-day adherence rate for declining compliance
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        const recentLogsSnapshot = await getDb()
+            .collection('medicationLogs')
+            .where('userId', '==', patientId)
+            .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(sevenDaysAgo))
+            .get();
+        
+        const recentLogs = recentLogsSnapshot.docs.map(doc => doc.data());
+        const takenCount = recentLogs.filter(l => l.action === 'taken').length;
+        const skippedCount = recentLogs.filter(l => l.action === 'skipped').length;
+        const totalLogged = takenCount + skippedCount;
+        
+        // Get expected doses from reminders
+        const remindersSnapshot = await getDb()
+            .collection('medicationReminders')
+            .where('userId', '==', patientId)
+            .where('enabled', '==', true)
+            .get();
+        
+        let expectedDoses = 0;
+        remindersSnapshot.docs.forEach(doc => {
+            const times = doc.data().times || [];
+            expectedDoses += times.length * 7; // 7 days
+        });
+        
+        if (expectedDoses > 0) {
+            const adherenceRate = Math.round((takenCount / expectedDoses) * 100);
+            if (adherenceRate < 50) {
+                alerts.push({
+                    id: `low-adherence-7d`,
+                    type: 'health_warning',
+                    severity: 'high',
+                    title: 'Critical: Low Medication Adherence',
+                    description: `Only ${adherenceRate}% adherence over the past 7 days`,
+                    targetUrl: `/care/${patientId}/adherence`,
+                    timestamp: now.toISOString(),
+                    metadata: { adherenceRate, takenCount, expectedDoses },
+                });
+            } else if (adherenceRate < 70) {
+                alerts.push({
+                    id: `declining-adherence-7d`,
+                    type: 'health_warning',
+                    severity: 'medium',
+                    title: 'Declining Medication Adherence',
+                    description: `${adherenceRate}% adherence over the past 7 days`,
+                    targetUrl: `/care/${patientId}/adherence`,
+                    timestamp: now.toISOString(),
+                    metadata: { adherenceRate, takenCount, expectedDoses },
+                });
+            }
+        }
+
         // 2. Check for overdue actions
         const actionsSnapshot = await getDb()
             .collection('actions')
@@ -2168,6 +2250,40 @@ careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) 
                     metadata: { daysSinceVitals },
                 });
             }
+        }
+
+        // 4b. Check if patient hasn't opened app recently
+        try {
+            const pushTokensSnapshot = await getDb()
+                .collection('users')
+                .doc(patientId)
+                .collection('pushTokens')
+                .orderBy('lastActive', 'desc')
+                .limit(1)
+                .get();
+            
+            if (!pushTokensSnapshot.empty) {
+                const tokenData = pushTokensSnapshot.docs[0].data();
+                const lastActive = tokenData.lastActive?.toDate?.();
+                if (lastActive) {
+                    const daysSinceActive = Math.floor((now.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24));
+                    if (daysSinceActive >= 7) {
+                        alerts.push({
+                            id: `patient-inactive`,
+                            type: 'no_data',
+                            severity: daysSinceActive >= 14 ? 'high' : 'medium',
+                            title: 'Patient App Inactive',
+                            description: `Patient hasn't opened the app in ${daysSinceActive} days`,
+                            targetUrl: `/care/${patientId}`,
+                            timestamp: lastActive.toISOString(),
+                            metadata: { daysSinceActive },
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            // Push token collection may not exist
+            functions.logger.debug(`[care] Could not check lastActive for alerts:`, e);
         }
 
         // 5. Check for recent medication changes (started/stopped in last 7 days)

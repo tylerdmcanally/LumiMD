@@ -324,6 +324,43 @@ usersRouter.delete('/push-tokens', requireAuth, async (req: AuthRequest, res) =>
 });
 
 /**
+ * DELETE /v1/users/push-tokens/all
+ * Unregister ALL push notification tokens for the authenticated user
+ * Used during logout to ensure no stale tokens remain
+ */
+usersRouter.delete('/push-tokens/all', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+
+    const tokensRef = getDb().collection('users').doc(userId).collection('pushTokens');
+    const tokensSnapshot = await tokensRef.get();
+
+    if (tokensSnapshot.empty) {
+      functions.logger.info(`[users] No push tokens to delete for user ${userId}`);
+      res.status(204).send();
+      return;
+    }
+
+    // Delete all tokens for this user
+    const batch = getDb().batch();
+    tokensSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+
+    functions.logger.info(`[users] Deleted ${tokensSnapshot.size} push token(s) for user ${userId} during logout`);
+
+    res.status(204).send();
+  } catch (error) {
+    functions.logger.error('[users] Error deleting all push tokens:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to delete push tokens',
+    });
+  }
+});
+
+/**
  * GET /v1/users/me/export
  * Export all user data in JSON format
  */

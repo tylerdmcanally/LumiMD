@@ -61,6 +61,33 @@ function getCurrentTimeHHMM(timezone: string = DEFAULT_TIMEZONE): string {
     return now.toLocaleTimeString('en-US', options);
 }
 
+function getDayBoundariesInTimezone(
+    timezone: string,
+): { startOfDay: Date; endOfDay: Date; todayStr: string } {
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: timezone });
+    const [year, month, day] = todayStr.split('-').map(Number);
+    const testUTC = new Date(
+        `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`
+    );
+    const tzFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+    const tzParts = tzFormatter.formatToParts(testUTC);
+    const tzHour = parseInt(tzParts.find((p) => p.type === 'hour')!.value, 10);
+    const tzMinute = parseInt(tzParts.find((p) => p.type === 'minute')!.value, 10);
+    const offsetMinutes = (tzHour - 12) * 60 + tzMinute;
+    const midnightUTC = new Date(
+        `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`
+    );
+    const startOfDay = new Date(midnightUTC.getTime() - offsetMinutes * 60 * 1000);
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+    return { startOfDay, endOfDay, todayStr };
+}
+
 /**
  * Check if a reminder time is within the processing window (±7 minutes)
  */
@@ -143,12 +170,13 @@ export async function processAndNotifyMedicationReminders(): Promise<{
     const batch = getDb().batch();
     const now = admin.firestore.Timestamp.now();
 
-    // Group due reminders by user
+    // Group due reminders by user (and by matched time)
     const remindersByUser = new Map<string, Array<{
         id: string;
         medicationName: string;
         medicationDose?: string;
         medicationId: string;
+        matchedTime: string;
     }>>();
 
     // Cache user timezones to avoid repeated Firestore calls
@@ -212,6 +240,7 @@ export async function processAndNotifyMedicationReminders(): Promise<{
             medicationName: reminder.medicationName,
             medicationDose: reminder.medicationDose,
             medicationId: reminder.medicationId,
+            matchedTime: matchingTime,
         });
     }
 
@@ -223,6 +252,34 @@ export async function processAndNotifyMedicationReminders(): Promise<{
     // Process each user's reminders
     for (const [userId, reminders] of remindersByUser) {
         try {
+            // Fetch today's logs for this user (used to suppress reminders already taken/skipped)
+            let userTimezone = userTimezoneCache.get(userId);
+            if (!userTimezone) {
+                userTimezone = await getUserTimezone(userId);
+                userTimezoneCache.set(userId, userTimezone);
+            }
+            const { startOfDay, endOfDay, todayStr } = getDayBoundariesInTimezone(userTimezone);
+            const logsSnapshot = await getDb()
+                .collection('medicationLogs')
+                .where('userId', '==', userId)
+                .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(startOfDay))
+                .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
+                .get();
+            const loggedDoseKeys = new Set<string>();
+            logsSnapshot.docs.forEach((doc) => {
+                const log = doc.data();
+                if (log.action !== 'taken' && log.action !== 'skipped') return;
+                const scheduledTime = log.scheduledTime;
+                if (!scheduledTime) return;
+                const logDateStr =
+                    log.scheduledDate ||
+                    (log.loggedAt?.toDate
+                        ? log.loggedAt.toDate().toLocaleDateString('en-CA', { timeZone: userTimezone })
+                        : null);
+                if (logDateStr !== todayStr) return;
+                loggedDoseKeys.add(`${log.medicationId}_${scheduledTime}`);
+            });
+
             const tokens = await notificationService.getUserPushTokens(userId);
 
             // Log tokens for debugging
@@ -244,8 +301,16 @@ export async function processAndNotifyMedicationReminders(): Promise<{
                 continue;
             }
 
-            // Send notification for each due medication
+            // Send notification for each due medication (skip if already logged today)
             for (const reminder of reminders) {
+                if (loggedDoseKeys.has(`${reminder.medicationId}_${reminder.matchedTime}`)) {
+                    functions.logger.info(
+                        `[MedReminders] Skipping reminder ${reminder.id} - already logged for ${reminder.matchedTime}`,
+                    );
+                    stats.processed++;
+                    continue;
+                }
+
                 const lockAcquired = await acquireReminderSendLock(reminder.id, now);
                 if (!lockAcquired) {
                     functions.logger.info(

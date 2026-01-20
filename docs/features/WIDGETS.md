@@ -34,8 +34,8 @@ The `useWidgetSync` hook listens for changes in the medication schedule and writ
 ```typescript
 // Writes JSON string to UserDefaults under key "medicationSchedule"
 SharedGroupPreferences.setItem('medicationSchedule', jsonString, appGroupIdentifier);
-// Reloads widget timeline
-WidgetKit.reloadAllTimelines();
+// Reloads widget timeline (via native module registered by withWidgetKitModule plugin)
+LumiWidgetKit.reloadAllTimelines();
 ```
 
 #### 2. Swift Side (`mobile/targets/widget/widgets.swift`)

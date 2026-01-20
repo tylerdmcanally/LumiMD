@@ -82,7 +82,9 @@
         }
       ],
       "@react-native-firebase/app",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "./plugins/withWidgetKitModule.js",
+      "./plugins/withWidgetVersionSync.js"
     ],
     "extra": {
       "router": {},

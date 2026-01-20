@@ -53,12 +53,13 @@
     "simple-swizzle": "^0.2.4"
   },
   "devDependencies": {
+    "@babel/plugin-transform-flow-strip-types": "^7.25.2",
+    "@expo/plist": "^0.4.8",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^12.1.5",
     "@types/react": "~19.1.10",
-    "@babel/plugin-transform-flow-strip-types": "^7.25.2",
     "babel-jest": "^29.7.0",
-    "babel-preset-expo": "^11.0.0",
+    "babel-preset-expo": "~54.0.9",
     "dotenv": "^17.2.3",
     "jest": "^29.7.0",
     "jest-expo": "^54.0.3",

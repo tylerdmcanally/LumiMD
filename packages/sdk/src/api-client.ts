@@ -366,6 +366,11 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<void>(`/v1/meds/${id}`, {
           method: 'DELETE',
         }),
+      /** Acknowledge non-critical medication warnings (clears badge for moderate/low) */
+      acknowledgeWarnings: (id: string) =>
+        apiRequest<{ acknowledged: boolean; acknowledgedAt?: string }>(`/v1/meds/${id}/acknowledge-warnings`, {
+          method: 'POST',
+        }),
     },
 
     // User Profile
@@ -385,6 +390,11 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<void>('/v1/users/push-tokens', {
           method: 'DELETE',
           body: JSON.stringify(data),
+        }),
+      /** Delete ALL push tokens for the current user (used during logout) */
+      unregisterAllPushTokens: () =>
+        apiRequest<void>('/v1/users/push-tokens/all', {
+          method: 'DELETE',
         }),
       exportData: () =>
         apiRequest<any>('/v1/users/me/export', {

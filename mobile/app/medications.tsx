@@ -23,6 +23,7 @@ import {
   useCreateMedicationReminder,
   useUpdateMedicationReminder,
   useDeleteMedicationReminder,
+  useAcknowledgeMedicationWarnings,
 } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
@@ -91,11 +92,28 @@ export default function MedicationsScreen() {
   const createReminder = useCreateMedicationReminder();
   const updateReminder = useUpdateMedicationReminder();
   const deleteReminder = useDeleteMedicationReminder();
+  const acknowledgeWarnings = useAcknowledgeMedicationWarnings();
 
   // Get reminder for a specific medication
   const getReminderForMed = useCallback((medId: string): MedicationReminder | undefined => {
     return reminders.find(r => r.medicationId === medId);
   }, [reminders]);
+
+  // Helper to determine if warning badge should be shown
+  // Badge persists for critical warnings, clears after first view for moderate/low
+  const shouldShowWarningBadge = useCallback((med: any): boolean => {
+    const warnings = med.medicationWarning || [];
+    if (warnings.length === 0) return false;
+    
+    // Always show badge for critical warnings
+    const hasCriticalWarning = warnings.some((w: any) => w.severity === 'critical');
+    if (hasCriticalWarning) return true;
+    
+    // For non-critical warnings, check if already acknowledged
+    if (med.warningAcknowledgedAt) return false;
+    
+    return true;
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -160,6 +178,20 @@ export default function MedicationsScreen() {
     const reminder = med.id ? getReminderForMed(med.id) : undefined;
     const hasReminder = reminder && reminder.enabled;
 
+    // Warning badge logic
+    const showWarningBadge = shouldShowWarningBadge(med);
+    const warnings = med.medicationWarning || [];
+    const hasCriticalWarning = warnings.some((w: any) => w.severity === 'critical');
+    const hasNonCriticalWarnings = warnings.some((w: any) => w.severity !== 'critical');
+    
+    // Filter warnings for display based on severity and acknowledgment
+    const warningsToShow = warnings.filter((w: any) => {
+      // Always show critical warnings
+      if (w.severity === 'critical') return true;
+      // Show non-critical only if not yet acknowledged
+      return !med.warningAcknowledgedAt;
+    });
+
     const handleReminderPress = (e: any) => {
       e.stopPropagation();
       setSelectedMed({ id: med.id, name: med.name || 'Medication' });
@@ -193,6 +225,13 @@ export default function MedicationsScreen() {
       }).join(', ');
     };
 
+    // Handler to acknowledge warnings when banner is dismissed
+    const handleAcknowledgeWarnings = () => {
+      if (med.id && hasNonCriticalWarnings && !med.warningAcknowledgedAt) {
+        acknowledgeWarnings.mutate(med.id);
+      }
+    };
+
     return (
       <Pressable
         key={med.id || `${med.name}-${index}`}
@@ -204,8 +243,11 @@ export default function MedicationsScreen() {
           <View style={styles.medHeader}>
             <View style={styles.medIcon}>
               <Ionicons name={isActive ? 'medkit' : 'medkit-outline'} size={20} color={Colors.primary} />
-              {med.medicationWarning && med.medicationWarning.length > 0 && (
-                <View style={styles.warningIndicator}>
+              {showWarningBadge && (
+                <View style={[
+                  styles.warningIndicator,
+                  hasCriticalWarning && styles.warningIndicatorCritical
+                ]}>
                   <Ionicons name="warning" size={10} color="#fff" />
                 </View>
               )}
@@ -227,10 +269,13 @@ export default function MedicationsScreen() {
             </View>
           )}
 
-          {/* Warning Banner */}
-          {med.medicationWarning && med.medicationWarning.length > 0 && (
+          {/* Warning Banner - Only show relevant warnings */}
+          {warningsToShow.length > 0 && (
             <View style={{ marginTop: spacing(2) }}>
-              <MedicationWarningBanner warnings={med.medicationWarning} />
+              <MedicationWarningBanner 
+                warnings={warningsToShow} 
+                onDismiss={hasNonCriticalWarnings && !hasCriticalWarning ? handleAcknowledgeWarnings : undefined}
+              />
             </View>
           )}
 
@@ -515,11 +560,14 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: Colors.error,
+    backgroundColor: '#F59E0B', // Amber for moderate/low warnings
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#fff',
+  },
+  warningIndicatorCritical: {
+    backgroundColor: Colors.error, // Red for critical warnings - always visible
   },
   medName: {
     flex: 1,
