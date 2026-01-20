@@ -43,6 +43,14 @@ npm run build -w packages/sdk --if-present
 
 No extra steps are required unless you are editing the SDK directly. In that case, run `npm run build -w packages/sdk` before committing to keep `dist/` current.
 
+### Notes
+
+- For SDK 54, we pin `expo-font` via root `overrides` to avoid duplicate native
+  module versions reported by `expo-doctor`. Remove the override after upgrading
+  `expo`/`@expo/vector-icons` to a patch that depends on `expo-font ~14.0.11`.
+- Widget versioning in EAS builds is handled by making the widget target inherit
+  app build settings (see `mobile/plugins/withWidgetVersionSync.js`).
+
 ### Future Upgrade: Expo SDK 55 / React Native 0.76
 
 When we are ready to adopt React 19 on mobile:
