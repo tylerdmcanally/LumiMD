@@ -1,17 +1,17 @@
 /**
  * Expo Config Plugin: Widget Version Sync
  *
- * Reliable EAS approach:
- * - Keep widget Info.plist using $(CURRENT_PROJECT_VERSION) / $(MARKETING_VERSION)
- * - Remove widget target overrides so it inherits the app/project build settings
- *
- * This avoids race conditions with EAS autoIncrement (remote) because the
- * widget target simply inherits the same build settings Xcode uses for the app.
+ * Single source of truth: app config (app.json/app.config.js).
+ * We set widget target build settings to the same version/build number so the
+ * widget's Info.plist variables resolve identically to the parent app.
  */
 
 const { withXcodeProject } = require('@expo/config-plugins');
 
 const withWidgetVersionSync = (config) => {
+    const appVersion = config.version || '1.0.0';
+    const buildNumber = config.ios?.buildNumber || '1';
+
     config = withXcodeProject(config, async (config) => {
         const xcodeProject = config.modResults;
 
@@ -48,16 +48,11 @@ const withWidgetVersionSync = (config) => {
                 continue;
             }
 
-            // Remove overrides so the widget inherits project/app build settings
-            if (Object.prototype.hasOwnProperty.call(buildConfig.buildSettings, 'CURRENT_PROJECT_VERSION')) {
-                delete buildConfig.buildSettings.CURRENT_PROJECT_VERSION;
-            }
-            if (Object.prototype.hasOwnProperty.call(buildConfig.buildSettings, 'MARKETING_VERSION')) {
-                delete buildConfig.buildSettings.MARKETING_VERSION;
-            }
+            buildConfig.buildSettings.CURRENT_PROJECT_VERSION = String(buildNumber);
+            buildConfig.buildSettings.MARKETING_VERSION = appVersion;
         }
 
-        console.log('[withWidgetVersionSync] Widget target now inherits app build settings');
+        console.log(`[withWidgetVersionSync] Widget target set to ${appVersion} (${buildNumber})`);
         return config;
     });
 

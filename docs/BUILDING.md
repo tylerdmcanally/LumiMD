@@ -48,8 +48,10 @@ No extra steps are required unless you are editing the SDK directly. In that cas
 - For SDK 54, we pin `expo-font` via root `overrides` to avoid duplicate native
   module versions reported by `expo-doctor`. Remove the override after upgrading
   `expo`/`@expo/vector-icons` to a patch that depends on `expo-font ~14.0.11`.
-- Widget versioning in EAS builds is handled by making the widget target inherit
-  app build settings (see `mobile/plugins/withWidgetVersionSync.js`).
+- App versioning uses `mobile/app.config.js` as the single source of truth.
+  During EAS builds, `EAS_BUILD_NUMBER` is used to set `ios.buildNumber`.
+- Widget versioning is synced in `mobile/plugins/withWidgetVersionSync.js` to
+  match the app config values used during prebuild.
 
 ### Future Upgrade: Expo SDK 55 / React Native 0.76
 

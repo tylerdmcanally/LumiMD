@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 16.26.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "base": {
@@ -29,7 +29,7 @@
     },
     "production": {
       "extends": "base",
-      "autoIncrement": true,
+      "autoIncrement": false,
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release"
