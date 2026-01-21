@@ -28,9 +28,6 @@ module.exports = {
         ITSAppUsesNonExemptEncryption: false,
         UIBackgroundModes: ['audio', 'remote-notification'],
       },
-      entitlements: {
-        'com.apple.security.application-groups': ['group.com.lumimd.app'],
-      },
     },
     android: {
       icon: './assets/icon.png',
@@ -82,9 +79,6 @@ module.exports = {
         },
       ],
       '@react-native-firebase/app',
-      '@bacons/apple-targets',
-      './plugins/withWidgetKitModule.js',
-      './plugins/withWidgetVersionSync.js',
     ],
     extra: {
       router: {},

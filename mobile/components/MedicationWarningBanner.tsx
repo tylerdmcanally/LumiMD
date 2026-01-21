@@ -11,7 +11,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from './ui';
 
@@ -213,9 +213,18 @@ export const MedicationWarningBanner: React.FC<MedicationWarningBannerProps> = (
       })}
 
       {onDismiss && (
-        <TouchableOpacity style={styles.dismissButton} onPress={onDismiss}>
+        <Pressable 
+          style={({ pressed }) => [
+            styles.dismissButton,
+            pressed && { opacity: 0.8 }
+          ]} 
+          onPress={() => {
+            console.log('[MedicationWarningBanner] Dismiss pressed');
+            onDismiss();
+          }}
+        >
           <Text style={styles.dismissButtonText}>I understand</Text>
-        </TouchableOpacity>
+        </Pressable>
       )}
     </View>
   );

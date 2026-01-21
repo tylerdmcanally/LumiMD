@@ -13,7 +13,6 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@bacons/apple-targets": "^3.0.6",
     "@expo/vector-icons": "^15.0.3",
     "@lumimd/sdk": "file:../packages/sdk",
     "@react-native-assets/slider": "^11.0.12",
@@ -50,7 +49,6 @@
     "react-native": "0.81.5",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-shared-group-preferences": "^1.1.24",
     "simple-swizzle": "^0.2.4"
   },
   "devDependencies": {
@@ -70,8 +68,6 @@
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [
-          "react-native-shared-group-preferences",
-          "@bacons/apple-targets",
           "expo-in-app-purchases"
         ]
       }

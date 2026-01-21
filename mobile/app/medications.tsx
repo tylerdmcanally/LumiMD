@@ -227,8 +227,24 @@ export default function MedicationsScreen() {
 
     // Handler to acknowledge warnings when banner is dismissed
     const handleAcknowledgeWarnings = () => {
+      console.log('[Medications] Acknowledge warnings called for', med.id, {
+        hasNonCriticalWarnings,
+        warningAcknowledgedAt: med.warningAcknowledgedAt
+      });
       if (med.id && hasNonCriticalWarnings && !med.warningAcknowledgedAt) {
-        acknowledgeWarnings.mutate(med.id);
+        console.log('[Medications] Calling acknowledgeWarnings.mutate for', med.id);
+        acknowledgeWarnings.mutate(med.id, {
+          onSuccess: () => {
+            console.log('[Medications] Successfully acknowledged warnings');
+            Alert.alert('Got it', 'Warning acknowledged. It will be minimized next time.');
+          },
+          onError: (error) => {
+            console.error('[Medications] Error acknowledging warnings:', error);
+            Alert.alert('Error', 'Failed to acknowledge warning. Please try again.');
+          }
+        });
+      } else {
+        console.log('[Medications] Skipping acknowledgment - conditions not met');
       }
     };
 
@@ -270,8 +286,13 @@ export default function MedicationsScreen() {
           )}
 
           {/* Warning Banner - Only show relevant warnings */}
+          {/* Wrapped in View with onStartShouldSetResponder to prevent parent Pressable from capturing touches */}
           {warningsToShow.length > 0 && (
-            <View style={{ marginTop: spacing(2) }}>
+            <View 
+              style={{ marginTop: spacing(2) }}
+              onStartShouldSetResponder={() => true}
+              onTouchEnd={(e) => e.stopPropagation()}
+            >
               <MedicationWarningBanner 
                 warnings={warningsToShow} 
                 onDismiss={hasNonCriticalWarnings && !hasCriticalWarning ? handleAcknowledgeWarnings : undefined}

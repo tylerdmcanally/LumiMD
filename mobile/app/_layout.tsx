@@ -11,7 +11,6 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits, useMedicationSchedule } from '../lib/api/hooks';
 import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
-import { syncMedicationScheduleToWidget } from '../lib/widget/widgetSync';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -151,7 +150,7 @@ function NotificationHandler() {
     };
   }, [isAuthenticated, router]);
 
-  // Sync widget on app foreground
+  // Refresh medication schedule on app foreground
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (
@@ -159,18 +158,9 @@ function NotificationHandler() {
         nextAppState === 'active' &&
         isAuthenticated
       ) {
-        // App has come to the foreground - refresh schedule and sync widget
+        // App has come to the foreground - refresh schedule
         console.log('[AppState] App came to foreground, refreshing medication schedule');
-        refetchSchedule().then((result) => {
-          // Widget sync will happen automatically via useWidgetSync in medication-schedule screen
-          // But also sync here in case user doesn't open that screen
-          const latestSchedule = result?.data ?? medicationSchedule;
-          if (latestSchedule) {
-            syncMedicationScheduleToWidget(latestSchedule).catch(err => {
-              console.warn('[AppState] Failed to sync widget on foreground:', err);
-            });
-          }
-        });
+        refetchSchedule();
       }
       appState.current = nextAppState;
     });
@@ -178,16 +168,7 @@ function NotificationHandler() {
     return () => {
       subscription.remove();
     };
-  }, [isAuthenticated, medicationSchedule, refetchSchedule]);
-
-  // Sync widget whenever schedule data changes (handles both foreground and data updates)
-  useEffect(() => {
-    if (isAuthenticated && medicationSchedule) {
-      syncMedicationScheduleToWidget(medicationSchedule).catch(err => {
-        console.warn('[NotificationHandler] Failed to sync widget:', err);
-      });
-    }
-  }, [isAuthenticated, medicationSchedule]);
+  }, [isAuthenticated, refetchSchedule]);
 
   return null;
 }
