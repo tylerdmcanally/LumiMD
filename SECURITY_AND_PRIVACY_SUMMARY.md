@@ -1,7 +1,7 @@
 # LumiMD Security & Privacy Summary
 
-**Last Updated:** December 3, 2025
-**Status:** ✅ Production Ready
+**Last Updated:** January 12, 2026
+**Status:** ⚠️ Needs remediation (see `docs/SECURITY_AUDIT_REPORT.md`)
 
 ---
 
@@ -23,7 +23,7 @@ LumiMD is a consumer-facing health app that helps users track their doctor visit
 2. **CORS Whitelist**
    - File: [functions/src/index.ts](functions/src/index.ts)
    - Only whitelisted origins can access API
-   - Configured: `https://lumimd.app` + localhost (dev mode)
+   - Configured: `https://lumimd.app`, `https://portal.lumimd.app`, localhost (dev), and Vercel previews
    - Prevents CSRF attacks
 
 3. **Security Headers (Helmet.js)**
@@ -123,6 +123,8 @@ User Device (viewing data)
 - `PATCH /v1/users/me` - Update profile
 - `GET /v1/users/me/export` - **Export all data**
 - `DELETE /v1/users/me` - **Delete account**
+- `POST /v1/users/push-tokens` - Register push token
+- `DELETE /v1/users/push-tokens` - Remove push token
 
 ### Authentication
 - `POST /v1/auth/create-handoff` - Create mobile→web auth code
@@ -136,7 +138,7 @@ User Device (viewing data)
 
 ### Medications & Actions
 - Standard CRUD operations with ownership checks
-- See [SECURITY_AUDIT_PLAN.md](SECURITY_AUDIT_PLAN.md) for details
+- See `docs/SECURITY_AUDIT.md` for full audit checklist
 
 ---
 
@@ -219,13 +221,9 @@ LumiMD is a **direct-to-consumer** product, not a "covered entity" under HIPAA. 
 
 ### Active Documentation
 - [PRIVACY_POLICY.md](PRIVACY_POLICY.md) - User-facing privacy policy
-- [SECURITY_AUDIT_PLAN.md](SECURITY_AUDIT_PLAN.md) - Security vulnerability assessment
-- [SECURITY_FIXES_APPLIED.md](SECURITY_FIXES_APPLIED.md) - What we fixed and how
+- [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) - Security audit checklist and plan
+- [docs/SECURITY_AUDIT_REPORT.md](docs/SECURITY_AUDIT_REPORT.md) - Audit findings vs codebase
 - **This file** - Overall summary
-
-### Archived (HIPAA-Focused)
-- [docs/archive/DATA_PRIVACY_ENCRYPTION_STRATEGY.md](docs/archive/DATA_PRIVACY_ENCRYPTION_STRATEGY.md)
-- [docs/archive/HIPAA_COMPLIANCE_CHECKLIST.md](docs/archive/HIPAA_COMPLIANCE_CHECKLIST.md)
 
 ---
 

@@ -29,8 +29,8 @@
 | Layer | Technology | What It Does |
 |-------|------------|--------------|
 | **Mobile App** | Expo + React Native | iOS app users interact with |
-| **Web Portal** | Next.js 15 + React | Browser-based dashboard for caregivers |
-| **Backend API** | Firebase Cloud Functions + Express | Handles all business logic |
+| **Web Portal** | Next.js 14 + React 19 | Browser-based dashboard for caregivers |
+| **Backend API** | Firebase Cloud Functions (Node 20) + Express | Handles all business logic |
 | **Database** | Firestore (NoSQL) | Stores all user data |
 | **File Storage** | Firebase Storage | Stores audio recordings |
 | **Authentication** | Firebase Auth | Handles login/signup |
@@ -245,7 +245,8 @@ All endpoints require authentication via `Authorization: Bearer <firebase_id_tok
 | POST | `/v1/visits` | Create new visit | `{audioUrl?, notes?}` | `{id, status: 'pending'}` |
 | PATCH | `/v1/visits/:id` | Update visit | `{title?, notes?, ...}` | Updated visit |
 | DELETE | `/v1/visits/:id` | Delete visit | - | `204 No Content` |
-| POST | `/v1/visits/:id/reprocess` | Re-run AI | - | `{status: 'processing'}` |
+| POST | `/v1/visits/:id/retry` | Re-run AI | - | `{status: 'processing'}` |
+| POST | `/v1/visits/:id/share-with-caregivers` | Notify caregivers | - | `{shared: true}` |
 
 ### Medications
 
@@ -255,24 +256,25 @@ All endpoints require authentication via `Authorization: Bearer <firebase_id_tok
 | POST | `/v1/meds` | Add medication | `{name, dose?, frequency?}` |
 | PATCH | `/v1/meds/:id` | Update medication | `{dose?, frequency?, active?}` |
 | DELETE | `/v1/meds/:id` | Remove medication | - |
-| POST | `/v1/meds/:id/stop` | Mark as discontinued | `{reason?}` |
+| POST | `/v1/meds/safety-check` | Run safety check | `{medicationIds: string[]}` |
 
 ### Medication Reminders
 
 | Method | Endpoint | Purpose | Request Body |
 |--------|----------|---------|--------------|
-| GET | `/v1/med-reminders` | List reminders | - |
-| POST | `/v1/med-reminders` | Create reminder | `{medicationId, times: ["08:00"]}` |
-| PATCH | `/v1/med-reminders/:id` | Update times | `{times?, enabled?}` |
-| DELETE | `/v1/med-reminders/:id` | Delete reminder | - |
+| GET | `/v1/medication-reminders` | List reminders | - |
+| POST | `/v1/medication-reminders` | Create reminder | `{medicationId, times: ["08:00"]}` |
+| PUT | `/v1/medication-reminders/:id` | Update reminder | `{times?, enabled?}` |
+| DELETE | `/v1/medication-reminders/:id` | Delete reminder | - |
 
 ### Users & Profile
 
 | Method | Endpoint | Purpose | Request Body |
 |--------|----------|---------|--------------|
 | GET | `/v1/users/me` | Get profile | - |
-| PUT | `/v1/users/me` | Update profile | `{firstName?, allergies?[], ...}` |
-| POST | `/v1/users/push-token` | Register for notifications | `{token, platform}` |
+| PATCH | `/v1/users/me` | Update profile | `{firstName?, allergies?[], ...}` |
+| POST | `/v1/users/push-tokens` | Register for notifications | `{token, platform}` |
+| DELETE | `/v1/users/push-tokens` | Remove a push token | `{token}` |
 | GET | `/v1/users/me/caregivers` | List caregivers | - |
 | POST | `/v1/users/me/caregivers` | Add caregiver | `{email, name?, relationship?}` |
 
@@ -282,8 +284,9 @@ All endpoints require authentication via `Authorization: Bearer <firebase_id_tok
 |--------|----------|---------|
 | GET | `/v1/shares` | List shares (as owner or caregiver) |
 | POST | `/v1/shares` | Create share invite |
-| PUT | `/v1/shares/:id/accept` | Accept invite |
-| PUT | `/v1/shares/:id/revoke` | Revoke access |
+| GET | `/v1/shares/invites` | List invites |
+| PATCH | `/v1/shares/invites/:id` | Update invite status |
+| POST | `/v1/shares/accept-invite` | Accept invite |
 
 ### Nudges (LumiBot)
 
@@ -298,8 +301,10 @@ All endpoints require authentication via `Authorization: Bearer <firebase_id_tok
 
 | Method | Endpoint | Purpose | Request Body |
 |--------|----------|---------|--------------|
-| GET | `/v1/healthLogs` | List health entries | - |
-| POST | `/v1/healthLogs` | Log vitals/symptoms | `{type, data: {bloodPressure?, ...}}` |
+| GET | `/v1/health-logs` | List health entries | - |
+| POST | `/v1/health-logs` | Log vitals/symptoms | `{type, data: {bloodPressure?, ...}}` |
+
+Additional endpoints are available for medication logs, care views, insights, and medical context. See `functions/openapi.yaml` for the full API definition.
 
 ---
 
@@ -314,10 +319,10 @@ All endpoints require authentication via `Authorization: Bearer <firebase_id_tok
 2. App calls Firebase Auth createUserWithEmailAndPassword()
    └── Firebase creates account, returns userId
 
-3. App calls POST /v1/users/register to create Firestore profile
+3. App calls GET /v1/users/me to bootstrap Firestore profile
    └── File: functions/src/routes/users.ts
 
-4. App calls POST /v1/users/push-token to enable notifications
+4. App calls POST /v1/users/push-tokens to enable notifications
    └── Expo push token registered
 
 5. User is now logged in
@@ -638,19 +643,18 @@ cd mobile && npx expo start
 | Package | Version | Purpose | Risk If Outdated |
 |---------|---------|---------|------------------|
 | `firebase-admin` | 13.x | Server-side Firebase ops | AUTH BREAKS |
-| `firebase` | 11.x | Client-side Firebase | AUTH BREAKS |
-| `openai` | 4.x | AI summarization | SUMMARIES FAIL |
-| `express` | 4.21+ | API framework | SECURITY VULN |
-| `next` | 14.2.35+ | Web portal | SECURITY VULN |
+| `firebase` | 12.x | Client-side Firebase | AUTH BREAKS |
+| `openai` | 6.x | AI summarization | SUMMARIES FAIL |
+| `express` | 4.22.x | API framework | SECURITY VULN |
+| `next` | 14.1.x | Web portal | SECURITY VULN |
 | `expo` | SDK 54 | Mobile app framework | BUILD FAILS |
-| `react-native` | 0.76.x | Mobile UI | APP CRASHES |
+| `react-native` | 0.81.x | Mobile UI | APP CRASHES |
 
 ### Known Outdated Dependencies (from Security Audit)
 
 | Package | Current | Target | Issue |
 |---------|---------|--------|-------|
 | `next` | 14.1.0 | 14.2.35+ | DoS vulnerability (CVE-2024-34351) |
-| `express` | 4.18.2 | 4.21.2 | qs parsing DoS (GHSA-6rw7-vpxm-498p) |
 | `pdfmake` | 0.2.20 | 0.3.2 | RCE vulnerability (CVE-2024-25180) |
 
 ### Nice-to-Have Dependencies

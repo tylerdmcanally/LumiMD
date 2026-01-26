@@ -15,20 +15,21 @@ This repository contains the LumiMD mobile app, Firebase backend, and supporting
 
 Key documents are grouped inside `docs/`:
 
+- `docs/README.md` – Documentation index and quick links
+- `docs/EXTERNAL-DEV-OVERVIEW.md` – Onboarding guide for outside reviewers
 - `docs/guides/` – Setup and onboarding guides (Quick Start, Firebase, mobile, app store)
-- `docs/status/` – Current project health reports and executive summaries
-- `docs/roadmaps/` – Resilience and robustness plans
-- `docs/playbooks/` – Daily checklists and rapid response workflows
-- `docs/reference/` – Architecture diagrams, implementation summaries, testing logs
+- `docs/architecture/` – System design and resilience roadmaps
+- `docs/reference/` – Schema, implementation summaries, testing results
+- `docs/reports/` – Analysis and health reports
 
-Refer to `docs/status/PROJECT-STATUS.md` for the latest end-to-end status update.
+Refer to `docs/reports/SYSTEM-HEALTH-REPORT.md` for the latest system status.
 
 ## Installing Dependencies
 
-Because the repo mixes Expo (React Native 18) and Next.js (React 19), always install from the workspace root with legacy peer resolution:
+Because the repo mixes Expo (React Native) and Next.js (React 19), install from the workspace root with legacy peer resolution:
 
 ```bash
-cd /Users/tylermcanally/Desktop/LumiMD
+cd /path/to/LumiMD/Codebase
 npm install --legacy-peer-deps
 ```
 
@@ -56,7 +57,7 @@ firebase use lumimd-dev
 
 - Keep environment variables in the respective `.env` files (`mobile/.env`, `web-portal/.env.local`)
 - Avoid committing build artifacts or local tool installations (e.g., Google Cloud SDK)
-- Update `docs/status/PROJECT-STATUS.md` as milestones land
+- Update `docs/reports/SYSTEM-HEALTH-REPORT.md` as milestones land
 
 Questions or new cleanup requests? Drop them in the backlog and we’ll keep iterating. 
 

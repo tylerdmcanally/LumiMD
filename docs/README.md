@@ -6,7 +6,9 @@
 
 | If you want to... | Read this |
 |-------------------|-----------|
+| **Get an outside-review overview** | [EXTERNAL-DEV-OVERVIEW.md](EXTERNAL-DEV-OVERVIEW.md) |
 | **Understand the codebase** | [CODEBASE-REFERENCE.md](CODEBASE-REFERENCE.md) |
+| **Get a non-engineer overview** | [TECHNICAL_OVERVIEW.md](TECHNICAL_OVERVIEW.md) |
 | **Get started quickly** | [QUICK-START.md](guides/QUICK-START.md) |
 | **Build the workspace** | [BUILDING.md](BUILDING.md) |
 | **Understand features** | [WIDGETS.md](features/WIDGETS.md) |
@@ -18,12 +20,14 @@
 
 ```
 docs/
-├── CODEBASE-REFERENCE.md  # Master reference for AI agents & developers
-├── features/              # Deep dive into specific features
-├── architecture/          # System design and robustness specs
-├── guides/                # Setup and deployment guides
-├── reference/             # Database schema, implementation details
-├── reports/               # Analysis and health reports
+├── EXTERNAL-DEV-OVERVIEW.md  # Outside reviewer overview
+├── CODEBASE-REFERENCE.md     # Master reference for AI agents & developers
+├── TECHNICAL_OVERVIEW.md     # Non-engineer overview
+├── features/                 # Deep dive into specific features
+├── architecture/             # System design and robustness specs
+├── guides/                   # Setup and deployment guides
+├── reference/                # Database schema, implementation details
+├── reports/                  # Analysis and health reports
 ```
 
 ---
@@ -67,7 +71,8 @@ docs/
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE-COMPARISON.md](reference/ARCHITECTURE-COMPARISON.md) | System design decisions |
-| [IMPLEMENTATION-SUMMARY.md](reference/IMPLEMENTATION-SUMMARY.md) | Feature implementation details |
+| [GOOGLE-SIGNIN-IMPLEMENTATION-SUMMARY.md](reference/GOOGLE-SIGNIN-IMPLEMENTATION-SUMMARY.md) | Google Sign-In implementation |
+| [SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md](reference/SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md) | Mobile → web auth handoff implementation |
 | [DATABASE-SCHEMA.md](reference/DATABASE-SCHEMA.md) | Firestore data model |
 | [TESTING-RESULTS.md](reference/TESTING-RESULTS.md) | Test coverage and results |
 
@@ -81,13 +86,6 @@ docs/
 | [ANALYSIS-SUMMARY.md](reports/ANALYSIS-SUMMARY.md) | Codebase analysis |
 | [RATE_LIMIT_ANALYSIS.md](reports/RATE_LIMIT_ANALYSIS.md) | API rate limiting config |
 | [SECURITY_ROTATION_REQUIRED.md](reports/SECURITY_ROTATION_REQUIRED.md) | Security key rotation status |
-
----
-
-## Archive
-
-Historical and legacy documents:
-
 
 ---
 

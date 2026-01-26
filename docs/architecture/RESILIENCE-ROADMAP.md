@@ -339,7 +339,7 @@ class CircuitBreaker {
 
 ### **Phase 5B: Native UX Polish** (4-6 hours) 🟡
 
-**Current Focus from PROJECT-STATUS.md**
+**Current Focus from SYSTEM-HEALTH-REPORT.md**
 
 **Tasks:**
 1. ✅ Add read-only Action Items screen (`mobile/app/actions.tsx`)
@@ -464,7 +464,7 @@ export const checkPendingTranscriptions = functions
 
 ### **Phase 7: Web Portal** (12-16 hours)
 
-**From PROJECT-STATUS.md - already planned**
+**From SYSTEM-HEALTH-REPORT.md - already planned**
 
 1. Build dashboard with real data
 2. Visit history with filters

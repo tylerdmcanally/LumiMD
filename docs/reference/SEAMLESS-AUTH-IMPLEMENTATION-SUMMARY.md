@@ -1,4 +1,4 @@
-# Implementation Summary: Seamless Mobile → Web Authentication
+# Seamless Mobile → Web Authentication Implementation Summary
 
 ## ✅ What We Built
 
@@ -82,12 +82,15 @@ web-portal/
 ### 4. Documentation - **COMPLETE**
 
 ```
-/
-├── SEAMLESS-AUTH-README.md        ✅ Deep dive implementation guide
-├── QUICK-START.md                 ✅ 5-minute setup guide
-├── IMPLEMENTATION-SUMMARY.md      ✅ This file
-└── firebase-setup/
-    └── TTL-SETUP.md               ✅ Firestore TTL configuration
+docs/
+├── guides/
+│   ├── SEAMLESS-AUTH-README.md   ✅ Deep dive implementation guide
+│   └── QUICK-START.md            ✅ 5-minute setup guide
+└── reference/
+    └── SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md ✅ This file
+
+firebase-setup/
+└── TTL-SETUP.md                   ✅ Firestore TTL configuration
 ```
 
 ## 🎯 How It Works
@@ -204,7 +207,7 @@ web-portal/
 5. **Deploy web portal** (Vercel or Firebase Hosting)
 6. **Test end-to-end**
 
-See `/QUICK-START.md` for detailed instructions.
+See `docs/guides/QUICK-START.md` for detailed instructions.
 
 ## 🎨 UI/UX Highlights
 
@@ -307,11 +310,10 @@ All acceptable for MVP.
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| `QUICK-START.md` | Get running in 5 minutes | You (developer) |
-| `SEAMLESS-AUTH-README.md` | Deep dive + troubleshooting | You + future devs |
-| `firebase-setup/TTL-SETUP.md` | Firestore TTL guide | You (one-time setup) |
-| `functions/openapi.yaml` | Complete API reference | You + frontend devs |
-| `Dev Guide.md` | Project master plan | You (architect) |
+| `docs/guides/QUICK-START.md` | Get running in 5 minutes | Developers |
+| `docs/guides/SEAMLESS-AUTH-README.md` | Deep dive + troubleshooting | Developers |
+| `firebase-setup/TTL-SETUP.md` | Firestore TTL guide | Developers |
+| `functions/openapi.yaml` | Complete API reference | Frontend/backend |
 
 ## 🎉 Success Criteria
 
@@ -330,7 +332,7 @@ Your seamless authentication is **PRODUCTION READY** when:
 
 ## 💬 Feedback & Iteration
 
-This implementation follows your Dev Guide (Section 26: Modular Architecture) and prioritizes:
+This implementation follows your Dev Guide and prioritizes:
 
 1. **Security** - One-time codes, short TTL, server validation
 2. **UX** - < 1 second flow, seamless experience
@@ -368,14 +370,8 @@ This was a comprehensive implementation! Here's what we built together:
 - **Complete OpenAPI spec**
 - **Production-ready security**
 
-Your lean mobile app + rich web portal architecture is now scaffolded and ready for the next phase.
-
 ---
 
-**Ready to deploy?** Start with `/QUICK-START.md`  
-**Questions?** Check `/SEAMLESS-AUTH-README.md`  
-**API Reference?** See `/functions/openapi.yaml`
-
-Good luck with LumiMD! 🚀
-
-
+**Ready to deploy?** Start with `docs/guides/QUICK-START.md`  
+**Questions?** Check `docs/guides/SEAMLESS-AUTH-README.md`  
+**API Reference?** See `functions/openapi.yaml`

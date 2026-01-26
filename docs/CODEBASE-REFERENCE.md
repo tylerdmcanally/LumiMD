@@ -82,7 +82,7 @@ Mobile App → Audio Recording → AssemblyAI (Transcription) → OpenAI (Summar
 |-------|------------|
 | **Mobile** | Expo SDK 54, React Native, Expo Router |
 | **Widgets** | Swift, SwiftUI, WidgetKit |
-| **Web** | Next.js 15, React 19, Tailwind CSS |
+| **Web** | Next.js 14, React 19, Tailwind CSS |
 | **Backend** | Firebase Cloud Functions (Node.js 20), Express |
 | **Database** | Firestore (NoSQL) |
 | **Storage** | Firebase Storage (audio files) |
@@ -107,17 +107,18 @@ Base URL: `https://us-central1-lumimd-dev.cloudfunctions.net/api`
 | GET | `/` | List user's visits |
 | GET | `/:id` | Get single visit |
 | POST | `/` | Create new visit |
-| PUT | `/:id` | Update visit |
+| PATCH | `/:id` | Update visit |
 | DELETE | `/:id` | Delete visit |
-| POST | `/:id/upload` | Upload audio for processing |
-| POST | `/:id/reprocess` | Re-run AI summarization |
+| POST | `/:id/retry` | Re-run AI summarization |
+| POST | `/:id/share-with-caregivers` | Notify caregivers |
 
 ### Actions (`/v1/actions`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | List user's action items |
 | GET | `/:id` | Get single action |
-| PUT | `/:id` | Update action (complete, etc.) |
+| POST | `/` | Create action |
+| PATCH | `/:id` | Update action (complete, etc.) |
 | DELETE | `/:id` | Delete action |
 
 ### Medications (`/v1/meds`)
@@ -126,11 +127,11 @@ Base URL: `https://us-central1-lumimd-dev.cloudfunctions.net/api`
 | GET | `/` | List user's medications |
 | GET | `/:id` | Get single medication |
 | POST | `/` | Create medication |
-| PUT | `/:id` | Update medication |
+| PATCH | `/:id` | Update medication |
 | DELETE | `/:id` | Delete medication |
-| POST | `/:id/safety-check` | Run AI safety check |
+| POST | `/safety-check` | Run AI safety check |
 
-### Medication Reminders (`/v1/meds/reminders`)
+### Medication Reminders (`/v1/medication-reminders`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | List user's reminders |
@@ -146,7 +147,7 @@ Base URL: `https://us-central1-lumimd-dev.cloudfunctions.net/api`
 | POST | `/:id/snooze` | Snooze nudge |
 | POST | `/:id/dismiss` | Dismiss nudge |
 
-### Health Logs (`/v1/healthLogs`)
+### Health Logs (`/v1/health-logs`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | List health log entries |
@@ -157,21 +158,38 @@ Base URL: `https://us-central1-lumimd-dev.cloudfunctions.net/api`
 |--------|----------|-------------|
 | GET | `/` | List user's shares |
 | POST | `/` | Create share invite |
-| PUT | `/:id/accept` | Accept share invite |
-| PUT | `/:id/revoke` | Revoke share |
+| GET | `/invites` | List incoming/outgoing invites |
+| PATCH | `/invites/:id` | Update invite status |
+| POST | `/accept-invite` | Accept share invite |
+| DELETE | `/:id` | Revoke share |
 
 ### Users (`/v1/users`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/me` | Get current user profile |
-| PUT | `/me` | Update profile |
-| POST | `/push-token` | Register push notification token |
-| DELETE | `/push-token/:token` | Remove push token |
+| PATCH | `/me` | Update profile |
+| GET | `/me/export` | Export user data |
+| DELETE | `/me` | Delete user account |
+| POST | `/push-tokens` | Register push notification token |
+| DELETE | `/push-tokens` | Remove push token |
+| DELETE | `/push-tokens/all` | Remove all push tokens |
+| GET | `/me/caregivers` | List caregivers |
+| POST | `/me/caregivers` | Add caregiver |
+| PUT | `/me/caregivers/:id` | Update caregiver |
+| DELETE | `/me/caregivers/:id` | Remove caregiver |
 
 ### Webhooks (`/v1/webhooks`)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/assemblyai` | AssemblyAI transcription callback |
+
+### Additional APIs
+| Path | Description |
+|------|-------------|
+| `/v1/medication-logs` | Medication adherence logs |
+| `/v1/insights` | Summary and analytics endpoints |
+| `/v1/medical-context` | Patient context aggregation |
+| `/v1/care` | Caregiver-focused aggregations |
 
 ---
 

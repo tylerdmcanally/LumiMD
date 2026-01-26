@@ -457,7 +457,7 @@ console.log(`Success rate: ${(completed / total * 100).toFixed(1)}%`);
 2. **Good state management** - Granular status tracking
 3. **User experience** - Clear feedback, manual retry option
 4. **Security** - Proper auth, ownership checks
-5. **Documentation** - Comprehensive PROJECT-STATUS.md
+5. **Documentation** - Comprehensive SYSTEM-HEALTH-REPORT.md
 
 ### What Needs Attention ⚠️
 

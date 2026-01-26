@@ -39,9 +39,9 @@ You have **successfully built a working medical visit recording and AI summariza
 - `mobile/app/visit-detail.tsx` - Visit display (inferred)
 
 **Documentation:**
-- `PROJECT-STATUS.md` - Current status
-- `IMPLEMENTATION-SUMMARY.md` - Auth implementation
-- `QUICK-START.md` - Setup guide
+- `docs/reports/SYSTEM-HEALTH-REPORT.md` - Current status
+- `docs/reference/SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md` - Auth implementation
+- `docs/guides/QUICK-START.md` - Setup guide
 
 ---
 
@@ -434,7 +434,7 @@ Despite the issues, you've built something **really solid**:
 2. **Good security** - Proper auth, ownership checks
 3. **Great UX** - Recording workflow is smooth
 4. **Smart status tracking** - Easy to debug
-5. **Comprehensive docs** - PROJECT-STATUS.md is excellent
+5. **Comprehensive docs** - SYSTEM-HEALTH-REPORT.md is excellent
 6. **Modern stack** - React Native, Firebase, TypeScript
 7. **Lean mobile strategy** - Right call for MVP
 
