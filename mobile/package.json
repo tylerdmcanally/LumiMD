@@ -7,12 +7,14 @@
     "android": "expo start --android --clear",
     "ios": "expo start --ios --clear",
     "web": "expo start --web",
-    "prebuild": "expo prebuild --clean",
+    "prebuild": "node scripts/prebuild-guard.js && expo prebuild",
+    "prebuild:clean": "node scripts/prebuild-guard.js --clean && expo prebuild --clean",
     "start:logs": "EXPO_USE_LOGS=1 LOG_LEVEL=info npx expo start --dev-client --tunnel --clear",
     "test": "jest",
     "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@expo/vector-icons": "^15.0.3",
     "@lumimd/sdk": "file:../packages/sdk",
     "@react-native-assets/slider": "^11.0.12",
@@ -27,7 +29,7 @@
     "@tanstack/react-query": "^5.90.7",
     "babel-preset-expo": "~54.0.10",
     "dayjs": "^1.11.19",
-    "expo": "~54.0.31",
+    "expo": "~54.0.32",
     "expo-auth-session": "~7.0.10",
     "expo-av": "~16.0.8",
     "expo-build-properties": "~1.0.10",
@@ -47,6 +49,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-health": "^1.18.0",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "simple-swizzle": "^0.2.4"
@@ -68,7 +71,14 @@
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [
-          "expo-in-app-purchases"
+          "expo-in-app-purchases",
+          "react-native-health"
+        ]
+      },
+      "duplicateDependenciesCheck": {
+        "exclude": [
+          "expo",
+          "@expo/fingerprint"
         ]
       }
     }
