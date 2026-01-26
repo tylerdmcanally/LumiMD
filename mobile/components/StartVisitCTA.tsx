@@ -71,12 +71,13 @@ const styles = StyleSheet.create({
   title: {
     color: '#fff',
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     marginBottom: 3,
     letterSpacing: -0.3,
   },
   subtitle: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
 });

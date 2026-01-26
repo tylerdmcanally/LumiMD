@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "npm run build -w packages/sdk --if-present"
+    "postinstall": "npm run build -w packages/sdk --if-present && rm -rf node_modules/react-native-health/node_modules/@expo 2>/dev/null || true"
   },
   "dependencies": {
     "firebase-admin": "^13.6.0"
@@ -22,6 +22,8 @@
       "qs": "6.14.1"
     },
     "qs": "6.14.1",
-    "expo-font": "14.0.11"
+    "expo-font": "14.0.11",
+    "expo": "54.0.32",
+    "@expo/fingerprint": "0.15.4"
   }
 }

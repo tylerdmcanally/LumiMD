@@ -20,9 +20,9 @@ import {
 } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
-import { HealthLogButton } from '../components/HealthLogButton';
 import { ShareConfirmationSheet } from '../components/ShareConfirmationSheet';
 import { useVisitSharePrompt } from '../lib/hooks/useVisitSharePrompt';
+import { HealthSnapshotCard } from '../components/HealthSnapshotCard';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
 
@@ -212,6 +212,12 @@ export default function HomeScreen() {
   const isLoadingData = actionsLoading || visitsLoading || medsLoading || profileLoading;
   const hasErrors = actionsError || visitsError || medsError || profileError;
 
+  // Extract medical conditions for HealthKit relevance filtering
+  const medicalConditions = useMemo(() => {
+    const conditions = (profile as any)?.medicalHistory;
+    return Array.isArray(conditions) ? conditions : [];
+  }, [profile]);
+
   const latestVisitBadge = useMemo(() => {
     if (!latestVisit) return undefined;
 
@@ -264,7 +270,7 @@ export default function HomeScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <View style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-            <HeroBanner />
+            <HeroBanner userName={(profile as any)?.firstName} />
 
             {/* LumiBot - Only shows when there are active nudges */}
             <LumiBotContainer userId={user?.uid} enabled={isAuthenticated} />
@@ -278,7 +284,6 @@ export default function HomeScreen() {
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Quick Overview</Text>
-                <HealthLogButton />
               </View>
 
               {isLoadingData ? (
@@ -296,6 +301,7 @@ export default function HomeScreen() {
                     title="Action Items"
                     count={stats.openActions}
                     countLabel="pending"
+                    emptyStateText="All caught up!"
                     icon="checkmark-circle-outline"
                     onPress={() => router.push('/actions')}
                   />
@@ -304,6 +310,7 @@ export default function HomeScreen() {
                     title="Recent Visits"
                     count={stats.recentVisits}
                     countLabel="visits"
+                    emptyStateText="Record your first visit"
                     statusBadge={latestVisitBadge}
                     icon="document-text-outline"
                     onPress={handleRecentVisitsPress}
@@ -313,6 +320,7 @@ export default function HomeScreen() {
                     title="Medications"
                     count={stats.medications}
                     countLabel="active"
+                    emptyStateText="None tracked yet"
                     icon="medkit-outline"
                     onPress={() => router.push('/medications')}
                   />
@@ -334,6 +342,12 @@ export default function HomeScreen() {
                       onPress={() => router.push('/medication-schedule')}
                     />
                   )}
+
+                  {/* Apple Health Integration - shows personalized vitals */}
+                  <HealthSnapshotCard
+                    medicalConditions={medicalConditions}
+                    maxVitals={3}
+                  />
                 </>
               )}
             </View>
@@ -351,12 +365,6 @@ export default function HomeScreen() {
               )}
             </View>
 
-            {/* Helper text */}
-            {!isLoadingData && (
-              <Text style={styles.helperText}>
-                Tap any card above to view details
-              </Text>
-            )}
 
 
 
@@ -395,16 +403,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
-  },
-  helperText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing(5),
-    paddingHorizontal: spacing(4),
-    marginBottom: spacing(8),
+    letterSpacing: -0.2,
   },
   loadingContainer: {
     flexDirection: 'row',

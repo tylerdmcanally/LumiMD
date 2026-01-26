@@ -4,8 +4,21 @@ import { useRouter } from 'expo-router';
 import { GradientHero, Colors, spacing } from './ui';
 import { Ionicons } from '@expo/vector-icons';
 
-export function HeroBanner() {
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+type HeroBannerProps = {
+  userName?: string;
+};
+
+export function HeroBanner({ userName }: HeroBannerProps) {
   const router = useRouter();
+  const greeting = getGreeting();
+  const displayName = userName || ''; // Already first name from API
 
   return (
     <GradientHero style={styles.hero}>
@@ -23,7 +36,9 @@ export function HeroBanner() {
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.subtitle}>Your health, simplified.</Text>
+        <Text style={styles.subtitle}>
+          {greeting}{displayName ? `, ${displayName}` : ''}
+        </Text>
       </View>
     </GradientHero>
   );
@@ -41,8 +56,8 @@ const styles = StyleSheet.create({
   },
   brandText: {
     color: '#fff',
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 28,
+    fontFamily: 'PlusJakartaSans_700Bold',
     letterSpacing: -0.5,
   },
   profileButton: {
@@ -61,8 +76,9 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: 'rgba(255,255,255,0.95)',
-    fontSize: 17,
-    fontWeight: '400',
+    fontSize: 20,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    letterSpacing: -0.3,
   },
 });
 

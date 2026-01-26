@@ -11,6 +11,7 @@ export type GlanceableCardProps = {
     text: string;
     color: string;
   };
+  emptyStateText?: string; // Friendly text when count is 0
   icon?: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 };
@@ -20,9 +21,12 @@ export function GlanceableCard({
   count, 
   countLabel, 
   statusBadge,
+  emptyStateText,
   icon = 'arrow-forward',
   onPress 
 }: GlanceableCardProps) {
+  const isEmpty = count === 0 && emptyStateText;
+
   return (
     <Pressable 
       onPress={onPress}
@@ -33,13 +37,23 @@ export function GlanceableCard({
     >
       <Card>
         <View style={styles.container}>
+          {/* Soft icon container */}
+          <View style={styles.iconContainer}>
+            <Ionicons name={icon} size={22} color={Colors.primary} />
+          </View>
+
+          {/* Content */}
           <View style={styles.content}>
             <Text style={styles.title}>{title}</Text>
-            <View style={styles.countRow}>
-              <Text style={styles.count}>{count}</Text>
-              <Text style={styles.countLabel}>{countLabel}</Text>
-            </View>
-            {statusBadge ? (
+            {isEmpty ? (
+              <Text style={styles.emptyText}>{emptyStateText}</Text>
+            ) : (
+              <View style={styles.countRow}>
+                <Text style={styles.count}>{count}</Text>
+                <Text style={styles.countLabel}>{countLabel}</Text>
+              </View>
+            )}
+            {statusBadge && !isEmpty ? (
               <View
                 style={[
                   styles.badge,
@@ -53,9 +67,8 @@ export function GlanceableCard({
             ) : null}
           </View>
           
-          <View style={styles.iconContainer}>
-            <Ionicons name={icon} size={24} color={Colors.primary} />
-          </View>
+          {/* Chevron */}
+          <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
         </View>
       </Card>
     </Pressable>
@@ -67,34 +80,51 @@ const styles = StyleSheet.create({
     marginBottom: spacing(3),
   },
   pressed: {
-    opacity: 0.7,
+    opacity: 0.85,
   },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+  },
+  iconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(64,201,208,0.12)', // Soft muted background
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing(3),
   },
   content: {
     flex: 1,
   },
   title: {
     fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
-    marginBottom: spacing(1),
+    marginBottom: spacing(0.5),
+    letterSpacing: 0.1,
   },
   countRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   count: {
-    fontSize: 28,
-    fontWeight: '600',
+    fontSize: 26,
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: Colors.text,
-    marginRight: spacing(2),
+    marginRight: spacing(1.5),
+    letterSpacing: -0.5,
   },
   countLabel: {
-    fontSize: 16,
-    color: Colors.text,
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+  },
+  emptyText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.text, // Darker for better readability
   },
   badge: {
     alignSelf: 'flex-start',
@@ -105,15 +135,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 13,
-    fontWeight: '600',
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });
 

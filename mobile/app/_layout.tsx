@@ -1,16 +1,18 @@
 import { Stack, useRouter } from 'expo-router';
-import { useColorScheme, AppState } from 'react-native';
+import { useColorScheme, AppState, Platform } from 'react-native';
 import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
+import { useFonts, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits, useMedicationSchedule } from '../lib/api/hooks';
 import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
+import { syncHealthKitData } from '../lib/healthkit';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -150,7 +152,7 @@ function NotificationHandler() {
     };
   }, [isAuthenticated, router]);
 
-  // Refresh medication schedule on app foreground
+  // Refresh data and sync HealthKit on app foreground
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (
@@ -159,8 +161,21 @@ function NotificationHandler() {
         isAuthenticated
       ) {
         // App has come to the foreground - refresh schedule
-        console.log('[AppState] App came to foreground, refreshing medication schedule');
+        console.log('[AppState] App came to foreground, refreshing data');
         refetchSchedule();
+
+        // Sync HealthKit data in background (iOS only, silent)
+        if (Platform.OS === 'ios') {
+          syncHealthKitData()
+            .then((result) => {
+              if (result.synced > 0) {
+                console.log(`[HealthKit] Synced ${result.synced} new readings`);
+              }
+            })
+            .catch((error) => {
+              console.warn('[HealthKit] Background sync failed:', error);
+            });
+        }
       }
       appState.current = nextAppState;
     });
@@ -175,6 +190,14 @@ function NotificationHandler() {
 
 export default function RootLayout() {
   const scheme = useColorScheme();
+  
+  // Load Plus Jakarta Sans fonts (non-blocking)
+  useFonts({
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+  });
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

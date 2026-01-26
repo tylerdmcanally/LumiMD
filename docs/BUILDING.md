@@ -17,6 +17,10 @@ npx expo-doctor
 npx expo start --clear
 ```
 
+**Hybrid note:** Do not run `expo prebuild --clean` unless you intend to
+recreate the WidgetKit target. Use `npm run prebuild` (no clean) or
+`ALLOW_PREBUILD_CLEAN=1 npm run prebuild:clean` only when necessary.
+
 If Watchman reports repeated \"recrawl\" warnings, reset the watch:
 
 ```bash
@@ -50,8 +54,8 @@ No extra steps are required unless you are editing the SDK directly. In that cas
   `expo`/`@expo/vector-icons` to a patch that depends on `expo-font ~14.0.11`.
 - App versioning uses `mobile/app.config.js` as the single source of truth.
   During EAS builds, `EAS_BUILD_NUMBER` is used to set `ios.buildNumber`.
-- Widget versioning is synced in `mobile/plugins/withWidgetVersionSync.js` to
-  match the app config values used during prebuild.
+- Widget versioning is synced by `mobile/scripts/sync-widget-version.sh` during
+  EAS builds to match the app config values.
 
 ### Future Upgrade: Expo SDK 55 / React Native 0.76
 

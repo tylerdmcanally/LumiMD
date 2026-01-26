@@ -209,6 +209,10 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
 /**
  * POST /v1/users/push-tokens
  * Register a push notification token for the authenticated user
+ * 
+ * IMPORTANT: A device token can only belong to ONE user at a time.
+ * When registering, we first remove this token from ALL other users
+ * to prevent cross-user notification leaks (e.g., when switching accounts).
  */
 usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -216,13 +220,51 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
     const payload = registerPushTokenSchema.parse(req.body);
     const { token, platform, timezone } = payload;
 
+    const now = admin.firestore.Timestamp.now();
     const userRef = getDb().collection('users').doc(userId);
     const tokensRef = userRef.collection('pushTokens');
 
-    // Check if token already exists
-    const existingTokenQuery = await tokensRef.where('token', '==', token).limit(1).get();
+    // CRITICAL: Remove this token from ALL other users first
+    // This prevents notification leaks when switching accounts on the same device
+    // Use collection group query for efficiency (queries all pushTokens subcollections at once)
+    try {
+      const allTokensWithThisValue = await getDb()
+        .collectionGroup('pushTokens')
+        .where('token', '==', token)
+        .get();
 
-    const now = admin.firestore.Timestamp.now();
+      const staleTokenRefs: admin.firestore.DocumentReference[] = [];
+
+      for (const tokenDoc of allTokensWithThisValue.docs) {
+        // Get the parent user ID from the document path: users/{userId}/pushTokens/{tokenId}
+        const pathParts = tokenDoc.ref.path.split('/');
+        const tokenOwnerId = pathParts[1];
+        
+        if (tokenOwnerId !== userId) {
+          // This token belongs to a different user - mark for deletion
+          staleTokenRefs.push(tokenDoc.ref);
+          functions.logger.info(
+            `[users] Found stale push token for user ${tokenOwnerId} - will reassign to ${userId}`
+          );
+        }
+      }
+
+      // Delete stale tokens in batch
+      if (staleTokenRefs.length > 0) {
+        const batch = getDb().batch();
+        staleTokenRefs.forEach((ref) => batch.delete(ref));
+        await batch.commit();
+        functions.logger.info(
+          `[users] Removed ${staleTokenRefs.length} stale token(s) - device now belongs to user ${userId}`
+        );
+      }
+    } catch (cleanupError) {
+      // Log but don't fail - token registration should still proceed
+      functions.logger.warn('[users] Error cleaning up stale tokens (non-fatal):', cleanupError);
+    }
+
+    // Check if token already exists for current user
+    const existingTokenQuery = await tokensRef.where('token', '==', token).limit(1).get();
 
     if (!existingTokenQuery.empty) {
       // Update existing token

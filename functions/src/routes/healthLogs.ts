@@ -16,6 +16,8 @@ import {
     BloodPressureValue,
     GlucoseValue,
     HealthLogType,
+    HealthLogValue,
+    HealthLogSource,
 } from '../types/lumibot';
 import {
     checkHealthValue,
@@ -23,7 +25,7 @@ import {
 } from '../services/safetyChecker';
 import { completeNudge, createFollowUpNudge, createInsightNudge } from '../services/lumibotAnalyzer';
 import { getPrimaryInsight } from '../services/trendAnalyzer';
-import { checkAndCelebrateStreak } from '../services/streakService';
+import { escalatePatientFrequency } from '../triggers/personalRNEvaluation';
 
 
 export const healthLogsRouter = Router();
@@ -68,18 +70,40 @@ const symptomCheckValueSchema = z.object({
     otherSymptoms: z.string().optional(),
 });
 
+// New types for HealthKit integration
+const stepsValueSchema = z.object({
+    count: z.number().min(0).max(200000),
+    date: z.string(), // YYYY-MM-DD
+});
+
+const heartRateValueSchema = z.object({
+    bpm: z.number().min(20).max(300),
+    context: z.enum(['resting', 'active', 'workout', 'unknown']).optional(),
+});
+
+const oxygenSaturationValueSchema = z.object({
+    percentage: z.number().min(50).max(100),
+});
+
 const createHealthLogSchema = z.object({
-    type: z.enum(['bp', 'glucose', 'weight', 'med_compliance', 'symptom_check']),
+    type: z.enum(['bp', 'glucose', 'weight', 'med_compliance', 'symptom_check', 'steps', 'heart_rate', 'oxygen_saturation']),
     value: z.union([
         bpValueSchema,
         glucoseValueSchema,
         weightValueSchema,
         medComplianceValueSchema,
         symptomCheckValueSchema,
+        stepsValueSchema,
+        heartRateValueSchema,
+        oxygenSaturationValueSchema,
     ]),
     nudgeId: z.string().optional(),
     visitId: z.string().optional(),
-    source: z.enum(['manual', 'nudge', 'quick_log']).default('manual'),
+    source: z.enum(['manual', 'nudge', 'quick_log', 'healthkit']).default('manual'),
+    /** Unique identifier from the source for deduplication (e.g., HealthKit sample ID) */
+    sourceId: z.string().optional(),
+    /** Original recording time (for HealthKit imports that may be older than createdAt) */
+    recordedAt: z.string().optional(),
     symptoms: z.array(z.string()).optional(), // For safety checking
 });
 
@@ -155,13 +179,77 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
         // Validate request body
         const data = createHealthLogSchema.parse(req.body);
 
-        // Run safety check
-        const safetyResult = checkHealthValue(
-            data.type as HealthLogType,
-            data.value,
-            !!data.symptoms?.length,
-            data.symptoms || []
-        );
+        // Check for duplicate if sourceId is provided (deduplication for HealthKit sync)
+        if (data.sourceId) {
+            const existingSnapshot = await getHealthLogsCollection()
+                .where('userId', '==', userId)
+                .where('sourceId', '==', data.sourceId)
+                .limit(1)
+                .get();
+
+            if (!existingSnapshot.empty) {
+                const existingDoc = existingSnapshot.docs[0];
+                const existingData = existingDoc.data();
+
+                // For STEPS: Update the existing record (steps accumulate throughout the day)
+                if (data.type === 'steps') {
+                    const newValue = data.value as { count: number; date?: string };
+                    const oldValue = existingData.value as { count: number; date?: string };
+
+                    // Only update if the new count is higher
+                    if (newValue.count > (oldValue?.count || 0)) {
+                        await existingDoc.ref.update({
+                            value: data.value,
+                            syncedAt: admin.firestore.Timestamp.now(),
+                        });
+                        functions.logger.info(`[healthLogs] Updated steps from ${oldValue?.count || 0} to ${newValue.count}`, {
+                            docId: existingDoc.id,
+                            sourceId: data.sourceId,
+                        });
+                        res.status(200).json({
+                            id: existingDoc.id,
+                            userId: existingData.userId,
+                            type: existingData.type,
+                            value: data.value, // Return the updated value
+                            alertLevel: existingData.alertLevel,
+                            createdAt: existingData.createdAt?.toDate().toISOString(),
+                            source: existingData.source,
+                            sourceId: existingData.sourceId,
+                            updated: true,
+                        });
+                        return;
+                    }
+                }
+
+                // For other types: Just return existing (true duplicate)
+                functions.logger.info(`[healthLogs] Duplicate sourceId ${data.sourceId}, returning existing`, {
+                    existingId: existingDoc.id,
+                });
+                res.status(200).json({
+                    id: existingDoc.id,
+                    userId: existingData.userId,
+                    type: existingData.type,
+                    value: existingData.value,
+                    alertLevel: existingData.alertLevel,
+                    createdAt: existingData.createdAt?.toDate().toISOString(),
+                    source: existingData.source,
+                    sourceId: existingData.sourceId,
+                    duplicate: true,
+                });
+                return;
+            }
+        }
+
+        // Run safety check (skip for activity-only types like steps)
+        const skipSafetyCheck = ['steps', 'heart_rate', 'oxygen_saturation'].includes(data.type);
+        const safetyResult = skipSafetyCheck
+            ? { alertLevel: undefined, message: undefined, shouldShowAlert: false }
+            : checkHealthValue(
+                data.type as HealthLogType,
+                data.value as HealthLogValue,
+                !!data.symptoms?.length,
+                data.symptoms || []
+            );
 
         // Check for emergency symptoms if provided
         let emergencyScreening = null;
@@ -177,19 +265,26 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
 
         const now = admin.firestore.Timestamp.now();
 
+        // Use recordedAt if provided (for HealthKit imports), otherwise use now
+        const recordedAtTimestamp = data.recordedAt
+            ? admin.firestore.Timestamp.fromDate(new Date(data.recordedAt))
+            : now;
+
         // Create health log - filter out undefined values (Firestore doesn't accept undefined)
         const healthLogData: Record<string, unknown> = {
             userId,
             type: data.type as HealthLogType,
             value: data.value,
             alertShown: safetyResult.shouldShowAlert ?? false,
-            createdAt: now,
+            createdAt: recordedAtTimestamp, // Use original recording time for proper ordering
+            syncedAt: now, // When it was actually synced to our system
             source: data.source,
         };
 
         // Only add optional fields if they have values
         if (data.nudgeId) healthLogData.nudgeId = data.nudgeId;
         if (data.visitId) healthLogData.visitId = data.visitId;
+        if (data.sourceId) healthLogData.sourceId = data.sourceId;
         if (safetyResult.alertLevel) healthLogData.alertLevel = safetyResult.alertLevel;
         if (safetyResult.message) healthLogData.alertMessage = safetyResult.message;
 
@@ -227,21 +322,25 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
             functions.logger.error('[healthLogs] Trend analysis failed:', err);
         });
 
-        // STREAK RECOGNITION: Check for milestone and celebrate
-        checkAndCelebrateStreak(userId).catch(err => {
-            functions.logger.error('[healthLogs] Streak check failed:', err);
-        });
+        // PERSONAL RN: Escalate frequency if concerning reading
+        if ((data.type === 'bp' || data.type === 'glucose') &&
+            (safetyResult.alertLevel === 'caution' || safetyResult.alertLevel === 'warning')) {
+            escalatePatientFrequency(userId).catch(err => {
+                functions.logger.error('[healthLogs] Failed to escalate patient frequency:', err);
+            });
+        }
 
 
-        const response: HealthLogResponse & { alertMessage?: string; shouldShowAlert?: boolean } = {
+        const response: HealthLogResponse & { alertMessage?: string; shouldShowAlert?: boolean; duplicate?: boolean } = {
             id: docRef.id,
             userId,
             type: data.type as HealthLogType,
-            value: data.value,
+            value: data.value as HealthLogValue,
             alertLevel: safetyResult.alertLevel,
             alertMessage: safetyResult.message,
-            createdAt: now.toDate().toISOString(),
-            source: data.source,
+            createdAt: recordedAtTimestamp.toDate().toISOString(),
+            source: data.source as HealthLogSource,
+            sourceId: data.sourceId,
             shouldShowAlert: safetyResult.shouldShowAlert,
         };
 

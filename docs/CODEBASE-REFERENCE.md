@@ -362,14 +362,14 @@ Base URL: `https://us-central1-lumimd-dev.cloudfunctions.net/api`
 | `ReminderTimePickerModal.tsx` | Medication timing UI |
 | `HealthLogButton.tsx` | Quick health logging |
 
-### Widgets (`mobile/targets/widget`)
+### Widgets (`mobile/ios/LumiMDWidget`)
 
 Widgets are native iOS extensions enabling Home Screen functionality.
 
 | File | Purpose |
 |------|---------|
-| `widgets.swift` | Swift UI code for views and entries |
-| `expo-target.config.js` | Configures the widget target and App Groups |
+| `Widgets.swift` | Swift UI code for views and entries |
+| `Info.plist` | Widget extension configuration |
 
 See [Widget Documentation](../features/WIDGETS.md) for build and sync details.
 

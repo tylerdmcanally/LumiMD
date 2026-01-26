@@ -226,7 +226,8 @@ interface Nudge {
     status: NudgeStatus;
     createdAt: string;
 }
-type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check';
+type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
+type HealthLogSource = 'manual' | 'nudge' | 'quick_log' | 'healthkit';
 type AlertLevel = 'normal' | 'caution' | 'warning' | 'emergency';
 interface BloodPressureValue {
     systolic: number;
@@ -240,6 +241,17 @@ interface GlucoseValue {
 interface WeightValue {
     weight: number;
     unit: 'lbs' | 'kg';
+}
+interface StepsValue {
+    count: number;
+    date: string;
+}
+interface HeartRateValue {
+    bpm: number;
+    context?: 'resting' | 'active' | 'workout' | 'unknown';
+}
+interface OxygenSaturationValue {
+    percentage: number;
 }
 interface MedComplianceValue {
     medicationId?: string;
@@ -256,7 +268,7 @@ interface SymptomCheckValue {
     orthopnea?: boolean;
     otherSymptoms?: string;
 }
-type HealthLogValue = BloodPressureValue | GlucoseValue | WeightValue | MedComplianceValue | SymptomCheckValue;
+type HealthLogValue = BloodPressureValue | GlucoseValue | WeightValue | MedComplianceValue | SymptomCheckValue | StepsValue | HeartRateValue | OxygenSaturationValue;
 interface HealthLog {
     id: string;
     userId: string;
@@ -265,7 +277,9 @@ interface HealthLog {
     alertLevel?: AlertLevel;
     alertMessage?: string;
     createdAt: string;
-    source: 'manual' | 'nudge' | 'quick_log';
+    source: HealthLogSource;
+    /** Unique identifier from the source (e.g., HealthKit sample ID) for deduplication */
+    sourceId?: string;
 }
 interface HealthLogSummary {
     type: HealthLogType;
@@ -286,7 +300,11 @@ interface CreateHealthLogRequest {
     value: HealthLogValue;
     nudgeId?: string;
     visitId?: string;
-    source?: 'manual' | 'nudge' | 'quick_log';
+    source?: HealthLogSource;
+    /** Unique identifier from the source (e.g., HealthKit sample ID) for deduplication */
+    sourceId?: string;
+    /** Timestamp of original reading (for HealthKit imports) */
+    recordedAt?: string;
     symptoms?: string[];
 }
 interface CreateHealthLogResponse extends HealthLog {
@@ -535,4 +553,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type GlucoseValue, type HealthLog, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type RespondToNudgeRequest, type Share, type ShareInvite, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OxygenSaturationValue, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

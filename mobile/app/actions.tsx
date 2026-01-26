@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: Colors.text,
     textAlign: 'center',
   },
@@ -416,11 +416,12 @@ const styles = StyleSheet.create({
   },
   webLinkText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
   subtitle: {
     fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
     lineHeight: 20,
   },
@@ -451,12 +452,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   sectionCount: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
     backgroundColor: 'rgba(64,201,208,0.12)',
     paddingHorizontal: spacing(2),
@@ -500,7 +501,7 @@ const styles = StyleSheet.create({
   },
   actionTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   actionTitleCompleted: {

@@ -87,11 +87,11 @@ export interface NudgeCreateInput {
 // Health Log Types
 // =============================================================================
 
-export type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check';
+export type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
 
 export type AlertLevel = 'normal' | 'caution' | 'warning' | 'emergency';
 
-export type HealthLogSource = 'manual' | 'nudge' | 'quick_log';
+export type HealthLogSource = 'manual' | 'nudge' | 'quick_log' | 'healthkit';
 
 // Value types for different log types
 export interface BloodPressureValue {
@@ -127,12 +127,30 @@ export interface SymptomCheckValue {
     otherSymptoms?: string;
 }
 
+// HealthKit-sourced value types
+export interface StepsValue {
+    count: number;
+    date: string; // YYYY-MM-DD - the day this step count is for
+}
+
+export interface HeartRateValue {
+    bpm: number;
+    context?: 'resting' | 'active' | 'workout' | 'unknown';
+}
+
+export interface OxygenSaturationValue {
+    percentage: number; // 0-100
+}
+
 export type HealthLogValue =
     | BloodPressureValue
     | GlucoseValue
     | WeightValue
     | MedComplianceValue
-    | SymptomCheckValue;
+    | SymptomCheckValue
+    | StepsValue
+    | HeartRateValue
+    | OxygenSaturationValue;
 
 export interface HealthLog {
     id?: string;
@@ -150,7 +168,9 @@ export interface HealthLog {
 
     // Metadata
     createdAt: Timestamp;
+    syncedAt?: Timestamp; // When the log was synced to our system (for HealthKit imports)
     source: HealthLogSource;
+    sourceId?: string; // Unique identifier from the source for deduplication
 }
 
 export interface HealthLogCreateInput {
@@ -160,6 +180,8 @@ export interface HealthLogCreateInput {
     type: HealthLogType;
     value: HealthLogValue;
     source: HealthLogSource;
+    sourceId?: string; // Unique identifier from the source for deduplication
+    recordedAt?: string; // Original recording time (for HealthKit imports)
 }
 
 // =============================================================================
@@ -192,6 +214,7 @@ export interface HealthLogResponse {
     alertMessage?: string;
     createdAt: string;
     source: HealthLogSource;
+    sourceId?: string;
 }
 
 export interface HealthLogSummary {

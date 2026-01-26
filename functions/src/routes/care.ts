@@ -325,49 +325,6 @@ async function getPatientAlerts(patientId: string) {
 }
 
 // =============================================================================
-// GET /v1/care/debug
-// Debug endpoint to inspect share data (remove after debugging)
-// =============================================================================
-
-careRouter.get('/debug', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        
-        // Get caregiver auth info
-        const caregiverAuth = await admin.auth().getUser(caregiverId);
-        
-        // Get all shares where user is caregiver (by userId)
-        const sharesByUserId = await getDb()
-            .collection('shares')
-            .where('caregiverUserId', '==', caregiverId)
-            .get();
-        
-        // Get all shares where user is caregiver (by email)
-        const sharesByEmail = await getDb()
-            .collection('shares')
-            .where('caregiverEmail', '==', caregiverAuth.email?.toLowerCase())
-            .get();
-        
-        // Get all shareInvites for this caregiver
-        const invitesByEmail = await getDb()
-            .collection('shareInvites')
-            .where('caregiverEmail', '==', caregiverAuth.email?.toLowerCase())
-            .get();
-        
-        res.json({
-            caregiverId,
-            caregiverEmail: caregiverAuth.email,
-            sharesByUserId: sharesByUserId.docs.map(d => ({ id: d.id, ...d.data() })),
-            sharesByEmail: sharesByEmail.docs.map(d => ({ id: d.id, ...d.data() })),
-            invitesByEmail: invitesByEmail.docs.map(d => ({ id: d.id, ...d.data() })),
-        });
-    } catch (error) {
-        functions.logger.error('[care] Debug error:', error);
-        res.status(500).json({ error: 'Debug failed' });
-    }
-});
-
-// =============================================================================
 // GET /v1/care/overview
 // Aggregated data for all shared patients
 // =============================================================================
@@ -410,7 +367,7 @@ careRouter.get('/overview', requireAuth, async (req: AuthRequest, res) => {
                         .orderBy('lastActive', 'desc')
                         .limit(1)
                         .get();
-                    
+
                     if (!pushTokensSnapshot.empty) {
                         const tokenData = pushTokensSnapshot.docs[0].data();
                         lastActive = tokenData.lastActive?.toDate?.()?.toISOString() || null;
@@ -535,7 +492,7 @@ careRouter.get('/:patientId/actions', requireAuth, async (req: AuthRequest, res)
 
         const actions = actionsSnapshot.docs.map((doc) => {
             const data = doc.data();
-            
+
             // Safe date conversion helper
             const toISOStringSafe = (val: any): string | null => {
                 if (!val) return null;
@@ -1236,7 +1193,7 @@ careRouter.patch('/:patientId/visits/:visitId', requireAuth, async (req: AuthReq
         // Verify the visit exists and belongs to the patient
         const visitRef = getDb().collection('visits').doc(visitId);
         const visitDoc = await visitRef.get();
-        
+
         if (!visitDoc.exists) {
             res.status(404).json({
                 code: 'not_found',
@@ -1450,14 +1407,14 @@ careRouter.get('/:patientId/health-logs', requireAuth, async (req: AuthRequest, 
  */
 function calculateTrend(values: number[]): 'up' | 'down' | 'stable' | null {
     if (values.length < 3) return null;
-    
+
     // Compare average of first half vs second half
     const midpoint = Math.floor(values.length / 2);
     const recentAvg = values.slice(0, midpoint).reduce((a, b) => a + b, 0) / midpoint;
     const olderAvg = values.slice(midpoint).reduce((a, b) => a + b, 0) / (values.length - midpoint);
-    
+
     const percentChange = ((recentAvg - olderAvg) / olderAvg) * 100;
-    
+
     if (percentChange > 5) return 'up';
     if (percentChange < -5) return 'down';
     return 'stable';
@@ -1607,17 +1564,17 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
             const medLogs = logs.filter((l) => l.medicationId === medId);
             const taken = medLogs.filter((l) => l.action === 'taken').length;
             const skipped = medLogs.filter((l) => l.action === 'skipped').length;
-            
+
             // Expected = scheduled times * days, or fallback to logged count if no schedule
-            const expected = med.times.length > 0 
-                ? med.times.length * daysNum 
+            const expected = med.times.length > 0
+                ? med.times.length * daysNum
                 : (taken + skipped);
-            
+
             // Calculate current streak using scheduledDate (patient's local date)
             // This ensures timezone-correct streak tracking
             let streak = 0;
             const takenLogs = medLogs.filter((l) => l.action === 'taken');
-            
+
             if (takenLogs.length > 0) {
                 // Get unique dates where medication was taken (using scheduledDate)
                 const takenDates = new Set<string>();
@@ -1633,7 +1590,7 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
                     const checkDate = new Date(today);
                     checkDate.setDate(checkDate.getDate() - i);
                     const dateStr = checkDate.toISOString().split('T')[0];
-                    
+
                     if (takenDates.has(dateStr)) {
                         streak++;
                     } else {
@@ -1661,7 +1618,7 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
             const taken = medLogs.filter((l) => l.action === 'taken').length;
             const skipped = medLogs.filter((l) => l.action === 'skipped').length;
             const total = taken + skipped;
-            
+
             // Get name from logs
             const medName = medLogs.find((l) => l.medicationName)?.medicationName || 'Unknown Medication';
 
@@ -1709,7 +1666,7 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
 
             const taken = dayLogs.filter((l) => l.action === 'taken').length;
             const skipped = dayLogs.filter((l) => l.action === 'skipped').length;
-            
+
             // For calendar, use actual logs if no schedule exists
             const effectiveScheduled = scheduledCount > 0 ? scheduledCount : (taken + skipped);
             const missed = Math.max(0, effectiveScheduled - taken - skipped);
@@ -1946,7 +1903,7 @@ careRouter.get('/:patientId/quick-overview', requireAuth, async (req: AuthReques
         healthLogsSnapshot.docs.forEach((doc) => {
             const data = doc.data();
             const date = data.createdAt?.toDate?.()?.toISOString() || '';
-            
+
             if (data.type === 'bp' && !healthSnapshot.latestBp) {
                 healthSnapshot.latestBp = {
                     value: `${data.value?.systolic}/${data.value?.diastolic}`,
@@ -2009,7 +1966,7 @@ careRouter.get('/:patientId/quick-overview', requireAuth, async (req: AuthReques
         });
 
         // Sort by timestamp (newest first)
-        recentActivity.sort((a, b) => 
+        recentActivity.sort((a, b) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         );
 
@@ -2112,33 +2069,33 @@ careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) 
         }
 
         // 1b. Check 7-day adherence rate for declining compliance
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        
+        const adherenceWindowStart = new Date(now);
+        adherenceWindowStart.setDate(adherenceWindowStart.getDate() - 7);
+
         const recentLogsSnapshot = await getDb()
             .collection('medicationLogs')
             .where('userId', '==', patientId)
-            .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(sevenDaysAgo))
+            .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(adherenceWindowStart))
             .get();
-        
+
         const recentLogs = recentLogsSnapshot.docs.map(doc => doc.data());
         const takenCount = recentLogs.filter(l => l.action === 'taken').length;
-        const skippedCount = recentLogs.filter(l => l.action === 'skipped').length;
-        const totalLogged = takenCount + skippedCount;
-        
+        // skippedCount available for future use in adherence calculations
+        void recentLogs.filter(l => l.action === 'skipped').length;
+
         // Get expected doses from reminders
         const remindersSnapshot = await getDb()
             .collection('medicationReminders')
             .where('userId', '==', patientId)
             .where('enabled', '==', true)
             .get();
-        
+
         let expectedDoses = 0;
         remindersSnapshot.docs.forEach(doc => {
             const times = doc.data().times || [];
             expectedDoses += times.length * 7; // 7 days
         });
-        
+
         if (expectedDoses > 0) {
             const adherenceRate = Math.round((takenCount / expectedDoses) * 100);
             if (adherenceRate < 50) {
@@ -2261,7 +2218,7 @@ careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) 
                 .orderBy('lastActive', 'desc')
                 .limit(1)
                 .get();
-            
+
             if (!pushTokensSnapshot.empty) {
                 const tokenData = pushTokensSnapshot.docs[0].data();
                 const lastActive = tokenData.lastActive?.toDate?.();
@@ -2292,15 +2249,15 @@ careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) 
             .where('userId', '==', patientId)
             .get();
 
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const medChangeWindowStart = new Date(now);
+        medChangeWindowStart.setDate(medChangeWindowStart.getDate() - 7);
 
         medsSnapshot.docs.forEach((doc) => {
             const data = doc.data();
             const startedAt = data.startedAt?.toDate?.();
             const stoppedAt = data.stoppedAt?.toDate?.();
 
-            if (startedAt && startedAt >= sevenDaysAgo) {
+            if (startedAt && startedAt >= medChangeWindowStart) {
                 alerts.push({
                     id: `med-started-${doc.id}`,
                     type: 'med_change',
@@ -2313,7 +2270,7 @@ careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) 
                 });
             }
 
-            if (stoppedAt && stoppedAt >= sevenDaysAgo) {
+            if (stoppedAt && stoppedAt >= medChangeWindowStart) {
                 alerts.push({
                     id: `med-stopped-${doc.id}`,
                     type: 'med_change',

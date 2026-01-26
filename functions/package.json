@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@sentry/node": "^10.29.0",
+    "@stablelib/base64": "^1.0.1",
     "axios": "^1.13.2",
     "body-parser": "~1.20.4",
     "chrono-node": "^2.9.0",

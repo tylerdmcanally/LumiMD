@@ -35,7 +35,8 @@ export interface Nudge {
     createdAt: string;
 }
 
-export type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check';
+export type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
+export type HealthLogSource = 'manual' | 'nudge' | 'quick_log' | 'healthkit';
 export type AlertLevel = 'normal' | 'caution' | 'warning' | 'emergency';
 
 export interface BloodPressureValue {
@@ -52,6 +53,20 @@ export interface GlucoseValue {
 export interface WeightValue {
     weight: number;
     unit: 'lbs' | 'kg';
+}
+
+export interface StepsValue {
+    count: number;
+    date: string; // YYYY-MM-DD - the day this step count is for
+}
+
+export interface HeartRateValue {
+    bpm: number;
+    context?: 'resting' | 'active' | 'workout' | 'unknown';
+}
+
+export interface OxygenSaturationValue {
+    percentage: number; // 0-100
 }
 
 export interface MedComplianceValue {
@@ -76,7 +91,10 @@ export type HealthLogValue =
     | GlucoseValue
     | WeightValue
     | MedComplianceValue
-    | SymptomCheckValue;
+    | SymptomCheckValue
+    | StepsValue
+    | HeartRateValue
+    | OxygenSaturationValue;
 
 export interface HealthLog {
     id: string;
@@ -86,7 +104,9 @@ export interface HealthLog {
     alertLevel?: AlertLevel;
     alertMessage?: string;
     createdAt: string;
-    source: 'manual' | 'nudge' | 'quick_log';
+    source: HealthLogSource;
+    /** Unique identifier from the source (e.g., HealthKit sample ID) for deduplication */
+    sourceId?: string;
 }
 
 export interface HealthLogSummary {
@@ -111,7 +131,11 @@ export interface CreateHealthLogRequest {
     value: HealthLogValue;
     nudgeId?: string;
     visitId?: string;
-    source?: 'manual' | 'nudge' | 'quick_log';
+    source?: HealthLogSource;
+    /** Unique identifier from the source (e.g., HealthKit sample ID) for deduplication */
+    sourceId?: string;
+    /** Timestamp of original reading (for HealthKit imports) */
+    recordedAt?: string;
     symptoms?: string[];
 }
 

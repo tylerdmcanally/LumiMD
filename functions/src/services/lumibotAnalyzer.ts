@@ -17,12 +17,7 @@ import {
     ConditionProtocol,
 } from '../data/conditionProtocols';
 import {
-    getMedicationSequence,
-    formatMedicationMessage,
-} from '../data/medicationSequences';
-import {
     getConditionsCoveredByMedications,
-    getTrackingTypeForMedication,
 } from '../data/medicationClasses';
 import { VisitSummaryResult, MedicationChangeEntry } from './openai';
 
@@ -389,16 +384,20 @@ async function createConditionNudges(
 }
 
 // =============================================================================
-// Medication Nudge Generation
+// Medication Nudge Generation (Simplified - Personal RN handles check-ins)
 // =============================================================================
 
+/**
+ * Register patient for Personal RN evaluation when medication is started/changed.
+ * The Personal RN scheduled job will handle ongoing check-ins based on frequency tier.
+ */
 async function createMedicationNudges(
     userId: string,
     visitId: string,
     medication: MedicationChangeEntry,
     trigger: 'medication_started' | 'medication_changed',
-    visitDate: Date,
-    abbreviated: boolean = false // Reduced sequence for subsequent meds in same visit
+    _visitDate: Date,
+    _abbreviated: boolean = false
 ): Promise<number> {
     const medicationName = typeof medication === 'string'
         ? medication
@@ -411,146 +410,23 @@ async function createMedicationNudges(
         return 0;
     }
 
-    // Get tracking type for this medication (if any)
-    const trackingType = getTrackingTypeForMedication(medicationName);
-
-    // Get appropriate sequence (generic for meds without trackable types)
-    const sequence = getMedicationSequence(trigger, !!trackingType);
-    if (!sequence) {
-        functions.logger.warn(`[LumibotAnalyzer] No sequence found for trigger: ${trigger}`);
-        return 0;
+    // Register patient for Personal RN evaluation (handles ongoing check-ins)
+    try {
+        const { registerPatientForEvaluation } = await import('../triggers/personalRNEvaluation');
+        await registerPatientForEvaluation(userId);
+        functions.logger.info(`[LumibotAnalyzer] Registered patient for Personal RN evaluation`, {
+            userId,
+            medicationName,
+            trigger,
+        });
+    } catch (error) {
+        functions.logger.error('[LumibotAnalyzer] Failed to register for Personal RN:', error);
     }
 
-    const sequenceId = `${sequence.id}_${visitId}_${generateShortId()}`;
-    let nudgesCreated = 0;
+    // Note: No hardcoded sequences created. Personal RN scheduler handles check-ins
+    // based on frequency tier (high for new meds in first 14 days).
 
-    // For abbreviated sequence (subsequent meds), only include first and last check
-    const allowedStepsForAbbreviated = ['pickup_check', 'side_effects'];
-
-    for (const step of sequence.steps) {
-        // Skip log_reading steps if medication doesn't have a tracking type
-        if (step.type === 'log_reading' && !trackingType) {
-            continue;
-        }
-
-        // For abbreviated sequence, skip mid-sequence steps
-        if (abbreviated && !allowedStepsForAbbreviated.includes(step.type)) {
-            continue;
-        }
-
-        const scheduledDate = new Date(visitDate);
-        scheduledDate.setDate(scheduledDate.getDate() + step.day);
-
-        // Only create nudge if it's in the future
-        if (scheduledDate > new Date()) {
-            // Determine action type based on step type and tracking
-            let actionType: NudgeActionType;
-            if (step.type === 'log_reading') {
-                actionType = trackingType === 'bp' ? 'log_bp' :
-                    trackingType === 'glucose' ? 'log_glucose' :
-                        'log_bp'; // fallback
-            } else {
-                actionType = step.type as NudgeActionType;
-            }
-
-            // Try AI-generated message, fall back to template
-            let title = step.title;
-            let message = formatMedicationMessage(step.messageTemplate, medicationName);
-            let aiGenerated = false;
-
-            try {
-                const { getIntelligentNudgeGenerator } = await import('./intelligentNudgeGenerator');
-                const generator = getIntelligentNudgeGenerator();
-                const aiNudge = await generator.generateNudge(userId, {
-                    type: 'medication_checkin',
-                    trigger: step.type as 'pickup_check' | 'started_check' | 'side_effects' | 'feeling_check' | 'log_reading',
-                    medicationName,
-                });
-                title = aiNudge.title;
-                message = aiNudge.message;
-                aiGenerated = true;
-            } catch (error) {
-                functions.logger.warn(`[LumibotAnalyzer] AI nudge generation failed, using template:`, error);
-            }
-
-            await createNudge({
-                userId,
-                visitId,
-                type: 'medication_checkin',
-                medicationName,
-                title,
-                message,
-                actionType,
-                scheduledFor: scheduledDate,
-                sequenceDay: step.day,
-                sequenceId,
-                aiGenerated,
-            });
-            nudgesCreated++;
-
-            // Handle recurring nudges (create next 4 occurrences)
-            if (step.recurring && step.recurringIntervalDays) {
-                for (let i = 1; i <= 4; i++) {
-                    const recurringDate = new Date(scheduledDate);
-                    recurringDate.setDate(recurringDate.getDate() + (step.recurringIntervalDays * i));
-
-                    if (recurringDate > new Date()) {
-                        await createNudge({
-                            userId,
-                            visitId,
-                            type: 'medication_checkin',
-                            medicationName,
-                            title: step.title,
-                            message: formatMedicationMessage(step.messageTemplate, medicationName),
-                            actionType,
-                            scheduledFor: recurringDate,
-                            sequenceDay: step.day + (step.recurringIntervalDays * i),
-                            sequenceId,
-                        });
-                        nudgesCreated++;
-                    }
-                }
-            }
-        }
-    }
-
-    functions.logger.info(`[LumibotAnalyzer] Created ${nudgesCreated} nudges for medication ${medicationName}`, {
-        userId,
-        visitId,
-        trigger,
-        medicationName,
-        trackingType,
-    });
-
-    // Create symptom check nudge if medication has symptom monitoring
-    const { findMedicationClass } = await import('../data/medicationClasses');
-    const medClass = findMedicationClass(medicationName);
-
-    if (medClass?.symptomCheck && !abbreviated) {
-        const symptomConfig = medClass.symptomCheck;
-        const symptomDate = new Date(visitDate);
-        symptomDate.setDate(symptomDate.getDate() + symptomConfig.dayStart);
-
-        if (symptomDate > new Date()) {
-            await createNudge({
-                userId,
-                visitId,
-                type: 'medication_checkin',
-                medicationName,
-                title: `Check-in: ${medicationName}`,
-                message: symptomConfig.question,
-                actionType: 'symptom_check',
-                scheduledFor: symptomDate,
-                sequenceDay: symptomConfig.dayStart,
-                sequenceId: `${sequenceId}_symptom`,
-            });
-            nudgesCreated++;
-
-            functions.logger.info(`[LumibotAnalyzer] Created symptom check for ${medicationName} on day ${symptomConfig.dayStart}`);
-        }
-    }
-
-    return nudgesCreated;
+    return 0; // No nudges created here - Personal RN handles it
 }
 
 

@@ -570,8 +570,15 @@ nudgesRouter.post('/process-due', async (req, res) => {
         const token = authHeader?.replace('Bearer ', '');
 
         if (!SCHEDULER_TOKEN) {
-            functions.logger.warn('[nudges] NUDGE_SCHEDULER_TOKEN not configured, allowing request');
-        } else if (token !== SCHEDULER_TOKEN) {
+            functions.logger.error('[nudges] NUDGE_SCHEDULER_TOKEN not configured - rejecting request');
+            res.status(500).json({
+                code: 'configuration_error',
+                message: 'Scheduler token not configured',
+            });
+            return;
+        }
+        
+        if (token !== SCHEDULER_TOKEN) {
             functions.logger.warn('[nudges] Invalid scheduler token');
             res.status(401).json({
                 code: 'unauthorized',

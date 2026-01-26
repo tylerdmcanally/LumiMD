@@ -26,25 +26,8 @@ Since Widgets require distinct Bundle IDs and App Group capabilities, they need 
 
 ### Data Synchronization
 
-#### 1. React Native Side (`mobile/lib/widget`)
-The `useWidgetSync` hook listens for changes in the medication schedule and writes them to the App Group.
-
-**Key File:** `mobile/lib/widget/widgetSync.ts`
-
-```typescript
-// Writes JSON string to UserDefaults under key "medicationSchedule"
-SharedGroupPreferences.setItem('medicationSchedule', jsonString, appGroupIdentifier);
-// Reloads widget timeline (via native module registered by withWidgetKitModule plugin)
-LumiWidgetKit.reloadAllTimelines();
-```
-
-#### 2. Swift Side (`mobile/targets/widget/widgets.swift`)
-The widget code (Swift) reads this JSON and decodes it into a Swift struct.
-
-```swift
-let defaults = UserDefaults(suiteName: "group.com.lumimd.app")
-let jsonString = defaults?.string(forKey: "medicationSchedule")
-```
+The current **Record Visit** widget is a simple launcher and does not require shared data.
+App Group storage is reserved for the future medication schedule widget.
 
 ## Troubleshooting Build Issues
 
@@ -60,6 +43,6 @@ The widget displays "Sync Required" if it finds no data in the App Group.
 **Fix:** Open the main app. `useWidgetSync` in `app/index.tsx` will automatically write the data on launch.
 
 ## Development Workflow
-Widgets are native iOS targets. Code lives in `mobile/targets/widget/`.
-- **Modifying UI:** Edit `mobile/targets/widget/widgets.swift`.
-- **Config:** `mobile/targets/widget/expo-target.config.js`.
+Widgets are native iOS targets. Code lives in `mobile/ios/LumiMDWidget/`.
+- **Modifying UI:** Edit `mobile/ios/LumiMDWidget/Widgets.swift`.
+- **Config:** `mobile/ios/LumiMDWidget/Info.plist`.

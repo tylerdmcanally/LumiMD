@@ -535,7 +535,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: Colors.text,
   },
   webLink: {
@@ -545,11 +545,12 @@ const styles = StyleSheet.create({
   },
   webLinkText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
   sectionSubtitle: {
     fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
     lineHeight: 20,
   },
@@ -593,7 +594,7 @@ const styles = StyleSheet.create({
   medName: {
     flex: 1,
     fontSize: 17,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
     marginHorizontal: spacing(2),
   },
@@ -697,7 +698,7 @@ const styles = StyleSheet.create({
   },
   inactiveTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   sectionCount: {
@@ -804,7 +805,7 @@ const styles = StyleSheet.create({
   },
   glanceText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
     letterSpacing: 0.2,
   },

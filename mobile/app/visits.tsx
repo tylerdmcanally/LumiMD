@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: Colors.text,
   },
   webLink: {
@@ -239,11 +239,12 @@ const styles = StyleSheet.create({
   },
   webLinkText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
   subtitle: {
     fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
     lineHeight: 20,
   },
