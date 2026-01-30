@@ -128,7 +128,7 @@ export async function getOfferings(): Promise<Package[]> {
     }
 
     // Map RevenueCat packages to our Package type
-    const packages: Package[] = currentOffering.availablePackages.map((pkg) => ({
+    const packages: Package[] = currentOffering.availablePackages.map((pkg: PurchasesPackage) => ({
       identifier: pkg.identifier,
       packageType: pkg.packageType,
       product: {
