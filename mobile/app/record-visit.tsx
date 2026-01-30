@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
+import { useCanRecord } from '../contexts/SubscriptionContext';
 import {
   ConsentRequiredModal,
   ConsentEducationalModal,
@@ -68,6 +69,8 @@ export default function RecordVisitScreen() {
     refreshLocation,
     hasLocationPermission,
   } = useConsentFlow();
+
+  const { canRecord, showPaywall } = useCanRecord();
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -121,6 +124,12 @@ export default function RecordVisitScreen() {
 
   const handleStartRecording = async () => {
     try {
+      // Check subscription/trial status before allowing recording
+      if (!canRecord) {
+        showPaywall();
+        return;
+      }
+
       // Check microphone permission first
       if (!hasPermission) {
         const granted = await requestPermission();
