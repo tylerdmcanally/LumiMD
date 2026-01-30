@@ -158,13 +158,13 @@ const revenuecatWebhookSchema = z.object({
   event: z.object({
     type: z.string(),
     app_user_id: z.string(),
-    original_app_user_id: z.string().optional(),
-    product_id: z.string().optional(),
-    entitlement_ids: z.array(z.string()).optional(),
-    expiration_at_ms: z.number().optional(),
-    purchased_at_ms: z.number().optional(),
-    store: z.string().optional(),
-    environment: z.string().optional(),
+    original_app_user_id: z.string().optional().nullable(),
+    product_id: z.string().optional().nullable(),
+    entitlement_ids: z.array(z.string()).optional().nullable(),
+    expiration_at_ms: z.number().optional().nullable(),
+    purchased_at_ms: z.number().optional().nullable(),
+    store: z.string().optional().nullable(),
+    environment: z.string().optional().nullable(),
   }),
 });
 
