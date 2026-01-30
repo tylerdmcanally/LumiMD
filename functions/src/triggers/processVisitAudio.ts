@@ -171,9 +171,15 @@ export const processVisitAudio = onObjectFinalized(
 
       // Increment freeVisitsUsed counter for session-based trial tracking
       // This counts visits that have been successfully submitted for processing
+      // Only increment if not already counted (prevents double-counting on retries/duplicate triggers)
       const userId = visitData.userId;
-      if (userId) {
+      const alreadyCounted = visitData.freeVisitCounted === true;
+      
+      if (userId && !alreadyCounted) {
         try {
+          // Mark this visit as counted first to prevent race conditions
+          await visitRef.update({ freeVisitCounted: true });
+          
           const userRef = db().collection('users').doc(userId);
           await userRef.update({
             freeVisitsUsed: admin.firestore.FieldValue.increment(1),
@@ -183,6 +189,8 @@ export const processVisitAudio = onObjectFinalized(
           // Log but don't fail the visit processing if counter update fails
           logger.warn(`[processVisitAudio] Failed to increment freeVisitsUsed for user ${userId}:`, userUpdateError);
         }
+      } else if (alreadyCounted) {
+        logger.info(`[processVisitAudio] Visit ${visitRef.id} already counted, skipping freeVisitsUsed increment`);
       }
 
       // Step 4: Clean up external data (Privacy & Data Minimization)

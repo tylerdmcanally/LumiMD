@@ -3,6 +3,11 @@
  * 
  * Contextual prompts shown to free users when they perform manual actions
  * that premium automates. Designed to drive subscription conversion.
+ * 
+ * TODO: Wire up nudges into UI screens once core IAP flow is validated:
+ * - medications.tsx: Show 'manual_med_add' nudge after user adds medication manually
+ * - actions.tsx: Show 'manual_action_add' nudge after user creates action item
+ * - medications.tsx: Show 'multiple_meds' nudge when user has 5+ medications
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

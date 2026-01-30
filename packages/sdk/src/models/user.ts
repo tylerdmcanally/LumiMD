@@ -17,7 +17,7 @@ export interface UserProfile {
   // Subscription fields
   trialStartedAt?: string | null;
   trialEndsAt?: string | null;
-  subscriptionStatus?: 'trial' | 'active' | 'expired' | 'cancelled';
+  subscriptionStatus?: 'trial' | 'active' | 'expired' | 'cancelled' | 'paused';
   subscriptionPlatform?: 'ios' | 'revenuecat' | null;
   subscriptionExpiresAt?: string | null;
   originalTransactionId?: string | null;

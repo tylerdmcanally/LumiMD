@@ -63,13 +63,19 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   // Extract subscription data from user profile
   const subscriptionStatus = userProfile?.subscriptionStatus;
+  const subscriptionExpiresAt = userProfile?.subscriptionExpiresAt;
   const freeVisitsUsed = typeof userProfile?.freeVisitsUsed === 'number'
     ? userProfile.freeVisitsUsed
     : 0;
   const bypassPaywall = userProfile?.bypassPaywall === true;
 
   // Calculate derived state
-  const isSubscribed = subscriptionStatus === 'active' || bypassPaywall;
+  // Allow access if: active subscription, cancelled but not expired, or bypass enabled
+  const isActiveSubscription = subscriptionStatus === 'active';
+  const isCancelledButValid = subscriptionStatus === 'cancelled' &&
+    subscriptionExpiresAt &&
+    new Date(subscriptionExpiresAt) > new Date();
+  const isSubscribed = isActiveSubscription || isCancelledButValid || bypassPaywall;
   const freeVisitsRemaining = Math.max(0, FREE_VISIT_LIMIT - freeVisitsUsed);
   const hasTrialVisitsLeft = freeVisitsRemaining > 0;
 

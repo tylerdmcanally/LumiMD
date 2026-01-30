@@ -150,9 +150,14 @@ interface UserProfile {
     trialStartedAt?: string | null;
     trialEndsAt?: string | null;
     subscriptionStatus?: 'trial' | 'active' | 'expired' | 'cancelled';
-    subscriptionPlatform?: 'ios' | null;
+    subscriptionPlatform?: 'ios' | 'revenuecat' | null;
     subscriptionExpiresAt?: string | null;
     originalTransactionId?: string | null;
+    revenuecatAppUserId?: string | null;
+    freeVisitsUsed?: number;
+    bypassPaywall?: boolean;
+    nudgeDismissals?: string[];
+    lastNudgeShownAt?: Record<string, string>;
     [key: string]: unknown;
 }
 

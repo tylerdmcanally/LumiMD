@@ -204,8 +204,16 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     const userData = userDoc.exists ? userDoc.data() : {};
 
     const bypassPaywall = userData?.bypassPaywall === true;
-    const isSubscribed = userData?.subscriptionStatus === 'active';
+    const subscriptionStatus = userData?.subscriptionStatus;
+    const subscriptionExpiresAt = userData?.subscriptionExpiresAt;
     const freeVisitsUsed = typeof userData?.freeVisitsUsed === 'number' ? userData.freeVisitsUsed : 0;
+
+    // Check if subscription is active or cancelled but not yet expired
+    const isActiveSubscription = subscriptionStatus === 'active';
+    const isCancelledButValid = subscriptionStatus === 'cancelled' && 
+      subscriptionExpiresAt && 
+      new Date(subscriptionExpiresAt) > new Date();
+    const isSubscribed = isActiveSubscription || isCancelledButValid;
 
     // Check if user can create a visit
     if (!bypassPaywall && !isSubscribed && freeVisitsUsed >= FREE_VISIT_LIMIT) {

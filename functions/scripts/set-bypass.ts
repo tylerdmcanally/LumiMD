@@ -2,12 +2,12 @@
  * CLI script to grant or revoke paywall bypass for a user.
  * 
  * Usage:
- *   npx ts-node scripts/set-bypass.ts <email> [true|false]
+ *   npm run bypass:grant -- <email>     # Grant bypass
+ *   npm run bypass:revoke -- <email>    # Revoke bypass
  * 
- * Examples:
- *   npx ts-node scripts/set-bypass.ts tyler@lumimd.com        # Grant bypass
- *   npx ts-node scripts/set-bypass.ts tyler@lumimd.com true   # Grant bypass
- *   npx ts-node scripts/set-bypass.ts tyler@lumimd.com false  # Revoke bypass
+ * Or directly:
+ *   npx ts-node scripts/set-bypass.ts <email>           # Grant bypass
+ *   npx ts-node scripts/set-bypass.ts --revoke <email>  # Revoke bypass
  * 
  * Note: Requires Firebase Admin SDK credentials.
  * Set GOOGLE_APPLICATION_CREDENTIALS environment variable or run from
@@ -25,8 +25,9 @@ const db = admin.firestore();
 
 async function main() {
   const args = process.argv.slice(2);
-  const email = args[0];
-  const bypass = args[1] !== 'false'; // Default to true if not specified
+  const revokeFlag = args.includes('--revoke');
+  const email = args.find(arg => !arg.startsWith('--'));
+  const bypass = !revokeFlag;
 
   if (!email) {
     console.error('Usage: npx ts-node scripts/set-bypass.ts <email> [true|false]');

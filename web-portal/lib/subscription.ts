@@ -29,8 +29,18 @@ export function getSubscriptionState(profile?: Partial<UserProfile> | null): Sub
 
   // Check for active subscription
   const subscriptionStatus = profile?.subscriptionStatus;
+  const subscriptionExpiresAt = profile?.subscriptionExpiresAt;
+  
   if (subscriptionStatus === 'active') {
     return { status: 'active', paywallEnabled };
+  }
+
+  // Allow access if cancelled but subscription hasn't expired yet
+  if (subscriptionStatus === 'cancelled' && subscriptionExpiresAt) {
+    const expiresAt = new Date(subscriptionExpiresAt);
+    if (expiresAt > new Date()) {
+      return { status: 'active', paywallEnabled };
+    }
   }
 
   // Session-based trial: check free visits used
