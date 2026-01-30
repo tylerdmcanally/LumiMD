@@ -175,11 +175,15 @@ const revenuecatWebhookSchema = z.object({
  */
 webhooksRouter.post('/revenuecat', async (req, res) => {
   try {
-    // Validate webhook authorization header
-    if (REVENUECAT_WEBHOOK_SECRET) {
-      const authHeader = req.headers['authorization'];
-      if (!timingSafeEqual(authHeader as string, REVENUECAT_WEBHOOK_SECRET)) {
-        functions.logger.warn('[webhooks] Invalid RevenueCat webhook authorization');
+    // Validate webhook authorization header (trim to handle env var whitespace)
+    const webhookSecret = REVENUECAT_WEBHOOK_SECRET?.trim();
+    if (webhookSecret) {
+      const authHeader = (req.headers['authorization'] as string)?.trim();
+      if (!timingSafeEqual(authHeader, webhookSecret)) {
+        functions.logger.warn('[webhooks] Invalid RevenueCat webhook authorization', {
+          headerLen: authHeader?.length,
+          secretLen: webhookSecret?.length,
+        });
         res.status(401).json({ code: 'unauthorized', message: 'Invalid authorization' });
         return;
       }
