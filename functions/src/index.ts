@@ -265,6 +265,7 @@ export const api = onRequest(
     timeoutSeconds: 60,
     memory: '512MiB',
     maxInstances: 40,
+    secrets: ['REVENUECAT_WEBHOOK_SECRET'],
   },
   app
 );
