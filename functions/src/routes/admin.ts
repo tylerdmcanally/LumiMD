@@ -42,16 +42,20 @@ const setBypassSchema = z.object({
  */
 adminRouter.post('/set-bypass', async (req, res) => {
   try {
-    // Verify admin secret
-    if (!ADMIN_SECRET) {
+    // Verify admin secret (trim to handle env var trailing newlines)
+    const adminSecret = ADMIN_SECRET?.trim();
+    if (!adminSecret) {
       functions.logger.error('[admin] REVENUECAT_WEBHOOK_SECRET not configured');
       res.status(500).json({ code: 'config_error', message: 'Admin secret not configured' });
       return;
     }
 
-    const authHeader = req.headers['authorization'];
-    if (!timingSafeEqual(authHeader as string, ADMIN_SECRET)) {
-      functions.logger.warn('[admin] Invalid admin authorization');
+    const authHeader = (req.headers['authorization'] as string)?.trim();
+    if (!timingSafeEqual(authHeader, adminSecret)) {
+      functions.logger.warn('[admin] Invalid admin authorization', { 
+        headerLen: authHeader?.length, 
+        secretLen: adminSecret?.length 
+      });
       res.status(401).json({ code: 'unauthorized', message: 'Invalid authorization' });
       return;
     }
@@ -103,14 +107,15 @@ adminRouter.post('/set-bypass', async (req, res) => {
  */
 adminRouter.get('/list-bypass', async (req, res) => {
   try {
-    // Verify admin secret
-    if (!ADMIN_SECRET) {
+    // Verify admin secret (trim to handle env var trailing newlines)
+    const adminSecret = ADMIN_SECRET?.trim();
+    if (!adminSecret) {
       res.status(500).json({ code: 'config_error', message: 'Admin secret not configured' });
       return;
     }
 
-    const authHeader = req.headers['authorization'];
-    if (!timingSafeEqual(authHeader as string, ADMIN_SECRET)) {
+    const authHeader = (req.headers['authorization'] as string)?.trim();
+    if (!timingSafeEqual(authHeader, adminSecret)) {
       res.status(401).json({ code: 'unauthorized', message: 'Invalid authorization' });
       return;
     }
