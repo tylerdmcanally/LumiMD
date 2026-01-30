@@ -16,6 +16,9 @@ import {
 } from '../lib/notifications';
 import { api } from '../lib/api/client';
 import { openManageSubscriptions, restorePurchases } from '../lib/store';
+import { useConsentFlow } from '../lib/hooks/useConsentFlow';
+import { US_STATES, requiresTwoPartyConsent } from '../lib/location';
+import { StateSelector } from '../components/consent';
 
 const PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
 
@@ -28,6 +31,18 @@ export default function SettingsScreen() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingReport, setIsExportingReport] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showStateSelector, setShowStateSelector] = useState(false);
+
+  const {
+    userState,
+    stateSource,
+    setManualState,
+    clearManualState,
+    hasLocationPermission,
+    requestLocationPermission,
+    refreshLocation,
+    requiresTwoPartyConsent: isTwoPartyState,
+  } = useConsentFlow();
 
   // Check notification permission status on mount
   useEffect(() => {
@@ -307,6 +322,69 @@ export default function SettingsScreen() {
             </Card>
           </View>
 
+          {/* Recording Location Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recording</Text>
+
+            <Card style={styles.card}>
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => setShowStateSelector(true)}
+              >
+                <View style={styles.settingIcon}>
+                  <Ionicons name="location-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.linkLabel, { marginLeft: 0 }]}>Recording Location</Text>
+                  <Text style={styles.settingDescription}>
+                    {userState
+                      ? `${US_STATES.find((s) => s.code === userState)?.name || userState}${isTwoPartyState ? ' (all-party consent)' : ''}`
+                      : 'Not set'}
+                  </Text>
+                  {stateSource && (
+                    <Text style={styles.sourceText}>
+                      Source: {stateSource === 'location' ? 'Device location' : 'Manual selection'}
+                    </Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </Pressable>
+
+              {!hasLocationPermission && (
+                <>
+                  <View style={styles.divider} />
+                  <Pressable
+                    style={styles.linkRow}
+                    onPress={async () => {
+                      const granted = await requestLocationPermission();
+                      if (granted) {
+                        await refreshLocation();
+                      } else {
+                        Alert.alert(
+                          'Permission Required',
+                          'Enable location access in Settings to automatically detect your state.',
+                        );
+                      }
+                    }}
+                  >
+                    <View style={styles.settingIcon}>
+                      <Ionicons name="navigate-outline" size={22} color={Colors.textMuted} />
+                    </View>
+                    <Text style={styles.linkLabel}>Enable Location Detection</Text>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                  </Pressable>
+                </>
+              )}
+
+              <View style={styles.disclaimerBox}>
+                <Text style={styles.disclaimerText}>
+                  Your state determines consent requirements for recording medical visits.
+                  LumiMD cannot provide legal advice. Recording laws vary by jurisdiction.
+                </Text>
+              </View>
+            </Card>
+          </View>
+
           {/* Legal Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Legal</Text>
@@ -456,8 +534,30 @@ export default function SettingsScreen() {
             <Text style={styles.versionText}>LumiMD v1.0.0</Text>
           </View>
         </ScrollView>
-      </View >
-    </SafeAreaView >
+      </View>
+
+      {/* State Selector Modal */}
+      <StateSelector
+        visible={showStateSelector}
+        currentState={userState}
+        stateSource={stateSource}
+        hasLocationPermission={hasLocationPermission ?? false}
+        onSelect={async (stateCode) => {
+          await setManualState(stateCode);
+        }}
+        onUseDeviceLocation={async () => {
+          if (hasLocationPermission) {
+            await clearManualState();
+          } else {
+            const granted = await requestLocationPermission();
+            if (granted) {
+              await clearManualState();
+            }
+          }
+        }}
+        onClose={() => setShowStateSelector(false)}
+      />
+    </SafeAreaView>
   );
 }
 
@@ -581,6 +681,22 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 13,
     color: Colors.textMuted,
+  },
+  sourceText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: spacing(1),
+  },
+  disclaimerBox: {
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(3),
+    borderTopWidth: 1,
+    borderTopColor: Colors.stroke,
+  },
+  disclaimerText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 18,
   },
 });
 

@@ -43,6 +43,12 @@ interface User {
   // Preferences
   timezone?: string;              // IANA timezone, e.g., "America/New_York"
   
+  // Recording consent settings
+  stateCode?: string;             // US state code, e.g., "CA"
+  stateSource?: 'location' | 'manual'; // How state was determined
+  stateUpdatedAt?: Timestamp;     // When state was last updated
+  skipOnePartyReminder?: boolean; // User opted out of educational prompt
+  
   // Metadata
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -88,6 +94,13 @@ interface Visit {
   
   // AI Summary
   summary?: VisitSummary;
+  
+  // Recording consent (audit trail)
+  consentAcknowledged?: boolean;  // User confirmed provider consent
+  consentAcknowledgedAt?: string; // ISO timestamp
+  recordingStateCode?: string;    // US state at time of recording
+  twoPartyConsentRequired?: boolean; // Was consent legally required
+  consentFlowVersion?: string;    // Version of consent UI shown
   
   // Metadata
   createdAt: Timestamp;

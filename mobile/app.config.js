@@ -29,6 +29,8 @@ module.exports = {
           'LumiMD uses your health data to provide a comprehensive view of your vitals, including weight, heart rate, and blood pressure, alongside your medical visits and medications.',
         NSHealthUpdateUsageDescription:
           'LumiMD may record health observations from your medical visits.',
+        NSLocationWhenInUseUsageDescription:
+          'LumiMD uses your location to determine recording consent requirements, which vary by state.',
         ITSAppUsesNonExemptEncryption: false,
         UIBackgroundModes: ['audio', 'remote-notification'],
       },
@@ -45,6 +47,7 @@ module.exports = {
         'android.permission.MODIFY_AUDIO_SETTINGS',
         'android.permission.READ_CALENDAR',
         'android.permission.WRITE_CALENDAR',
+        'android.permission.ACCESS_COARSE_LOCATION',
       ],
     },
     scheme: 'lumimd',
@@ -74,6 +77,13 @@ module.exports = {
       ],
       'expo-font',
       'expo-web-browser',
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission:
+            'LumiMD uses your location to determine recording consent requirements, which vary by state.',
+        },
+      ],
       [
         'expo-build-properties',
         {

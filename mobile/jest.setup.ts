@@ -1,5 +1,16 @@
 import '@testing-library/jest-native/extend-expect';
 
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  setItem: jest.fn(() => Promise.resolve()),
+  getItem: jest.fn(() => Promise.resolve(null)),
+  removeItem: jest.fn(() => Promise.resolve()),
+  clear: jest.fn(() => Promise.resolve()),
+  getAllKeys: jest.fn(() => Promise.resolve([])),
+  multiGet: jest.fn(() => Promise.resolve([])),
+  multiSet: jest.fn(() => Promise.resolve()),
+  multiRemove: jest.fn(() => Promise.resolve()),
+}));
+
 jest.mock('@expo/vector-icons', () => {
   const React = require('react');
   return {
@@ -31,6 +42,20 @@ jest.mock('react-native-safe-area-context', () => {
 
 jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
 
+// Mock AppState by modifying the react-native module
+jest.doMock('react-native', () => {
+  const RN = jest.requireActual('react-native');
+  return {
+    ...RN,
+    AppState: {
+      ...RN.AppState,
+      addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+      removeEventListener: jest.fn(),
+      currentState: 'active',
+    },
+  };
+});
+
 jest.mock('expo-notifications', () => ({
   setNotificationHandler: jest.fn(),
   getPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
@@ -54,3 +79,24 @@ jest.mock('@react-native-firebase/auth', () =>
     currentUser: null,
   }))
 );
+
+jest.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  getForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  getCurrentPositionAsync: jest.fn(async () => ({
+    coords: { latitude: 37.7749, longitude: -122.4194 },
+  })),
+  reverseGeocodeAsync: jest.fn(async () => [
+    { region: 'California', country: 'United States', isoCountryCode: 'US' },
+  ]),
+  Accuracy: {
+    Low: 1,
+    Balanced: 3,
+    High: 4,
+  },
+  PermissionStatus: {
+    UNDETERMINED: 'undetermined',
+    GRANTED: 'granted',
+    DENIED: 'denied',
+  },
+}));

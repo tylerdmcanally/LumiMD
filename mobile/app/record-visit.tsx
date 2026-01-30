@@ -11,17 +11,27 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Linking,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from '../components/ui';
 import { useAudioRecording, MAX_RECORDING_MS } from '../lib/hooks/useAudioRecording';
+import { useConsentFlow } from '../lib/hooks/useConsentFlow';
 import { uploadAudioFile, UploadProgress } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
+import {
+  ConsentRequiredModal,
+  ConsentEducationalModal,
+  LocationSetupModal,
+  StateSelector,
+} from '../components/consent';
+import type { ConsentRecord } from '../lib/location';
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
@@ -46,12 +56,31 @@ export default function RecordVisitScreen() {
     autoStopReason,
   } = useAudioRecording();
 
+  const {
+    userState,
+    stateSource,
+    isLoading: isLocationLoading,
+    checkConsentRequired,
+    generateConsentRecord,
+    setSkipEducationalPrompt,
+    setManualState,
+    requestLocationPermission,
+    refreshLocation,
+    hasLocationPermission,
+  } = useConsentFlow();
+
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showConsentRequired, setShowConsentRequired] = useState(false);
+  const [showConsentEducational, setShowConsentEducational] = useState(false);
+  const [showLocationSetup, setShowLocationSetup] = useState(false);
+  const [showStateSelector, setShowStateSelector] = useState(false);
+  const [consentRecord, setConsentRecord] = useState<ConsentRecord | null>(null);
   const isIdle = recordingState === 'idle';
   const isFinished = recordingState === 'stopped';
   const longRecordingWarningShown = useRef(false);
+  const [pendingConsentCheck, setPendingConsentCheck] = useState(false);
   const showError = (message: string) => {
     setErrorMessage(message);
   };
@@ -92,6 +121,7 @@ export default function RecordVisitScreen() {
 
   const handleStartRecording = async () => {
     try {
+      // Check microphone permission first
       if (!hasPermission) {
         const granted = await requestPermission();
         if (!granted) {
@@ -104,14 +134,166 @@ export default function RecordVisitScreen() {
           return;
         }
       }
+
+      // Check if we need to set up location first
+      // Show setup if:
+      // 1. No state is set at all, OR
+      // 2. Location permission is denied (false) and no manual override
+      // Note: hasLocationPermission can be null (still checking), false (denied), or true (granted)
+      const needsLocationSetup = 
+        (!userState && !stateSource) || 
+        (stateSource !== 'manual' && hasLocationPermission !== true && !isLocationLoading);
+      
+      if (needsLocationSetup) {
+        setShowLocationSetup(true);
+        return;
+      }
+
+      // Check consent requirements
+      const consentCheck = await checkConsentRequired();
+      if (!consentCheck.canProceed) {
+        if (consentCheck.modalType === 'required') {
+          setShowConsentRequired(true);
+          return;
+        } else if (consentCheck.modalType === 'educational') {
+          setShowConsentEducational(true);
+          return;
+        }
+      }
+
+      // Proceed with recording
+      await proceedWithRecording(consentCheck.twoPartyRequired);
+    } catch (error: any) {
+      console.error('[RecordVisit] Start error:', error);
+      showError("We couldn't start recording. Please try again.");
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  const proceedWithRecording = async (consentAcknowledged: boolean) => {
+    try {
       setErrorMessage(null);
       longRecordingWarningShown.current = false;
+      
+      // Generate consent record for this visit
+      const record = generateConsentRecord(consentAcknowledged);
+      setConsentRecord(record);
+      
       await startRecording();
     } catch (error: any) {
       console.error('[RecordVisit] Start error:', error);
-      showError('We couldn’t start recording. Please try again.');
+      showError("We couldn't start recording. Please try again.");
       Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
+  };
+
+  const handleConsentConfirm = () => {
+    setShowConsentRequired(false);
+    void proceedWithRecording(true);
+  };
+
+  const handleConsentCancel = () => {
+    setShowConsentRequired(false);
+    setShowConsentEducational(false);
+  };
+
+  const handleEducationalProceed = async (dontShowAgain: boolean) => {
+    if (dontShowAgain) {
+      await setSkipEducationalPrompt(true);
+    }
+    setShowConsentEducational(false);
+    void proceedWithRecording(false);
+  };
+
+  const handleLocationEnable = async (): Promise<boolean> => {
+    const granted = await requestLocationPermission();
+    if (granted) {
+      await refreshLocation();
+      setShowLocationSetup(false);
+      // Set flag to run consent check once location state updates
+      setPendingConsentCheck(true);
+      return true;
+    }
+    
+    // Permission denied - prompt user to enable in Settings
+    Alert.alert(
+      'Location Access Denied',
+      'Location permission was denied. To use automatic location detection, please enable location access in Settings.',
+      [
+        { text: 'Select Manually', onPress: handleLocationSelectManually },
+        { 
+          text: 'Open Settings', 
+          onPress: () => {
+            setShowLocationSetup(false);
+            setPendingConsentCheck(true);
+            Linking.openSettings();
+          } 
+        },
+      ]
+    );
+    return false;
+  };
+
+  // Handle return from Settings - refresh location when app becomes active
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active' && pendingConsentCheck && !userState) {
+        // Try to refresh location in case permission was just granted
+        await refreshLocation();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [pendingConsentCheck, userState, refreshLocation]);
+
+  // Run consent check once we have a valid state after pending
+  // Only run if we're in idle state (not already recording)
+  useEffect(() => {
+    if (pendingConsentCheck && userState && !isLocationLoading && isIdle) {
+      setPendingConsentCheck(false);
+      console.log('[RecordVisit] Running consent check after location setup');
+      void runConsentCheck();
+    }
+  }, [pendingConsentCheck, userState, isLocationLoading, isIdle]);
+
+  const runConsentCheck = async () => {
+    const consentCheck = await checkConsentRequired();
+    console.log('[RecordVisit] Consent check result:', JSON.stringify(consentCheck));
+    
+    if (!consentCheck.canProceed) {
+      if (consentCheck.modalType === 'required') {
+        console.log('[RecordVisit] Showing required consent modal');
+        setShowConsentRequired(true);
+      } else if (consentCheck.modalType === 'educational') {
+        console.log('[RecordVisit] Showing educational consent modal');
+        setShowConsentEducational(true);
+      }
+    } else {
+      console.log('[RecordVisit] Consent check passed, proceeding with recording');
+      await proceedWithRecording(consentCheck.twoPartyRequired);
+    }
+  };
+
+  const handleLocationSelectManually = () => {
+    setShowLocationSetup(false);
+    setShowStateSelector(true);
+  };
+
+  const handleStateSelected = async (stateCode: string) => {
+    await setManualState(stateCode);
+    setShowStateSelector(false);
+    // Re-trigger the recording flow now that we have a state
+    setTimeout(() => {
+      void handleStartRecording();
+    }, 100);
+  };
+
+  const handleLocationSetupCancel = () => {
+    setShowLocationSetup(false);
+  };
+
+  const handleStateSelectorCancel = () => {
+    setShowStateSelector(false);
   };
 
   const handleStopAndSave = async () => {
@@ -169,12 +351,19 @@ export default function RecordVisitScreen() {
 
       console.log('[RecordVisit] Audio uploaded:', downloadUrl);
 
-      // Create visit record
+      // Create visit record with consent metadata
       await api.visits.create({
         audioUrl: downloadUrl,
         storagePath,
         status: 'processing',
         notes: '',
+        ...(consentRecord && {
+          consentAcknowledged: consentRecord.consentAcknowledged,
+          consentAcknowledgedAt: consentRecord.consentAcknowledgedAt?.toISOString(),
+          recordingStateCode: consentRecord.recordingStateCode,
+          twoPartyConsentRequired: consentRecord.twoPartyConsentRequired,
+          consentFlowVersion: consentRecord.consentFlowVersion,
+        }),
       });
 
       console.log('[RecordVisit] Visit created');
@@ -426,6 +615,36 @@ export default function RecordVisitScreen() {
         )}
       </SafeAreaView>
       {isRecording && <KeepDeviceAwake tag="visit-recording" />}
+
+      {/* Location Setup Modal */}
+      <LocationSetupModal
+        visible={showLocationSetup}
+        isLoading={isLocationLoading}
+        onEnableLocation={handleLocationEnable}
+        onSelectManually={handleLocationSelectManually}
+        onCancel={handleLocationSetupCancel}
+      />
+
+      {/* State Selector Modal */}
+      <StateSelector
+        visible={showStateSelector}
+        currentState={userState}
+        onSelect={handleStateSelected}
+        onClose={handleStateSelectorCancel}
+      />
+
+      {/* Consent Modals */}
+      <ConsentRequiredModal
+        visible={showConsentRequired}
+        stateCode={userState}
+        onConfirm={handleConsentConfirm}
+        onCancel={handleConsentCancel}
+      />
+      <ConsentEducationalModal
+        visible={showConsentEducational}
+        onProceed={handleEducationalProceed}
+        onCancel={handleConsentCancel}
+      />
     </ErrorBoundary>
   );
 }
