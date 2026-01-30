@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
-import { useCanRecord } from '../contexts/SubscriptionContext';
+import { useCanRecord, useSubscription } from '../contexts/SubscriptionContext';
 import {
   ConsentRequiredModal,
   ConsentEducationalModal,
@@ -71,6 +71,7 @@ export default function RecordVisitScreen() {
   } = useConsentFlow();
 
   const { canRecord, showPaywall } = useCanRecord();
+  const { freeVisitsUsed, isSubscribed, paywallEnabled } = useSubscription();
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -377,18 +378,34 @@ export default function RecordVisitScreen() {
 
       console.log('[RecordVisit] Visit created');
 
-      // Success!
-      Alert.alert(
-        'Visit Recorded',
-        'Your visit has been saved and is being processed.',
-        [],
-        { cancelable: false }
-      );
+      // Success! Show trial status for free users
+      const FREE_VISIT_LIMIT = 3;
+      const visitsAfterThis = freeVisitsUsed + 1;
+      const showTrialStatus = paywallEnabled && !isSubscribed && visitsAfterThis <= FREE_VISIT_LIMIT;
 
-      setTimeout(() => {
-        resetRecording();
-        router.replace('/');
-      }, 2000);
+      if (showTrialStatus) {
+        const remaining = FREE_VISIT_LIMIT - visitsAfterThis;
+        Alert.alert(
+          'Visit Recorded',
+          remaining > 0
+            ? `Your visit is being processed.\n\nYou've used ${visitsAfterThis} of ${FREE_VISIT_LIMIT} free visits. ${remaining} remaining.`
+            : `Your visit is being processed.\n\nYou've used all ${FREE_VISIT_LIMIT} free visits. Subscribe to continue recording.`,
+          remaining > 0
+            ? [{ text: 'OK', onPress: () => { resetRecording(); router.replace('/'); } }]
+            : [
+                { text: 'Later', style: 'cancel', onPress: () => { resetRecording(); router.replace('/'); } },
+                { text: 'View Plans', onPress: () => { resetRecording(); router.replace('/paywall'); } },
+              ],
+          { cancelable: false }
+        );
+      } else {
+        Alert.alert(
+          'Visit Recorded',
+          'Your visit has been saved and is being processed.',
+          [{ text: 'OK', onPress: () => { resetRecording(); router.replace('/'); } }],
+          { cancelable: false }
+        );
+      }
     } catch (error: any) {
       console.error('[RecordVisit] Upload error:', error);
 
