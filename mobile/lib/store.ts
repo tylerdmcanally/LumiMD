@@ -82,6 +82,7 @@ export async function configureRevenueCat(userId?: string): Promise<void> {
   }
 
   const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
+  console.log('[Store] API Key present:', !!apiKey, 'Length:', apiKey?.length || 0);
   if (!apiKey) {
     console.error('[Store] EXPO_PUBLIC_REVENUECAT_API_KEY not set');
     return;
@@ -114,16 +115,27 @@ export async function configureRevenueCat(userId?: string): Promise<void> {
  * Returns the default offering's available packages.
  */
 export async function getOfferings(): Promise<Package[]> {
-  if (Platform.OS !== 'ios') return [];
+  if (Platform.OS !== 'ios') {
+    console.log('[Store] Not iOS, returning empty offerings');
+    return [];
+  }
 
   try {
     await configureRevenueCat();
 
+    console.log('[Store] Fetching offerings from RevenueCat...');
     const offerings = await Purchases.getOfferings();
+    console.log('[Store] Offerings response:', JSON.stringify({
+      hasOfferings: !!offerings,
+      hasCurrent: !!offerings?.current,
+      allOfferingsCount: Object.keys(offerings?.all || {}).length,
+    }));
+    
     const currentOffering: PurchasesOffering | null = offerings.current;
 
     if (!currentOffering) {
-      console.warn('[Store] No current offering available');
+      console.warn('[Store] No current offering available. Check RevenueCat dashboard.');
+      console.warn('[Store] Available offerings:', Object.keys(offerings?.all || {}));
       return [];
     }
 
