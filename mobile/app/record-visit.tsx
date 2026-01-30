@@ -139,7 +139,12 @@ export default function RecordVisitScreen() {
   const handleStartRecording = async () => {
     try {
       // Check subscription/trial status before allowing recording
-      if (!canRecord) {
+      // Must account for visits completed this session that may not be synced to server yet
+      const FREE_VISIT_LIMIT = 3;
+      const effectiveVisitsUsed = freeVisitsUsed + sessionVisitsCompleted.current;
+      const canRecordNow = !paywallEnabled || isSubscribed || (effectiveVisitsUsed < FREE_VISIT_LIMIT);
+      
+      if (!canRecordNow) {
         showPaywall();
         return;
       }
