@@ -71,7 +71,10 @@ export default function RecordVisitScreen() {
   } = useConsentFlow();
 
   const { canRecord, showPaywall } = useCanRecord();
-  const { freeVisitsUsed, isSubscribed, paywallEnabled } = useSubscription();
+  const { freeVisitsUsed, isSubscribed, paywallEnabled, refreshSubscription } = useSubscription();
+  
+  // Track visits completed in this session (since freeVisitsUsed may not update immediately)
+  const sessionVisitsCompleted = useRef(0);
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -378,9 +381,14 @@ export default function RecordVisitScreen() {
 
       console.log('[RecordVisit] Visit created');
 
+      // Increment session counter and refresh subscription in background
+      sessionVisitsCompleted.current += 1;
+      refreshSubscription().catch(() => {}); // Fire and forget
+
       // Success! Show trial status for free users
+      // Use freeVisitsUsed + sessionVisitsCompleted to account for visits not yet synced
       const FREE_VISIT_LIMIT = 3;
-      const visitsAfterThis = freeVisitsUsed + 1;
+      const visitsAfterThis = freeVisitsUsed + sessionVisitsCompleted.current;
       const showTrialStatus = paywallEnabled && !isSubscribed && visitsAfterThis <= FREE_VISIT_LIMIT;
 
       if (showTrialStatus) {
