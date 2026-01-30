@@ -75,6 +75,16 @@ export default function RecordVisitScreen() {
   
   // Track visits completed in this session (since freeVisitsUsed may not update immediately)
   const sessionVisitsCompleted = useRef(0);
+  const lastKnownServerCount = useRef(freeVisitsUsed);
+  
+  // Reset session counter when server count increases (e.g., after app refresh)
+  useEffect(() => {
+    if (freeVisitsUsed > lastKnownServerCount.current) {
+      // Server caught up, reset our local counter
+      sessionVisitsCompleted.current = 0;
+      lastKnownServerCount.current = freeVisitsUsed;
+    }
+  }, [freeVisitsUsed]);
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
