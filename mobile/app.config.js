@@ -4,7 +4,7 @@ module.exports = {
   expo: {
     name: 'LumiMD',
     slug: 'lumimd',
-    version: '1.3.0',
+    version: '1.4.0',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
     icon: './assets/icon.png',
