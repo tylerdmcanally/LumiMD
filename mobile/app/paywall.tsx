@@ -8,13 +8,15 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../components/ui';
 import { useSubscription } from '../contexts/SubscriptionContext';
-import { Package } from '../lib/store';
+import { Package, getOfferings } from '../lib/store';
+import Purchases from 'react-native-purchases';
 
 const FREE_VISIT_LIMIT = 3;
 
@@ -43,11 +45,56 @@ export default function PaywallScreen() {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isLoadingOfferings, setIsLoadingOfferings] = useState(false);
+  
+  // Debug state
+  const [debugInfo, setDebugInfo] = useState<string>('Loading...');
+  const [showDebug, setShowDebug] = useState(true); // Set to false to hide debug panel
 
-  // Load offerings on mount
+  // Load offerings on mount with detailed debugging
   useEffect(() => {
     const load = async () => {
       setIsLoadingOfferings(true);
+      
+      // Collect debug info
+      const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
+      let debugLines: string[] = [];
+      debugLines.push(`Platform: ${Platform.OS}`);
+      debugLines.push(`API Key present: ${!!apiKey}`);
+      debugLines.push(`API Key length: ${apiKey?.length || 0}`);
+      debugLines.push(`API Key prefix: ${apiKey?.substring(0, 10) || 'none'}...`);
+      
+      try {
+        // Try to get offerings directly with more logging
+        debugLines.push('Calling getOfferings...');
+        setDebugInfo(debugLines.join('\n'));
+        
+        const pkgs = await getOfferings();
+        debugLines.push(`Packages returned: ${pkgs.length}`);
+        
+        if (pkgs.length > 0) {
+          pkgs.forEach((pkg, i) => {
+            debugLines.push(`  [${i}] ${pkg.identifier}: ${pkg.product.priceString}`);
+          });
+        } else {
+          // Try to get more info from RevenueCat directly
+          try {
+            const offerings = await Purchases.getOfferings();
+            debugLines.push(`Direct offerings.current: ${!!offerings.current}`);
+            debugLines.push(`Direct offerings.all keys: ${Object.keys(offerings.all || {}).join(', ') || 'none'}`);
+            if (offerings.current) {
+              debugLines.push(`Current offering packages: ${offerings.current.availablePackages.length}`);
+            }
+          } catch (directErr: any) {
+            debugLines.push(`Direct call error: ${directErr?.message || directErr}`);
+          }
+        }
+        
+        setDebugInfo(debugLines.join('\n'));
+      } catch (error: any) {
+        debugLines.push(`Error: ${error?.message || error}`);
+        setDebugInfo(debugLines.join('\n'));
+      }
+      
       await loadOfferings();
       setIsLoadingOfferings(false);
     };
@@ -182,6 +229,16 @@ export default function PaywallScreen() {
             </View>
           ))}
         </View>
+
+        {/* Debug Panel - Remove before production */}
+        {showDebug && (
+          <View style={styles.debugPanel}>
+            <Pressable onPress={() => setShowDebug(false)}>
+              <Text style={styles.debugTitle}>Debug Info (tap to hide)</Text>
+            </Pressable>
+            <Text style={styles.debugText}>{debugInfo}</Text>
+          </View>
+        )}
 
         {/* Pricing Options */}
         <View style={styles.pricingSection}>
@@ -455,6 +512,26 @@ const styles = StyleSheet.create({
     color: Colors.error,
     textAlign: 'center',
     padding: spacing(4),
+  },
+  debugPanel: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: Radius.md,
+    padding: spacing(3),
+    marginBottom: spacing(4),
+    borderWidth: 1,
+    borderColor: '#4a4a6a',
+  },
+  debugTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#00ff88',
+    marginBottom: spacing(2),
+  },
+  debugText: {
+    fontSize: 11,
+    color: '#ffffff',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 16,
   },
   footer: {
     paddingHorizontal: spacing(5),
