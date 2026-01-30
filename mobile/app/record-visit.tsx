@@ -382,6 +382,26 @@ export default function RecordVisitScreen() {
       }, 2000);
     } catch (error: any) {
       console.error('[RecordVisit] Upload error:', error);
+
+      // Check for trial limit reached (402 Payment Required)
+      if (error?.status === 402 && error?.code === 'trial_limit_reached') {
+        Alert.alert(
+          'Free Trial Ended',
+          'You\'ve used all your free visits. Subscribe to continue recording.',
+          [
+            { text: 'Not Now', style: 'cancel', onPress: () => {
+              resetRecording();
+              router.back();
+            }},
+            { text: 'View Plans', onPress: () => {
+              resetRecording();
+              router.replace('/paywall');
+            }},
+          ]
+        );
+        return;
+      }
+
       showError(extractUserMessage(error, 'Failed to save your recording. Please try again.'));
       Alert.alert(
         'Upload Failed',

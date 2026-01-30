@@ -14,7 +14,10 @@
     "logs": "firebase functions:log",
     "clean:assembly": "ts-node scripts/delete-assembly-transcripts.ts",
     "clean:medication-cache": "ts-node scripts/clearMedicationSafetyCache.ts",
-    "backfill:canonical-meds": "ts-node scripts/backfillCanonicalMedicationNames.ts"
+    "backfill:canonical-meds": "ts-node scripts/backfillCanonicalMedicationNames.ts",
+    "bypass:grant": "ts-node scripts/set-bypass.ts",
+    "bypass:revoke": "ts-node scripts/set-bypass.ts -- false",
+    "bypass:list": "ts-node scripts/list-bypass-users.ts"
   },
   "engines": {
     "node": "20"

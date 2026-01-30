@@ -132,4 +132,160 @@ webhooksRouter.post('/assemblyai/transcription-complete', async (req, res) => {
   }
 });
 
+// =============================================================================
+// RevenueCat Subscription Webhook
+// =============================================================================
+
+const REVENUECAT_WEBHOOK_SECRET = webhookConfig.revenuecatWebhookSecret;
+
+/**
+ * RevenueCat webhook event types we care about
+ * See: https://www.revenuecat.com/docs/integrations/webhooks
+ */
+type RevenueCatEventType =
+  | 'INITIAL_PURCHASE'
+  | 'RENEWAL'
+  | 'CANCELLATION'
+  | 'UNCANCELLATION'
+  | 'EXPIRATION'
+  | 'BILLING_ISSUE'
+  | 'PRODUCT_CHANGE'
+  | 'SUBSCRIPTION_PAUSED'
+  | 'TRANSFER';
+
+const revenuecatWebhookSchema = z.object({
+  api_version: z.string().optional(),
+  event: z.object({
+    type: z.string(),
+    app_user_id: z.string(),
+    original_app_user_id: z.string().optional(),
+    product_id: z.string().optional(),
+    entitlement_ids: z.array(z.string()).optional(),
+    expiration_at_ms: z.number().optional(),
+    purchased_at_ms: z.number().optional(),
+    store: z.string().optional(),
+    environment: z.string().optional(),
+  }),
+});
+
+/**
+ * POST /v1/webhooks/revenuecat
+ * Called by RevenueCat on subscription events (purchase, renewal, cancellation, etc.)
+ * Updates user's subscription status in Firestore
+ */
+webhooksRouter.post('/revenuecat', async (req, res) => {
+  try {
+    // Validate webhook authorization header
+    if (REVENUECAT_WEBHOOK_SECRET) {
+      const authHeader = req.headers['authorization'];
+      if (!timingSafeEqual(authHeader as string, REVENUECAT_WEBHOOK_SECRET)) {
+        functions.logger.warn('[webhooks] Invalid RevenueCat webhook authorization');
+        res.status(401).json({ code: 'unauthorized', message: 'Invalid authorization' });
+        return;
+      }
+    }
+
+    const payload = revenuecatWebhookSchema.parse(req.body);
+    const { event } = payload;
+    const eventType = event.type as RevenueCatEventType;
+    const appUserId = event.app_user_id;
+
+    functions.logger.info(`[webhooks] RevenueCat webhook: ${eventType} for user ${appUserId}`);
+
+    // Skip if no user ID
+    if (!appUserId) {
+      functions.logger.warn('[webhooks] RevenueCat webhook missing app_user_id');
+      res.json({ success: true, message: 'No user ID' });
+      return;
+    }
+
+    const userRef = getDb().collection('users').doc(appUserId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      functions.logger.warn(`[webhooks] User not found for RevenueCat event: ${appUserId}`);
+      res.json({ success: true, message: 'User not found' });
+      return;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    const updateData: Record<string, unknown> = {
+      updatedAt: now,
+      revenuecatAppUserId: appUserId,
+    };
+
+    // Handle different event types
+    switch (eventType) {
+      case 'INITIAL_PURCHASE':
+      case 'RENEWAL':
+      case 'UNCANCELLATION':
+        // User is now subscribed
+        updateData.subscriptionStatus = 'active';
+        updateData.subscriptionPlatform = 'revenuecat';
+        if (event.expiration_at_ms) {
+          updateData.subscriptionExpiresAt = new Date(event.expiration_at_ms).toISOString();
+        }
+        if (event.product_id) {
+          updateData.subscriptionProductId = event.product_id;
+        }
+        functions.logger.info(`[webhooks] User ${appUserId} subscription activated`);
+        break;
+
+      case 'CANCELLATION':
+        // User cancelled but may still have access until expiration
+        updateData.subscriptionStatus = 'cancelled';
+        functions.logger.info(`[webhooks] User ${appUserId} subscription cancelled`);
+        break;
+
+      case 'EXPIRATION':
+        // Subscription has expired
+        updateData.subscriptionStatus = 'expired';
+        functions.logger.info(`[webhooks] User ${appUserId} subscription expired`);
+        break;
+
+      case 'BILLING_ISSUE':
+        // Payment failed - may want to notify user
+        updateData.subscriptionBillingIssue = true;
+        functions.logger.warn(`[webhooks] User ${appUserId} has billing issue`);
+        break;
+
+      case 'PRODUCT_CHANGE':
+        // User changed subscription tier
+        if (event.product_id) {
+          updateData.subscriptionProductId = event.product_id;
+        }
+        functions.logger.info(`[webhooks] User ${appUserId} changed product to ${event.product_id}`);
+        break;
+
+      case 'SUBSCRIPTION_PAUSED':
+        updateData.subscriptionStatus = 'paused';
+        functions.logger.info(`[webhooks] User ${appUserId} subscription paused`);
+        break;
+
+      case 'TRANSFER':
+        // Handle subscription transfer if needed
+        functions.logger.info(`[webhooks] User ${appUserId} subscription transferred`);
+        break;
+
+      default:
+        functions.logger.info(`[webhooks] Unhandled RevenueCat event type: ${eventType}`);
+    }
+
+    // Update user document
+    await userRef.update(updateData);
+
+    functions.logger.info(`[webhooks] Updated user ${appUserId} subscription status`);
+    res.json({ success: true });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      functions.logger.error('[webhooks] RevenueCat webhook validation error:', err.errors);
+      res.status(400).json({ code: 'validation_failed', message: 'Invalid payload', details: err.errors });
+      return;
+    }
+
+    functions.logger.error('[webhooks] RevenueCat webhook error:', err);
+    res.status(500).json({ code: 'server_error', message: 'Failed to process webhook' });
+  }
+});
+
 

@@ -188,13 +188,36 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// Constants for free trial
+const FREE_VISIT_LIMIT = 3;
+
 /**
  * POST /v1/visits
- * Create a new visit (premium)
+ * Create a new visit (premium feature - requires subscription or free visits remaining)
  */
 visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+
+    // Check subscription status before allowing visit creation
+    const userDoc = await getDb().collection('users').doc(userId).get();
+    const userData = userDoc.exists ? userDoc.data() : {};
+
+    const bypassPaywall = userData?.bypassPaywall === true;
+    const isSubscribed = userData?.subscriptionStatus === 'active';
+    const freeVisitsUsed = typeof userData?.freeVisitsUsed === 'number' ? userData.freeVisitsUsed : 0;
+
+    // Check if user can create a visit
+    if (!bypassPaywall && !isSubscribed && freeVisitsUsed >= FREE_VISIT_LIMIT) {
+      functions.logger.info(`[visits] User ${userId} hit free visit limit (${freeVisitsUsed}/${FREE_VISIT_LIMIT})`);
+      res.status(402).json({
+        code: 'trial_limit_reached',
+        message: `You have used all ${FREE_VISIT_LIMIT} free visits. Subscribe to continue recording.`,
+        freeVisitsUsed,
+        limit: FREE_VISIT_LIMIT,
+      });
+      return;
+    }
 
     // Validate request body
     const data = createVisitSchema.parse(req.body);

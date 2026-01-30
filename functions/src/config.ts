@@ -30,6 +30,7 @@ export const storageConfig = {
 
 export const webhookConfig = {
   assemblyaiWebhookSecret: process.env.ASSEMBLYAI_WEBHOOK_SECRET || '',
+  revenuecatWebhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET || '',
 };
 
 export const corsConfig = {

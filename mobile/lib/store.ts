@@ -1,147 +1,206 @@
 /**
- * In-App Purchase Module (StoreKit 2 via expo-in-app-purchases)
+ * In-App Purchase Module (RevenueCat)
  *
- * This module handles iOS in-app purchases. The subscription status is stored
- * in Firestore (updated via App Store Server Notifications webhook) and should
- * be read from the user profile, not from this module.
+ * This module handles iOS in-app purchases via RevenueCat. The subscription status
+ * is synced to Firestore via RevenueCat webhooks and should be read from the user
+ * profile for authorization decisions.
  *
  * Usage:
- * 1. Call configureStore() on app launch
- * 2. Use getProducts() to fetch available subscriptions
- * 3. Use purchase() to initiate a purchase
+ * 1. Call configureRevenueCat() on app launch with the user ID
+ * 2. Use getOfferings() to fetch available subscription packages
+ * 3. Use purchasePackage() to initiate a purchase
  * 4. Use restorePurchases() to restore previous purchases
  * 5. Use openManageSubscriptions() to let users manage in App Store
  */
 
 import { Platform, Linking } from 'react-native';
+import Purchases, {
+  PurchasesOffering,
+  PurchasesPackage,
+  CustomerInfo,
+  LOG_LEVEL,
+  PurchasesError,
+  PURCHASES_ERROR_CODE,
+} from 'react-native-purchases';
 
-// Product IDs - must match App Store Connect
+// Product IDs - must match App Store Connect and RevenueCat
 export const PRODUCT_IDS = {
   MONTHLY: 'com.lumimd.monthly',
   YEARLY: 'com.lumimd.yearly',
 } as const;
 
-const ALL_PRODUCT_IDS = Object.values(PRODUCT_IDS);
+// Entitlement ID - must match RevenueCat configuration
+export const ENTITLEMENT_ID = 'premium';
 
 // Types
-export type Product = {
-  productId: string;
-  title: string;
-  description: string;
-  price: string;
-  priceAmountMicros: number;
-  priceCurrencyCode: string;
-};
+export interface Package {
+  identifier: string;
+  packageType: string;
+  product: {
+    identifier: string;
+    title: string;
+    description: string;
+    price: number;
+    priceString: string;
+    currencyCode: string;
+  };
+  rcPackage: PurchasesPackage;
+}
 
-export type PurchaseResult = {
+export interface PurchaseResult {
   success: boolean;
-  productId?: string;
-  transactionId?: string;
+  customerInfo?: CustomerInfo;
   error?: string;
-};
+  userCancelled?: boolean;
+}
 
 // Module state
 let isConfigured = false;
 
 /**
- * Configure the store on app launch.
- * Safe to call multiple times.
+ * Configure RevenueCat on app launch.
+ * Safe to call multiple times - will only configure once.
+ * @param userId - Firebase user ID for attribution
  */
-export async function configureStore(): Promise<void> {
-  if (Platform.OS !== 'ios') return;
-  if (isConfigured) return;
+export async function configureRevenueCat(userId?: string): Promise<void> {
+  if (Platform.OS !== 'ios') {
+    console.log('[Store] RevenueCat only supported on iOS');
+    return;
+  }
+
+  if (isConfigured) {
+    // If already configured but user changed, log in the new user
+    if (userId) {
+      try {
+        await Purchases.logIn(userId);
+        console.log('[Store] Logged in user:', userId);
+      } catch (error) {
+        console.warn('[Store] Failed to log in user:', error);
+      }
+    }
+    return;
+  }
+
+  const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
+  if (!apiKey) {
+    console.error('[Store] EXPO_PUBLIC_REVENUECAT_API_KEY not set');
+    return;
+  }
 
   try {
-    const IAP = await import('expo-in-app-purchases');
-    await IAP.connectAsync();
+    // Set log level for debugging (remove in production)
+    if (__DEV__) {
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    }
 
-    // Set up purchase listener
-    IAP.setPurchaseListener(async (result) => {
-      if (result.responseCode === IAP.IAPResponseCode.OK) {
-        // Finish all transactions
-        for (const purchase of result.results ?? []) {
-          try {
-            await IAP.finishTransactionAsync(purchase, false);
-          } catch (err) {
-            console.warn('[Store] Failed to finish transaction:', err);
-          }
-        }
-      }
-    });
-
+    // Configure with API key
+    Purchases.configure({ apiKey });
     isConfigured = true;
-    console.log('[Store] Configured successfully');
+
+    // Log in user for attribution if provided
+    if (userId) {
+      await Purchases.logIn(userId);
+      console.log('[Store] Configured and logged in user:', userId);
+    } else {
+      console.log('[Store] Configured successfully (anonymous)');
+    }
   } catch (error) {
     console.error('[Store] Configuration failed:', error);
   }
 }
 
 /**
- * Fetch available subscription products from App Store.
+ * Get the current RevenueCat offerings (subscription packages).
+ * Returns the default offering's available packages.
  */
-export async function getProducts(): Promise<Product[]> {
+export async function getOfferings(): Promise<Package[]> {
   if (Platform.OS !== 'ios') return [];
 
   try {
-    const IAP = await import('expo-in-app-purchases');
-    await configureStore();
+    await configureRevenueCat();
 
-    const { results } = await IAP.getProductsAsync(ALL_PRODUCT_IDS);
+    const offerings = await Purchases.getOfferings();
+    const currentOffering: PurchasesOffering | null = offerings.current;
 
-    return (results ?? []).map((p) => ({
-      productId: p.productId,
-      title: p.title ?? 'Subscription',
-      description: p.description ?? '',
-      price: p.price ?? '',
-      priceAmountMicros: p.priceAmountMicros ?? 0,
-      priceCurrencyCode: p.priceCurrencyCode ?? 'USD',
+    if (!currentOffering) {
+      console.warn('[Store] No current offering available');
+      return [];
+    }
+
+    // Map RevenueCat packages to our Package type
+    const packages: Package[] = currentOffering.availablePackages.map((pkg) => ({
+      identifier: pkg.identifier,
+      packageType: pkg.packageType,
+      product: {
+        identifier: pkg.product.identifier,
+        title: pkg.product.title,
+        description: pkg.product.description,
+        price: pkg.product.price,
+        priceString: pkg.product.priceString,
+        currencyCode: pkg.product.currencyCode,
+      },
+      rcPackage: pkg,
     }));
 
+    console.log('[Store] Fetched offerings:', packages.length, 'packages');
+    return packages;
   } catch (error) {
-    console.error('[Store] Failed to fetch products:', error);
+    console.error('[Store] Failed to fetch offerings:', error);
     return [];
   }
 }
 
 /**
- * Initiate a purchase for the given product ID.
+ * Purchase a subscription package.
+ * @param pkg - The package to purchase (from getOfferings)
  */
-export async function purchase(productId: string): Promise<PurchaseResult> {
+export async function purchasePackage(pkg: Package): Promise<PurchaseResult> {
   if (Platform.OS !== 'ios') {
     return { success: false, error: 'Purchases only available on iOS' };
   }
 
   try {
-    const IAP = await import('expo-in-app-purchases');
-    await configureStore();
-    await IAP.purchaseItemAsync(productId);
+    await configureRevenueCat();
 
-    // Purchase listener will handle transaction completion
-    return { success: true, productId };
-  } catch (error: any) {
-    const isUserCancelled = error?.code === 'E_USER_CANCELLED';
+    const { customerInfo } = await Purchases.purchasePackage(pkg.rcPackage);
+
+    // Check if the premium entitlement is now active
+    const isPremium = customerInfo.entitlements.active[ENTITLEMENT_ID]?.isActive ?? false;
+
+    console.log('[Store] Purchase completed, premium:', isPremium);
+    return { success: isPremium, customerInfo };
+  } catch (error) {
+    const purchasesError = error as PurchasesError;
+
+    // Handle user cancellation gracefully
+    if (purchasesError.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) {
+      console.log('[Store] Purchase cancelled by user');
+      return { success: false, userCancelled: true };
+    }
+
+    console.error('[Store] Purchase failed:', purchasesError.message);
     return {
       success: false,
-      error: isUserCancelled ? undefined : error?.message ?? 'Purchase failed',
+      error: purchasesError.message ?? 'Purchase failed',
     };
   }
 }
 
 /**
- * Restore previous purchases. This is required by App Store guidelines.
+ * Restore previous purchases. Required by App Store guidelines.
+ * Returns true if active entitlements were restored.
  */
 export async function restorePurchases(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
 
   try {
-    const IAP = await import('expo-in-app-purchases');
-    await configureStore();
+    await configureRevenueCat();
 
-    const history = await IAP.getPurchaseHistoryAsync({ useGooglePlayCache: false });
-    const hasPurchases = (history?.results?.length ?? 0) > 0;
+    const customerInfo = await Purchases.restorePurchases();
+    const isPremium = customerInfo.entitlements.active[ENTITLEMENT_ID]?.isActive ?? false;
 
-    console.log('[Store] Restored purchases:', hasPurchases);
-    return hasPurchases;
+    console.log('[Store] Restored purchases, premium:', isPremium);
+    return isPremium;
   } catch (error) {
     console.error('[Store] Failed to restore purchases:', error);
     return false;
@@ -149,8 +208,49 @@ export async function restorePurchases(): Promise<boolean> {
 }
 
 /**
+ * Get the current customer info from RevenueCat.
+ * Useful for checking subscription status on demand.
+ */
+export async function getCustomerInfo(): Promise<CustomerInfo | null> {
+  if (Platform.OS !== 'ios') return null;
+
+  try {
+    await configureRevenueCat();
+    return await Purchases.getCustomerInfo();
+  } catch (error) {
+    console.error('[Store] Failed to get customer info:', error);
+    return null;
+  }
+}
+
+/**
+ * Check if the user has an active premium entitlement.
+ */
+export async function checkPremiumStatus(): Promise<boolean> {
+  const customerInfo = await getCustomerInfo();
+  if (!customerInfo) return false;
+
+  return customerInfo.entitlements.active[ENTITLEMENT_ID]?.isActive ?? false;
+}
+
+/**
  * Open Apple's subscription management page.
  */
 export async function openManageSubscriptions(): Promise<void> {
   await Linking.openURL('https://apps.apple.com/account/subscriptions');
+}
+
+/**
+ * Log out the current user (call on sign out).
+ * This resets RevenueCat to anonymous mode.
+ */
+export async function logOutRevenueCat(): Promise<void> {
+  if (Platform.OS !== 'ios' || !isConfigured) return;
+
+  try {
+    await Purchases.logOut();
+    console.log('[Store] Logged out from RevenueCat');
+  } catch (error) {
+    console.warn('[Store] Failed to log out:', error);
+  }
 }

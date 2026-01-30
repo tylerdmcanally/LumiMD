@@ -169,6 +169,22 @@ export const processVisitAudio = onObjectFinalized(
 
       await visitRef.update(updatePayload);
 
+      // Increment freeVisitsUsed counter for session-based trial tracking
+      // This counts visits that have been successfully submitted for processing
+      const userId = visitData.userId;
+      if (userId) {
+        try {
+          const userRef = db().collection('users').doc(userId);
+          await userRef.update({
+            freeVisitsUsed: admin.firestore.FieldValue.increment(1),
+          });
+          logger.info(`[processVisitAudio] Incremented freeVisitsUsed for user ${userId}`);
+        } catch (userUpdateError) {
+          // Log but don't fail the visit processing if counter update fails
+          logger.warn(`[processVisitAudio] Failed to increment freeVisitsUsed for user ${userId}:`, userUpdateError);
+        }
+      }
+
       // Step 4: Clean up external data (Privacy & Data Minimization)
       // NOTE: This runs AFTER the transcript has been received and processed.
       // Since this function (processVisitAudio) only SUBMITS the job, we can't delete yet.

@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react';
 import { useFonts, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { SubscriptionProvider } from '../contexts/SubscriptionContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
 import { usePendingActions, useVisits, useMedicationSchedule } from '../lib/api/hooks';
@@ -201,13 +202,14 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ErrorBoundary
-          onReset={() => queryClient.clear()}
-          renderFallback={({ reset }) => <RootFallback reset={reset} />}
-        >
-          <ThemeProvider value={navTheme(scheme ?? 'light')}>
-            <NotificationHandler />
-            <Stack screenOptions={{ headerShown: false }}>
+        <SubscriptionProvider>
+          <ErrorBoundary
+            onReset={() => queryClient.clear()}
+            renderFallback={({ reset }) => <RootFallback reset={reset} />}
+          >
+            <ThemeProvider value={navTheme(scheme ?? 'light')}>
+              <NotificationHandler />
+              <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen
                 name="sign-in"
@@ -281,9 +283,18 @@ export default function RootLayout() {
                   animation: 'slide_from_right',
                 }}
               />
-            </Stack>
-          </ThemeProvider>
-        </ErrorBoundary>
+              <Stack.Screen
+                name="paywall"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom',
+                }}
+              />
+              </Stack>
+            </ThemeProvider>
+          </ErrorBoundary>
+        </SubscriptionProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
