@@ -19,6 +19,7 @@ import { useVisits } from '../lib/api/hooks';
 import { openWebVisit, openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useAuth } from '../contexts/AuthContext';
+import { haptic } from '../lib/haptics';
 
 dayjs.extend(relativeTime);
 
@@ -37,6 +38,7 @@ export default function VisitsScreen() {
   const { isAuthenticated, loading: authLoading } = useAuth();
 
   const handleGoBack = () => {
+    void haptic.selection();
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -123,6 +125,7 @@ export default function VisitsScreen() {
             <Pressable
               style={styles.webLink}
               onPress={() => {
+                void haptic.selection();
                 if (sortedVisits[0]?.id) {
                   openWebVisit(sortedVisits[0].id);
                 } else {
@@ -158,7 +161,10 @@ export default function VisitsScreen() {
               title="No visits recorded yet"
               description="Record your next appointment to see AI summaries here."
               actionLabel="Record a Visit"
-              onAction={() => router.push('/record-visit')}
+              onAction={() => {
+                void haptic.selection();
+                router.push('/record-visit');
+              }}
             />
           ) : (
 
@@ -166,7 +172,10 @@ export default function VisitsScreen() {
               {sortedVisits.map((visit: any, index: number) => (
                 <Pressable
                   key={visit.id}
-                  onPress={() => router.push({ pathname: '/visit-detail', params: { id: visit.id } })}
+                  onPress={() => {
+                    void haptic.selection();
+                    router.push({ pathname: '/visit-detail', params: { id: visit.id } });
+                  }}
                   style={[styles.row, index < sortedVisits.length - 1 && styles.rowDivider]}
                 >
                   <View style={{ flex: 1, paddingRight: spacing(3) }}>

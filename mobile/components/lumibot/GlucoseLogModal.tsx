@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 import type { GlucoseValue, AlertLevel } from '@lumimd/sdk';
+import { haptic } from '../../lib/haptics';
 
 export type GlucoseTiming = 'fasting' | 'before_meal' | 'after_meal' | 'bedtime' | 'random';
 
@@ -52,7 +53,10 @@ export function GlucoseLogModal({
     const [timing, setTiming] = useState<GlucoseTiming>('random');
     const [error, setError] = useState<string | null>(null);
 
-    const handleClose = useCallback(() => {
+    const handleClose = useCallback((withHaptic: boolean = true) => {
+        if (withHaptic) {
+            void haptic.light();
+        }
         setReading('');
         setTiming('random');
         setError(null);
@@ -64,6 +68,7 @@ export function GlucoseLogModal({
 
         // Validation
         if (isNaN(value) || value < 20 || value > 700) {
+            void haptic.warning();
             setError('Please enter a valid glucose reading (20-700 mg/dL)');
             return;
         }
@@ -77,7 +82,8 @@ export function GlucoseLogModal({
 
         // If not showing immediate alert, close the modal
         if (!result.shouldShowAlert) {
-            handleClose();
+            void haptic.success();
+            handleClose(false);
         }
     }, [reading, timing, onSubmit, handleClose]);
 
@@ -126,7 +132,10 @@ export function GlucoseLogModal({
                                     styles.timingOption,
                                     timing === option.value && styles.timingOptionSelected,
                                 ]}
-                                onPress={() => setTiming(option.value)}
+                                onPress={() => {
+                                    void haptic.selection();
+                                    setTiming(option.value);
+                                }}
                             >
                                 <Text
                                     style={[

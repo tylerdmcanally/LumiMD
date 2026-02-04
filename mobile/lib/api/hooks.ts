@@ -26,10 +26,13 @@ export const {
   useUserProfile,
   // LumiBot hooks
   useNudges,
+  useNudgeHistory,
   useHealthLogs,
   useHealthLogsSummary,
   useUpdateNudge,
   useRespondToNudge,
+  useSendNudgeFeedback,
+  useTrackNudgeEvent,
   useCreateHealthLog,
 } = hooks;
 

@@ -74,6 +74,22 @@ jest.mock('expo-notifications', () => ({
   },
 }));
 
+jest.mock('expo-haptics', () => ({
+  impactAsync: jest.fn(async () => undefined),
+  notificationAsync: jest.fn(async () => undefined),
+  selectionAsync: jest.fn(async () => undefined),
+  ImpactFeedbackStyle: {
+    Light: 'Light',
+    Medium: 'Medium',
+    Heavy: 'Heavy',
+  },
+  NotificationFeedbackType: {
+    Success: 'Success',
+    Warning: 'Warning',
+    Error: 'Error',
+  },
+}));
+
 jest.mock('@react-native-firebase/auth', () =>
   jest.fn(() => ({
     currentUser: null,

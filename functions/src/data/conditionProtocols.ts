@@ -443,6 +443,74 @@ export const copdProtocol: ConditionProtocol = {
 };
 
 // =============================================================================
+// Asthma Protocol (NIH/NHLBI Guidelines)
+// =============================================================================
+
+export const asthmaProtocol: ConditionProtocol = {
+    id: 'asthma',
+    name: 'Asthma',
+    aliases: [
+        'asthma',
+        'reactive airway disease',
+        'rad',
+        'exercise-induced asthma',
+        'wheezing',
+        'bronchospasm',
+        'asthmatic',
+    ],
+    source: 'NIH/NHLBI Asthma Guidelines',
+
+    tracking: [
+        {
+            type: 'symptom_check',
+            suggestedFrequency: 'weekly',
+        },
+        {
+            type: 'med_compliance',
+            suggestedFrequency: 'weekly',
+        },
+    ],
+
+    thresholds: {},
+
+    emergencySymptoms: [
+        'severe shortness of breath',
+        'can\'t speak in full sentences',
+        'blue lips',
+        'blue fingernails',
+        'rescue inhaler not helping',
+        'chest tightness',
+        'rapid breathing',
+        'confusion',
+        'drowsiness',
+    ],
+
+    nudgeSchedule: [
+        {
+            day: 1,
+            message: 'Welcome! We\'ll help you track asthma symptoms and inhaler use to spot flare-ups early.',
+        },
+        {
+            day: 7,
+            message: 'Weekly asthma check: Any wheezing, chest tightness, or shortness of breath this week? How often did you use your rescue inhaler?',
+        },
+        {
+            day: 14,
+            recurring: true,
+            interval: 7,
+            message: 'Time for your asthma check-in. Any night-time symptoms or increased inhaler use lately?',
+        },
+    ],
+
+    responseTemplates: {
+        normal: 'Symptoms look stable. Keep following your asthma action plan.',
+        caution: 'You\'re reporting more symptoms. Monitor closely and review your action plan steps.',
+        warning: 'Your symptoms suggest asthma may not be well controlled. Please contact your doctor\'s office today.',
+        emergency: 'These symptoms need immediate attention. Please call 911 or go to the emergency room now.',
+    },
+};
+
+// =============================================================================
 // Atrial Fibrillation Protocol (ACC/AHA Guidelines)
 // =============================================================================
 
@@ -616,6 +684,7 @@ export const conditionProtocols: ConditionProtocol[] = [
     diabetesProtocol,
     heartFailureProtocol,
     copdProtocol,
+    asthmaProtocol,
     afibProtocol,
     anticoagulationProtocol,
 ];

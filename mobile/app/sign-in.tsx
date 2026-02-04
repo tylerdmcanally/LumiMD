@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Colors, spacing } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
+import { haptic } from '../lib/haptics';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function SignInScreen() {
   const handleSignIn = async () => {
     // Validation
     if (!email.trim() || !password.trim()) {
+      void haptic.warning();
       setError('Please enter both email and password');
       return;
     }
@@ -45,6 +47,7 @@ export default function SignInScreen() {
       const { error: signInError } = await signIn(email.trim(), password);
       
       if (signInError) {
+        void haptic.error();
         setError(signInError);
         setLoading(false);
         return;
@@ -52,16 +55,24 @@ export default function SignInScreen() {
 
       // Success - navigate to home
       console.log('[SignIn] Success');
+      void haptic.success();
       router.replace('/');
     } catch (err: any) {
       console.error('[SignIn] Error:', err);
+      void haptic.error();
       setError('An unexpected error occurred');
       setLoading(false);
     }
   };
 
   const handleForgotPassword = () => {
+    void haptic.selection();
     router.push('/forgot-password');
+  };
+
+  const handleSignUpPress = () => {
+    void haptic.selection();
+    router.push('/sign-up');
   };
 
   return (
@@ -151,7 +162,7 @@ export default function SignInScreen() {
             <View style={styles.footer}>
               <Text style={styles.footerText}>Don't have an account? </Text>
               <TouchableOpacity
-                onPress={() => router.push('/sign-up')}
+                onPress={handleSignUpPress}
                 disabled={loading}
               >
                 <Text style={styles.footerLink}>Sign Up</Text>

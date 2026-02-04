@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Colors, spacing } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
+import { haptic } from '../lib/haptics';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -34,19 +35,23 @@ export default function SignUpScreen() {
   const handleSignUp = async () => {
     // Validation
     if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
+      void haptic.warning();
       setError('Please fill in all fields');
       return;
     }
     if (password !== confirmPassword) {
+      void haptic.warning();
       setError('Passwords do not match');
       return;
     }
     if (password.length < 6) {
+      void haptic.warning();
       setError('Password must be at least 6 characters');
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
+      void haptic.warning();
       setError('Please enter a valid email address');
       return;
     }
@@ -57,17 +62,25 @@ export default function SignUpScreen() {
     try {
       const { error: signUpError } = await signUp(email.trim(), password);
       if (signUpError) {
+        void haptic.error();
         setError(signUpError);
         setLoading(false);
         return;
       }
 
+      void haptic.success();
       router.replace('/onboarding');
     } catch (err: any) {
       console.error('[SignUp] Error:', err);
+      void haptic.error();
       setError('An unexpected error occurred');
       setLoading(false);
     }
+  };
+
+  const handleSignInPress = () => {
+    void haptic.selection();
+    router.back();
   };
 
   return (
@@ -170,7 +183,7 @@ export default function SignUpScreen() {
             <View style={styles.footer}>
               <Text style={styles.footerText}>Already have an account? </Text>
               <TouchableOpacity
-                onPress={() => router.back()}
+                onPress={handleSignInPress}
                 disabled={loading}
               >
                 <Text style={styles.footerLink}>Sign In</Text>

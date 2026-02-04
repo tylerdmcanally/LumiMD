@@ -36,6 +36,10 @@ export { autoAcceptShareInvites } from './triggers/autoAcceptShareInvites';
 export { analyzeMedicationSafety } from './callables/medicationSafety';
 export { privacyDataSweeper } from './triggers/privacySweeper';
 export { staleVisitSweeper } from './triggers/staleVisitSweeper';
+export {
+  medicationSafetyRecheckOnMedicationWrite,
+  medicationSafetyRecheckOnUserWrite,
+} from './triggers/medicationSafetyRecheck';
 
 
 // Initialize Sentry BEFORE other initializations

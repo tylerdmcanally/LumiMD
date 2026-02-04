@@ -23,6 +23,7 @@ import { LumiBotContainer } from '../components/lumibot';
 import { ShareConfirmationSheet } from '../components/ShareConfirmationSheet';
 import { useVisitSharePrompt } from '../lib/hooks/useVisitSharePrompt';
 import { HealthSnapshotCard } from '../components/HealthSnapshotCard';
+import { haptic } from '../lib/haptics';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
 
@@ -71,12 +72,14 @@ export default function HomeScreen() {
 
   const handleShareComplete = useCallback((sent: number, failed: number) => {
     if (sent > 0) {
+      void haptic.success();
       Alert.alert(
         'Shared!',
         `Visit summary sent to ${sent} caregiver${sent > 1 ? 's' : ''}.`,
         [{ text: 'OK' }]
       );
     } else if (failed > 0) {
+      void haptic.error();
       Alert.alert(
         'Sharing Failed',
         'Could not send the visit summary. You can try again from the visit details.',
@@ -247,8 +250,34 @@ export default function HomeScreen() {
     if (latestCompletedVisitIdRef.current) {
       updateLastViewedCompletedVisit(latestCompletedVisitIdRef.current);
     }
+    void haptic.selection();
     router.push('/visits');
   }, [updateLastViewedCompletedVisit, router]);
+
+  const handleActionsPress = useCallback(() => {
+    void haptic.selection();
+    router.push('/actions');
+  }, [router]);
+
+  const handleMedicationsPress = useCallback(() => {
+    void haptic.selection();
+    router.push('/medications');
+  }, [router]);
+
+  const handleSchedulePress = useCallback(() => {
+    void haptic.selection();
+    router.push('/medication-schedule');
+  }, [router]);
+
+  const handleRestoreWebBanner = useCallback(() => {
+    void haptic.selection();
+    restoreWebBanner();
+  }, [restoreWebBanner]);
+
+  const handleDismissWebBanner = useCallback(() => {
+    void haptic.light();
+    dismissWebBanner();
+  }, [dismissWebBanner]);
 
   // Show loading state while checking auth
   if (authLoading) {
@@ -303,7 +332,7 @@ export default function HomeScreen() {
                     countLabel="pending"
                     emptyStateText="All caught up!"
                     icon="checkmark-circle-outline"
-                    onPress={() => router.push('/actions')}
+                    onPress={handleActionsPress}
                   />
 
                   <GlanceableCard
@@ -322,7 +351,7 @@ export default function HomeScreen() {
                     countLabel="active"
                     emptyStateText="None tracked yet"
                     icon="medkit-outline"
-                    onPress={() => router.push('/medications')}
+                    onPress={handleMedicationsPress}
                   />
 
                   {/* Today's Schedule - only show if user has medication reminders */}
@@ -339,7 +368,7 @@ export default function HomeScreen() {
                             : undefined
                       }
                       icon="today-outline"
-                      onPress={() => router.push('/medication-schedule')}
+                      onPress={handleSchedulePress}
                     />
                   )}
 
@@ -355,12 +384,12 @@ export default function HomeScreen() {
             {/* Web Portal Banner or Need Help button - below Quick Overview */}
             <View style={styles.webPortalSection}>
               {webBannerDismissed ? (
-                <NeedHelpButton onPress={restoreWebBanner} />
+                <NeedHelpButton onPress={handleRestoreWebBanner} />
               ) : (
                 <WebPortalBanner
                   isDismissed={webBannerDismissed}
-                  onDismiss={dismissWebBanner}
-                  onRestore={restoreWebBanner}
+                  onDismiss={handleDismissWebBanner}
+                  onRestore={handleRestoreWebBanner}
                 />
               )}
             </View>

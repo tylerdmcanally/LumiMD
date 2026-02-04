@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from '../components/ui';
 import { resetPassword } from '../lib/auth';
+import { haptic } from '../lib/haptics';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -33,6 +34,7 @@ export default function ForgotPasswordScreen() {
   const handleResetPassword = async () => {
     // Validation
     if (!email.trim()) {
+      void haptic.warning();
       setError('Please enter your email address');
       return;
     }
@@ -40,6 +42,7 @@ export default function ForgotPasswordScreen() {
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
+      void haptic.warning();
       setError('Please enter a valid email address');
       return;
     }
@@ -51,6 +54,7 @@ export default function ForgotPasswordScreen() {
       const { error: resetError } = await resetPassword(email.trim());
       
       if (resetError) {
+        void haptic.error();
         setError('Failed to send reset email. Please try again.');
         setLoading(false);
         return;
@@ -59,6 +63,7 @@ export default function ForgotPasswordScreen() {
       // Success
       setSuccess(true);
       setLoading(false);
+      void haptic.success();
       
       Alert.alert(
         'Email Sent',
@@ -66,12 +71,16 @@ export default function ForgotPasswordScreen() {
         [
           {
             text: 'OK',
-            onPress: () => router.back(),
+            onPress: () => {
+              void haptic.selection();
+              router.back();
+            },
           },
         ]
       );
     } catch (err: any) {
       console.error('[ForgotPassword] Error:', err);
+      void haptic.error();
       setError('An unexpected error occurred');
       setLoading(false);
     }
@@ -90,7 +99,10 @@ export default function ForgotPasswordScreen() {
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => {
+                void haptic.selection();
+                router.back();
+              }}
               style={styles.backButton}
               disabled={loading}
             >

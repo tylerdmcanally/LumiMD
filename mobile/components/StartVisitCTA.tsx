@@ -2,11 +2,17 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Radius, spacing } from './ui';
+import { haptic } from '../lib/haptics';
 
 export function StartVisitCTA({ onPress }: { onPress?: () => void }) {
+  const handlePress = () => {
+    void haptic.medium();
+    onPress?.();
+  };
+
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [styles.ctaWrapper, pressed && styles.ctaPressed]}
       accessibilityHint="Begins recording your visit and creates action items."
     >

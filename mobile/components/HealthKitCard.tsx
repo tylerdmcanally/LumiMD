@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from './ui';
 import { useHealthKit, useHealthVitals } from '../lib/healthkit';
 import type { HealthDataSummary } from '../lib/healthkit';
+import { haptic } from '../lib/haptics';
 
 interface VitalItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -80,6 +81,7 @@ export function HealthKitCard({ onPress }: HealthKitCardProps) {
 
   const handleConnect = useCallback(async () => {
     if (!healthKit.isAvailable) {
+      void haptic.warning();
       Alert.alert(
         'HealthKit Not Available',
         'HealthKit is only available on iPhone. Please use the iOS app to sync your health data.',
@@ -87,19 +89,34 @@ export function HealthKitCard({ onPress }: HealthKitCardProps) {
       return;
     }
 
+    void haptic.medium();
     setIsConnecting(true);
     try {
       const success = await healthKit.requestPermissions();
       if (success) {
+        void haptic.success();
         refetch();
+      } else {
+        void haptic.warning();
       }
     } catch (error) {
       console.error('[HealthKit] Connection error:', error);
+      void haptic.error();
       Alert.alert('Connection Error', 'Failed to connect to HealthKit. Please try again.');
     } finally {
       setIsConnecting(false);
     }
   }, [healthKit, refetch]);
+
+  const handleRefresh = () => {
+    void haptic.selection();
+    refetch();
+  };
+
+  const handlePress = () => {
+    void haptic.selection();
+    onPress?.();
+  };
 
   // Not available on this platform
   if (Platform.OS !== 'ios') {
@@ -165,7 +182,7 @@ export function HealthKitCard({ onPress }: HealthKitCardProps) {
   );
 
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={handlePress}>
       <Card style={styles.container}>
         <View style={styles.header}>
           <View style={[styles.headerIcon, { backgroundColor: `${Colors.error}15` }]}>
@@ -175,7 +192,7 @@ export function HealthKitCard({ onPress }: HealthKitCardProps) {
             <Text style={styles.title}>Health Vitals</Text>
             <Text style={styles.subtitle}>From Apple Health</Text>
           </View>
-          <Pressable onPress={() => refetch()} style={styles.refreshButton}>
+          <Pressable onPress={handleRefresh} style={styles.refreshButton}>
             <Ionicons name="refresh-outline" size={20} color={Colors.textMuted} />
           </Pressable>
         </View>

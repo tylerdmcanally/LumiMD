@@ -24,6 +24,12 @@ export const openAIConfig = {
   model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
 };
 
+export const externalDrugDataConfig = {
+  enabled: process.env.EXTERNAL_DRUG_DATA_ENABLED === 'true',
+  baseUrl: process.env.EXTERNAL_DRUG_DATA_BASE_URL || 'https://rxnav.nlm.nih.gov/REST',
+  timeoutMs: Number(process.env.EXTERNAL_DRUG_DATA_TIMEOUT_MS || 5000),
+};
+
 export const storageConfig = {
   bucket: process.env.STORAGE_BUCKET || 'lumimd-dev.appspot.com',
 };

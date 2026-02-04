@@ -8,6 +8,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 import type { Nudge, NudgeActionType } from '@lumimd/sdk';
 
 export interface NudgeCardProps {
@@ -60,6 +61,21 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
     const icon = getIconForActionType(nudge.actionType);
     const iconColor = getIconColorForType(nudge.type);
 
+    const handleActionPress = () => {
+        void haptic.medium();
+        onAction(nudge);
+    };
+
+    const handleSnoozePress = () => {
+        void haptic.light();
+        onSnooze(nudge);
+    };
+
+    const handleDismissPress = () => {
+        void haptic.light();
+        onDismiss(nudge);
+    };
+
     return (
         <Card style={styles.card}>
             <View style={styles.container}>
@@ -80,7 +96,7 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                                 styles.primaryButton,
                                 pressed && styles.buttonPressed,
                             ]}
-                            onPress={() => onAction(nudge)}
+                            onPress={handleActionPress}
                         >
                             <Text style={styles.primaryButtonText}>
                                 {['pickup_check', 'started_check', 'feeling_check', 'side_effects'].includes(nudge.actionType) ? 'Respond' :
@@ -94,7 +110,7 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                                 styles.secondaryButton,
                                 pressed && styles.buttonPressed,
                             ]}
-                            onPress={() => onSnooze(nudge)}
+                            onPress={handleSnoozePress}
                         >
                             <Ionicons name="time-outline" size={16} color={Colors.textMuted} />
                             <Text style={styles.secondaryButtonText}>Later</Text>
@@ -105,7 +121,7 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                                 styles.dismissButton,
                                 pressed && styles.buttonPressed,
                             ]}
-                            onPress={() => onDismiss(nudge)}
+                            onPress={handleDismissPress}
                         >
                             <Ionicons name="close" size={18} color={Colors.textMuted} />
                         </Pressable>

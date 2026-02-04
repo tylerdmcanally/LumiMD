@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 export interface ConsentEducationalModalProps {
   visible: boolean;
@@ -30,11 +31,13 @@ export function ConsentEducationalModal({
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
   const handleProceed = () => {
+    void haptic.success();
     onProceed(dontShowAgain);
     setDontShowAgain(false);
   };
 
   const handleCancel = () => {
+    void haptic.light();
     setDontShowAgain(false);
     onCancel();
   };
@@ -70,7 +73,10 @@ export function ConsentEducationalModal({
           {/* Checkbox */}
           <Pressable
             style={styles.checkboxRow}
-            onPress={() => setDontShowAgain(!dontShowAgain)}
+            onPress={() => {
+              void haptic.selection();
+              setDontShowAgain(!dontShowAgain);
+            }}
           >
             <View style={[styles.checkbox, dontShowAgain && styles.checkboxChecked]}>
               {dontShowAgain && (

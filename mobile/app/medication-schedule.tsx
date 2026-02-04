@@ -17,6 +17,7 @@ import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import { useMedicationSchedule, useMarkDose, useMarkBatch, useSnoozeDose, type ScheduledDose } from '../lib/api/hooks';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { haptic } from '../lib/haptics';
 
 export default function MedicationScheduleScreen() {
     const router = useRouter();
@@ -61,13 +62,24 @@ export default function MedicationScheduleScreen() {
     }, [schedule?.scheduledDoses]);
 
     const handleMarkDose = async (dose: ScheduledDose, action: 'taken' | 'skipped') => {
+        if (action === 'skipped') {
+            void haptic.warning();
+        } else {
+            void haptic.light();
+        }
         try {
             await markDose.mutateAsync({
                 medicationId: dose.medicationId,
                 scheduledTime: dose.scheduledTime,
                 action,
             });
+            if (action === 'taken') {
+                void haptic.success();
+            } else {
+                void haptic.warning();
+            }
         } catch (err) {
+            void haptic.error();
             Alert.alert('Error', 'Failed to mark dose. Please try again.');
         }
     };
@@ -77,6 +89,7 @@ export default function MedicationScheduleScreen() {
         if (pendingDoses.length === 0) return;
 
         try {
+            void haptic.medium();
             await markBatch.mutateAsync({
                 doses: pendingDoses.map(d => ({
                     medicationId: d.medicationId,
@@ -84,7 +97,9 @@ export default function MedicationScheduleScreen() {
                 })),
                 action,
             });
+            void haptic.success();
         } catch (err) {
+            void haptic.error();
             Alert.alert('Error', 'Failed to mark doses. Please try again.');
         }
     };
@@ -92,19 +107,23 @@ export default function MedicationScheduleScreen() {
     const handleSnooze = async (minutes: '15' | '30' | '60') => {
         if (!snoozeDose) return;
         try {
+            void haptic.light();
             await snooze.mutateAsync({
                 medicationId: snoozeDose.medicationId,
                 scheduledTime: snoozeDose.scheduledTime,
                 snoozeMinutes: minutes,
             });
+            void haptic.success();
             setSnoozeModalVisible(false);
             setSnoozeDose(null);
         } catch (err) {
+            void haptic.error();
             Alert.alert('Error', 'Failed to snooze dose. Please try again.');
         }
     };
 
     const openSnoozeModal = (dose: ScheduledDose) => {
+        void haptic.selection();
         setSnoozeDose(dose);
         setSnoozeModalVisible(true);
     };
@@ -221,6 +240,7 @@ export default function MedicationScheduleScreen() {
                 <View style={styles.container}>
                     <View style={styles.header}>
                         <Pressable onPress={() => {
+                            void haptic.selection();
                             // Handle back navigation from widget deep link (cold start has no back stack)
                             if (router.canGoBack()) {
                                 router.back();
@@ -256,7 +276,13 @@ export default function MedicationScheduleScreen() {
                                 <Ionicons name="calendar-outline" size={48} color={Colors.textMuted} />
                                 <Text style={styles.emptyTitle}>No medications scheduled</Text>
                                 <Text style={styles.emptyText}>Set up reminders on your medications to see your daily schedule here.</Text>
-                                <Pressable style={styles.setupButton} onPress={() => router.push('/medications')}>
+                                <Pressable
+                                    style={styles.setupButton}
+                                    onPress={() => {
+                                        void haptic.selection();
+                                        router.push('/medications');
+                                    }}
+                                >
                                     <Text style={styles.setupButtonText}>Set Up Reminders</Text>
                                 </Pressable>
                             </View>
@@ -297,7 +323,13 @@ export default function MedicationScheduleScreen() {
                     animationType="fade"
                     onRequestClose={() => setSnoozeModalVisible(false)}
                 >
-                    <Pressable style={styles.modalOverlay} onPress={() => setSnoozeModalVisible(false)}>
+                    <Pressable
+                        style={styles.modalOverlay}
+                        onPress={() => {
+                            void haptic.light();
+                            setSnoozeModalVisible(false);
+                        }}
+                    >
                         <View style={styles.modalContent}>
                             <Text style={styles.modalTitle}>Snooze Reminder</Text>
                             <Text style={styles.modalSubtitle}>
@@ -330,7 +362,10 @@ export default function MedicationScheduleScreen() {
 
                             <Pressable
                                 style={styles.cancelButton}
-                                onPress={() => setSnoozeModalVisible(false)}
+                                onPress={() => {
+                                    void haptic.light();
+                                    setSnoozeModalVisible(false);
+                                }}
                             >
                                 <Text style={styles.cancelButtonText}>Cancel</Text>
                             </Pressable>

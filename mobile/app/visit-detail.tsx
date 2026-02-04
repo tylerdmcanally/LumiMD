@@ -25,6 +25,7 @@ import { useVisit, queryKeys } from '../lib/api/hooks';
 import { api } from '../lib/api/client';
 import { openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { haptic } from '../lib/haptics';
 
 dayjs.extend(relativeTime);
 
@@ -227,6 +228,7 @@ export default function VisitDetailScreen() {
   const handleRetry = async () => {
     if (!visitId) return;
     try {
+      void haptic.medium();
       setRetrying(true);
       const updatedVisit = await api.visits.retry(visitId);
       queryClient.setQueryData(queryKeys.visit(visitId), (current: any) => {
@@ -240,9 +242,11 @@ export default function VisitDetailScreen() {
         'Retry started',
         'We’ll reprocess this visit now. This usually takes under a minute.'
       );
+      void haptic.success();
       await refetch();
     } catch (error) {
       console.error('[VisitDetail] Retry error:', error);
+      void haptic.error();
       const status = (error as any)?.status;
       if (status === 409) {
         Alert.alert(
@@ -279,7 +283,13 @@ export default function VisitDetailScreen() {
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.headerButton}>
+          <Pressable
+            onPress={() => {
+              void haptic.selection();
+              router.back();
+            }}
+            style={styles.headerButton}
+          >
             <Ionicons name="chevron-back" size={28} color={Colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Visit Details</Text>
@@ -397,7 +407,10 @@ export default function VisitDetailScreen() {
                         styles.tabButton,
                         isActive ? styles.tabButtonActive : styles.tabButtonInactive,
                       ]}
-                      onPress={() => setActiveTab(tab.key)}
+                      onPress={() => {
+                        void haptic.selection();
+                        setActiveTab(tab.key);
+                      }}
                     >
                       <Ionicons
                         name={tab.icon}
@@ -523,7 +536,10 @@ export default function VisitDetailScreen() {
                   )}
                   <Pressable
                     style={styles.manageOnWeb}
-                    onPress={openWebDashboard}
+                    onPress={() => {
+                      void haptic.selection();
+                      openWebDashboard();
+                    }}
                   >
                     <Text style={styles.manageOnWebText}>Manage on Web Portal</Text>
                     <Ionicons name="open-outline" size={18} color={Colors.primary} />

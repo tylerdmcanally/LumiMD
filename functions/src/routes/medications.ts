@@ -7,6 +7,9 @@ import {
   runMedicationSafetyChecks,
   MedicationSafetyWarning,
   normalizeMedicationName,
+  formatWarningsForFirestore,
+  buildSafetyCheckHash,
+  fetchActiveMedicationsForUser,
 } from '../services/medicationSafety';
 import { clearMedicationSafetyCacheForUser } from '../services/medicationSafetyAI';
 
@@ -124,6 +127,7 @@ medicationsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
         stoppedAt: data.stoppedAt?.toDate()?.toISOString() || null,
         changedAt: data.changedAt?.toDate()?.toISOString() || null,
         lastSyncedAt: data.lastSyncedAt?.toDate()?.toISOString() || null,
+        lastSafetyCheckAt: data.lastSafetyCheckAt?.toDate()?.toISOString() || null,
         // Include safety warnings
         medicationWarning: data.medicationWarning || null,
         warningAcknowledgedAt: data.warningAcknowledgedAt?.toDate()?.toISOString() || null,
@@ -182,6 +186,7 @@ medicationsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       stoppedAt: medication.stoppedAt?.toDate()?.toISOString() || null,
       changedAt: medication.changedAt?.toDate()?.toISOString() || null,
       lastSyncedAt: medication.lastSyncedAt?.toDate()?.toISOString() || null,
+      lastSafetyCheckAt: medication.lastSafetyCheckAt?.toDate()?.toISOString() || null,
       medicationWarning: medication.medicationWarning || null,
       warningAcknowledgedAt: medication.warningAcknowledgedAt?.toDate()?.toISOString() || null,
       needsConfirmation: medication.needsConfirmation || false,
@@ -227,26 +232,26 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     // Determine if medication needs confirmation based on warning severity
     const hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
 
-    // Remove undefined fields from warnings (Firestore doesn't accept undefined)
-    const cleanedWarnings = warnings.map(w => {
-      const cleaned: any = {
-        type: w.type,
-        severity: w.severity,
-        message: w.message,
-        details: w.details,
-        recommendation: w.recommendation,
-      };
-      if (w.conflictingMedication !== undefined) {
-        cleaned.conflictingMedication = w.conflictingMedication;
-      }
-      if (w.allergen !== undefined) {
-        cleaned.allergen = w.allergen;
-      }
-      return cleaned;
-    });
+    const cleanedWarnings = formatWarningsForFirestore(warnings);
 
     const now = admin.firestore.Timestamp.now();
     const canonicalName = normalizeMedicationName(data.name);
+    const [userDoc, currentMedications] = await Promise.all([
+      getDb().collection('users').doc(userId).get(),
+      fetchActiveMedicationsForUser(userId, { excludeCanonicalName: canonicalName }),
+    ]);
+    const allergies = userDoc.exists ? (userDoc.data()?.allergies || []) : [];
+    const lastSafetyCheckHash = buildSafetyCheckHash({
+      medication: {
+        name: data.name,
+        dose: data.dose,
+        frequency: data.frequency,
+        notes: data.notes,
+        canonicalName,
+      },
+      currentMedications,
+      allergies,
+    });
 
     // Create medication document with safety warnings
     const medRef = await getDb().collection('medications').add({
@@ -266,6 +271,8 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       medicationWarning: cleanedWarnings.length > 0 ? cleanedWarnings : null,
       needsConfirmation: hasCriticalWarnings,
       medicationStatus: hasCriticalWarnings ? 'pending_review' : null,
+      lastSafetyCheckAt: now,
+      lastSafetyCheckHash,
     });
 
     const medDoc = await medRef.get();
@@ -325,6 +332,7 @@ medicationsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       stoppedAt: medication.stoppedAt?.toDate()?.toISOString() || null,
       changedAt: medication.changedAt?.toDate()?.toISOString() || null,
       lastSyncedAt: medication.lastSyncedAt?.toDate()?.toISOString() || null,
+      lastSafetyCheckAt: medication.lastSafetyCheckAt?.toDate()?.toISOString() || null,
       medicationWarning: medication.medicationWarning || null,
       warningAcknowledgedAt: null, // New medication, not yet acknowledged
       needsConfirmation: medication.needsConfirmation || false,
@@ -393,6 +401,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     // If name, dose, or frequency are being updated, re-run safety checks
     let warnings = medication.medicationWarning || [];
     let hasCriticalWarnings = medication.needsConfirmation || false;
+    let lastSafetyCheckHash: string | null = null;
 
     if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
       // Build the updated medication data for safety check
@@ -408,6 +417,23 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
         excludeMedicationId: medId,
       });
       hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
+      const updatedCanonicalName = normalizeMedicationName(updatedMedData.name);
+      const [userDoc, currentMedications] = await Promise.all([
+        getDb().collection('users').doc(userId).get(),
+        fetchActiveMedicationsForUser(userId, { excludeMedicationId: medId, excludeCanonicalName: updatedCanonicalName }),
+      ]);
+      const allergies = userDoc.exists ? (userDoc.data()?.allergies || []) : [];
+      lastSafetyCheckHash = buildSafetyCheckHash({
+        medication: {
+          name: updatedMedData.name,
+          dose: updatedMedData.dose,
+          frequency: updatedMedData.frequency,
+          notes: data.notes ?? medication.notes,
+          canonicalName: updatedCanonicalName,
+        },
+        currentMedications,
+        allergies,
+      });
     }
 
     // Update medication - only update fields that are explicitly provided
@@ -432,27 +458,15 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     // Update safety warning fields if medication details changed
     if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
-      // Remove undefined fields from warnings (Firestore doesn't accept undefined)
-      const cleanedWarnings = warnings.map((w: MedicationSafetyWarning) => {
-        const cleaned: any = {
-          type: w.type,
-          severity: w.severity,
-          message: w.message,
-          details: w.details,
-          recommendation: w.recommendation,
-        };
-        if (w.conflictingMedication !== undefined) {
-          cleaned.conflictingMedication = w.conflictingMedication;
-        }
-        if (w.allergen !== undefined) {
-          cleaned.allergen = w.allergen;
-        }
-        return cleaned;
-      });
+      const cleanedWarnings = formatWarningsForFirestore(warnings);
 
       updates.medicationWarning = cleanedWarnings.length > 0 ? cleanedWarnings : null;
       updates.needsConfirmation = hasCriticalWarnings;
       updates.medicationStatus = hasCriticalWarnings ? 'pending_review' : null;
+      if (lastSafetyCheckHash) {
+        updates.lastSafetyCheckAt = admin.firestore.Timestamp.now();
+        updates.lastSafetyCheckHash = lastSafetyCheckHash;
+      }
     }
 
     await medRef.update(updates);
@@ -577,6 +591,7 @@ medicationsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       stoppedAt: updatedMed.stoppedAt?.toDate()?.toISOString() || null,
       changedAt: updatedMed.changedAt?.toDate()?.toISOString() || null,
       lastSyncedAt: updatedMed.lastSyncedAt?.toDate()?.toISOString() || null,
+      lastSafetyCheckAt: updatedMed.lastSafetyCheckAt?.toDate()?.toISOString() || null,
       medicationWarning: updatedMed.medicationWarning || null,
       warningAcknowledgedAt: updatedMed.warningAcknowledgedAt?.toDate()?.toISOString() || null,
       needsConfirmation: updatedMed.needsConfirmation || false,

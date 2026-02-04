@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 import type { AlertLevel } from '@lumimd/sdk';
+import { haptic } from '../../lib/haptics';
 
 export interface WeightValue {
     weight: number;
@@ -45,7 +46,10 @@ export function WeightLogModal({
     const [weight, setWeight] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    const handleClose = useCallback(() => {
+    const handleClose = useCallback((withHaptic: boolean = true) => {
+        if (withHaptic) {
+            void haptic.light();
+        }
         setWeight('');
         setError(null);
         onClose();
@@ -56,6 +60,7 @@ export function WeightLogModal({
 
         // Validation
         if (isNaN(weightValue) || weightValue < 50 || weightValue > 700) {
+            void haptic.warning();
             setError('Please enter a valid weight (50-700 lbs)');
             return;
         }
@@ -69,7 +74,8 @@ export function WeightLogModal({
 
         // If not showing immediate alert, close the modal
         if (!result.shouldShowAlert) {
-            handleClose();
+            void haptic.success();
+            handleClose(false);
         }
     }, [weight, onSubmit, handleClose]);
 

@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 // Common medication side effects for quick selection
 const COMMON_SIDE_EFFECTS = [
@@ -61,7 +62,10 @@ export function SideEffectsModal({
     const [notes, setNotes] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    const handleClose = useCallback(() => {
+    const handleClose = useCallback((withHaptic: boolean = true) => {
+        if (withHaptic) {
+            void haptic.light();
+        }
         setSelectedEffects(new Set());
         setNotes('');
         setError(null);
@@ -69,6 +73,7 @@ export function SideEffectsModal({
     }, [onClose]);
 
     const toggleEffect = useCallback((effectId: string) => {
+        void haptic.selection();
         setSelectedEffects(prev => {
             const next = new Set(prev);
             if (next.has(effectId)) {
@@ -82,18 +87,21 @@ export function SideEffectsModal({
 
     const handleSubmit = useCallback(async () => {
         if (selectedEffects.size === 0 && !notes.trim()) {
+            void haptic.warning();
             setError('Please select at least one side effect or add a note');
             return;
         }
 
         setError(null);
 
+        void haptic.medium();
         await onSubmit({
             sideEffects: Array.from(selectedEffects),
             notes: notes.trim() || undefined,
         });
 
-        handleClose();
+        void haptic.success();
+        handleClose(false);
     }, [selectedEffects, notes, onSubmit, handleClose]);
 
     const title = medicationName

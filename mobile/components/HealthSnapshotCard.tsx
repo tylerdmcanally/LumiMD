@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, spacing, Card } from './ui';
 import { useHealthLogs } from '../lib/api/hooks';
+import { haptic } from '../lib/haptics';
 
 interface HealthSnapshotCardProps {
   /** User's medical conditions from their profile */
@@ -81,6 +82,7 @@ export function HealthSnapshotCard({
   }, [logs]);
 
   const handlePress = useCallback(() => {
+    void haptic.selection();
     router.push('/health');
   }, [router]);
 

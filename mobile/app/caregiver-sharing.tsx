@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
+import { haptic } from '../lib/haptics';
 
 // Mock data for demonstration
 const mockCaregivers = [
@@ -113,7 +114,12 @@ export default function CaregiverSharingScreen() {
                         <Ionicons name="mail-outline" size={14} color={Colors.textMuted} />
                         <Text style={styles.emailText}>{caregiver.email}</Text>
                     </View>
-                    <Pressable style={styles.manageButton}>
+                    <Pressable
+                        style={styles.manageButton}
+                        onPress={() => {
+                            void haptic.selection();
+                        }}
+                    >
                         <Text style={styles.manageButtonText}>Manage</Text>
                         <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
                     </Pressable>
@@ -127,11 +133,22 @@ export default function CaregiverSharingScreen() {
             <View style={styles.container}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Pressable onPress={() => router.back()} style={styles.backButton}>
+                    <Pressable
+                        onPress={() => {
+                            void haptic.selection();
+                            router.back();
+                        }}
+                        style={styles.backButton}
+                    >
                         <Ionicons name="chevron-back" size={28} color={Colors.text} />
                     </Pressable>
                     <Text style={styles.headerTitle}>Caregiver Sharing</Text>
-                    <Pressable style={styles.addButton}>
+                    <Pressable
+                        style={styles.addButton}
+                        onPress={() => {
+                            void haptic.light();
+                        }}
+                    >
                         <Ionicons name="person-add" size={22} color={Colors.primary} />
                     </Pressable>
                 </View>
@@ -166,7 +183,12 @@ export default function CaregiverSharingScreen() {
                     </View>
 
                     {/* Add Caregiver CTA */}
-                    <Pressable style={styles.addCaregiverButton}>
+                    <Pressable
+                        style={styles.addCaregiverButton}
+                        onPress={() => {
+                            void haptic.selection();
+                        }}
+                    >
                         <Ionicons name="add-circle" size={22} color={Colors.primary} />
                         <Text style={styles.addCaregiverText}>Invite a Caregiver</Text>
                     </Pressable>

@@ -13,6 +13,8 @@ import type {
   UpdateNudgeRequest,
   RespondToNudgeRequest,
   NudgeUpdateResponse,
+  NudgeFeedbackRequest,
+  NudgeEventRequest,
   MedicationReminder,
   CreateMedicationReminderRequest,
   UpdateMedicationReminderRequest,
@@ -482,6 +484,16 @@ export function createApiClient(config: ApiClientConfig) {
         }),
       respond: (id: string, data: RespondToNudgeRequest) =>
         apiRequest<NudgeUpdateResponse>(`/v1/nudges/${id}/respond`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      feedback: (id: string, data: NudgeFeedbackRequest) =>
+        apiRequest<{ id: string; message: string }>(`/v1/nudges/${id}/feedback`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      trackEvent: (id: string, data: NudgeEventRequest) =>
+        apiRequest<{ id: string; message: string }>(`/v1/nudges/${id}/events`, {
           method: 'POST',
           body: JSON.stringify(data),
         }),

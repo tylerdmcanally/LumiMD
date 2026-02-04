@@ -17,6 +17,7 @@ import {
 import {
   DRUG_INTERACTIONS as COMPREHENSIVE_DRUG_INTERACTIONS,
 } from '../data/drugInteractions';
+import { runExternalSafetyChecks } from './externalDrugData';
 
 // Re-export for backward compatibility
 export { CANONICAL_MEDICATIONS };
@@ -52,8 +53,195 @@ export interface MedicationSafetyWarning {
   conflictingMedication?: string; // For duplicates and interactions
   allergen?: string; // For allergy alerts
   recommendation: string;
+  source?: 'hardcoded' | 'ai' | 'external';
+  externalIds?: {
+    rxcui?: string;
+    rxcuiPair?: string[];
+  };
 }
 
+type MedicationContext = {
+  id: string;
+  name: string;
+  active: boolean;
+  dose?: string;
+  frequency?: string;
+  notes?: string;
+  canonicalName?: string;
+};
+
+const ROUTE_KEYWORDS: Record<string, string[]> = {
+  topical: ['topical', 'cream', 'ointment', 'gel', 'lotion', 'foam', 'spray', 'solution', 'paste'],
+  ophthalmic: ['ophthalmic', 'eye drop', 'eye drops', 'ocular', 'gtt'],
+  otic: ['otic', 'ear drop', 'ear drops'],
+  nasal: ['nasal', 'intranasal', 'nasal spray'],
+  inhaled: ['inhaled', 'inhaler', 'neb', 'nebulizer', 'respirator', 'mdi', 'dpi'],
+  transdermal: ['transdermal', 'patch'],
+  sublingual: ['sublingual', 'sl'],
+  buccal: ['buccal'],
+  rectal: ['rectal', 'suppository'],
+  vaginal: ['vaginal'],
+};
+
+const NON_SYSTEMIC_ROUTES = new Set(['topical', 'ophthalmic', 'otic']);
+
+const inferMedicationRoute = (input: {
+  name?: string;
+  dose?: string;
+  frequency?: string;
+  notes?: string;
+}): string | null => {
+  const combined = [input.name, input.dose, input.frequency, input.notes]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (!combined) return null;
+
+  for (const [route, keywords] of Object.entries(ROUTE_KEYWORDS)) {
+    if (keywords.some((keyword) => combined.includes(keyword))) {
+      return route;
+    }
+  }
+
+  return null;
+};
+
+const isAsNeededFrequency = (value?: string): boolean => {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return normalized.includes('prn') || normalized.includes('as needed') || normalized.includes('when needed');
+};
+
+const adjustSeverityForRoute = (
+  severity: MedicationSafetyWarning['severity'],
+  route?: string | null
+): MedicationSafetyWarning['severity'] => {
+  if (!route || !NON_SYSTEMIC_ROUTES.has(route)) {
+    return severity;
+  }
+
+  if (severity === 'moderate') return 'low';
+  if (severity === 'low') return 'low';
+  return severity;
+};
+
+const buildRouteNote = (route?: string | null): string | null => {
+  if (!route || !NON_SYSTEMIC_ROUTES.has(route)) {
+    return null;
+  }
+  return `Route appears ${route}, which typically has lower systemic interaction risk. Confirm with your provider if unsure.`;
+};
+
+export const formatWarningsForFirestore = (
+  warnings: MedicationSafetyWarning[]
+): Array<Record<string, unknown>> => {
+  return warnings.map((warning) => {
+    const cleaned: Record<string, unknown> = {
+      type: warning.type,
+      severity: warning.severity,
+      message: warning.message,
+      details: warning.details,
+      recommendation: warning.recommendation,
+    };
+    if (warning.source !== undefined) {
+      cleaned.source = warning.source;
+    }
+    if (warning.conflictingMedication !== undefined) {
+      cleaned.conflictingMedication = warning.conflictingMedication;
+    }
+    if (warning.allergen !== undefined) {
+      cleaned.allergen = warning.allergen;
+    }
+    if (warning.externalIds !== undefined) {
+      cleaned.externalIds = warning.externalIds;
+    }
+    return cleaned;
+  });
+};
+
+export const buildSafetyCheckHash = (params: {
+  medication: {
+    name: string;
+    dose?: string | null;
+    frequency?: string | null;
+    notes?: string | null;
+    canonicalName?: string | null;
+  };
+  currentMedications: Array<{
+    name: string;
+    dose?: string | null;
+    frequency?: string | null;
+    notes?: string | null;
+    canonicalName?: string | null;
+  }>;
+  allergies: string[];
+}): string => {
+  const crypto = require('crypto');
+  const med = params.medication;
+  const medSignature = [
+    med.canonicalName || normalizeMedicationName(med.name),
+    med.name || '',
+    med.dose || '',
+    med.frequency || '',
+    med.notes || '',
+  ]
+    .map((value) => value.toString().toLowerCase().trim())
+    .join('|');
+
+  const currentSignatures = params.currentMedications
+    .map((current) => [
+      current.canonicalName || normalizeMedicationName(current.name),
+      current.name || '',
+      current.dose || '',
+      current.frequency || '',
+      current.notes || '',
+    ]
+      .map((value) => value.toString().toLowerCase().trim())
+      .join('|'))
+    .sort();
+
+  const allergySignature = (params.allergies || [])
+    .map((allergy) => allergy.toLowerCase().trim())
+    .sort()
+    .join('|');
+
+  const data = [medSignature, ...currentSignatures, allergySignature].join('||');
+  return crypto.createHash('md5').update(data).digest('hex');
+};
+
+export const fetchActiveMedicationsForUser = async (
+  userId: string,
+  options: { excludeMedicationId?: string; excludeCanonicalName?: string } = {}
+): Promise<MedicationContext[]> => {
+  const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
+  return medsSnapshot.docs
+    .filter((doc) => {
+      if (options.excludeMedicationId && doc.id === options.excludeMedicationId) {
+        return false;
+      }
+      const data = doc.data();
+      if (!isMedicationCurrentlyActive(data)) {
+        return false;
+      }
+      if (options.excludeCanonicalName) {
+        const medCanonical = getCanonicalNameFromDocument(data);
+        if (medCanonical && medCanonical === options.excludeCanonicalName) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .map((doc) => ({
+      id: doc.id,
+      name: doc.data().name,
+      active: true,
+      dose: doc.data().dose,
+      frequency: doc.data().frequency,
+      notes: doc.data().notes,
+      canonicalName: doc.data().canonicalName,
+    }));
+};
 
 const getCanonicalNameFromDocument = (data: FirebaseFirestore.DocumentData): string => {
   if (!data) {
@@ -119,6 +307,58 @@ const stripSaltSuffixes = (value: string): string => {
   }
 
   return current;
+};
+
+const ALLERGY_CLASS_ALIASES: Record<string, string[]> = {
+  'ace-inhibitor': ['ace inhibitor', 'ace-i', 'acei'],
+  'arb': ['arb', 'angiotensin receptor blocker', 'angiotensin ii receptor blocker', 'angiotensin receptor blockers'],
+  'beta-blocker': ['beta blocker', 'beta-blocker', 'beta blockers', 'bb'],
+  'calcium-channel-blocker': ['calcium channel blocker', 'calcium-channel blocker', 'ccb', 'ccbs'],
+  'nsaid': ['nsaid', 'nsaids', 'nonsteroidal anti-inflammatory', 'non-steroidal anti-inflammatory', 'nonsteroidal'],
+  'penicillin': ['penicillin', 'penicillins', 'beta-lactam', 'beta lactam'],
+  'cephalosporin': ['cephalosporin', 'cephalosporins', 'ceph'],
+  'sulfonamide': ['sulfa', 'sulfonamide', 'sulfonamides'],
+  'macrolide': ['macrolide', 'macrolides'],
+  'fluoroquinolone': ['fluoroquinolone', 'fluoroquinolones', 'quinolone', 'quinolones'],
+  'tetracycline': ['tetracycline', 'tetracyclines'],
+  'statin': ['statin', 'statins'],
+  'ssri': ['ssri', 'ssris', 'selective serotonin reuptake inhibitor'],
+  'snri': ['snri', 'snris', 'serotonin norepinephrine reuptake inhibitor'],
+  'benzodiazepine': ['benzodiazepine', 'benzodiazepines', 'benzo', 'benzos'],
+  'anticoagulant': ['anticoagulant', 'anticoagulants', 'blood thinner', 'blood thinners', 'blood-thinner'],
+  'antiplatelet': ['antiplatelet', 'antiplatelets'],
+  'opioid': ['opioid', 'opioids', 'opiate', 'opiates'],
+};
+
+const ALLERGY_DESCRIPTOR_PATTERN = /\b(allergy|allergic|reaction|intolerance|sensitivity|sensitive|rash|hives)\b/g;
+
+const normalizeAllergyText = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replace(/[()]/g, ' ')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(ALLERGY_DESCRIPTOR_PATTERN, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const resolveAllergyTargets = (allergyText: string): { canonicalMedication?: string; classTokens: string[] } => {
+  const normalized = normalizeAllergyText(allergyText);
+  const canonicalMedication =
+    (ALIAS_TO_CANONICAL[normalized] && ALIAS_TO_CANONICAL[normalized]) ||
+    (CANONICAL_MEDICATIONS[normalized] ? normalized : undefined);
+
+  const classTokens: string[] = [];
+  if (normalized) {
+    for (const [classToken, aliases] of Object.entries(ALLERGY_CLASS_ALIASES)) {
+      const matchesAlias = aliases.some((alias) => normalized.includes(alias) || alias.includes(normalized));
+      if (matchesAlias || normalized.includes(classToken)) {
+        classTokens.push(classToken);
+      }
+    }
+  }
+
+  return { canonicalMedication, classTokens };
 };
 
 /**
@@ -205,7 +445,7 @@ function getMedicationClasses(medicationName: string): string[] {
 export async function checkDuplicateTherapy(
   userId: string,
   newMedication: MedicationChangeEntry,
-  currentMedications: Array<{ id: string; name: string; active: boolean }>
+  currentMedications: MedicationContext[]
 ): Promise<MedicationSafetyWarning[]> {
   const warnings: MedicationSafetyWarning[] = [];
   const newMedNormalized = normalizeMedicationName(newMedication.name);
@@ -239,6 +479,7 @@ export async function checkDuplicateTherapy(
         details: `You are already taking ${currentMed.name}. This new prescription appears to be the same medication.`,
         conflictingMedication: currentMed.name,
         recommendation: 'Please confirm with your provider that you should be taking both, or if this is a dose adjustment.',
+        source: 'hardcoded',
       });
       continue;
     }
@@ -293,9 +534,10 @@ export async function checkDuplicateTherapy(
             type: 'duplicate_therapy',
             severity: 'moderate',
             message: `Duplicate therapy class detected`,
-            details: `You are already taking ${currentMed.name} (${currentMedClasses[0]}). This new medication ${newMedication.name} is in the same class (${newMedClasses[0]}).`,
+            details: `You are already taking ${currentMed.name} (${specificSharedClasses[0]}). This new medication ${newMedication.name} is in the same class (${specificSharedClasses[0]}).`,
             conflictingMedication: currentMed.name,
             recommendation: 'Confirm with your provider whether you should take both medications or if this is a substitution.',
+            source: 'hardcoded',
           });
         }
       }
@@ -312,22 +554,35 @@ export async function checkDuplicateTherapy(
 export async function checkDrugInteractions(
   userId: string,
   newMedication: MedicationChangeEntry,
-  currentMedications: Array<{ id: string; name: string; active: boolean }>
+  currentMedications: MedicationContext[]
 ): Promise<MedicationSafetyWarning[]> {
   const warnings: MedicationSafetyWarning[] = [];
   const newMedNormalized = normalizeMedicationName(newMedication.name);
   const newMedClasses = getMedicationClasses(newMedication.name);
+  const warningKeys = new Set<string>();
+  const newMedRoute = inferMedicationRoute({
+    name: newMedication.name,
+    dose: newMedication.dose,
+    frequency: newMedication.frequency,
+    notes: newMedication.note,
+  });
 
   for (const currentMed of currentMedications) {
     if (!currentMed.active) continue;
 
     const currentMedNormalized = normalizeMedicationName(currentMed.name);
     const currentMedClasses = getMedicationClasses(currentMed.name);
+    const currentMedRoute = inferMedicationRoute({
+      name: currentMed.name,
+      dose: currentMed.dose,
+      frequency: currentMed.frequency,
+      notes: currentMed.notes,
+    });
 
     // Check against interaction database
     for (const interaction of DRUG_INTERACTIONS) {
       let interactionFound = false;
-      // Use clinicalEffect for more detailed interaction info
+      // Use clinicalEffect as the primary description
       const interactionDescription = interaction.clinicalEffect;
 
       // Check if interaction applies (drug1 = new, drug2 = current OR vice versa)
@@ -352,16 +607,49 @@ export async function checkDrugInteractions(
       }
 
       if (interactionFound) {
+        const warningKey = `${interaction.drug1}|${interaction.drug2}|${currentMedNormalized}|${newMedNormalized}`.toLowerCase();
+        if (warningKeys.has(warningKey)) {
+          continue;
+        }
+        warningKeys.add(warningKey);
+
+        const routeNote =
+          buildRouteNote(newMedRoute) ||
+          buildRouteNote(currentMedRoute);
+
+        const frequencyNote =
+          isAsNeededFrequency(newMedication.frequency) || isAsNeededFrequency(currentMed.frequency)
+            ? 'Interaction risk can be lower with occasional or as-needed use.'
+            : null;
+
+        const interactionDetails = [
+          interaction.mechanism ? `Mechanism: ${interaction.mechanism}` : null,
+          routeNote,
+          frequencyNote,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        const adjustedSeverity = adjustSeverityForRoute(interaction.severity, newMedRoute || currentMedRoute);
+
+        const recommendation = interaction.recommendation
+          ? interaction.recommendation
+          : interaction.contraindicated
+            ? 'DO NOT USE these medications together. Contact your provider immediately for an alternative.'
+          : interaction.severity === 'critical'
+            ? 'URGENT: Contact your provider immediately before taking this medication.'
+            : 'Discuss this interaction with your provider to ensure safe use.';
+
         warnings.push({
           type: 'drug_interaction',
-          severity: interaction.severity,
-          message: `Potential drug interaction detected`,
-          details: `Interaction between ${newMedication.name} and ${currentMed.name}: ${interactionDescription}`,
+          severity: adjustedSeverity,
+          message: interaction.contraindicated
+            ? 'Contraindicated medication combination detected'
+            : 'Potential drug interaction detected',
+          details: `Interaction between ${newMedication.name} and ${currentMed.name}: ${interactionDescription}${interactionDetails ? ` ${interactionDetails}` : ''}`,
           conflictingMedication: currentMed.name,
-          recommendation:
-            interaction.severity === 'critical'
-              ? 'URGENT: Contact your provider immediately before taking this medication.'
-              : 'Discuss this interaction with your provider to ensure safe use.',
+          recommendation,
+          source: 'hardcoded',
         });
       }
     }
@@ -389,10 +677,18 @@ export async function checkAllergyConflicts(
   const newMedClasses = getMedicationClasses(newMedication.name);
 
   for (const allergy of patientAllergies) {
-    const allergyNormalized = allergy.toLowerCase().trim();
+    const allergyNormalized = normalizeAllergyText(allergy);
+    const { canonicalMedication, classTokens } = resolveAllergyTargets(allergy);
+    const hasClassMatch = classTokens.some((token) => newMedClasses.includes(token));
+    const hasPenicillinLikeAllergy = classTokens.includes('penicillin') || allergyNormalized.includes('beta-lactam');
 
-    // Direct name match
-    if (newMedNormalized.includes(allergyNormalized) || allergyNormalized.includes(newMedNormalized)) {
+    // Direct medication match
+    const directMedicationMatch = canonicalMedication
+      ? canonicalMedication === newMedNormalized
+      : (allergyNormalized.length >= 5 &&
+        (newMedNormalized.includes(allergyNormalized) || allergyNormalized.includes(newMedNormalized)));
+
+    if (directMedicationMatch) {
       warnings.push({
         type: 'allergy_alert',
         severity: 'critical',
@@ -400,14 +696,18 @@ export async function checkAllergyConflicts(
         details: `You have a documented allergy to ${allergy}. This new medication ${newMedication.name} may contain or be related to your allergen.`,
         allergen: allergy,
         recommendation: 'DO NOT TAKE. Contact your provider immediately before taking this medication.',
+        source: 'hardcoded',
       });
       continue;
     }
 
     // Check for class-based allergies (e.g., "Penicillin allergy" vs "Amoxicillin")
-    if (newMedClasses.length > 0) {
+    if (newMedClasses.length > 0 && (hasClassMatch || allergyNormalized)) {
       for (const medClass of newMedClasses) {
-        if (allergyNormalized.includes(medClass) || medClass.includes(allergyNormalized)) {
+        const fallbackMatch =
+          allergyNormalized.length >= 4 &&
+          (allergyNormalized.includes(medClass) || medClass.includes(allergyNormalized));
+        if ((hasClassMatch && classTokens.includes(medClass)) || fallbackMatch) {
           warnings.push({
             type: 'allergy_alert',
             severity: 'critical',
@@ -415,13 +715,14 @@ export async function checkAllergyConflicts(
             details: `You have a documented allergy to ${allergy}. This new medication ${newMedication.name} is in the ${medClass} class, which may cause an allergic reaction.`,
             allergen: allergy,
             recommendation: 'DO NOT TAKE. Contact your provider immediately. You may need an alternative medication.',
+            source: 'hardcoded',
           });
         }
       }
     }
 
     // Cross-reactivity warnings (e.g., Penicillin allergy with Cephalosporins)
-    if (allergyNormalized.includes('penicillin') || allergyNormalized.includes('beta-lactam')) {
+    if (hasPenicillinLikeAllergy) {
       if (newMedClasses.includes('cephalosporin')) {
         warnings.push({
           type: 'allergy_alert',
@@ -430,6 +731,7 @@ export async function checkAllergyConflicts(
           details: `You have a penicillin allergy. This new medication ${newMedication.name} is a cephalosporin, which may cause a cross-reaction in some patients.`,
           allergen: allergy,
           recommendation: 'Contact your provider before taking. They may need to prescribe an alternative or monitor you closely.',
+          source: 'hardcoded',
         });
       }
     }
@@ -447,35 +749,11 @@ export async function runHardcodedSafetyChecks(
   excludeMedicationId?: string
 ): Promise<MedicationSafetyWarning[]> {
   try {
-    // Fetch medications once, then aggressively filter to currently active therapy
-    const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
-
     const newMedCanonical = normalizeMedicationName(newMedication.name);
-
-    const currentMedications = medsSnapshot.docs
-      .filter((doc) => {
-        if (excludeMedicationId && doc.id === excludeMedicationId) {
-          return false;
-        }
-
-        const data = doc.data();
-        if (!isMedicationCurrentlyActive(data)) {
-          return false;
-        }
-
-        const medCanonical = getCanonicalNameFromDocument(data);
-
-        if (medCanonical && medCanonical === newMedCanonical) {
-          return false;
-        }
-
-        return true;
-      })
-      .map((doc) => ({
-        id: doc.id,
-        name: doc.data().name,
-        active: true,
-      }));
+    const currentMedications = await fetchActiveMedicationsForUser(userId, {
+      excludeMedicationId,
+      excludeCanonicalName: newMedCanonical,
+    });
 
     functions.logger.info('[medicationSafety] Running hardcoded checks', {
       newMedication: newMedication.name,
@@ -554,22 +832,35 @@ export async function runMedicationSafetyChecks(
       return hardcodedWarnings;
     }
 
-    // Layer 2: AI-based comprehensive check (optional, enabled via options or env var)
+    // Layer 2: External data checks (optional)
+    let externalWarnings: MedicationSafetyWarning[] = [];
+    try {
+      const currentMedications = await fetchActiveMedicationsForUser(userId, {
+        excludeMedicationId,
+        excludeCanonicalName: normalizeMedicationName(newMedication.name),
+      });
+      externalWarnings = await runExternalSafetyChecks(userId, newMedication, currentMedications);
+    } catch (externalError) {
+      functions.logger.error('[medicationSafety] External checks failed:', externalError);
+    }
+
+    // Layer 3: AI-based comprehensive check (optional, enabled via options or env var)
     const useAI = useAIOption ?? (process.env.ENABLE_AI_SAFETY_CHECKS === 'true');
 
     if (!useAI) {
-      // AI checks disabled, return hardcoded results
-      if (hardcodedWarnings.length > 0) {
+      // AI checks disabled, return hardcoded + external results
+      const mergedWarnings = [...hardcodedWarnings, ...externalWarnings];
+      if (mergedWarnings.length > 0) {
         functions.logger.warn(
-          `[medicationSafety] Found ${hardcodedWarnings.length} hardcoded warnings`,
+          `[medicationSafety] Found ${mergedWarnings.length} hardcoded/external warnings`,
           {
             userId,
             medication: newMedication.name,
-            warnings: hardcodedWarnings.map(w => ({ type: w.type, severity: w.severity })),
+            warnings: mergedWarnings.map(w => ({ type: w.type, severity: w.severity })),
           }
         );
       }
-      return hardcodedWarnings;
+      return mergedWarnings;
     }
 
     // Import AI module dynamically (only if enabled)
@@ -586,6 +877,7 @@ export async function runMedicationSafetyChecks(
       // Merge and deduplicate warnings
       const allWarnings = deduplicateWarnings([
         ...hardcodedWarnings,
+        ...externalWarnings,
         ...aiWarnings,
       ]);
 
@@ -597,6 +889,7 @@ export async function runMedicationSafetyChecks(
             medication: newMedication.name,
             hardcodedCount: hardcodedWarnings.length,
             aiCount: aiWarnings.length,
+            externalCount: externalWarnings.length,
             totalCount: allWarnings.length,
             warnings: allWarnings.map(w => ({ type: w.type, severity: w.severity, message: w.message })),
           }
@@ -606,8 +899,8 @@ export async function runMedicationSafetyChecks(
       return allWarnings;
     } catch (aiError) {
       // AI check failed - fall back to hardcoded results
-      functions.logger.error('[medicationSafety] AI checks failed, using hardcoded results:', aiError);
-      return hardcodedWarnings;
+      functions.logger.error('[medicationSafety] AI checks failed, using hardcoded/external results:', aiError);
+      return [...hardcodedWarnings, ...externalWarnings];
     }
   } catch (error) {
     functions.logger.error('[medicationSafety] Error running safety checks:', error);

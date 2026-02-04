@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from './ui';
 import { api } from '../lib/api/client';
 import { getIdToken } from '../lib/auth';
+import { haptic } from '../lib/haptics';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -92,6 +93,7 @@ export function ShareConfirmationSheet({
     };
 
     const toggleCaregiver = useCallback((id: string) => {
+        void haptic.selection();
         setSelectedIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) {
@@ -105,10 +107,12 @@ export function ShareConfirmationSheet({
 
     const handleShare = async () => {
         if (selectedIds.size === 0) {
+            void haptic.light();
             onClose();
             return;
         }
 
+        void haptic.medium();
         setSending(true);
         try {
             // Update auto-share preference if changed
@@ -119,6 +123,7 @@ export function ShareConfirmationSheet({
             // Share with selected caregivers
             const token = await getIdToken();
             if (!token) {
+                void haptic.error();
                 Alert.alert('Error', 'Please sign in again to share.');
                 return;
             }
@@ -140,13 +145,16 @@ export function ShareConfirmationSheet({
             const result = await response.json();
 
             if (response.ok) {
+                void haptic.success();
                 onShareComplete?.(result.sent || 0, result.failed || 0);
                 onClose();
             } else {
+                void haptic.error();
                 Alert.alert('Sharing Failed', result.message || 'Could not share with caregivers');
             }
         } catch (error) {
             console.error('Failed to share with caregivers:', error);
+            void haptic.error();
             Alert.alert('Error', 'Failed to share visit summary. Please try again.');
         } finally {
             setSending(false);
@@ -154,6 +162,7 @@ export function ShareConfirmationSheet({
     };
 
     const handleSkip = () => {
+        void haptic.light();
         onClose();
     };
 
@@ -170,7 +179,10 @@ export function ShareConfirmationSheet({
                 <TouchableOpacity
                     style={styles.backdrop}
                     activeOpacity={1}
-                    onPress={onClose}
+                    onPress={() => {
+                        void haptic.light();
+                        onClose();
+                    }}
                 />
                 <Animated.View
                     style={[
@@ -244,7 +256,10 @@ export function ShareConfirmationSheet({
                                     </View>
                                     <Switch
                                         value={autoShare}
-                                        onValueChange={setAutoShare}
+                                        onValueChange={(value) => {
+                                            void haptic.selection();
+                                            setAutoShare(value);
+                                        }}
                                         trackColor={{ false: Colors.stroke, true: `${Colors.primary}80` }}
                                         thumbColor={autoShare ? Colors.primary : '#f4f4f4'}
                                     />

@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 import { US_STATES } from '../../lib/location';
+import { haptic } from '../../lib/haptics';
 
 export interface ConsentRequiredModalProps {
   visible: boolean;
@@ -38,12 +39,16 @@ export function ConsentRequiredModal({
 
   const handleConfirm = () => {
     if (isChecked) {
+      void haptic.success();
       setIsChecked(false);
       onConfirm();
+    } else {
+      void haptic.warning();
     }
   };
 
   const handleCancel = () => {
+    void haptic.light();
     setIsChecked(false);
     onCancel();
   };
@@ -89,7 +94,10 @@ export function ConsentRequiredModal({
           {/* Checkbox */}
           <Pressable
             style={styles.checkboxRow}
-            onPress={() => setIsChecked(!isChecked)}
+            onPress={() => {
+              void haptic.selection();
+              setIsChecked(!isChecked);
+            }}
           >
             <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
               {isChecked && (

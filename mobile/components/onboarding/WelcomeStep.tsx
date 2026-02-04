@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 type Props = {
     onNext: () => void;
@@ -56,7 +57,13 @@ export function WelcomeStep({ onNext }: Props) {
 
             {/* CTA */}
             <View style={styles.footer}>
-                <TouchableOpacity style={styles.button} onPress={onNext}>
+                <TouchableOpacity
+                    style={styles.button}
+                    onPress={() => {
+                        void haptic.selection();
+                        onNext();
+                    }}
+                >
                     <Text style={styles.buttonText}>Get Started</Text>
                     <Ionicons name="arrow-forward" size={20} color="#fff" />
                 </TouchableOpacity>

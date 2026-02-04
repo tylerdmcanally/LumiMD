@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 type Props = {
     onNext: () => void;
@@ -23,14 +24,17 @@ export function TermsStep({ onNext, onBack }: Props) {
     const canContinue = acceptedTerms && acceptedPrivacy;
 
     const openLink = async (url: string) => {
+        void haptic.selection();
         try {
             const supported = await Linking.canOpenURL(url);
             if (supported) {
                 await Linking.openURL(url);
             } else {
+                void haptic.error();
                 Alert.alert('Error', 'Unable to open link. Please visit ' + url);
             }
         } catch (error) {
+            void haptic.error();
             Alert.alert('Error', 'Unable to open link');
         }
     };
@@ -39,7 +43,13 @@ export function TermsStep({ onNext, onBack }: Props) {
         <View style={styles.container}>
             {/* Back Button */}
             {onBack && (
-                <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => {
+                        void haptic.selection();
+                        onBack();
+                    }}
+                >
                     <Ionicons name="arrow-back" size={24} color={Colors.text} />
                 </TouchableOpacity>
             )}
@@ -100,7 +110,10 @@ export function TermsStep({ onNext, onBack }: Props) {
             <View style={styles.acceptanceContainer}>
                 <TouchableOpacity
                     style={styles.checkboxRow}
-                    onPress={() => setAcceptedPrivacy(!acceptedPrivacy)}
+                    onPress={() => {
+                        void haptic.selection();
+                        setAcceptedPrivacy(!acceptedPrivacy);
+                    }}
                     activeOpacity={0.7}
                 >
                     <View style={[styles.checkbox, acceptedPrivacy && styles.checkboxChecked]}>
@@ -118,7 +131,10 @@ export function TermsStep({ onNext, onBack }: Props) {
 
                 <TouchableOpacity
                     style={styles.checkboxRow}
-                    onPress={() => setAcceptedTerms(!acceptedTerms)}
+                    onPress={() => {
+                        void haptic.selection();
+                        setAcceptedTerms(!acceptedTerms);
+                    }}
                     activeOpacity={0.7}
                 >
                     <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
@@ -139,7 +155,10 @@ export function TermsStep({ onNext, onBack }: Props) {
             <View style={styles.footer}>
                 <TouchableOpacity
                     style={[styles.continueButton, !canContinue && styles.continueButtonDisabled]}
-                    onPress={onNext}
+                    onPress={() => {
+                        void haptic.medium();
+                        onNext();
+                    }}
                     disabled={!canContinue}
                 >
                     <Text style={[styles.continueButtonText, !canContinue && styles.continueButtonTextDisabled]}>

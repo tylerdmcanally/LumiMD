@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 import { OnboardingData } from './ProfileStep';
+import { haptic } from '../../lib/haptics';
 
 type Props = {
     data: OnboardingData;
@@ -58,6 +59,7 @@ export function HealthStep({ data, onUpdate, onNext, onSkip, onBack }: Props) {
     };
 
     const toggleNoMedicalHistory = () => {
+        void haptic.selection();
         const newValue = !data.noMedicalHistory;
         onUpdate({ noMedicalHistory: newValue });
         if (newValue) {
@@ -67,6 +69,7 @@ export function HealthStep({ data, onUpdate, onNext, onSkip, onBack }: Props) {
     };
 
     const toggleNoAllergies = () => {
+        void haptic.selection();
         const newValue = !data.noAllergies;
         onUpdate({ noAllergies: newValue });
         if (newValue) {
@@ -87,7 +90,13 @@ export function HealthStep({ data, onUpdate, onNext, onSkip, onBack }: Props) {
             >
                 {/* Back Button */}
                 {onBack && (
-                    <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => {
+                            void haptic.selection();
+                            onBack();
+                        }}
+                    >
                         <Ionicons name="arrow-back" size={24} color={Colors.text} />
                     </TouchableOpacity>
                 )}
@@ -157,12 +166,24 @@ export function HealthStep({ data, onUpdate, onNext, onSkip, onBack }: Props) {
 
                 {/* CTAs */}
                 <View style={styles.footer}>
-                    <TouchableOpacity style={styles.button} onPress={onNext}>
+                    <TouchableOpacity
+                        style={styles.button}
+                        onPress={() => {
+                            void haptic.medium();
+                            onNext();
+                        }}
+                    >
                         <Text style={styles.buttonText}>Continue</Text>
                         <Ionicons name="arrow-forward" size={20} color="#fff" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.skipButton} onPress={onSkip}>
+                    <TouchableOpacity
+                        style={styles.skipButton}
+                        onPress={() => {
+                            void haptic.light();
+                            onSkip();
+                        }}
+                    >
                         <Text style={styles.skipText}>I'll add this later</Text>
                     </TouchableOpacity>
                 </View>

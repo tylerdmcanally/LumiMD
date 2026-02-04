@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from './ui';
+import { haptic } from '../lib/haptics';
 
 interface ReminderTimePickerModalProps {
     visible: boolean;
@@ -50,6 +51,7 @@ function TimePicker({
     const minuteOptions = [0, 15, 30, 45];
 
     const handleHourChange = (newHour: number) => {
+        void haptic.selection();
         let h = newHour;
         if (isPM && newHour !== 12) h = newHour + 12;
         else if (!isPM && newHour === 12) h = 0;
@@ -57,10 +59,12 @@ function TimePicker({
     };
 
     const handleMinuteChange = (newMinute: number) => {
+        void haptic.selection();
         onChange(`${hours.toString().padStart(2, '0')}:${newMinute.toString().padStart(2, '0')}`);
     };
 
     const togglePeriod = () => {
+        void haptic.selection();
         const newPeriod = isPM ? 'AM' : 'PM';
         let h = displayHour;
         if (newPeriod === 'PM' && displayHour !== 12) h = displayHour + 12;
@@ -218,6 +222,7 @@ export function ReminderTimePickerModal({
     }, [visible, existingTimes]);
 
     const handleAddTime = useCallback(() => {
+        void haptic.selection();
         const lastTime = times[times.length - 1] || '08:00';
         const [hours] = lastTime.split(':').map(Number);
         const newHours = (hours + 12) % 24;
@@ -228,11 +233,13 @@ export function ReminderTimePickerModal({
 
     const handleRemoveTime = useCallback((index: number) => {
         if (times.length <= 1) return;
+        void haptic.warning();
         setTimes(times.filter((_, i) => i !== index));
         if (editingIndex === index) setEditingIndex(null);
     }, [times, editingIndex]);
 
     const handleTimePress = useCallback((index: number) => {
+        void haptic.selection();
         setEditingIndex(editingIndex === index ? null : index);
     }, [editingIndex]);
 
@@ -249,6 +256,7 @@ export function ReminderTimePickerModal({
     }, [times, editingIndex]);
 
     const handleSave = useCallback(() => {
+        void haptic.success();
         onSave(times);
     }, [times, onSave]);
 
@@ -263,7 +271,13 @@ export function ReminderTimePickerModal({
                 <View style={styles.container}>
                     {/* Header */}
                     <View style={styles.header}>
-                        <Pressable onPress={onCancel} style={styles.headerButton}>
+                        <Pressable
+                            onPress={() => {
+                                void haptic.light();
+                                onCancel();
+                            }}
+                            style={styles.headerButton}
+                        >
                             <Ionicons name="close" size={24} color={Colors.textMuted} />
                         </Pressable>
                         <View style={styles.headerCenter}>

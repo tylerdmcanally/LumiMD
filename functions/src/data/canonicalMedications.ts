@@ -715,6 +715,122 @@ export const CANONICAL_MEDICATIONS: Record<string, CanonicalMedicationEntry> = {
         classes: ['anticonvulsant', 'neuropathic-pain', 'psychiatric'],
         aliases: ['lyrica'],
     },
+
+    // ============================================================================
+    // Cardiovascular - Nitrates
+    // ============================================================================
+    nitroglycerin: {
+        classes: ['nitrate', 'cardiovascular'],
+        aliases: ['nitrostat', 'nitro', 'nitrolingual'],
+    },
+    'isosorbide mononitrate': {
+        classes: ['nitrate', 'cardiovascular'],
+        aliases: ['imdur', 'monoket'],
+    },
+    'isosorbide dinitrate': {
+        classes: ['nitrate', 'cardiovascular'],
+        aliases: ['isordil', 'dilatrate'],
+    },
+
+    // ============================================================================
+    // Sexual Health - PDE5 Inhibitors
+    // ============================================================================
+    sildenafil: {
+        classes: ['pde5-inhibitor'],
+        aliases: ['viagra', 'revatio'],
+    },
+    tadalafil: {
+        classes: ['pde5-inhibitor'],
+        aliases: ['cialis', 'adcirca'],
+    },
+    vardenafil: {
+        classes: ['pde5-inhibitor'],
+        aliases: ['levitra', 'staxyn'],
+    },
+    avanafil: {
+        classes: ['pde5-inhibitor'],
+        aliases: ['stendra'],
+    },
+
+    // ============================================================================
+    // Psychiatry - MAOIs
+    // ============================================================================
+    phenelzine: {
+        classes: ['maoi', 'antidepressant', 'psychiatric'],
+        aliases: ['nardil'],
+    },
+    tranylcypromine: {
+        classes: ['maoi', 'antidepressant', 'psychiatric'],
+        aliases: ['parnate'],
+    },
+    isocarboxazid: {
+        classes: ['maoi', 'antidepressant', 'psychiatric'],
+        aliases: ['marplan'],
+    },
+    selegiline: {
+        classes: ['maoi', 'antidepressant', 'psychiatric'],
+        aliases: ['emsam', 'eldepryl', 'zelapar'],
+    },
+
+    // ============================================================================
+    // Pain - Opioids
+    // ============================================================================
+    oxycodone: {
+        classes: ['opioid', 'pain-reliever'],
+        aliases: ['oxycontin', 'roxicodone', 'percocet'],
+    },
+    hydrocodone: {
+        classes: ['opioid', 'pain-reliever'],
+        aliases: ['vicodin', 'norco', 'lortab'],
+    },
+    morphine: {
+        classes: ['opioid', 'pain-reliever'],
+        aliases: ['ms contin', 'kadian'],
+    },
+    fentanyl: {
+        classes: ['opioid', 'pain-reliever'],
+        aliases: ['duragesic', 'sublimaze'],
+    },
+    tramadol: {
+        classes: ['opioid', 'pain-reliever'],
+        aliases: ['ultram'],
+    },
+
+    // ============================================================================
+    // Supplements & OTC Minerals
+    // ============================================================================
+    'st-johns-wort': {
+        classes: ['herbal-supplement'],
+        aliases: ['st johns wort', "st john's wort"],
+    },
+    'ginkgo-biloba': {
+        classes: ['herbal-supplement'],
+        aliases: ['ginkgo', 'ginkgo biloba'],
+    },
+    garlic: {
+        classes: ['herbal-supplement'],
+        aliases: ['garlic supplement'],
+    },
+    ginseng: {
+        classes: ['herbal-supplement'],
+        aliases: ['panax ginseng', 'asian ginseng'],
+    },
+    'calcium carbonate': {
+        classes: ['calcium-supplement', 'supplement', 'antacid'],
+        aliases: ['tums', 'caltrate', 'os-cal', 'calcium'],
+    },
+    'ferrous sulfate': {
+        classes: ['iron-supplement', 'supplement'],
+        aliases: ['iron', 'feosol'],
+    },
+    'magnesium hydroxide': {
+        classes: ['antacid', 'supplement'],
+        aliases: ['milk of magnesia', 'magnesia'],
+    },
+    'potassium chloride': {
+        classes: ['potassium-supplement', 'supplement'],
+        aliases: ['k-dur', 'klor-con', 'potassium'],
+    },
 };
 
 /**

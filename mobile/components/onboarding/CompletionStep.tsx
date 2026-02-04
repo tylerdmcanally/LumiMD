@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 type Props = {
     onRecordFirst: () => void;
@@ -28,7 +29,13 @@ export function CompletionStep({ onRecordFirst, onExplore, saving, onBack }: Pro
         <View style={styles.container}>
             {/* Back Button */}
             {onBack && (
-                <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => {
+                        void haptic.selection();
+                        onBack();
+                    }}
+                >
                     <Ionicons name="arrow-back" size={24} color={Colors.text} />
                 </TouchableOpacity>
             )}
@@ -63,7 +70,10 @@ export function CompletionStep({ onRecordFirst, onExplore, saving, onBack }: Pro
             <View style={styles.footer}>
                 <TouchableOpacity
                     style={styles.primaryButton}
-                    onPress={onRecordFirst}
+                    onPress={() => {
+                        void haptic.medium();
+                        onRecordFirst();
+                    }}
                     disabled={saving}
                 >
                     {saving ? (
@@ -78,7 +88,10 @@ export function CompletionStep({ onRecordFirst, onExplore, saving, onBack }: Pro
 
                 <TouchableOpacity
                     style={styles.secondaryButton}
-                    onPress={onExplore}
+                    onPress={() => {
+                        void haptic.selection();
+                        onExplore();
+                    }}
                     disabled={saving}
                 >
                     <Text style={styles.secondaryButtonText}>Explore Dashboard</Text>

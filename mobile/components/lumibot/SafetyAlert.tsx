@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 import type { AlertLevel } from '@lumimd/sdk';
+import { haptic } from '../../lib/haptics';
 
 export interface SafetyAlertProps {
     visible: boolean;
@@ -61,7 +62,21 @@ export function SafetyAlert({
     const isEmergency = alertLevel === 'emergency';
 
     const handleCall911 = () => {
+        void haptic.heavy();
         Linking.openURL('tel:911');
+    };
+
+    const handleDismiss = () => {
+        if (alertLevel === 'emergency') {
+            void haptic.warning();
+        } else if (alertLevel === 'warning') {
+            void haptic.warning();
+        } else if (alertLevel === 'caution') {
+            void haptic.light();
+        } else {
+            void haptic.success();
+        }
+        onDismiss();
     };
 
     return (
@@ -125,7 +140,7 @@ export function SafetyAlert({
                             isEmergency && styles.emergencyDismissButton,
                             pressed && styles.buttonPressed,
                         ]}
-                        onPress={onDismiss}
+                        onPress={handleDismiss}
                     >
                         <Text style={[
                             styles.dismissButtonText,

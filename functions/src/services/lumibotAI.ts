@@ -161,6 +161,14 @@ Follow-up urgency guidelines:
 - 1_week: Routine check-in, stable situation
 - none: Positive response, no issues, on track`;
 
+function safeJsonParse(content: string): Record<string, unknown> {
+    const parsed = JSON.parse(content);
+    if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid JSON response format');
+    }
+    return parsed as Record<string, unknown>;
+}
+
 // =============================================================================
 // LumiBot AI Service Class
 // =============================================================================
@@ -363,24 +371,31 @@ export class LumiBotAIService {
                 throw new Error('Empty response from OpenAI');
             }
 
-            const parsed = JSON.parse(content);
+            const parsed = safeJsonParse(content);
 
             // Validate sentiment
             const validSentiments = ['positive', 'neutral', 'negative', 'concerning'];
-            const sentiment = validSentiments.includes(parsed.sentiment)
-                ? parsed.sentiment
+            const sentiment = validSentiments.includes(parsed.sentiment as string)
+                ? (parsed.sentiment as 'positive' | 'neutral' | 'negative' | 'concerning')
                 : 'neutral';
 
             // Parse follow-up recommendation
-            const followUp = this.parseFollowUpRecommendation(parsed.followUp, parsed.followUpNeeded);
+            const followUp = this.parseFollowUpRecommendation(
+                parsed.followUp,
+                parsed.followUpNeeded === true
+            );
 
             return {
                 sentiment,
-                extractedData: parsed.extractedData || {},
+                extractedData: typeof parsed.extractedData === 'object' && parsed.extractedData !== null
+                    ? (parsed.extractedData as Record<string, unknown>)
+                    : {},
                 followUpNeeded: followUp.needed,
                 followUp,
-                suggestedAction: parsed.suggestedAction,
-                summary: parsed.summary || 'Response received.',
+                suggestedAction: typeof parsed.suggestedAction === 'string' ? parsed.suggestedAction : undefined,
+                summary: typeof parsed.summary === 'string' && parsed.summary.trim().length > 0
+                    ? parsed.summary
+                    : 'Response received.',
             };
         } catch (error) {
             functions.logger.error('[LumiBotAI] Failed to interpret user response:', error);

@@ -356,6 +356,14 @@ function createApiClient(config) {
       respond: (id, data) => apiRequest(`/v1/nudges/${id}/respond`, {
         method: "POST",
         body: JSON.stringify(data)
+      }),
+      feedback: (id, data) => apiRequest(`/v1/nudges/${id}/feedback`, {
+        method: "POST",
+        body: JSON.stringify(data)
+      }),
+      trackEvent: (id, data) => apiRequest(`/v1/nudges/${id}/events`, {
+        method: "POST",
+        body: JSON.stringify(data)
       })
     },
     // LumiBot Health Logs
@@ -417,6 +425,7 @@ var queryKeys = {
   medication: (id) => ["medications", id],
   profile: ["profile"],
   nudges: ["nudges"],
+  nudgesHistory: ["nudges", "history"],
   healthLogs: ["healthLogs"],
   healthLogsSummary: ["healthLogs", "summary"]
 };
@@ -505,6 +514,15 @@ function createApiHooks(api) {
       ...options
     });
   }
+  function useNudgeHistory(limit, options) {
+    return useQuery({
+      queryKey: [...queryKeys.nudgesHistory, limit],
+      queryFn: () => api.nudges.history(limit),
+      staleTime: 60 * 1e3,
+      // 1 minute
+      ...options
+    });
+  }
   function useHealthLogs(params, options) {
     return useQuery({
       queryKey: [...queryKeys.healthLogs, params],
@@ -541,6 +559,21 @@ function createApiHooks(api) {
       }
     });
   }
+  function useSendNudgeFeedback() {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: ({ id, data }) => api.nudges.feedback(id, data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudgesHistory });
+      }
+    });
+  }
+  function useTrackNudgeEvent() {
+    return useMutation({
+      mutationFn: ({ id, data }) => api.nudges.trackEvent(id, data)
+    });
+  }
   function useCreateHealthLog() {
     const queryClient = useQueryClient();
     return useMutation({
@@ -562,10 +595,13 @@ function createApiHooks(api) {
     useUserProfile,
     // LumiBot
     useNudges,
+    useNudgeHistory,
     useHealthLogs,
     useHealthLogsSummary,
     useUpdateNudge,
     useRespondToNudge,
+    useSendNudgeFeedback,
+    useTrackNudgeEvent,
     useCreateHealthLog
   };
 }

@@ -5,6 +5,7 @@
  */
 
 export { NudgeCard } from './NudgeCard';
+export { NudgeHistoryCard } from './NudgeHistoryCard';
 export { LumibotSection } from './LumibotSection';
 export { LumiBotBanner } from './LumiBotBanner';
 export { BPLogModal } from './BPLogModal';
@@ -18,6 +19,7 @@ export { SymptomCheckModal } from './SymptomCheckModal';
 
 // Re-export types for convenience
 export type { NudgeCardProps } from './NudgeCard';
+export type { NudgeHistoryCardProps } from './NudgeHistoryCard';
 export type { LumibotSectionProps } from './LumibotSection';
 export type { BPLogModalProps } from './BPLogModal';
 export type { GlucoseLogModalProps } from './GlucoseLogModal';

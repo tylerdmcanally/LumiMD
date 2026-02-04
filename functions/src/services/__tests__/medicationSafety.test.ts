@@ -14,6 +14,7 @@ import {
     checkDrugInteractions,
     checkAllergyConflicts,
     CANONICAL_MEDICATIONS,
+    buildSafetyCheckHash,
 } from '../medicationSafety';
 import type { MedicationChangeEntry } from '../openai';
 
@@ -205,8 +206,8 @@ describe('Medication Safety Service', () => {
         });
 
         it('should not flag medications with no known interactions', async () => {
-            const newMed: MedicationChangeEntry = { name: 'levothyroxine' };
-            const currentMeds = [{ id: 'med-1', name: 'omeprazole', active: true }];
+            const newMed: MedicationChangeEntry = { name: 'cetirizine' };
+            const currentMeds = [{ id: 'med-1', name: 'docusate', active: true }];
 
             const warnings = await checkDrugInteractions(userId, newMed, currentMeds);
 
@@ -220,6 +221,40 @@ describe('Medication Safety Service', () => {
             const warnings = await checkDrugInteractions(userId, newMed, currentMeds);
 
             expect(warnings.length).toBe(0);
+        });
+
+        it('should flag contraindicated nitrate + PDE5 inhibitor combination', async () => {
+            const newMed: MedicationChangeEntry = { name: 'sildenafil' };
+            const currentMeds = [{ id: 'med-1', name: 'nitroglycerin', active: true }];
+
+            const warnings = await checkDrugInteractions(userId, newMed, currentMeds);
+
+            const contraindication = warnings.find((w) => w.type === 'drug_interaction');
+            expect(contraindication).toBeDefined();
+            expect(contraindication?.severity).toBe('critical');
+            expect(contraindication?.message.toLowerCase()).toContain('contraindicated');
+        });
+
+        it('should detect warfarin + St Johns wort interaction', async () => {
+            const newMed: MedicationChangeEntry = { name: 'St Johns Wort' };
+            const currentMeds = [{ id: 'med-1', name: 'warfarin', active: true }];
+
+            const warnings = await checkDrugInteractions(userId, newMed, currentMeds);
+
+            const herbWarning = warnings.find((w) => w.type === 'drug_interaction');
+            expect(herbWarning).toBeDefined();
+            expect(herbWarning?.severity).toBe('high');
+        });
+
+        it('should detect levothyroxine + calcium supplement absorption interaction', async () => {
+            const newMed: MedicationChangeEntry = { name: 'levothyroxine' };
+            const currentMeds = [{ id: 'med-1', name: 'calcium carbonate', active: true }];
+
+            const warnings = await checkDrugInteractions(userId, newMed, currentMeds);
+
+            const absorptionWarning = warnings.find((w) => w.type === 'drug_interaction');
+            expect(absorptionWarning).toBeDefined();
+            expect(absorptionWarning?.severity).toBe('moderate');
         });
     });
 
@@ -288,6 +323,44 @@ describe('Medication Safety Service', () => {
             const warnings = await checkAllergyConflicts(userId, newMed, allergies);
 
             expect(warnings.length).toBeGreaterThanOrEqual(1);
+        });
+
+        it('should detect class alias allergy terms', async () => {
+            const newMed: MedicationChangeEntry = { name: 'Bactrim' };
+            const allergies = ['sulfa allergy'];
+
+            const warnings = await checkAllergyConflicts(userId, newMed, allergies);
+
+            expect(warnings.length).toBeGreaterThanOrEqual(1);
+            expect(warnings.some((w) => w.type === 'allergy_alert')).toBe(true);
+        });
+
+        it('should detect ACE inhibitor allergy phrasing', async () => {
+            const newMed: MedicationChangeEntry = { name: 'lisinopril' };
+            const allergies = ['ACE inhibitor reaction'];
+
+            const warnings = await checkAllergyConflicts(userId, newMed, allergies);
+
+            expect(warnings.length).toBeGreaterThanOrEqual(1);
+            expect(warnings.some((w) => w.type === 'allergy_alert')).toBe(true);
+        });
+    });
+
+    describe('buildSafetyCheckHash', () => {
+        it('should change when allergies change', () => {
+            const base = buildSafetyCheckHash({
+                medication: { name: 'lisinopril', dose: '10mg', frequency: 'daily', notes: 'note' },
+                currentMedications: [{ name: 'metformin', dose: '500mg', frequency: 'daily' }],
+                allergies: ['penicillin'],
+            });
+
+            const changed = buildSafetyCheckHash({
+                medication: { name: 'lisinopril', dose: '10mg', frequency: 'daily', notes: 'note' },
+                currentMedications: [{ name: 'metformin', dose: '500mg', frequency: 'daily' }],
+                allergies: ['sulfa'],
+            });
+
+            expect(base).not.toBe(changed);
         });
     });
 });

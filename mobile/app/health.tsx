@@ -34,6 +34,7 @@ import type { HealthLog, HealthLogSource, BloodPressureValue, GlucoseValue, Aler
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../components/lumibot';
 import type { WeightValue } from '../components/lumibot';
 import { api } from '../lib/api/client';
+import { haptic } from '../lib/haptics';
 
 // ============================================================================
 // Helpers
@@ -176,7 +177,10 @@ function EmptyState() {
       </Text>
       <Pressable 
         style={styles.emptyButton}
-        onPress={() => router.back()}
+        onPress={() => {
+          void haptic.selection();
+          router.back();
+        }}
       >
         <Text style={styles.emptyButtonText}>Start Logging</Text>
       </Pressable>
@@ -224,6 +228,7 @@ export default function HealthScreen() {
   }, [refetch, healthKit.permissionStatus]);
 
   const handleSettings = useCallback(() => {
+    void haptic.selection();
     Alert.alert(
       'Health Data Settings',
       'Manage your health data sources',
@@ -241,6 +246,7 @@ export default function HealthScreen() {
 
   // Logging handlers
   const handleLogOption = useCallback((option: 'bp' | 'glucose' | 'weight') => {
+    void haptic.light();
     setShowLogMenu(false);
     if (option === 'bp') setShowBPModal(true);
     else if (option === 'glucose') setShowGlucoseModal(true);
@@ -259,11 +265,13 @@ export default function HealthScreen() {
         value: { systolic: value.systolic, diastolic: value.diastolic, pulse: value.pulse },
         source: 'manual',
       });
+      void haptic.success();
       Alert.alert('Success', 'Blood pressure logged successfully');
       setShowBPModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
     } catch (error) {
+      void haptic.error();
       Alert.alert('Error', 'Failed to log blood pressure. Please try again.');
       return {};
     } finally {
@@ -283,11 +291,13 @@ export default function HealthScreen() {
         value: { reading: value.reading, timing: value.timing },
         source: 'manual',
       });
+      void haptic.success();
       Alert.alert('Success', 'Blood glucose logged successfully');
       setShowGlucoseModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
     } catch (error) {
+      void haptic.error();
       Alert.alert('Error', 'Failed to log blood glucose. Please try again.');
       return {};
     } finally {
@@ -307,11 +317,13 @@ export default function HealthScreen() {
         value: { weight: value.weight, unit: value.unit },
         source: 'manual',
       });
+      void haptic.success();
       Alert.alert('Success', 'Weight logged successfully');
       setShowWeightModal(false);
       refetch();
       return {};
     } catch (error) {
+      void haptic.error();
       Alert.alert('Error', 'Failed to log weight. Please try again.');
       return {};
     } finally {
@@ -356,7 +368,13 @@ export default function HealthScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={8}>
+          <Pressable
+            onPress={() => {
+              void haptic.selection();
+              router.back();
+            }}
+            hitSlop={8}
+          >
             <Ionicons name="chevron-back" size={28} color={Colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Health Data</Text>
@@ -375,7 +393,13 @@ export default function HealthScreen() {
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
+        <Pressable
+          onPress={() => {
+            void haptic.selection();
+            router.back();
+          }}
+          hitSlop={8}
+        >
           <Ionicons name="chevron-back" size={28} color={Colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Health Data</Text>
@@ -398,7 +422,10 @@ export default function HealthScreen() {
         {/* Collapsible Data Sources */}
         <Pressable 
           style={styles.collapsibleHeader}
-          onPress={() => setSourcesExpanded(!sourcesExpanded)}
+          onPress={() => {
+            void haptic.selection();
+            setSourcesExpanded(!sourcesExpanded);
+          }}
         >
           <View style={styles.collapsibleLeft}>
             <Ionicons name="swap-horizontal" size={18} color={Colors.textMuted} />
@@ -429,10 +456,14 @@ export default function HealthScreen() {
                   <Pressable 
                     style={styles.connectButton}
                     onPress={async () => {
+                      void haptic.medium();
                       await healthKit.requestPermissions();
                       if (healthKit.permissionStatus === 'authorized') {
                         await initializeHealthKitSync();
+                        void haptic.success();
                         refetch();
+                      } else {
+                        void haptic.warning();
                       }
                     }}
                   >
@@ -484,7 +515,10 @@ export default function HealthScreen() {
         {/* Collapsible Info Footer */}
         <Pressable 
           style={styles.infoToggle}
-          onPress={() => setInfoExpanded(!infoExpanded)}
+          onPress={() => {
+            void haptic.selection();
+            setInfoExpanded(!infoExpanded);
+          }}
         >
           <Ionicons 
             name="information-circle-outline" 
@@ -512,7 +546,10 @@ export default function HealthScreen() {
       {/* Floating Action Button */}
       <Pressable
         style={styles.fab}
-        onPress={() => setShowLogMenu(true)}
+        onPress={() => {
+          void haptic.selection();
+          setShowLogMenu(true);
+        }}
       >
         <Ionicons name="add" size={28} color="#fff" />
       </Pressable>
@@ -526,7 +563,10 @@ export default function HealthScreen() {
       >
         <Pressable
           style={styles.menuOverlay}
-          onPress={() => setShowLogMenu(false)}
+          onPress={() => {
+            void haptic.light();
+            setShowLogMenu(false);
+          }}
         >
           <View style={styles.menuContainer}>
             <Text style={styles.menuTitle}>Log Reading</Text>
@@ -553,7 +593,10 @@ export default function HealthScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, styles.cancelItem]}
-              onPress={() => setShowLogMenu(false)}
+              onPress={() => {
+                void haptic.light();
+                setShowLogMenu(false);
+              }}
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>

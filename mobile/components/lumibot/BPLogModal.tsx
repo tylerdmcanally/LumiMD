@@ -19,6 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 import type { BloodPressureValue, AlertLevel } from '@lumimd/sdk';
+import { haptic } from '../../lib/haptics';
 
 export interface BPLogModalProps {
     visible: boolean;
@@ -43,7 +44,10 @@ export function BPLogModal({
     const [pulse, setPulse] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    const handleClose = useCallback(() => {
+    const handleClose = useCallback((withHaptic: boolean = true) => {
+        if (withHaptic) {
+            void haptic.light();
+        }
         setSystolic('');
         setDiastolic('');
         setPulse('');
@@ -58,14 +62,17 @@ export function BPLogModal({
 
         // Validation
         if (isNaN(sys) || sys < 60 || sys > 300) {
+            void haptic.warning();
             setError('Please enter a valid systolic value (60-300)');
             return;
         }
         if (isNaN(dia) || dia < 30 || dia > 200) {
+            void haptic.warning();
             setError('Please enter a valid diastolic value (30-200)');
             return;
         }
         if (pul !== undefined && (pul < 30 || pul > 250)) {
+            void haptic.warning();
             setError('Please enter a valid pulse value (30-250)');
             return;
         }
@@ -80,7 +87,8 @@ export function BPLogModal({
 
         // If not showing immediate alert, close the modal
         if (!result.shouldShowAlert) {
-            handleClose();
+            void haptic.success();
+            handleClose(false);
         }
     }, [systolic, diastolic, pulse, onSubmit, handleClose]);
 

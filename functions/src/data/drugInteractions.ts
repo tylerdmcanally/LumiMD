@@ -21,6 +21,7 @@ export interface DrugInteraction {
     mechanism: string;
     clinicalEffect: string;
     recommendation: string;
+    contraindicated?: boolean;
 }
 
 export interface TherapeuticDuplication {
@@ -38,6 +39,46 @@ export const DRUG_INTERACTIONS: DrugInteraction[] = [
     // ---------------------------------------------------------------------------
     // CRITICAL INTERACTIONS (Contraindicated or life-threatening)
     // ---------------------------------------------------------------------------
+
+    // Contraindicated: Nitrates + PDE5 inhibitors
+    {
+        drug1: 'nitrate',
+        drug2: 'pde5-inhibitor',
+        severity: 'critical',
+        contraindicated: true,
+        mechanism: 'Synergistic vasodilation via nitric oxide and PDE5 inhibition',
+        clinicalEffect: 'Severe hypotension, syncope, and risk of myocardial ischemia',
+        recommendation: 'Do not use together. Seek immediate medical guidance for alternatives.',
+    },
+
+    // Contraindicated: MAOI + SSRIs/SNRIs/Tramadol
+    {
+        drug1: 'maoi',
+        drug2: 'ssri',
+        severity: 'critical',
+        contraindicated: true,
+        mechanism: 'Excess serotonin accumulation',
+        clinicalEffect: 'High risk of serotonin syndrome, potentially life-threatening',
+        recommendation: 'Do not use together. Allow appropriate washout periods between therapies.',
+    },
+    {
+        drug1: 'maoi',
+        drug2: 'snri',
+        severity: 'critical',
+        contraindicated: true,
+        mechanism: 'Excess serotonin and norepinephrine accumulation',
+        clinicalEffect: 'High risk of serotonin syndrome and hypertensive crisis',
+        recommendation: 'Do not use together. Allow appropriate washout periods between therapies.',
+    },
+    {
+        drug1: 'maoi',
+        drug2: 'tramadol',
+        severity: 'critical',
+        contraindicated: true,
+        mechanism: 'Serotonergic and seizure threshold effects',
+        clinicalEffect: 'High risk of serotonin syndrome and seizures',
+        recommendation: 'Do not use together. Consider non-serotonergic analgesic alternatives.',
+    },
 
     // Serotonin Syndrome Risk
     {
@@ -96,6 +137,14 @@ export const DRUG_INTERACTIONS: DrugInteraction[] = [
         severity: 'critical',
         mechanism: 'NSAID antiplatelet effect + warfarin interaction',
         clinicalEffect: 'Significantly increased bleeding risk',
+        recommendation: 'Avoid combination. Consider acetaminophen for pain.',
+    },
+    {
+        drug1: 'warfarin',
+        drug2: 'ibuprofen',
+        severity: 'critical',
+        mechanism: 'NSAID antiplatelet effect + warfarin interaction',
+        clinicalEffect: 'Significantly increased bleeding risk, especially GI bleeding',
         recommendation: 'Avoid combination. Consider acetaminophen for pain.',
     },
     {
@@ -159,6 +208,16 @@ export const DRUG_INTERACTIONS: DrugInteraction[] = [
         recommendation: 'Monitor for bleeding. Consider GI protection.',
     },
 
+    // SSRI + NSAID bleeding risk
+    {
+        drug1: 'sertraline',
+        drug2: 'ibuprofen',
+        severity: 'moderate',
+        mechanism: 'SSRI antiplatelet effect combined with NSAID inhibition of platelet function',
+        clinicalEffect: 'Increased bleeding risk, especially GI bleeding',
+        recommendation: 'Monitor for bleeding. Consider GI protection if used together.',
+    },
+
     // Clopidogrel + PPI (reduced efficacy)
     {
         drug1: 'clopidogrel',
@@ -169,9 +228,119 @@ export const DRUG_INTERACTIONS: DrugInteraction[] = [
         recommendation: 'Use pantoprazole instead (does not significantly inhibit CYP2C19).',
     },
 
+    // Levothyroxine absorption reduced by minerals/antacids
+    {
+        drug1: 'levothyroxine',
+        drug2: 'calcium-supplement',
+        severity: 'moderate',
+        mechanism: 'Chelation and reduced GI absorption',
+        clinicalEffect: 'Reduced thyroid hormone absorption and efficacy',
+        recommendation: 'Separate doses by at least 4 hours or use alternative timing.',
+    },
+    {
+        drug1: 'levothyroxine',
+        drug2: 'iron-supplement',
+        severity: 'moderate',
+        mechanism: 'Chelation and reduced GI absorption',
+        clinicalEffect: 'Reduced thyroid hormone absorption and efficacy',
+        recommendation: 'Separate doses by at least 4 hours or use alternative timing.',
+    },
+    {
+        drug1: 'levothyroxine',
+        drug2: 'antacid',
+        severity: 'moderate',
+        mechanism: 'Reduced GI absorption',
+        clinicalEffect: 'Reduced thyroid hormone absorption and efficacy',
+        recommendation: 'Separate doses by at least 4 hours.',
+    },
+
+    // NSAIDs + Corticosteroids (GI bleed)
+    {
+        drug1: 'nsaid',
+        drug2: 'corticosteroid',
+        severity: 'moderate',
+        mechanism: 'Additive GI mucosal injury',
+        clinicalEffect: 'Increased risk of GI bleeding and ulceration',
+        recommendation: 'Use gastroprotection if combined and monitor for GI symptoms.',
+    },
+
+    // Warfarin + acetaminophen (INR elevation)
+    {
+        drug1: 'warfarin',
+        drug2: 'acetaminophen',
+        severity: 'moderate',
+        mechanism: 'Possible CYP and vitamin K pathway effects',
+        clinicalEffect: 'Potential INR elevation with regular/high-dose use',
+        recommendation: 'Limit dose and duration. Monitor INR if used regularly.',
+    },
+
+    // Herbal supplement bleeding risks
+    {
+        drug1: 'warfarin',
+        drug2: 'garlic',
+        severity: 'moderate',
+        mechanism: 'Antiplatelet effects',
+        clinicalEffect: 'Increased bleeding risk',
+        recommendation: 'Avoid high-dose garlic supplements. Monitor for bleeding.',
+    },
+    {
+        drug1: 'warfarin',
+        drug2: 'ginseng',
+        severity: 'moderate',
+        mechanism: 'Possible CYP induction and antiplatelet effects',
+        clinicalEffect: 'Variable anticoagulation and bleeding/clot risk',
+        recommendation: 'Avoid combination or monitor INR closely.',
+    },
+
     // ---------------------------------------------------------------------------
     // HIGH SEVERITY INTERACTIONS
     // ---------------------------------------------------------------------------
+
+    // Opioids + Benzodiazepines (boxed warning)
+    {
+        drug1: 'opioid',
+        drug2: 'benzodiazepine',
+        severity: 'high',
+        mechanism: 'Additive CNS and respiratory depression',
+        clinicalEffect: 'Increased risk of profound sedation, respiratory depression, coma, and death',
+        recommendation: 'Avoid or use the lowest effective doses with close monitoring. Do not mix with alcohol.',
+    },
+
+    // Warfarin + herbal supplements
+    {
+        drug1: 'warfarin',
+        drug2: 'st-johns-wort',
+        severity: 'high',
+        mechanism: 'Induces CYP enzymes reducing warfarin effect',
+        clinicalEffect: 'Reduced anticoagulation and increased clot risk',
+        recommendation: 'Avoid combination. If used, monitor INR closely and adjust dose.',
+    },
+    {
+        drug1: 'warfarin',
+        drug2: 'ginkgo-biloba',
+        severity: 'high',
+        mechanism: 'Antiplatelet effects',
+        clinicalEffect: 'Increased bleeding risk',
+        recommendation: 'Avoid combination or monitor closely for bleeding.',
+    },
+
+    // ACE/ARB + potassium supplements
+    {
+        drug1: 'ace-inhibitor',
+        drug2: 'potassium-supplement',
+        severity: 'high',
+        mechanism: 'Reduced potassium excretion',
+        clinicalEffect: 'Risk of hyperkalemia and cardiac arrhythmias',
+        recommendation: 'Avoid routine potassium supplementation unless directed. Monitor potassium levels.',
+    },
+    {
+        drug1: 'arb',
+        drug2: 'potassium-supplement',
+        severity: 'high',
+        mechanism: 'Reduced potassium excretion',
+        clinicalEffect: 'Risk of hyperkalemia and cardiac arrhythmias',
+        recommendation: 'Avoid routine potassium supplementation unless directed. Monitor potassium levels.',
+    },
 
     // QT Prolongation Risk
     {

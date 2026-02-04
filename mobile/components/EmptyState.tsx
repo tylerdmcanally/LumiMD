@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Radius, spacing, Card } from './ui';
+import { haptic } from '../lib/haptics';
 
 type EmptyStateVariant = 'empty' | 'error' | 'success';
 
@@ -75,7 +76,10 @@ export function EmptyState({
                         styles.actionButton,
                         pressed && styles.actionButtonPressed,
                     ]}
-                    onPress={onAction}
+                    onPress={() => {
+                        void haptic.selection();
+                        onAction();
+                    }}
                 >
                     <Text style={styles.actionButtonText}>{actionLabel}</Text>
                     <Ionicons name="arrow-forward" size={18} color="#fff" />

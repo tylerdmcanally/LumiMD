@@ -28,6 +28,7 @@ import {
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
 import { ReminderTimePickerModal } from '../components/ReminderTimePickerModal';
+import { haptic } from '../lib/haptics';
 import type { MedicationReminder } from '@lumimd/sdk';
 
 
@@ -160,6 +161,7 @@ export default function MedicationsScreen() {
   );
 
   const handleOpenMedication = (med: any) => {
+    void haptic.selection();
     if (med.sourceVisitId) {
       openWebVisit(med.sourceVisitId);
       return;
@@ -194,6 +196,7 @@ export default function MedicationsScreen() {
 
     const handleReminderPress = (e: any) => {
       e.stopPropagation();
+      void haptic.selection();
       setSelectedMed({ id: med.id, name: med.name || 'Medication' });
       setReminderModalVisible(true);
     };
@@ -201,6 +204,7 @@ export default function MedicationsScreen() {
     const handleRemoveReminder = (e: any) => {
       e.stopPropagation();
       if (reminder) {
+        void haptic.warning();
         Alert.alert(
           'Remove Reminder',
           `Stop reminding you to take ${med.name}?`,
@@ -236,10 +240,12 @@ export default function MedicationsScreen() {
         acknowledgeWarnings.mutate(med.id, {
           onSuccess: () => {
             console.log('[Medications] Successfully acknowledged warnings');
+            void haptic.success();
             Alert.alert('Got it', 'Warning acknowledged. It will be minimized next time.');
           },
           onError: (error) => {
             console.error('[Medications] Error acknowledging warnings:', error);
+            void haptic.error();
             Alert.alert('Error', 'Failed to acknowledge warning. Please try again.');
           }
         });
@@ -381,9 +387,11 @@ export default function MedicationsScreen() {
           times,
         });
       }
+      void haptic.success();
       setReminderModalVisible(false);
       setSelectedMed(null);
     } catch (error) {
+      void haptic.error();
       Alert.alert('Error', 'Failed to save reminder. Please try again.');
     }
   }, [selectedMed, getReminderForMed, createReminder, updateReminder]);
@@ -418,11 +426,23 @@ export default function MedicationsScreen() {
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.container}>
             <View style={styles.header}>
-              <Pressable onPress={() => router.back()} style={styles.backButton}>
+              <Pressable
+                onPress={() => {
+                  void haptic.selection();
+                  router.back();
+                }}
+                style={styles.backButton}
+              >
                 <Ionicons name="chevron-back" size={28} color={Colors.text} />
               </Pressable>
               <Text style={styles.headerTitle}>Medications</Text>
-              <Pressable onPress={openWebMeds} style={styles.webLink}>
+              <Pressable
+                onPress={() => {
+                  void haptic.selection();
+                  openWebMeds();
+                }}
+                style={styles.webLink}
+              >
                 <Ionicons name="open-outline" size={18} color={Colors.primary} />
                 <Text style={styles.webLinkText}>Manage on Web</Text>
               </Pressable>
@@ -455,7 +475,10 @@ export default function MedicationsScreen() {
                   title="No medications yet"
                   description="Start a visit or add medications in your web portal to see them here."
                   actionLabel="Open Web Portal"
-                  onAction={openWebMeds}
+                  onAction={() => {
+                    void haptic.selection();
+                    openWebMeds();
+                  }}
                 />
               ) : (
 
@@ -479,7 +502,10 @@ export default function MedicationsScreen() {
                     <Card style={styles.inactiveCard}>
                       <Pressable
                         style={styles.inactiveHeader}
-                        onPress={() => setShowInactive((prev) => !prev)}
+                        onPress={() => {
+                          void haptic.selection();
+                          setShowInactive((prev) => !prev);
+                        }}
                       >
                         <View style={styles.inactiveHeaderLeft}>
                           <Ionicons name="archive-outline" size={18} color={Colors.textMuted} />

@@ -18,9 +18,11 @@ import {
     UIManager,
     Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Colors, spacing, Radius } from '../ui';
 import { NudgeCard } from './NudgeCard';
+import { haptic } from '../../lib/haptics';
 import type { Nudge } from '@lumimd/sdk';
 
 // Enable LayoutAnimation for Android
@@ -35,6 +37,7 @@ export interface LumiBotBannerProps {
     onRespondToNudge: (id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning'; note?: string }) => void;
     onOpenLogModal: (nudge: Nudge) => void;
     onOpenSideEffectsModal: (nudge: Nudge) => void;
+    onViewNudges?: (nudges: Nudge[]) => void;
 }
 
 export function LumiBotBanner({
@@ -44,8 +47,9 @@ export function LumiBotBanner({
     onRespondToNudge,
     onOpenLogModal,
     onOpenSideEffectsModal,
+    onViewNudges,
 }: LumiBotBannerProps) {
-
+    const router = useRouter();
     const [isExpanded, setIsExpanded] = useState(false);
     const [slideAnim] = useState(new Animated.Value(0));
 
@@ -68,11 +72,19 @@ export function LumiBotBanner({
     }, [nudges.length, slideAnim]);
 
     const handleToggle = useCallback(() => {
+        void haptic.selection();
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setIsExpanded(prev => !prev);
-    }, []);
+        setIsExpanded(prev => {
+            const next = !prev;
+            if (next && nudges.length > 0) {
+                onViewNudges?.(nudges);
+            }
+            return next;
+        });
+    }, [nudges, onViewNudges]);
 
     const handleAction = useCallback((nudge: Nudge) => {
+        void haptic.medium();
         if (nudge.actionType === 'acknowledge' || nudge.actionType === 'view_insight') {
             // Introduction/insight nudge - just dismiss it after acknowledging
             onUpdateNudge(nudge.id, { status: 'dismissed' });
@@ -163,6 +175,7 @@ export function LumiBotBanner({
 
 
     const handleSnooze = useCallback((nudge: Nudge) => {
+        void haptic.light();
         Alert.alert(
             'Snooze',
             'When should I remind you?',
@@ -181,6 +194,7 @@ export function LumiBotBanner({
     }, [onUpdateNudge]);
 
     const handleDismiss = useCallback((nudge: Nudge) => {
+        void haptic.warning();
         Alert.alert(
             'Dismiss',
             'This reminder won\'t appear again.',
@@ -258,6 +272,16 @@ export function LumiBotBanner({
                             onDismiss={handleDismiss}
                         />
                     ))}
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.historyButton,
+                            pressed && styles.historyButtonPressed,
+                        ]}
+                        onPress={() => router.push('/lumibot-history')}
+                    >
+                        <Ionicons name="time-outline" size={16} color={Colors.textMuted} />
+                        <Text style={styles.historyButtonText}>View history</Text>
+                    </Pressable>
                     <Text style={styles.disclaimer}>
                         For tracking purposes only. Not medical advice.
                     </Text>
@@ -305,6 +329,20 @@ const styles = StyleSheet.create({
     },
     expandedContent: {
         marginTop: spacing(3),
+    },
+    historyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacing(2),
+        paddingVertical: spacing(2),
+    },
+    historyButtonText: {
+        fontSize: 13,
+        color: Colors.textMuted,
+    },
+    historyButtonPressed: {
+        opacity: 0.7,
     },
     disclaimer: {
         fontSize: 11,

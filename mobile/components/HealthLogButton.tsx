@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from './ui';
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from './lumibot';
 import { api } from '../lib/api/client';
+import { haptic } from '../lib/haptics';
 import type { BloodPressureValue, GlucoseValue, AlertLevel } from '@lumimd/sdk';
 import type { WeightValue } from './lumibot';
 
@@ -31,11 +32,13 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handlePress = () => {
+        void haptic.selection();
         // Toggle the menu
         setShowMenu(prev => !prev);
     };
 
     const handleMenuOption = (option: 'bp' | 'glucose' | 'weight') => {
+        void haptic.light();
         setShowMenu(false);
         if (option === 'bp') {
             setShowBPModal(true);
@@ -66,6 +69,7 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
             });
 
             Alert.alert('Success', 'Blood pressure logged successfully');
+            void haptic.success();
             setShowBPModal(false);
 
             return {
@@ -76,6 +80,7 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
         } catch (error) {
             console.error('[HealthLogButton] Error logging BP:', error);
             Alert.alert('Error', 'Failed to log blood pressure. Please try again.');
+            void haptic.error();
             return {};
         } finally {
             setIsSubmitting(false);
@@ -100,6 +105,7 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
             });
 
             Alert.alert('Success', 'Blood glucose logged successfully');
+            void haptic.success();
             setShowGlucoseModal(false);
 
             return {
@@ -110,6 +116,7 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
         } catch (error) {
             console.error('[HealthLogButton] Error logging glucose:', error);
             Alert.alert('Error', 'Failed to log blood glucose. Please try again.');
+            void haptic.error();
             return {};
         } finally {
             setIsSubmitting(false);
@@ -134,12 +141,14 @@ export function HealthLogButton({ onHistoryPress }: HealthLogButtonProps) {
             });
 
             Alert.alert('Success', 'Weight logged successfully');
+            void haptic.success();
             setShowWeightModal(false);
 
             return {};
         } catch (error) {
             console.error('[HealthLogButton] Error logging weight:', error);
             Alert.alert('Error', 'Failed to log weight. Please try again.');
+            void haptic.error();
             return {};
         } finally {
             setIsSubmitting(false);

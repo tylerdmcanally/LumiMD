@@ -27,6 +27,7 @@ export const queryKeys = {
   medication: (id: string) => ['medications', id] as const,
   profile: ['profile'] as const,
   nudges: ['nudges'] as const,
+  nudgesHistory: ['nudges', 'history'] as const,
   healthLogs: ['healthLogs'] as const,
   healthLogsSummary: ['healthLogs', 'summary'] as const,
 };
@@ -173,6 +174,21 @@ export function createApiHooks(api: ApiClient) {
   }
 
   /**
+   * Fetch nudge history
+   */
+  function useNudgeHistory(
+    limit?: number,
+    options?: Omit<UseQueryOptions<Nudge[], Error>, 'queryKey' | 'queryFn'>
+  ) {
+    return useQuery({
+      queryKey: [...queryKeys.nudgesHistory, limit],
+      queryFn: () => api.nudges.history(limit),
+      staleTime: 60 * 1000, // 1 minute
+      ...options,
+    });
+  }
+
+  /**
    * Fetch health logs
    */
   function useHealthLogs(
@@ -231,6 +247,31 @@ export function createApiHooks(api: ApiClient) {
   }
 
   /**
+   * Mutation for sending nudge feedback
+   */
+  function useSendNudgeFeedback() {
+    const queryClient = useQueryClient();
+    return useMutation({
+      mutationFn: ({ id, data }: { id: string; data: { helpful: boolean; note?: string } }) =>
+        api.nudges.feedback(id, data),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudges });
+        queryClient.invalidateQueries({ queryKey: queryKeys.nudgesHistory });
+      },
+    });
+  }
+
+  /**
+   * Mutation for tracking nudge analytics events
+   */
+  function useTrackNudgeEvent() {
+    return useMutation({
+      mutationFn: ({ id, data }: { id: string; data: { type: 'view' | 'action' | 'feedback'; metadata?: Record<string, unknown> } }) =>
+        api.nudges.trackEvent(id, data),
+    });
+  }
+
+  /**
    * Mutation for creating health log
    */
   function useCreateHealthLog() {
@@ -256,10 +297,13 @@ export function createApiHooks(api: ApiClient) {
     useUserProfile,
     // LumiBot
     useNudges,
+    useNudgeHistory,
     useHealthLogs,
     useHealthLogsSummary,
     useUpdateNudge,
     useRespondToNudge,
+    useSendNudgeFeedback,
+    useTrackNudgeEvent,
     useCreateHealthLog,
   };
 }

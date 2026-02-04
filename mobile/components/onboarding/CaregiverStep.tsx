@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 export type CaregiverEntry = {
     id: string;
@@ -91,9 +92,11 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
         if (!hasValidAdditionalInput) {
             if (showAdditionalForm) {
                 // Just hide if nothing entered
+                void haptic.light();
                 setShowAdditionalForm(false);
             } else {
                 // Show the form
+                void haptic.selection();
                 setShowAdditionalForm(true);
             }
             return;
@@ -101,6 +104,7 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
 
         // Validate email
         if (!validateEmail(additionalForm.email.trim())) {
+            void haptic.warning();
             setAdditionalEmailError('Please enter a valid email address');
             return;
         }
@@ -114,12 +118,14 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
         };
 
         setAdditionalCaregivers([...additionalCaregivers, newCaregiver]);
+        void haptic.success();
         setAdditionalForm(emptyForm);
         setAdditionalEmailError(null);
         setShowAdditionalForm(false);
     };
 
     const handleRemoveCaregiver = (id: string) => {
+        void haptic.warning();
         setAdditionalCaregivers(additionalCaregivers.filter(c => c.id !== id));
     };
 
@@ -130,6 +136,7 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
         // Add primary caregiver if filled
         if (hasValidPrimaryInput) {
             if (!validateEmail(primaryForm.email.trim())) {
+                void haptic.warning();
                 setPrimaryEmailError('Please enter a valid email address');
                 return;
             }
@@ -145,6 +152,7 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
         // Add additional form caregiver if filled
         if (hasValidAdditionalInput) {
             if (!validateEmail(additionalForm.email.trim())) {
+                void haptic.warning();
                 setAdditionalEmailError('Please enter a valid email address');
                 return;
             }
@@ -159,6 +167,7 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
 
         // Update parent with all caregivers
         onUpdate(allCaregivers);
+        void haptic.success();
 
         // Give state time to propagate, then proceed
         setTimeout(() => onNext(), 100);
@@ -213,7 +222,10 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
                 <Text style={styles.label}>Relationship (optional)</Text>
                 <TouchableOpacity
                     style={styles.pickerButton}
-                    onPress={() => setRelationshipOpen(!relationshipOpen)}
+                    onPress={() => {
+                        void haptic.selection();
+                        setRelationshipOpen(!relationshipOpen);
+                    }}
                 >
                     <Text style={form.relationship ? styles.pickerText : styles.pickerPlaceholder}>
                         {form.relationship || 'Select relationship'}
@@ -234,6 +246,7 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
                                     form.relationship === rel && styles.pickerOptionSelected,
                                 ]}
                                 onPress={() => {
+                                    void haptic.selection();
                                     setForm({ ...form, relationship: rel });
                                     setRelationshipOpen(false);
                                 }}
@@ -266,7 +279,13 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
             >
                 {/* Back Button */}
                 {onBack && (
-                    <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => {
+                            void haptic.selection();
+                            onBack();
+                        }}
+                    >
                         <Ionicons name="arrow-back" size={24} color={Colors.text} />
                     </TouchableOpacity>
                 )}
@@ -328,8 +347,10 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
                     <TouchableOpacity
                         style={styles.addAnotherButton}
                         onPress={() => {
+                            void haptic.selection();
                             // Move current primary to additional list
                             if (!validateEmail(primaryForm.email.trim())) {
+                                void haptic.warning();
                                 setPrimaryEmailError('Please enter a valid email address');
                                 return;
                             }
@@ -342,6 +363,7 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
                             };
 
                             setAdditionalCaregivers([...additionalCaregivers, newCaregiver]);
+                            void haptic.success();
                             setPrimaryForm(emptyForm);
                             setPrimaryEmailError(null);
                         }}
@@ -362,7 +384,13 @@ export function CaregiverStep({ caregivers, onUpdate, onNext, onBack, onSkip }: 
                     </TouchableOpacity>
 
                     {onSkip && !hasPrimaryInput && additionalCaregivers.length === 0 && (
-                        <TouchableOpacity style={styles.skipButton} onPress={onSkip}>
+                        <TouchableOpacity
+                            style={styles.skipButton}
+                            onPress={() => {
+                                void haptic.light();
+                                onSkip();
+                            }}
+                        >
                             <Text style={styles.skipButtonText}>Skip for now</Text>
                         </TouchableOpacity>
                     )}

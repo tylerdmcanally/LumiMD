@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
+import { haptic } from '../lib/haptics';
 import {
   getNotificationPermissions,
   getExpoPushToken,
@@ -15,7 +16,6 @@ import {
   unregisterPushToken,
 } from '../lib/notifications';
 import { api } from '../lib/api/client';
-import { openManageSubscriptions, restorePurchases } from '../lib/store';
 import { useConsentFlow } from '../lib/hooks/useConsentFlow';
 import { US_STATES, requiresTwoPartyConsent } from '../lib/location';
 import { StateSelector } from '../components/consent';
@@ -82,6 +82,7 @@ export default function SettingsScreen() {
   }, [user]);
 
   const handlePushToggle = async (enabled: boolean) => {
+    void haptic.selection();
     setIsLoadingPush(true);
     try {
       if (enabled) {
@@ -92,7 +93,9 @@ export default function SettingsScreen() {
           await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
           await registerPushToken(token);
           setPushEnabled(true);
+          void haptic.success();
         } else {
+          void haptic.warning();
           Alert.alert(
             'Permission Required',
             'Please enable notifications in your device settings to receive push notifications.',
@@ -111,9 +114,11 @@ export default function SettingsScreen() {
           setPushToken(null);
         }
         setPushEnabled(false);
+        void haptic.success();
       }
     } catch (error) {
       console.error('[Settings] Error toggling push notifications:', error);
+      void haptic.error();
       Alert.alert('Error', 'Failed to update notification settings. Please try again.');
       // Revert toggle state on error
       setPushEnabled(!enabled);
@@ -123,6 +128,7 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = async () => {
+    void haptic.warning();
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -132,6 +138,7 @@ export default function SettingsScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            void haptic.light();
             // Token cleanup is now handled centrally in AuthContext.signOut()
             setPushToken(null);
             setPushEnabled(false);
@@ -144,14 +151,17 @@ export default function SettingsScreen() {
   };
 
   const openLink = (url: string) => {
+    void haptic.selection();
     Linking.openURL(url);
   };
 
   const handleExportData = async () => {
     if (!user) {
+      void haptic.warning();
       Alert.alert('Not signed in', 'Please sign in to export your data.');
       return;
     }
+    void haptic.medium();
     setIsExporting(true);
     try {
       const data = await api.user.exportData();
@@ -162,6 +172,7 @@ export default function SettingsScreen() {
       });
     } catch (error) {
       console.error('[Settings] Export failed', error);
+      void haptic.error();
       Alert.alert('Export failed', 'Unable to export your data right now. Please try again.');
     } finally {
       setIsExporting(false);
@@ -170,9 +181,11 @@ export default function SettingsScreen() {
 
   const handleExportProviderReport = async () => {
     if (!user) {
+      void haptic.warning();
       Alert.alert('Not signed in', 'Please sign in to export your report.');
       return;
     }
+    void haptic.medium();
     setIsExportingReport(true);
     try {
       // Get auth token
@@ -206,6 +219,7 @@ export default function SettingsScreen() {
       }
     } catch (error) {
       console.error('[Settings] Provider report export failed', error);
+      void haptic.error();
       Alert.alert('Export failed', 'Unable to generate provider report. Please try again.');
     } finally {
       setIsExportingReport(false);
@@ -214,10 +228,12 @@ export default function SettingsScreen() {
 
   const handleDeleteAccount = () => {
     if (!user) {
+      void haptic.warning();
       Alert.alert('Not signed in', 'Please sign in to delete your account.');
       return;
     }
 
+    void haptic.warning();
     Alert.alert(
       'Delete Account',
       'This will permanently delete your visits, medications, action items, and caregiver access. This cannot be undone.',
@@ -227,13 +243,16 @@ export default function SettingsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            void haptic.heavy();
             setIsDeleting(true);
             try {
               await api.user.deleteAccount();
               await signOut();
+              void haptic.success();
               router.replace('/sign-in');
             } catch (error) {
               console.error('[Settings] Delete account failed', error);
+              void haptic.error();
               Alert.alert('Delete failed', 'Unable to delete your account. Please try again.');
             } finally {
               setIsDeleting(false);
@@ -249,7 +268,13 @@ export default function SettingsScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Pressable
+            onPress={() => {
+              void haptic.selection();
+              router.back();
+            }}
+            style={styles.backButton}
+          >
             <Ionicons name="chevron-back" size={28} color={Colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Settings</Text>
@@ -306,7 +331,10 @@ export default function SettingsScreen() {
 
               <Pressable
                 style={styles.linkRow}
-                onPress={() => router.replace('/caregiver-sharing')}
+                onPress={() => {
+                  void haptic.selection();
+                  router.replace('/caregiver-sharing');
+                }}
               >
                 <View style={styles.settingIcon}>
                   <Ionicons name="people-outline" size={22} color={Colors.primary} />
@@ -329,7 +357,10 @@ export default function SettingsScreen() {
             <Card style={styles.card}>
               <Pressable
                 style={styles.linkRow}
-                onPress={() => setShowStateSelector(true)}
+                onPress={() => {
+                  void haptic.selection();
+                  setShowStateSelector(true);
+                }}
               >
                 <View style={styles.settingIcon}>
                   <Ionicons name="location-outline" size={22} color={Colors.primary} />
@@ -356,10 +387,13 @@ export default function SettingsScreen() {
                   <Pressable
                     style={styles.linkRow}
                     onPress={async () => {
+                      void haptic.selection();
                       const granted = await requestLocationPermission();
                       if (granted) {
+                        void haptic.success();
                         await refreshLocation();
                       } else {
+                        void haptic.warning();
                         Alert.alert(
                           'Permission Required',
                           'Enable location access in Settings to automatically detect your state.',
@@ -473,51 +507,6 @@ export default function SettingsScreen() {
             </Card>
           </View>
 
-          {/* Subscription */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Subscription</Text>
-            <Card style={styles.card}>
-              <Pressable
-                style={styles.linkRow}
-                onPress={() => {
-                  openManageSubscriptions().catch((e) =>
-                    Alert.alert('Unable to open', e?.message ?? 'Please try again.'),
-                  );
-                }}
-              >
-                <View style={styles.settingIcon}>
-                  <Ionicons name="card-outline" size={22} color={Colors.textMuted} />
-                </View>
-                <Text style={styles.linkLabel}>Manage subscription</Text>
-                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
-              </Pressable>
-
-              <View style={styles.divider} />
-
-              <Pressable
-                style={styles.linkRow}
-                onPress={async () => {
-                  try {
-                    const restored = await restorePurchases();
-                    if (restored) {
-                      Alert.alert('Purchases Restored', 'Your previous purchases have been restored.');
-                    } else {
-                      Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
-                    }
-                  } catch (e: any) {
-                    Alert.alert('Restore failed', e?.message ?? 'Please try again.');
-                  }
-                }}
-              >
-                <View style={styles.settingIcon}>
-                  <Ionicons name="refresh-circle-outline" size={22} color={Colors.textMuted} />
-                </View>
-                <Text style={styles.linkLabel}>Restore purchases</Text>
-                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
-              </Pressable>
-            </Card>
-          </View>
-
           {/* Sign Out */}
           <View style={styles.section}>
             <Pressable
@@ -544,18 +533,27 @@ export default function SettingsScreen() {
         hasLocationPermission={hasLocationPermission ?? false}
         onSelect={async (stateCode) => {
           await setManualState(stateCode);
+          void haptic.success();
         }}
         onUseDeviceLocation={async () => {
+          void haptic.selection();
           if (hasLocationPermission) {
             await clearManualState();
+            void haptic.success();
           } else {
             const granted = await requestLocationPermission();
             if (granted) {
               await clearManualState();
+              void haptic.success();
+            } else {
+              void haptic.warning();
             }
           }
         }}
-        onClose={() => setShowStateSelector(false)}
+        onClose={() => {
+          void haptic.light();
+          setShowStateSelector(false);
+        }}
       />
     </SafeAreaView>
   );

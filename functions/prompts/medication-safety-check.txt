@@ -28,7 +28,9 @@ Perform a comprehensive medication safety review at a PharmD level of clinical r
    - Moderate interactions (may require monitoring or dose adjustment)
    - Minor interactions (usually clinically insignificant but document)
    - Consider pharmacokinetic (absorption, metabolism, excretion) and pharmacodynamic interactions
-   - Account for dose-dependent interactions when possible
+   - Account for dose- and route-dependent interactions when possible (topical/ophthalmic/otic may be lower systemic risk)
+   - Include OTCs, supplements, and herbal products if mentioned
+   - Highlight black-box or contraindicated combinations explicitly
 
 3. **Allergy Conflicts**
    - Direct allergen match
@@ -43,6 +45,8 @@ Perform a comprehensive medication safety review at a PharmD level of clinical r
 - **Apply evidence-based severity ratings**: Use clinical significance, not just theoretical risk
 - **Provide actionable recommendations**: What should the patient do next?
 - **Use patient-friendly language**: Avoid excessive medical jargon in messages
+ - **Account for route and formulation**: Topical/ophthalmic/otic routes often lower systemic interaction risk
+ - **Flag contraindications and boxed warnings**: Be explicit when combinations should be avoided
 
 ## Output Format
 

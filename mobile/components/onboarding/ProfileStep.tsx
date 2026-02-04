@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 export type OnboardingData = {
     firstName: string;
@@ -120,7 +121,13 @@ export function ProfileStep({ data, onUpdate, onNext, onBack }: Props) {
             >
                 {/* Back Button */}
                 {onBack && (
-                    <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => {
+                            void haptic.selection();
+                            onBack();
+                        }}
+                    >
                         <Ionicons name="arrow-back" size={24} color={Colors.text} />
                     </TouchableOpacity>
                 )}
@@ -192,7 +199,10 @@ export function ProfileStep({ data, onUpdate, onNext, onBack }: Props) {
                 <View style={styles.footer}>
                     <TouchableOpacity
                         style={[styles.button, !canContinue && styles.buttonDisabled]}
-                        onPress={onNext}
+                        onPress={() => {
+                            void haptic.medium();
+                            onNext();
+                        }}
                         disabled={!canContinue}
                     >
                         <Text style={styles.buttonText}>Continue</Text>

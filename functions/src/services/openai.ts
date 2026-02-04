@@ -25,6 +25,11 @@ export interface MedicationChangeEntry {
     recommendation: string;
     conflictingMedication?: string;
     allergen?: string;
+    source?: 'hardcoded' | 'ai' | 'external';
+    externalIds?: {
+      rxcui?: string;
+      rxcuiPair?: string[];
+    };
   }>;
 }
 

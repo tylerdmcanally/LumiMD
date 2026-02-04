@@ -1,16 +1,24 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Card, Colors, Radius, spacing } from './ui';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { haptic } from '../lib/haptics';
 
 export type ActionItem = { id: string; title: string; subtitle: string; due?: string; critical?: boolean };
 
 export function ActionItemsCard({ items, onAdd }: { items: ActionItem[]; onAdd: () => void }) {
+  const handleAdd = () => {
+    void haptic.selection();
+    onAdd();
+  };
+
   return (
     <Card>
       <View style={styles.header}>
         <Text style={styles.h6}>Action Items</Text>
-        <Ionicons name="add" size={20} color={Colors.text} onPress={onAdd} />
+        <Pressable onPress={handleAdd} hitSlop={8}>
+          <Ionicons name="add" size={20} color={Colors.text} />
+        </Pressable>
       </View>
 
       {items.length === 0 ? (

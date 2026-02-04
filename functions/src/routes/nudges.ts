@@ -45,6 +45,46 @@ const respondToNudgeSchema = z.object({
     sideEffects: z.array(z.string()).optional(), // Side effect IDs when having_issues
 });
 
+const nudgeFeedbackSchema = z.object({
+    helpful: z.boolean(),
+    note: z.string().max(500).optional(),
+});
+
+const nudgeEventSchema = z.object({
+    type: z.enum(['view', 'action', 'feedback']),
+    metadata: z.record(z.unknown()).optional(),
+});
+
+function serializeFeedback(
+    feedback?: { helpful: boolean; note?: string; createdAt?: admin.firestore.Timestamp }
+): { helpful: boolean; note?: string; createdAt: string } | undefined {
+    if (!feedback || !feedback.createdAt) return undefined;
+    return {
+        helpful: feedback.helpful,
+        note: feedback.note,
+        createdAt: feedback.createdAt.toDate().toISOString(),
+    };
+}
+
+async function recordNudgeEvent(params: {
+    nudgeId: string;
+    userId: string;
+    type: 'view' | 'action' | 'feedback';
+    metadata?: Record<string, unknown>;
+}): Promise<void> {
+    const { nudgeId, userId, type, metadata } = params;
+    await getDb()
+        .collection('nudges')
+        .doc(nudgeId)
+        .collection('events')
+        .add({
+            userId,
+            type,
+            metadata: metadata || null,
+            createdAt: admin.firestore.Timestamp.now(),
+        });
+}
+
 // =============================================================================
 // GET /v1/nudges - Get active nudges for user
 // =============================================================================
@@ -71,6 +111,9 @@ nudgesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
             sequenceDay: nudge.sequenceDay,
             status: nudge.status,
             createdAt: nudge.createdAt.toDate().toISOString(),
+            feedback: serializeFeedback(
+                nudge.feedback as { helpful: boolean; note?: string; createdAt?: admin.firestore.Timestamp } | undefined
+            ),
         }));
 
         functions.logger.info(`[nudges] Retrieved ${response.length} active nudges for user ${userId}`);
@@ -399,8 +442,27 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
 
         // Create follow-up nudge if needed
         let followUpCreated = false;
-        if (interpretation.followUpNeeded && interpretation.followUp) {
+        if (
+            interpretation.followUpNeeded &&
+            interpretation.followUp &&
+            interpretation.followUp.urgency !== 'none' &&
+            interpretation.sentiment !== 'positive'
+        ) {
             try {
+                // Avoid duplicate follow-ups for the same source nudge
+                const existingFollowUp = await getDb()
+                    .collection('nudges')
+                    .where('userId', '==', userId)
+                    .where('sourceNudgeId', '==', nudgeId)
+                    .where('status', 'in', ['pending', 'active'])
+                    .limit(1)
+                    .get();
+
+                if (!existingFollowUp.empty) {
+                    functions.logger.info('[nudges] Follow-up already exists for source nudge', {
+                        nudgeId,
+                    });
+                } else {
                 const followUp = interpretation.followUp;
                 const scheduledFor = calculateFollowUpDate(followUp.urgency);
 
@@ -431,6 +493,7 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
                     urgency: followUp.urgency,
                     reason: followUp.reason,
                 });
+                }
             } catch (followUpError) {
                 functions.logger.error('[nudges] Failed to create follow-up nudge:', followUpError);
             }
@@ -541,6 +604,9 @@ nudgesRouter.get('/history', requireAuth, async (req: AuthRequest, res) => {
                 sequenceDay: data.sequenceDay,
                 status: data.status,
                 createdAt: data.createdAt?.toDate().toISOString(),
+                feedback: serializeFeedback(
+                    data.feedback as { helpful: boolean; note?: string; createdAt?: admin.firestore.Timestamp } | undefined
+                ),
             };
         });
 
@@ -551,6 +617,138 @@ nudgesRouter.get('/history', requireAuth, async (req: AuthRequest, res) => {
         res.status(500).json({
             code: 'server_error',
             message: 'Failed to fetch nudge history',
+        });
+    }
+});
+
+// =============================================================================
+// POST /v1/nudges/:id/feedback - Record nudge feedback
+// =============================================================================
+
+nudgesRouter.post('/:id/feedback', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+        const nudgeId = req.params.id;
+
+        const data = nudgeFeedbackSchema.parse(req.body);
+
+        const nudgeRef = getDb().collection('nudges').doc(nudgeId);
+        const nudgeDoc = await nudgeRef.get();
+
+        if (!nudgeDoc.exists) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Nudge not found',
+            });
+            return;
+        }
+
+        const nudge = nudgeDoc.data()!;
+        if (nudge.userId !== userId) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this nudge',
+            });
+            return;
+        }
+
+        const now = admin.firestore.Timestamp.now();
+        await nudgeRef.update({
+            feedback: {
+                helpful: data.helpful,
+                note: data.note,
+                createdAt: now,
+            },
+            updatedAt: now,
+        });
+
+        await recordNudgeEvent({
+            nudgeId,
+            userId,
+            type: 'feedback',
+            metadata: { helpful: data.helpful },
+        });
+
+        functions.logger.info(`[nudges] Recorded feedback for nudge ${nudgeId}`, {
+            userId,
+            helpful: data.helpful,
+        });
+
+        res.json({
+            id: nudgeId,
+            message: 'Feedback recorded',
+        });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            res.status(400).json({
+                code: 'validation_failed',
+                message: 'Invalid request body',
+                details: error.errors,
+            });
+            return;
+        }
+
+        functions.logger.error('[nudges] Error recording feedback:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to record feedback',
+        });
+    }
+});
+
+// =============================================================================
+// POST /v1/nudges/:id/events - Record nudge analytics events
+// =============================================================================
+
+nudgesRouter.post('/:id/events', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+        const nudgeId = req.params.id;
+
+        const data = nudgeEventSchema.parse(req.body);
+
+        const nudgeRef = getDb().collection('nudges').doc(nudgeId);
+        const nudgeDoc = await nudgeRef.get();
+
+        if (!nudgeDoc.exists) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Nudge not found',
+            });
+            return;
+        }
+
+        const nudge = nudgeDoc.data()!;
+        if (nudge.userId !== userId) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this nudge',
+            });
+            return;
+        }
+
+        await recordNudgeEvent({
+            nudgeId,
+            userId,
+            type: data.type,
+            metadata: data.metadata,
+        });
+
+        res.json({ id: nudgeId, message: 'Event recorded' });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            res.status(400).json({
+                code: 'validation_failed',
+                message: 'Invalid request body',
+                details: error.errors,
+            });
+            return;
+        }
+
+        functions.logger.error('[nudges] Error recording event:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to record event',
         });
     }
 });

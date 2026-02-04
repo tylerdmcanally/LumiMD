@@ -24,6 +24,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { addActionToCalendar, removeCalendarEvent } from '../lib/calendar';
 import { api } from '../lib/api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { haptic } from '../lib/haptics';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';
@@ -99,6 +100,7 @@ export default function ActionsScreen() {
   }, [actions]);
 
   const handleToggle = (action: any) => {
+    void haptic.light();
     toggleAction({
       id: action.id,
       completed: !action.completed,
@@ -123,7 +125,9 @@ export default function ActionsScreen() {
   };
 
   const handleAddToCalendar = async (action: any) => {
+    void haptic.medium();
     if (!action.dueAt) {
+      void haptic.warning();
       Alert.alert(
         'No Due Date',
         'This action item does not have a due date set. Please add a due date first.',
@@ -135,6 +139,7 @@ export default function ActionsScreen() {
     const result = await addActionToCalendar(action);
 
     if (result.success) {
+      void haptic.success();
       const updatedEvents = {
         ...(action.calendarEvents || {}),
         [platformKey]: {
@@ -158,6 +163,7 @@ export default function ActionsScreen() {
         [{ text: 'OK' }]
       );
     } else {
+      void haptic.error();
       Alert.alert(
         'Calendar Error',
         result.error || 'Failed to add action item to calendar. Please check your calendar permissions.',
@@ -169,12 +175,14 @@ export default function ActionsScreen() {
   const handleRemoveFromCalendar = async (action: any) => {
     const platformEvent = action.calendarEvents?.[platformKey];
     if (!platformEvent) {
+      void haptic.warning();
       Alert.alert('Not in Calendar', 'This action item is not currently added to your calendar.', [
         { text: 'OK' },
       ]);
       return;
     }
 
+    void haptic.warning();
     const confirmed = await new Promise<boolean>((resolve) => {
       Alert.alert(
         'Remove from Calendar',
@@ -190,6 +198,7 @@ export default function ActionsScreen() {
 
     const removalResult = await removeCalendarEvent(platformEvent);
     if (!removalResult.success) {
+      void haptic.error();
       Alert.alert(
         'Calendar Error',
         removalResult.error || 'Unable to remove this event from your calendar. Please try again.',
@@ -210,6 +219,7 @@ export default function ActionsScreen() {
     }
 
     Alert.alert('Removed', 'The calendar event has been removed.', [{ text: 'OK' }]);
+    void haptic.success();
   };
 
   const renderActionRow = (action: any, isLast: boolean = false) => {
@@ -285,13 +295,26 @@ export default function ActionsScreen() {
           }
         >
           <View style={styles.header}>
-            <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                void haptic.selection();
+                router.back();
+              }}
+              style={styles.backButton}
+            >
               <Ionicons name="chevron-back" size={24} color={Colors.text} />
             </Pressable>
             <View style={styles.headerTitleContainer}>
               <Text style={styles.title}>Action Items</Text>
             </View>
-            <Pressable style={styles.webLink} onPress={openWebActions}>
+            <Pressable
+              style={styles.webLink}
+              onPress={() => {
+                void haptic.selection();
+                openWebActions();
+              }}
+            >
               <Ionicons name="open-outline" size={18} color={Colors.primary} />
               <Text style={styles.webLinkText}>Manage on Web</Text>
             </Pressable>
@@ -340,7 +363,10 @@ export default function ActionsScreen() {
               <Card style={styles.sectionCard}>
                 <Pressable
                   style={styles.sectionHeader}
-                  onPress={() => setShowCompleted((prev) => !prev)}
+                  onPress={() => {
+                    void haptic.selection();
+                    setShowCompleted((prev) => !prev);
+                  }}
                 >
                   <View style={styles.sectionHeaderLeft}>
                     <Text style={styles.sectionTitle}>Completed</Text>

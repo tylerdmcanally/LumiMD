@@ -210,6 +210,7 @@ function convertAIWarning(aiWarning: AIWarningResponse['warnings'][0]): Medicati
     message: aiWarning.message,
     details: aiWarning.details,
     recommendation: aiWarning.recommendation,
+    source: 'ai',
   };
 
   // Only add optional fields if they exist

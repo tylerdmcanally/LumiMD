@@ -14,6 +14,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from './ui';
+import { haptic } from '../lib/haptics';
 
 export interface MedicationWarning {
   type: 'duplicate_therapy' | 'drug_interaction' | 'allergy_alert';
@@ -102,6 +103,7 @@ export const MedicationWarningBanner: React.FC<MedicationWarningBannerProps> = (
   );
 
   const toggleWarning = (index: number) => {
+    void haptic.selection();
     setExpandedIndex(expandedIndex === index ? null : index);
   };
 
@@ -220,6 +222,7 @@ export const MedicationWarningBanner: React.FC<MedicationWarningBannerProps> = (
           ]} 
           onPress={() => {
             console.log('[MedicationWarningBanner] Dismiss pressed');
+            void haptic.light();
             onDismiss();
           }}
         >

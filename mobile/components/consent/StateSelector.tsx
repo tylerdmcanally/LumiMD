@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
 import { US_STATES, requiresTwoPartyConsent } from '../../lib/location';
+import { haptic } from '../../lib/haptics';
 
 export interface StateSelectorProps {
   visible: boolean;
@@ -48,16 +49,19 @@ export function StateSelector({
   }, [visible, currentState, stateSource]);
 
   const handleSelect = (stateCode: string) => {
+    void haptic.selection();
     setSelectedState(stateCode);
     setUseAutoDetect(false);
   };
 
   const handleAutoDetect = () => {
+    void haptic.selection();
     setUseAutoDetect(true);
     setSelectedState(null);
   };
 
   const handleConfirm = () => {
+    void haptic.success();
     if (useAutoDetect && onUseDeviceLocation) {
       onUseDeviceLocation();
     } else if (selectedState) {
@@ -100,7 +104,13 @@ export function StateSelector({
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={onClose} style={styles.closeButton}>
+          <Pressable
+            onPress={() => {
+              void haptic.light();
+              onClose();
+            }}
+            style={styles.closeButton}
+          >
             <Ionicons name="close" size={24} color={Colors.text} />
           </Pressable>
           <Text style={styles.title}>Select State</Text>

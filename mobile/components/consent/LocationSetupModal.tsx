@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 export interface LocationSetupModalProps {
   visible: boolean;
@@ -35,11 +36,15 @@ export function LocationSetupModal({
   const [isRequesting, setIsRequesting] = useState(false);
 
   const handleEnableLocation = async () => {
+    void haptic.medium();
     setIsRequesting(true);
     try {
       const granted = await onEnableLocation();
       if (!granted) {
+        void haptic.warning();
         // Permission denied - user can still select manually
+      } else {
+        void haptic.success();
       }
     } finally {
       setIsRequesting(false);
@@ -56,7 +61,13 @@ export function LocationSetupModal({
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={onCancel} style={styles.closeButton}>
+          <Pressable
+            onPress={() => {
+              void haptic.light();
+              onCancel();
+            }}
+            style={styles.closeButton}
+          >
             <Ionicons name="close" size={24} color={Colors.text} />
           </Pressable>
           <Text style={styles.title}>Set Your Location</Text>
@@ -108,7 +119,10 @@ export function LocationSetupModal({
                 styles.secondaryOption,
                 pressed && styles.optionPressed,
               ]}
-              onPress={onSelectManually}
+              onPress={() => {
+                void haptic.selection();
+                onSelectManually();
+              }}
               disabled={isRequesting || isLoading}
             >
               <Ionicons name="list" size={20} color={Colors.primary} />

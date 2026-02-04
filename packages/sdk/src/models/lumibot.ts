@@ -18,6 +18,12 @@ export type NudgeActionType =
     | 'acknowledge'
     | 'view_insight';
 
+export interface NudgeFeedback {
+    helpful: boolean;
+    note?: string;
+    createdAt: string;
+}
+
 export interface Nudge {
     id: string;
     userId: string;
@@ -33,6 +39,7 @@ export interface Nudge {
     sequenceDay: number;
     status: NudgeStatus;
     createdAt: string;
+    feedback?: NudgeFeedback;
 }
 
 export type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
@@ -153,6 +160,16 @@ export interface RespondToNudgeRequest {
     response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning';
     note?: string;
     sideEffects?: string[]; // Side effect IDs when reporting issues
+}
+
+export interface NudgeFeedbackRequest {
+    helpful: boolean;
+    note?: string;
+}
+
+export interface NudgeEventRequest {
+    type: 'view' | 'action' | 'feedback';
+    metadata?: Record<string, unknown>;
 }
 
 export interface NudgeUpdateResponse {

@@ -507,7 +507,7 @@ const upsertMedication = async ({
   const display = entry.display ?? (note && note !== entry.note ? note : null);
   const originalText = entry.original ?? display ?? note ?? null;
 
-  const baseData = {
+  const baseData: Record<string, unknown> = {
     userId,
     name: entry.name,
     nameLower,
@@ -525,6 +525,10 @@ const upsertMedication = async ({
     medicationStatus: entry.status ?? null,
     medicationWarning: entry.warning ?? null,
   };
+
+  if (status === 'started' || status === 'changed') {
+    baseData.lastSafetyCheckAt = processedAt;
+  }
 
   if (existingDoc) {
     const updates: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = { ...baseData };

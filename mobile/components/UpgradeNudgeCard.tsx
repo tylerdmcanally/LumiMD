@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from './ui';
 import { NudgeType, getNudgeConfig, markNudgeShown, dismissNudge } from '../lib/conversionNudges';
+import { haptic } from '../lib/haptics';
 
 interface UpgradeNudgeCardProps {
   type: NudgeType;
@@ -23,6 +24,7 @@ export function UpgradeNudgeCard({ type, onDismiss, onSeePlans }: UpgradeNudgeCa
   const config = getNudgeConfig(type);
 
   const handleSeePlans = async () => {
+    void haptic.medium();
     await markNudgeShown(type);
     if (onSeePlans) {
       onSeePlans();
@@ -32,11 +34,13 @@ export function UpgradeNudgeCard({ type, onDismiss, onSeePlans }: UpgradeNudgeCa
   };
 
   const handleMaybeLater = async () => {
+    void haptic.light();
     await markNudgeShown(type);
     onDismiss?.();
   };
 
   const handleDontShowAgain = async () => {
+    void haptic.warning();
     await dismissNudge(type);
     onDismiss?.();
   };

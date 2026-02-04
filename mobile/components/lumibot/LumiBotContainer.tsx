@@ -22,6 +22,7 @@ import {
     useUpdateNudge,
     useRespondToNudge,
     useCreateHealthLog,
+    useTrackNudgeEvent,
 } from '../../lib/api/hooks';
 import type { Nudge, AlertLevel, BloodPressureValue, GlucoseValue } from '@lumimd/sdk';
 
@@ -49,18 +50,25 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
     const updateNudge = useUpdateNudge();
     const respondToNudge = useRespondToNudge();
     const createHealthLog = useCreateHealthLog();
+    const trackNudgeEvent = useTrackNudgeEvent();
+
+    const logNudgeEvent = useCallback((id: string, data: { type: 'view' | 'action' | 'feedback'; metadata?: Record<string, unknown> }) => {
+        trackNudgeEvent.mutate({ id, data }, { onError: () => null });
+    }, [trackNudgeEvent]);
 
     // Handlers
     const handleUpdateNudge = useCallback((id: string, data: { status: 'snoozed' | 'dismissed'; snoozeDays?: number }) => {
+        logNudgeEvent(id, { type: 'action', metadata: { action: data.status, snoozeDays: data.snoozeDays } });
         updateNudge.mutate({ id, data }, {
             onError: (err) => {
                 Alert.alert('Error', 'Failed to update nudge. Please try again.');
                 console.error('[LumiBot] Update nudge error:', err);
             },
         });
-    }, [updateNudge]);
+    }, [logNudgeEvent, updateNudge]);
 
     const handleRespondToNudge = useCallback((id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning'; note?: string; sideEffects?: string[] }) => {
+        logNudgeEvent(id, { type: 'action', metadata: { action: 'respond', response: data.response } });
         respondToNudge.mutate({ id, data }, {
             onSuccess: (result) => {
                 // Show confirmation with context-specific message from API
@@ -71,7 +79,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 console.error('[LumiBot] Respond to nudge error:', err);
             },
         });
-    }, [respondToNudge]);
+    }, [logNudgeEvent, respondToNudge]);
 
     // Open side effects modal when user reports issues
     const handleOpenSideEffectsModal = useCallback((nudge: Nudge) => {
@@ -92,6 +100,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
     }, [activeSideEffectsNudge, handleRespondToNudge]);
 
     const handleOpenLogModal = useCallback((nudge: Nudge) => {
+        logNudgeEvent(nudge.id, { type: 'action', metadata: { action: 'log', actionType: nudge.actionType } });
         if (nudge.actionType === 'log_bp') {
             setActiveBPNudge(nudge);
         } else if (nudge.actionType === 'log_glucose') {
@@ -104,7 +113,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             // Fallback for other action types
             Alert.alert('Coming Soon', 'This log type will be available soon!');
         }
-    }, []);
+    }, [logNudgeEvent]);
 
 
     const handleBPSubmit = useCallback(async (value: BloodPressureValue) => {
@@ -252,6 +261,11 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 onRespondToNudge={handleRespondToNudge}
                 onOpenLogModal={handleOpenLogModal}
                 onOpenSideEffectsModal={handleOpenSideEffectsModal}
+                onViewNudges={(visibleNudges) => {
+                    visibleNudges.forEach((nudge) => {
+                        logNudgeEvent(nudge.id, { type: 'view', metadata: { surface: 'banner' } });
+                    });
+                }}
             />
 
             <BPLogModal

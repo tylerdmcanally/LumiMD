@@ -58,6 +58,11 @@ export interface Nudge {
     completedAt?: Timestamp;
     dismissedAt?: Timestamp;
     responseValue?: string | Record<string, unknown>;
+    feedback?: {
+        helpful: boolean;
+        note?: string;
+        createdAt: Timestamp;
+    };
 
     // Metadata
     createdAt: Timestamp;
@@ -203,6 +208,11 @@ export interface NudgeResponse {
     sequenceDay: number;
     status: NudgeStatus;
     createdAt: string;
+    feedback?: {
+        helpful: boolean;
+        note?: string;
+        createdAt: string;
+    };
 }
 
 export interface HealthLogResponse {

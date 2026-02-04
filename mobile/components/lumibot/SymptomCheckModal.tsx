@@ -18,6 +18,7 @@ import {
 import Slider from '@react-native-assets/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../ui';
+import { haptic } from '../../lib/haptics';
 
 // =============================================================================
 // Types
@@ -96,6 +97,7 @@ export function SymptomCheckModal({
     const [orthopnea, setOrthopnea] = useState(false);
 
     const handleClose = useCallback(() => {
+        void haptic.light();
         // Reset state
         setBreathingDifficulty(1);
         setSwelling('none');
@@ -107,6 +109,7 @@ export function SymptomCheckModal({
     }, [onClose]);
 
     const toggleSwellingLocation = useCallback((location: string) => {
+        void haptic.selection();
         setSwellingLocations(prev =>
             prev.includes(location)
                 ? prev.filter(l => l !== location)
@@ -115,6 +118,7 @@ export function SymptomCheckModal({
     }, []);
 
     const handleSubmit = useCallback(async () => {
+        void haptic.medium();
         const result = await onSubmit({
             breathingDifficulty,
             swelling,
@@ -125,6 +129,7 @@ export function SymptomCheckModal({
         });
 
         if (!result.shouldShowAlert) {
+            void haptic.success();
             handleClose();
         }
     }, [breathingDifficulty, swelling, swellingLocations, energyLevel, cough, orthopnea, onSubmit, handleClose]);
@@ -199,7 +204,10 @@ export function SymptomCheckModal({
                                         styles.optionButton,
                                         swelling === option.value && styles.optionButtonSelected,
                                     ]}
-                                    onPress={() => setSwelling(option.value as typeof swelling)}
+                                    onPress={() => {
+                                        void haptic.selection();
+                                        setSwelling(option.value as typeof swelling);
+                                    }}
                                 >
                                     <Ionicons
                                         name={option.icon}
@@ -280,7 +288,10 @@ export function SymptomCheckModal({
                                     styles.yesNoButton,
                                     !cough && styles.yesNoButtonSelected,
                                 ]}
-                                onPress={() => setCough(false)}
+                                onPress={() => {
+                                    void haptic.selection();
+                                    setCough(false);
+                                }}
                             >
                                 <Text style={[
                                     styles.yesNoText,
@@ -292,7 +303,10 @@ export function SymptomCheckModal({
                                     styles.yesNoButton,
                                     cough && styles.yesNoButtonSelected,
                                 ]}
-                                onPress={() => setCough(true)}
+                                onPress={() => {
+                                    void haptic.selection();
+                                    setCough(true);
+                                }}
                             >
                                 <Text style={[
                                     styles.yesNoText,
@@ -317,7 +331,10 @@ export function SymptomCheckModal({
                                     styles.yesNoButton,
                                     !orthopnea && styles.yesNoButtonSelected,
                                 ]}
-                                onPress={() => setOrthopnea(false)}
+                                onPress={() => {
+                                    void haptic.selection();
+                                    setOrthopnea(false);
+                                }}
                             >
                                 <Text style={[
                                     styles.yesNoText,
@@ -329,7 +346,10 @@ export function SymptomCheckModal({
                                     styles.yesNoButton,
                                     orthopnea && styles.yesNoButtonSelected,
                                 ]}
-                                onPress={() => setOrthopnea(true)}
+                                onPress={() => {
+                                    void haptic.selection();
+                                    setOrthopnea(true);
+                                }}
                             >
                                 <Text style={[
                                     styles.yesNoText,

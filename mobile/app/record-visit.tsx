@@ -23,9 +23,9 @@ import { useConsentFlow } from '../lib/hooks/useConsentFlow';
 import { uploadAudioFile, UploadProgress } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
+import { haptic } from '../lib/haptics';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
-import { useCanRecord, useSubscription } from '../contexts/SubscriptionContext';
 import {
   ConsentRequiredModal,
   ConsentEducationalModal,
@@ -69,22 +69,6 @@ export default function RecordVisitScreen() {
     refreshLocation,
     hasLocationPermission,
   } = useConsentFlow();
-
-  const { canRecord, showPaywall } = useCanRecord();
-  const { freeVisitsUsed, isSubscribed, paywallEnabled, refreshSubscription } = useSubscription();
-  
-  // Track visits completed in this session (since freeVisitsUsed may not update immediately)
-  const sessionVisitsCompleted = useRef(0);
-  const lastKnownServerCount = useRef(freeVisitsUsed);
-  
-  // Reset session counter when server count increases (e.g., after app refresh)
-  useEffect(() => {
-    if (freeVisitsUsed > lastKnownServerCount.current) {
-      // Server caught up, reset our local counter
-      sessionVisitsCompleted.current = 0;
-      lastKnownServerCount.current = freeVisitsUsed;
-    }
-  }, [freeVisitsUsed]);
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -138,17 +122,6 @@ export default function RecordVisitScreen() {
 
   const handleStartRecording = async () => {
     try {
-      // Check subscription/trial status before allowing recording
-      // Must account for visits completed this session that may not be synced to server yet
-      const FREE_VISIT_LIMIT = 3;
-      const effectiveVisitsUsed = freeVisitsUsed + sessionVisitsCompleted.current;
-      const canRecordNow = !paywallEnabled || isSubscribed || (effectiveVisitsUsed < FREE_VISIT_LIMIT);
-      
-      if (!canRecordNow) {
-        showPaywall();
-        return;
-      }
-
       // Check microphone permission first
       if (!hasPermission) {
         const granted = await requestPermission();
@@ -326,6 +299,7 @@ export default function RecordVisitScreen() {
 
   const handleStopAndSave = async () => {
     try {
+      void haptic.heavy();
       await stopRecording();
     } catch (error: any) {
       console.error('[RecordVisit] Stop error:', error);
@@ -352,11 +326,13 @@ export default function RecordVisitScreen() {
     if (uploading || isFinished) return;
 
     if (isRecording || isPaused) {
+      void haptic.medium();
       await handlePauseToggle();
       return;
     }
 
     if (isIdle) {
+      void haptic.medium();
       await handleStartRecording();
     }
   };
@@ -395,63 +371,19 @@ export default function RecordVisitScreen() {
       });
 
       console.log('[RecordVisit] Visit created');
+      void haptic.success();
 
-      // Increment session counter and refresh subscription in background
-      sessionVisitsCompleted.current += 1;
-      refreshSubscription().catch(() => {}); // Fire and forget
-
-      // Success! Show trial status for free users
-      // Use freeVisitsUsed + sessionVisitsCompleted to account for visits not yet synced
-      const FREE_VISIT_LIMIT = 3;
-      const visitsAfterThis = freeVisitsUsed + sessionVisitsCompleted.current;
-      const showTrialStatus = paywallEnabled && !isSubscribed && visitsAfterThis <= FREE_VISIT_LIMIT;
-
-      if (showTrialStatus) {
-        const remaining = FREE_VISIT_LIMIT - visitsAfterThis;
-        Alert.alert(
-          'Visit Recorded',
-          remaining > 0
-            ? `Your visit is being processed.\n\nYou've used ${visitsAfterThis} of ${FREE_VISIT_LIMIT} free visits. ${remaining} remaining.`
-            : `Your visit is being processed.\n\nYou've used all ${FREE_VISIT_LIMIT} free visits. Subscribe to continue recording.`,
-          remaining > 0
-            ? [{ text: 'OK', onPress: () => { resetRecording(); router.replace('/'); } }]
-            : [
-                { text: 'Later', style: 'cancel', onPress: () => { resetRecording(); router.replace('/'); } },
-                { text: 'View Plans', onPress: () => { resetRecording(); router.replace('/paywall'); } },
-              ],
-          { cancelable: false }
-        );
-      } else {
-        Alert.alert(
-          'Visit Recorded',
-          'Your visit has been saved and is being processed.',
-          [{ text: 'OK', onPress: () => { resetRecording(); router.replace('/'); } }],
-          { cancelable: false }
-        );
-      }
+      Alert.alert(
+        'Visit Recorded',
+        'Your visit has been saved and is being processed.',
+        [{ text: 'OK', onPress: () => { resetRecording(); router.replace('/'); } }],
+        { cancelable: false }
+      );
     } catch (error: any) {
       console.error('[RecordVisit] Upload error:', error);
 
-      // Check for trial limit reached (402 Payment Required)
-      if (error?.status === 402 && error?.code === 'trial_limit_reached') {
-        Alert.alert(
-          'Free Trial Ended',
-          'You\'ve used all your free visits. Subscribe to continue recording.',
-          [
-            { text: 'Not Now', style: 'cancel', onPress: () => {
-              resetRecording();
-              router.back();
-            }},
-            { text: 'View Plans', onPress: () => {
-              resetRecording();
-              router.replace('/paywall');
-            }},
-          ]
-        );
-        return;
-      }
-
       showError(extractUserMessage(error, 'Failed to save your recording. Please try again.'));
+      void haptic.error();
       Alert.alert(
         'Upload Failed',
         extractUserMessage(error, 'Failed to save your recording. Please try again.'),
@@ -464,6 +396,7 @@ export default function RecordVisitScreen() {
 
   const handleUpload = () => {
     if (!uri || !user || uploading) return;
+    void haptic.medium();
 
     if (duration >= LONG_RECORDING_CONFIRM_THRESHOLD_MS) {
       Alert.alert(
@@ -487,6 +420,7 @@ export default function RecordVisitScreen() {
   };
 
   const handleCancel = () => {
+    void haptic.light();
     Alert.alert(
       'Cancel Recording',
       'Are you sure you want to cancel this recording?',
@@ -507,6 +441,11 @@ export default function RecordVisitScreen() {
         },
       ]
     );
+  };
+
+  const handleRetake = () => {
+    void haptic.light();
+    resetRecording();
   };
 
   // Warn before reaching the recording cap
@@ -650,9 +589,7 @@ export default function RecordVisitScreen() {
           <View style={styles.controls}>
             <Pressable
               style={[styles.actionButton, styles.secondaryButton]}
-              onPress={() => {
-                resetRecording();
-              }}
+              onPress={handleRetake}
             >
               <Ionicons name="refresh" size={20} color={Colors.primary} />
               <Text style={styles.secondaryButtonText}>Retake</Text>
