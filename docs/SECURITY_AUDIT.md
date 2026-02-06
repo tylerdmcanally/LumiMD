@@ -81,4 +81,4 @@ Notification timing:
 
 ---
 
-For detailed findings and current gaps, see `docs/SECURITY_AUDIT_REPORT.md`.
+For detailed findings and historical gaps snapshot, see `docs/archive/audits/SECURITY_AUDIT_REPORT.md`.

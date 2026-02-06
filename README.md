@@ -8,7 +8,7 @@ This repository contains the LumiMD mobile app, Firebase backend, and supporting
 - `functions/` – Firebase Functions (Express API, async processing triggers, AI services)
 - `web-portal/` – Next.js shell for the forthcoming management console
 - `firebase-setup/` – Security rules and TTL configuration
-- `docs/` – Documentation hub (guides, status reports, roadmaps, playbooks, references)
+- `docs/` – Documentation hub (guides, active references, current status reports)
 - `START-APP.sh` – Convenience script for launching the dev environment
 
 ## Documentation Hub
@@ -18,9 +18,10 @@ Key documents are grouped inside `docs/`:
 - `docs/README.md` – Documentation index and quick links
 - `docs/EXTERNAL-DEV-OVERVIEW.md` – Onboarding guide for outside reviewers
 - `docs/guides/` – Setup and onboarding guides (Quick Start, Firebase, mobile, app store)
-- `docs/architecture/` – System design and resilience roadmaps
+- `docs/architecture/` – Active system design docs
 - `docs/reference/` – Schema, implementation summaries, testing results
-- `docs/reports/` – Analysis and health reports
+- `docs/reports/` – Current operational reports
+- `docs/archive/` – Historical snapshots and superseded plans
 
 Refer to `docs/reports/SYSTEM-HEALTH-REPORT.md` for the latest system status.
 
@@ -60,4 +61,3 @@ firebase use lumimd-dev
 - Update `docs/reports/SYSTEM-HEALTH-REPORT.md` as milestones land
 
 Questions or new cleanup requests? Drop them in the backlog and we’ll keep iterating. 
-

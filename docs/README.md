@@ -24,10 +24,11 @@ docs/
 ├── CODEBASE-REFERENCE.md     # Master reference for AI agents & developers
 ├── TECHNICAL_OVERVIEW.md     # Non-engineer overview
 ├── features/                 # Deep dive into specific features
-├── architecture/             # System design and robustness specs
+├── architecture/             # Active system design docs
 ├── guides/                   # Setup and deployment guides
 ├── reference/                # Database schema, implementation details
-├── reports/                  # Analysis and health reports
+├── reports/                  # Current operational reports
+└── archive/                  # Historical snapshots and superseded plans
 ```
 
 ---
@@ -45,8 +46,6 @@ docs/
 | Document | Description |
 |----------|-------------|
 | [WEB-PROPERTIES.md](architecture/WEB-PROPERTIES.md) | Web portal vs marketing site structure |
-| [RESILIENCE-ROADMAP.md](architecture/RESILIENCE-ROADMAP.md) | System resilience and future robustness plan |
-| [ROBUSTNESS-ROADMAP.md](architecture/ROBUSTNESS-ROADMAP.md) | Detailed analysis of system stability |
 
 ---
 
@@ -83,9 +82,12 @@ docs/
 | Document | Description |
 |----------|-------------|
 | [SYSTEM-HEALTH-REPORT.md](reports/SYSTEM-HEALTH-REPORT.md) | Current system status |
-| [ANALYSIS-SUMMARY.md](reports/ANALYSIS-SUMMARY.md) | Codebase analysis |
-| [RATE_LIMIT_ANALYSIS.md](reports/RATE_LIMIT_ANALYSIS.md) | API rate limiting config |
-| [SECURITY_ROTATION_REQUIRED.md](reports/SECURITY_ROTATION_REQUIRED.md) | Security key rotation status |
+
+---
+
+## Archive
+
+Historical or superseded material is in [archive/README.md](archive/README.md).
 
 ---
 
