@@ -430,9 +430,9 @@ Not recommended for production due to token exposure in URLs.
 Questions or issues? Check:
 
 1. This README
-2. `/firebase-setup/TTL-SETUP.md`
-3. OpenAPI spec: `/functions/openapi.yaml`
-4. Dev Guide: `/Dev Guide.md` (Section 26)
+2. `../../firebase-setup/TTL-SETUP.md`
+3. OpenAPI spec: `../../functions/openapi.yaml`
+4. Architecture details: `../CODEBASE-REFERENCE.md`
 
 ## ✅ Checklist
 
@@ -452,5 +452,4 @@ Before deploying to production:
 ---
 
 **Built with ❤️ for LumiMD** | Last updated: November 2025
-
 

@@ -383,7 +383,6 @@ Firebase is now configured and ready. You can start building the auth flow and c
 
 **Questions?**
 - Firebase Docs: https://firebase.google.com/docs
-- LumiMD Dev Guide: `/Dev Guide.md`
-- Security Rules: `/firebase-setup/*.rules`
-
+- LumiMD Codebase Reference: `../CODEBASE-REFERENCE.md`
+- Security Rules: `../../firebase-setup/*.rules`
 

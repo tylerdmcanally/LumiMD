@@ -26,7 +26,7 @@ docs/
 ├── features/                 # Deep dive into specific features
 ├── architecture/             # Active system design docs
 ├── guides/                   # Setup and deployment guides
-├── reference/                # Database schema, implementation details
+├── reference/                # Canonical technical specs
 ├── reports/                  # Current operational reports
 └── archive/                  # Historical snapshots and superseded plans
 ```
@@ -70,10 +70,7 @@ docs/
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE-COMPARISON.md](reference/ARCHITECTURE-COMPARISON.md) | System design decisions |
-| [GOOGLE-SIGNIN-IMPLEMENTATION-SUMMARY.md](reference/GOOGLE-SIGNIN-IMPLEMENTATION-SUMMARY.md) | Google Sign-In implementation |
-| [SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md](reference/SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md) | Mobile → web auth handoff implementation |
 | [DATABASE-SCHEMA.md](reference/DATABASE-SCHEMA.md) | Firestore data model |
-| [TESTING-RESULTS.md](reference/TESTING-RESULTS.md) | Test coverage and results |
 
 ---
 

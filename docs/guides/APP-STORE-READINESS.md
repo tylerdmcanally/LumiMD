@@ -310,10 +310,9 @@ If Apple rejects for "insufficient functionality":
 ---
 
 **Questions?**
-- Recording implementation: See `/Dev Guide.md` Section 13
-- API integration: See `/functions/openapi.yaml`
-- Web linking: Already working via `/mobile/lib/linking.ts`
+- Recording implementation: See `../CODEBASE-REFERENCE.md`
+- API integration: See `../../functions/openapi.yaml`
+- Web linking: `../../mobile/lib/linking.ts`
 
 Good luck with the build! 🚀
-
 

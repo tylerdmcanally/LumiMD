@@ -248,8 +248,7 @@ Your mobile app is now running and you can see the complete layout. The design f
 ---
 
 Need help? Check:
-- `/mobile/README.md` - Full mobile documentation
-- `/QUICK-START.md` - Overall project setup
-- `/Dev Guide.md` - Project master plan
-
+- `../../mobile/README.md` - Full mobile documentation
+- `./QUICK-START.md` - Overall project setup
+- `../CODEBASE-REFERENCE.md` - Project architecture and reference
 

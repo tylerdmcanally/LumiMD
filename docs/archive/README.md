@@ -13,6 +13,16 @@ This folder contains historical documents that are useful for context but are no
 - [reports/ANALYSIS-SUMMARY.md](reports/ANALYSIS-SUMMARY.md)
 - [reports/RATE_LIMIT_ANALYSIS.md](reports/RATE_LIMIT_ANALYSIS.md)
 
+## Guides (historical)
+
+- [guides/GOOGLE-SIGNIN-QUICKSTART.md](guides/GOOGLE-SIGNIN-QUICKSTART.md)
+
+## Reference (historical)
+
+- [reference/GOOGLE-SIGNIN-IMPLEMENTATION-SUMMARY.md](reference/GOOGLE-SIGNIN-IMPLEMENTATION-SUMMARY.md)
+- [reference/SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md](reference/SEAMLESS-AUTH-IMPLEMENTATION-SUMMARY.md)
+- [reference/TESTING-RESULTS.md](reference/TESTING-RESULTS.md)
+
 ## Audits and snapshots (historical)
 
 - [audits/SECURITY_AUDIT_REPORT.md](audits/SECURITY_AUDIT_REPORT.md)

@@ -19,7 +19,7 @@ Key documents are grouped inside `docs/`:
 - `docs/EXTERNAL-DEV-OVERVIEW.md` – Onboarding guide for outside reviewers
 - `docs/guides/` – Setup and onboarding guides (Quick Start, Firebase, mobile, app store)
 - `docs/architecture/` – Active system design docs
-- `docs/reference/` – Schema, implementation summaries, testing results
+- `docs/reference/` – Canonical schema and architecture references
 - `docs/reports/` – Current operational reports
 - `docs/archive/` – Historical snapshots and superseded plans
 

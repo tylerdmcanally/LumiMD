@@ -229,10 +229,10 @@ Redirects to: lumimd.app/dashboard
 
 ## 🔗 Helpful Links
 
-- **Dev Guide:** `/Dev Guide.md` (Your comprehensive spec)
-- **Auth Implementation:** `/SEAMLESS-AUTH-README.md` (Deep dive)
-- **TTL Setup:** `/firebase-setup/TTL-SETUP.md`
-- **API Reference:** `/functions/openapi.yaml`
+- **Codebase Overview:** `../EXTERNAL-DEV-OVERVIEW.md`
+- **Auth Deep Dive:** `./SEAMLESS-AUTH-README.md`
+- **TTL Setup:** `../../firebase-setup/TTL-SETUP.md`
+- **API Reference:** `../../functions/openapi.yaml`
 
 ## 💡 Pro Tips
 
@@ -268,6 +268,5 @@ You'll have a **production-ready** seamless auth experience!
 
 ---
 
-Questions? Check `/SEAMLESS-AUTH-README.md` for detailed docs.
-
+Questions? Check `./SEAMLESS-AUTH-README.md` for detailed docs.
 
