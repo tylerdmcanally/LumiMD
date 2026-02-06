@@ -5,6 +5,7 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api/client';
 
 // Configure notification handler behavior
@@ -17,6 +18,28 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
+const DEVICE_ID_STORAGE_KEY = 'lumimd:deviceInstallationId';
+const LAST_PUSH_TOKEN_STORAGE_KEY = 'lumimd:lastExpoPushToken';
+
+function generateDeviceInstallationId(): string {
+  const randomPart = Math.random().toString(36).slice(2);
+  const randomPart2 = Math.random().toString(36).slice(2);
+  return `lumimd_${Date.now()}_${randomPart}${randomPart2}`;
+}
+
+async function getDeviceInstallationId(): Promise<string> {
+  const existing = await AsyncStorage.getItem(DEVICE_ID_STORAGE_KEY);
+  if (existing) return existing;
+
+  const generated = generateDeviceInstallationId();
+  await AsyncStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+  return generated;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 
 export interface PushTokenData {
@@ -84,13 +107,39 @@ export async function getExpoPushToken(): Promise<string | null> {
  * Register push token with backend (includes device timezone for quiet hours)
  */
 export async function registerPushToken(token: string): Promise<void> {
+  const maxAttempts = 3;
+
   try {
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
     // Get device's current timezone (e.g., 'America/New_York')
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const deviceId = await getDeviceInstallationId();
+    const previousToken = await AsyncStorage.getItem(LAST_PUSH_TOKEN_STORAGE_KEY);
+    const previousTokenForCleanup =
+      previousToken && previousToken !== token ? previousToken : undefined;
 
-    await api.user.registerPushToken({ token, platform, timezone });
-    console.log('[Notifications] Push token registered with timezone:', timezone);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await api.user.registerPushToken({
+          token,
+          platform,
+          timezone,
+          deviceId,
+          previousToken: previousTokenForCleanup,
+        } as any);
+        await AsyncStorage.setItem(LAST_PUSH_TOKEN_STORAGE_KEY, token);
+        console.log('[Notifications] Push token registered with timezone:', timezone);
+        return;
+      } catch (error) {
+        if (attempt >= maxAttempts) {
+          throw error;
+        }
+        console.warn(
+          `[Notifications] Push token registration attempt ${attempt}/${maxAttempts} failed, retrying...`
+        );
+        await sleep(1000 * attempt);
+      }
+    }
   } catch (error) {
     console.error('[Notifications] Error registering push token:', error);
     throw error;
@@ -115,12 +164,23 @@ export async function unregisterPushToken(token: string): Promise<void> {
  * Used during logout to ensure no stale tokens remain
  */
 export async function unregisterAllPushTokens(): Promise<void> {
-  try {
-    await api.user.unregisterAllPushTokens();
-    console.log('[Notifications] All push tokens unregistered successfully');
-  } catch (error) {
-    console.error('[Notifications] Error unregistering all push tokens:', error);
-    // Don't throw - we still want to complete logout even if this fails
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await api.user.unregisterAllPushTokens();
+      console.log('[Notifications] All push tokens unregistered successfully');
+      return;
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        console.error('[Notifications] Error unregistering all push tokens:', error);
+        throw error;
+      }
+      console.warn(
+        `[Notifications] Unregister-all attempt ${attempt}/${maxAttempts} failed, retrying...`
+      );
+      await sleep(1000 * attempt);
+    }
   }
 }
 

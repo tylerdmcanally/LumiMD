@@ -4,13 +4,13 @@ import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useFonts, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
-import { usePendingActions, useVisits, useMedicationSchedule } from '../lib/api/hooks';
+import { usePendingActions, useVisits, useMedicationSchedule, queryKeys } from '../lib/api/hooks';
 import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
 import { syncHealthKitData } from '../lib/healthkit';
 
@@ -54,6 +54,39 @@ function NotificationHandler() {
   const { data: medicationSchedule, refetch: refetchSchedule } = useMedicationSchedule({ 
     enabled: isAuthenticated && !!user 
   });
+
+  const runHealthKitSync = useCallback(
+    async (trigger: 'launch' | 'foreground' | 'interval') => {
+      if (!isAuthenticated || Platform.OS !== 'ios') return;
+
+      try {
+        const result = await syncHealthKitData();
+        if (result.synced > 0) {
+          console.log(`[HealthKit] (${trigger}) synced ${result.synced} new readings`);
+          queryClient.invalidateQueries({ queryKey: queryKeys.healthLogs });
+          queryClient.invalidateQueries({ queryKey: queryKeys.healthLogsSummary });
+        }
+      } catch (error) {
+        console.warn(`[HealthKit] ${trigger} sync failed:`, error);
+      }
+    },
+    [isAuthenticated]
+  );
+
+  // Run HealthKit sync once on launch/auth and then periodically while app is active.
+  useEffect(() => {
+    if (!isAuthenticated || Platform.OS !== 'ios') return;
+
+    void runHealthKitSync('launch');
+
+    const intervalId = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        void runHealthKitSync('interval');
+      }
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isAuthenticated, runHealthKitSync]);
 
   // Update badge count when actions or visits change
   useEffect(() => {
@@ -165,17 +198,7 @@ function NotificationHandler() {
         refetchSchedule();
 
         // Sync HealthKit data in background (iOS only, silent)
-        if (Platform.OS === 'ios') {
-          syncHealthKitData()
-            .then((result) => {
-              if (result.synced > 0) {
-                console.log(`[HealthKit] Synced ${result.synced} new readings`);
-              }
-            })
-            .catch((error) => {
-              console.warn('[HealthKit] Background sync failed:', error);
-            });
-        }
+        void runHealthKitSync('foreground');
       }
       appState.current = nextAppState;
     });
@@ -183,7 +206,7 @@ function NotificationHandler() {
     return () => {
       subscription.remove();
     };
-  }, [isAuthenticated, refetchSchedule]);
+  }, [isAuthenticated, refetchSchedule, runHealthKitSync]);
 
   return null;
 }

@@ -28,6 +28,10 @@ const registerPushTokenSchema = z.object({
   token: z.string().min(1, 'Push token is required'),
   platform: z.enum(['ios', 'android']),
   timezone: z.string().optional(), // e.g., 'America/New_York'
+  // Stable app-install identifier. Lets us reassign device ownership even if push token rotates.
+  deviceId: z.string().min(1).max(200).optional(),
+  // Previous Expo token seen on this device (helps cleanup when tokens rotate).
+  previousToken: z.string().min(1).optional(),
 });
 
 const unregisterPushTokenSchema = z.object({
@@ -218,75 +222,108 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const payload = registerPushTokenSchema.parse(req.body);
-    const { token, platform, timezone } = payload;
+    const { token, platform, timezone, deviceId, previousToken } = payload;
 
     const now = admin.firestore.Timestamp.now();
     const userRef = getDb().collection('users').doc(userId);
     const tokensRef = userRef.collection('pushTokens');
 
-    // CRITICAL: Remove this token from ALL other users first
-    // This prevents notification leaks when switching accounts on the same device
-    // Use collection group query for efficiency (queries all pushTokens subcollections at once)
+    // CRITICAL: Remove this device/token from ALL other users first.
+    // We clean by token and (when provided) by stable deviceId to handle token rotation.
+    const staleTokenRefs = new Map<string, admin.firestore.DocumentReference>();
+
     try {
-      const allTokensWithThisValue = await getDb()
-        .collectionGroup('pushTokens')
-        .where('token', '==', token)
-        .get();
+      const tokensToClean = new Set<string>([token]);
+      if (previousToken && previousToken !== token) {
+        tokensToClean.add(previousToken);
+      }
 
-      const staleTokenRefs: admin.firestore.DocumentReference[] = [];
+      for (const tokenToClean of tokensToClean) {
+        const allTokensWithThisValue = await getDb()
+          .collectionGroup('pushTokens')
+          .where('token', '==', tokenToClean)
+          .get();
 
-      for (const tokenDoc of allTokensWithThisValue.docs) {
-        // Get the parent user ID from the document path: users/{userId}/pushTokens/{tokenId}
-        const pathParts = tokenDoc.ref.path.split('/');
-        const tokenOwnerId = pathParts[1];
-        
-        if (tokenOwnerId !== userId) {
-          // This token belongs to a different user - mark for deletion
-          staleTokenRefs.push(tokenDoc.ref);
-          functions.logger.info(
-            `[users] Found stale push token for user ${tokenOwnerId} - will reassign to ${userId}`
-          );
+        for (const tokenDoc of allTokensWithThisValue.docs) {
+          const pathParts = tokenDoc.ref.path.split('/');
+          const tokenOwnerId = pathParts[1];
+          if (tokenOwnerId !== userId) {
+            staleTokenRefs.set(tokenDoc.ref.path, tokenDoc.ref);
+          }
         }
       }
+    } catch (tokenCleanupError) {
+      functions.logger.warn('[users] Error cleaning stale tokens by token (non-fatal):', tokenCleanupError);
+    }
 
-      // Delete stale tokens in batch
-      if (staleTokenRefs.length > 0) {
-        const batch = getDb().batch();
-        staleTokenRefs.forEach((ref) => batch.delete(ref));
-        await batch.commit();
-        functions.logger.info(
-          `[users] Removed ${staleTokenRefs.length} stale token(s) - device now belongs to user ${userId}`
-        );
+    if (deviceId) {
+      try {
+        const allTokensForDevice = await getDb()
+          .collectionGroup('pushTokens')
+          .where('deviceId', '==', deviceId)
+          .get();
+
+        for (const tokenDoc of allTokensForDevice.docs) {
+          const pathParts = tokenDoc.ref.path.split('/');
+          const tokenOwnerId = pathParts[1];
+          if (tokenOwnerId !== userId) {
+            staleTokenRefs.set(tokenDoc.ref.path, tokenDoc.ref);
+          }
+        }
+      } catch (deviceCleanupError) {
+        functions.logger.warn('[users] Error cleaning stale tokens by deviceId (non-fatal):', deviceCleanupError);
       }
-    } catch (cleanupError) {
-      // Log but don't fail - token registration should still proceed
-      functions.logger.warn('[users] Error cleaning up stale tokens (non-fatal):', cleanupError);
+    }
+
+    if (staleTokenRefs.size > 0) {
+      const batch = getDb().batch();
+      staleTokenRefs.forEach((ref) => batch.delete(ref));
+      await batch.commit();
+      functions.logger.info(
+        `[users] Removed ${staleTokenRefs.size} stale push token(s) - device now belongs to user ${userId}`,
+      );
     }
 
     // Check if token already exists for current user
     const existingTokenQuery = await tokensRef.where('token', '==', token).limit(1).get();
+    let existingDoc = existingTokenQuery.empty ? null : existingTokenQuery.docs[0];
 
-    if (!existingTokenQuery.empty) {
+    if (!existingDoc && deviceId) {
+      const existingByDeviceQuery = await tokensRef.where('deviceId', '==', deviceId).limit(1).get();
+      if (!existingByDeviceQuery.empty) {
+        existingDoc = existingByDeviceQuery.docs[0];
+      }
+    }
+
+    if (existingDoc) {
       // Update existing token
-      const existingDoc = existingTokenQuery.docs[0];
-      await existingDoc.ref.update({
+      const updateData: Record<string, unknown> = {
+        token,
         platform,
         timezone: timezone || null,
         updatedAt: now,
         lastActive: now,
-      });
+      };
+      if (deviceId) {
+        updateData.deviceId = deviceId;
+      }
+      await existingDoc.ref.update(updateData);
 
       functions.logger.info(`[users] Updated push token for user ${userId}`);
     } else {
       // Create new token document
-      await tokensRef.add({
+      const createData: Record<string, unknown> = {
         token,
         platform,
         timezone: timezone || null,
         createdAt: now,
         updatedAt: now,
         lastActive: now,
-      });
+      };
+      if (deviceId) {
+        createData.deviceId = deviceId;
+      }
+      await tokensRef.add(createData);
 
       functions.logger.info(`[users] Registered new push token for user ${userId}`);
     }

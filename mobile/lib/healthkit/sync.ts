@@ -36,6 +36,18 @@ const MIN_SYNC_INTERVAL_MS = 1 * 60 * 1000;
 // How many samples to fetch per data type
 const SAMPLES_LIMIT = 200;
 
+const HEALTHKIT_READ_PERMISSIONS = [
+  'Weight',
+  'HeartRate',
+  'BloodPressureSystolic',
+  'BloodPressureDiastolic',
+  'BloodGlucose',
+  'OxygenSaturation',
+  'StepCount',
+];
+
+let healthKitInitialized = false;
+
 export interface SyncResult {
   success: boolean;
   synced: number;
@@ -151,6 +163,31 @@ async function updateLastSyncTime(): Promise<void> {
   await AsyncStorage.setItem(HEALTHKIT_LAST_SYNC_KEY, String(Date.now()));
 }
 
+async function ensureHealthKitInitialized(appleHealthKit: any): Promise<boolean> {
+  if (healthKitInitialized) return true;
+  if (typeof appleHealthKit?.initHealthKit !== 'function') return true;
+
+  return new Promise((resolve) => {
+    appleHealthKit.initHealthKit(
+      {
+        permissions: {
+          read: HEALTHKIT_READ_PERMISSIONS,
+          write: [],
+        },
+      },
+      (err: string | null) => {
+        if (err) {
+          console.warn('[HealthKit Sync] initHealthKit failed:', err);
+          resolve(false);
+          return;
+        }
+        healthKitInitialized = true;
+        resolve(true);
+      }
+    );
+  });
+}
+
 /**
  * Sync a single health log to the backend
  */
@@ -218,6 +255,12 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     } catch (e) {
       console.error('[HealthKit Sync] Failed to load HealthKit:', e);
       return { success: false, synced: 0, skipped: 0, errors: 1, message: 'HealthKit not available' };
+    }
+
+    // HealthKit queries require initialization per app launch.
+    const isInitialized = await ensureHealthKitInitialized(AppleHealthKit);
+    if (!isInitialized) {
+      return { success: false, synced: 0, skipped: 0, errors: 1, message: 'HealthKit not authorized' };
     }
 
     // Get already-synced IDs

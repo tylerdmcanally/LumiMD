@@ -29,7 +29,7 @@
     "express": "^4.22.1",
     "express-rate-limit": "^8.2.1",
     "firebase-admin": "^13.6.0",
-    "firebase-functions": "^7.0.3",
+    "firebase-functions": "^7.0.5",
     "helmet": "^8.1.0",
     "openai": "^6.9.1",
     "pdfmake": "^0.2.20",

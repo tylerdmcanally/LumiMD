@@ -429,8 +429,8 @@ export default function HealthScreen() {
                   <Pressable 
                     style={styles.connectButton}
                     onPress={async () => {
-                      await healthKit.requestPermissions();
-                      if (healthKit.permissionStatus === 'authorized') {
+                      const granted = await healthKit.requestPermissions();
+                      if (granted) {
                         await initializeHealthKitSync();
                         refetch();
                       }

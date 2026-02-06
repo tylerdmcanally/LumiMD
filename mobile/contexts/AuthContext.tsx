@@ -11,7 +11,6 @@ import {
   signInWithEmail,
   signUpWithEmail,
   signOut as authSignOut,
-  getCurrentUser
 } from '../lib/auth';
 import { 
   unregisterAllPushTokens, 
@@ -74,35 +73,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Run all cleanup steps independently so one failure doesn't skip the rest.
     try {
-      // Unregister ALL push tokens before signing out (while we still have auth)
-      // This prevents notifications meant for this user from going to the next user on this device
       console.log('[AuthContext] Unregistering all push tokens before sign out...');
       await unregisterAllPushTokens();
-      
-      // Cancel any pending local notifications (e.g., snoozed reminders)
+    } catch (err) {
+      console.error('[AuthContext] Failed to unregister push tokens during sign out:', err);
+    }
+
+    try {
       await cancelAllScheduledNotifications();
-      
-      // Dismiss any delivered notifications still in notification center
+    } catch (err) {
+      console.error('[AuthContext] Failed to cancel scheduled notifications during sign out:', err);
+    }
+
+    try {
       await dismissAllNotifications();
-      
-      // Clear app badge
+    } catch (err) {
+      console.error('[AuthContext] Failed to dismiss notifications during sign out:', err);
+    }
+
+    try {
       await clearBadge();
-      
-      // Clear local push token storage
+    } catch (err) {
+      console.error('[AuthContext] Failed to clear badge during sign out:', err);
+    }
+
+    try {
       await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
-      
-      // Now sign out of Firebase
+    } catch (err) {
+      console.error('[AuthContext] Failed to clear local push token during sign out:', err);
+    }
+
+    try {
       await authSignOut();
       console.log('[AuthContext] Sign out complete');
-    } catch (err) {
-      console.error('[AuthContext] Sign out error:', err);
-      // Still try to sign out of Firebase even if token cleanup failed
-      try {
-        await authSignOut();
-      } catch (authErr) {
-        console.error('[AuthContext] Firebase sign out also failed:', authErr);
-      }
+    } catch (authErr) {
+      console.error('[AuthContext] Firebase sign out failed:', authErr);
     }
   };
 
@@ -156,5 +163,3 @@ function formatErrorMessage(error: string): string {
 
   return messages[errorCode] || 'An error occurred. Please try again.';
 }
-
-

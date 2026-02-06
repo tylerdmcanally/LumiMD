@@ -109,13 +109,17 @@ export class NotificationService {
         .collection('pushTokens');
       const snapshot = await tokensRef.get();
 
-      return snapshot.docs.map((doc) => {
+      const tokenMap = new Map<string, { token: string; platform: string }>();
+      snapshot.docs.forEach((doc) => {
         const data = doc.data();
-        return {
-          token: data.token as string,
-          platform: data.platform as string,
-        };
+        const token = data.token as string | undefined;
+        if (!token) return;
+        tokenMap.set(token, {
+          token,
+          platform: (data.platform as string) || 'ios',
+        });
       });
+      return Array.from(tokenMap.values());
     } catch (error) {
       functions.logger.error(`[Notifications] Error fetching push tokens for user ${userId}:`, error);
       return [];
@@ -206,4 +210,3 @@ export const getNotificationService = (): NotificationService => {
   }
   return notificationServiceInstance;
 };
-

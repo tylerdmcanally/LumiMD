@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from './ui';
-import { useHealthKit, useHealthVitals } from '../lib/healthkit';
+import { useHealthKit, useHealthVitals, initializeHealthKitSync } from '../lib/healthkit';
 import type { HealthDataSummary } from '../lib/healthkit';
 
 interface VitalItemProps {
@@ -91,6 +91,7 @@ export function HealthKitCard({ onPress }: HealthKitCardProps) {
     try {
       const success = await healthKit.requestPermissions();
       if (success) {
+        await initializeHealthKitSync();
         refetch();
       }
     } catch (error) {
