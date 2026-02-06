@@ -32,6 +32,20 @@ export const webhookConfig = {
   assemblyaiWebhookSecret: process.env.ASSEMBLYAI_WEBHOOK_SECRET || '',
 };
 
+const parseTimeoutMs = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+};
+
+export const externalDrugDataConfig = {
+  enabled: process.env.EXTERNAL_DRUG_DATA_ENABLED === 'true',
+  baseUrl: process.env.EXTERNAL_DRUG_DATA_BASE_URL || 'https://rxnav.nlm.nih.gov/REST',
+  timeoutMs: parseTimeoutMs(process.env.EXTERNAL_DRUG_DATA_TIMEOUT_MS, 8000),
+};
+
 export const corsConfig = {
   // Comma-separated list of allowed origins for CORS
   // Example: "https://portal.lumimd.app,https://lumimd.app"

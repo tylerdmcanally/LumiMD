@@ -17,7 +17,7 @@ jest.mock('../lib/api/hooks', () => ({
   useSnoozeDose: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
-jest.mock('../lib/widget', () => ({
+jest.mock('../lib/widget/widgetSync', () => ({
   useWidgetSync: jest.fn(),
   syncMedicationScheduleToWidget: jest.fn(),
 }));

@@ -206,7 +206,7 @@ describe('Medication Safety Service', () => {
 
         it('should not flag medications with no known interactions', async () => {
             const newMed: MedicationChangeEntry = { name: 'levothyroxine' };
-            const currentMeds = [{ id: 'med-1', name: 'omeprazole', active: true }];
+            const currentMeds = [{ id: 'med-1', name: 'metformin', active: true }];
 
             const warnings = await checkDrugInteractions(userId, newMed, currentMeds);
 

@@ -100,6 +100,14 @@ export const DRUG_INTERACTIONS: DrugInteraction[] = [
     },
     {
         drug1: 'warfarin',
+        drug2: 'ibuprofen',
+        severity: 'critical',
+        mechanism: 'NSAID antiplatelet effect + warfarin interaction',
+        clinicalEffect: 'Significantly increased bleeding risk',
+        recommendation: 'Avoid combination. Consider acetaminophen for pain.',
+    },
+    {
+        drug1: 'warfarin',
         drug2: 'celecoxib',
         severity: 'high',
         mechanism: 'COX-2 inhibitors still increase bleeding risk with warfarin',
@@ -157,6 +165,14 @@ export const DRUG_INTERACTIONS: DrugInteraction[] = [
         mechanism: 'SSRI antiplatelet effect additive with clopidogrel',
         clinicalEffect: 'Increased bleeding risk',
         recommendation: 'Monitor for bleeding. Consider GI protection.',
+    },
+    {
+        drug1: 'sertraline',
+        drug2: 'ibuprofen',
+        severity: 'moderate',
+        mechanism: 'SSRI platelet effects plus NSAID GI/platelet effects',
+        clinicalEffect: 'Increased bleeding risk, especially GI bleeding',
+        recommendation: 'Use lowest effective NSAID dose. Monitor for bruising or GI bleeding.',
     },
 
     // Clopidogrel + PPI (reduced efficacy)

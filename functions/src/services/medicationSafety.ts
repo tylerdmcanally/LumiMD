@@ -52,6 +52,43 @@ export interface MedicationSafetyWarning {
   conflictingMedication?: string; // For duplicates and interactions
   allergen?: string; // For allergy alerts
   recommendation: string;
+  source?: 'internal' | 'external' | 'ai';
+  externalIds?: {
+    rxcuiPair?: string[];
+  };
+}
+
+export interface ActiveMedicationForSafety {
+  id: string;
+  name: string;
+  dose?: string;
+  frequency?: string;
+  notes?: string;
+  canonicalName?: string;
+}
+
+interface FetchActiveMedicationsOptions {
+  excludeMedicationId?: string;
+  excludeCanonicalName?: string;
+}
+
+interface SafetyHashInput {
+  medication: {
+    name: string;
+    dose?: string;
+    frequency?: string;
+    notes?: string;
+    canonicalName?: string;
+  };
+  currentMedications: Array<{
+    id?: string;
+    name: string;
+    dose?: string;
+    frequency?: string;
+    notes?: string;
+    canonicalName?: string;
+  }>;
+  allergies: string[];
 }
 
 
@@ -67,6 +104,137 @@ const getCanonicalNameFromDocument = (data: FirebaseFirestore.DocumentData): str
   const medName = typeof data.name === 'string' ? data.name : '';
   return medName ? normalizeMedicationName(medName) : '';
 };
+
+const cleanOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const normalizeAllergyTerms = (allergies: string[]): string[] =>
+  (Array.isArray(allergies) ? allergies : [])
+    .map((allergy) => allergy.toLowerCase().trim())
+    .filter(Boolean)
+    .sort();
+
+const normalizeMedicationForHash = (medication: {
+  name: string;
+  dose?: string;
+  frequency?: string;
+  notes?: string;
+  canonicalName?: string;
+}) => {
+  const normalizedName = normalizeMedicationName(medication.name || '');
+  return {
+    canonicalName: cleanOptionalString(medication.canonicalName) || normalizedName,
+    name: normalizedName,
+    dose: cleanOptionalString(medication.dose) || '',
+    frequency: cleanOptionalString(medication.frequency) || '',
+    notes: cleanOptionalString(medication.notes) || '',
+  };
+};
+
+export async function fetchActiveMedicationsForUser(
+  userId: string,
+  options: FetchActiveMedicationsOptions = {}
+): Promise<ActiveMedicationForSafety[]> {
+  const { excludeMedicationId, excludeCanonicalName } = options;
+  const normalizedExcludeCanonical = cleanOptionalString(excludeCanonicalName)
+    ? normalizeMedicationName(excludeCanonicalName!)
+    : null;
+
+  const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
+
+  return medsSnapshot.docs
+    .filter((doc) => {
+      if (excludeMedicationId && doc.id === excludeMedicationId) {
+        return false;
+      }
+
+      const data = doc.data();
+      if (!isMedicationCurrentlyActive(data)) {
+        return false;
+      }
+
+      if (normalizedExcludeCanonical) {
+        const canonicalName = getCanonicalNameFromDocument(data);
+        if (canonicalName === normalizedExcludeCanonical) {
+          return false;
+        }
+      }
+
+      return true;
+    })
+    .map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: cleanOptionalString(data.name) || 'Unknown medication',
+        dose: cleanOptionalString(data.dose),
+        frequency: cleanOptionalString(data.frequency),
+        notes: cleanOptionalString(data.notes) || cleanOptionalString(data.note),
+        canonicalName: getCanonicalNameFromDocument(data) || undefined,
+      };
+    });
+}
+
+export function buildSafetyCheckHash(input: SafetyHashInput): string {
+  const crypto = require('crypto') as typeof import('crypto');
+
+  const payload = {
+    medication: normalizeMedicationForHash(input.medication),
+    currentMedications: input.currentMedications
+      .map((medication) => ({
+        id: medication.id || '',
+        ...normalizeMedicationForHash(medication),
+      }))
+      .sort((a, b) =>
+        `${a.canonicalName}|${a.name}|${a.id}`.localeCompare(
+          `${b.canonicalName}|${b.name}|${b.id}`
+        )
+      ),
+    allergies: normalizeAllergyTerms(input.allergies),
+  };
+
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+export function formatWarningsForFirestore(
+  warnings: MedicationSafetyWarning[]
+): MedicationSafetyWarning[] {
+  return warnings.map((warning) => {
+    const formatted: MedicationSafetyWarning = {
+      type: warning.type,
+      severity: warning.severity,
+      message: warning.message,
+      details: warning.details,
+      recommendation: warning.recommendation,
+    };
+
+    if (cleanOptionalString(warning.conflictingMedication)) {
+      formatted.conflictingMedication = cleanOptionalString(warning.conflictingMedication);
+    }
+
+    if (cleanOptionalString(warning.allergen)) {
+      formatted.allergen = cleanOptionalString(warning.allergen);
+    }
+
+    if (warning.source) {
+      formatted.source = warning.source;
+    }
+
+    if (warning.externalIds?.rxcuiPair?.length) {
+      const rxcuiPair = warning.externalIds.rxcuiPair
+        .map((id) => (typeof id === 'string' ? id.trim() : ''))
+        .filter(Boolean);
+      if (rxcuiPair.length > 0) {
+        formatted.externalIds = { rxcuiPair };
+      }
+    }
+
+    return formatted;
+  });
+}
 
 /**
  * Drug Interaction Database
