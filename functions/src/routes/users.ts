@@ -8,6 +8,90 @@ import { requireAuth, AuthRequest } from '../middlewares/auth';
 export const usersRouter = Router();
 
 const getDb = () => admin.firestore();
+const FIRESTORE_DELETE_BATCH_SIZE = 450;
+
+type DeletionQueryTarget = {
+  collection: string;
+  field: string;
+  value: string;
+};
+
+const buildDeletionTargets = (userId: string, userEmailCandidates: string[]): DeletionQueryTarget[] => {
+  const targets: DeletionQueryTarget[] = [
+    { collection: 'visits', field: 'userId', value: userId },
+    { collection: 'actions', field: 'userId', value: userId },
+    { collection: 'medications', field: 'userId', value: userId },
+    { collection: 'medicationReminders', field: 'userId', value: userId },
+    { collection: 'medicationLogs', field: 'userId', value: userId },
+    { collection: 'healthLogs', field: 'userId', value: userId },
+    { collection: 'nudges', field: 'userId', value: userId },
+    { collection: 'shares', field: 'ownerId', value: userId },
+    { collection: 'shares', field: 'caregiverUserId', value: userId },
+    { collection: 'shareInvites', field: 'ownerId', value: userId },
+    { collection: 'shareInvites', field: 'caregiverUserId', value: userId },
+    { collection: 'caregiverNotes', field: 'patientId', value: userId },
+    { collection: 'caregiverNotes', field: 'caregiverId', value: userId },
+    { collection: 'careTasks', field: 'patientId', value: userId },
+    { collection: 'careTasks', field: 'caregiverId', value: userId },
+    { collection: 'caregiverEmailLog', field: 'userId', value: userId },
+    { collection: 'medicationSafetyCache', field: 'userId', value: userId },
+    { collection: 'medicationSafetyExternalCache', field: 'userId', value: userId },
+    { collection: 'auth_handoffs', field: 'userId', value: userId },
+  ];
+
+  userEmailCandidates.forEach((email) => {
+    targets.push(
+      { collection: 'shares', field: 'ownerEmail', value: email },
+      { collection: 'shares', field: 'caregiverEmail', value: email },
+      { collection: 'shareInvites', field: 'ownerEmail', value: email },
+      { collection: 'shareInvites', field: 'caregiverEmail', value: email },
+      { collection: 'shareInvites', field: 'inviteeEmail', value: email },
+    );
+  });
+
+  return targets;
+};
+
+const fetchDocsForDeletion = async (targets: DeletionQueryTarget[]) => {
+  const snapshots = await Promise.all(
+    targets.map((target) =>
+      getDb().collection(target.collection).where(target.field, '==', target.value).get(),
+    ),
+  );
+  return snapshots.flatMap((snapshot) => snapshot.docs);
+};
+
+const fetchUserSubcollectionDocs = async (userId: string) => {
+  const userRef = getDb().collection('users').doc(userId);
+  const subcollections = await userRef.listCollections();
+  if (subcollections.length === 0) {
+    return [];
+  }
+
+  const snapshots = await Promise.all(subcollections.map((subcollectionRef) => subcollectionRef.get()));
+  return snapshots.flatMap((snapshot) => snapshot.docs);
+};
+
+const deleteDocsInBatches = async (docRefs: admin.firestore.DocumentReference[]): Promise<number> => {
+  const uniqueDocRefs = new Map<string, admin.firestore.DocumentReference>();
+  docRefs.forEach((ref) => uniqueDocRefs.set(ref.path, ref));
+
+  const refs = Array.from(uniqueDocRefs.values());
+  if (refs.length === 0) {
+    return 0;
+  }
+
+  let deletedCount = 0;
+  for (let start = 0; start < refs.length; start += FIRESTORE_DELETE_BATCH_SIZE) {
+    const batch = getDb().batch();
+    const chunk = refs.slice(start, start + FIRESTORE_DELETE_BATCH_SIZE);
+    chunk.forEach((ref) => batch.delete(ref));
+    await batch.commit();
+    deletedCount += chunk.length;
+  }
+
+  return deletedCount;
+};
 
 const userRoleSchema = z.enum(['patient', 'caregiver']);
 
@@ -522,55 +606,34 @@ usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
 
     functions.logger.info(`[users] Starting account deletion for user ${userId}`);
 
-    // Delete user data in batches (Firestore has 500 doc limit per batch)
-    const batch = getDb().batch();
-    let deleteCount = 0;
+    // Pull email variants for legacy docs that may have only email-based links.
+    const authUser = await admin.auth().getUser(userId);
+    const emailCandidates = Array.from(
+      new Set(
+        [authUser.email?.trim(), authUser.email?.toLowerCase().trim()].filter(
+          (value): value is string => Boolean(value),
+        ),
+      ),
+    );
 
-    // Delete visits
-    const visitsSnapshot = await getDb().collection('visits').where('userId', '==', userId).get();
-    visitsSnapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
+    const deletionTargets = buildDeletionTargets(userId, emailCandidates);
 
-    // Delete actions
-    const actionsSnapshot = await getDb().collection('actions').where('userId', '==', userId).get();
-    actionsSnapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
+    const [queryDocs, userSubcollectionDocs] = await Promise.all([
+      fetchDocsForDeletion(deletionTargets),
+      fetchUserSubcollectionDocs(userId),
+    ]);
 
-    // Delete medications
-    const medicationsSnapshot = await getDb().collection('medications').where('userId', '==', userId).get();
-    medicationsSnapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
+    const directDocRefs: admin.firestore.DocumentReference[] = [
+      getDb().collection('users').doc(userId),
+      getDb().collection('patientContexts').doc(userId),
+      getDb().collection('patientEvaluations').doc(userId),
+    ];
 
-    // Delete shares where user is owner
-    const sharesSnapshot = await getDb().collection('shares').where('ownerId', '==', userId).get();
-    sharesSnapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
-
-    // Delete push tokens subcollection
-    const pushTokensSnapshot = await getDb()
-      .collection('users')
-      .doc(userId)
-      .collection('pushTokens')
-      .get();
-    pushTokensSnapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
-
-    // Delete user profile
-    batch.delete(getDb().collection('users').doc(userId));
-    deleteCount++;
-
-    // Commit batch deletion
-    await batch.commit();
+    const deleteCount = await deleteDocsInBatches([
+      ...queryDocs.map((doc) => doc.ref),
+      ...userSubcollectionDocs.map((doc) => doc.ref),
+      ...directDocRefs,
+    ]);
 
     // Delete Firebase Auth user
     await admin.auth().deleteUser(userId);
