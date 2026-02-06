@@ -22,6 +22,10 @@ const exchangeHandoffSchema = z.object({
 // TTL: 5 minutes in milliseconds
 const HANDOFF_TTL_MS = 5 * 60 * 1000;
 
+type ExchangeHandoffResult =
+  | { status: 'ok'; userId: string }
+  | { status: 'invalid' | 'used' | 'expired' };
+
 /**
  * POST /v1/auth/create-handoff
  * Creates a one-time code for mobile → web authentication
@@ -67,52 +71,56 @@ authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
   try {
     // Validate request body
     const { code } = exchangeHandoffSchema.parse(req.body);
-    
-    // Get handoff document
+
     const handoffRef = getDb().collection('auth_handoffs').doc(code);
-    const handoffDoc = await handoffRef.get();
-    
-    if (!handoffDoc.exists) {
+    const result = await getDb().runTransaction<ExchangeHandoffResult>(async (tx) => {
+      const handoffDoc = await tx.get(handoffRef);
+
+      if (!handoffDoc.exists) {
+        return { status: 'invalid' };
+      }
+
+      const handoff = handoffDoc.data()!;
+
+      if (handoff.used) {
+        return { status: 'used' };
+      }
+
+      const now = Date.now();
+      const expiresAt = handoff.expiresAt?.toMillis?.() ?? 0;
+      if (now > expiresAt) {
+        tx.delete(handoffRef);
+        return { status: 'expired' };
+      }
+
+      tx.update(handoffRef, {
+        used: true,
+        usedAt: admin.firestore.Timestamp.now(),
+      });
+
+      return { status: 'ok', userId: handoff.userId };
+    });
+
+    if (result.status !== 'ok') {
+      const message =
+        result.status === 'used'
+          ? 'Code has already been used'
+          : result.status === 'expired'
+            ? 'Code has expired'
+            : 'Invalid or expired code';
+
       res.status(401).json({
         code: 'unauthorized',
-        message: 'Invalid or expired code',
+        message,
       });
       return;
     }
-    
-    const handoff = handoffDoc.data()!;
-    
-    // Check if already used
-    if (handoff.used) {
-      res.status(401).json({
-        code: 'unauthorized',
-        message: 'Code has already been used',
-      });
-      return;
-    }
-    
-    // Check if expired
-    const now = Date.now();
-    const expiresAt = handoff.expiresAt.toMillis();
-    
-    if (now > expiresAt) {
-      // Clean up expired code
-      await handoffRef.delete();
-      res.status(401).json({
-        code: 'unauthorized',
-        message: 'Code has expired',
-      });
-      return;
-    }
-    
-    // Mark as used (prevent replay attacks)
-    await handoffRef.update({ used: true });
-    
+
     // Create Firebase custom token
-    const customToken = await admin.auth().createCustomToken(handoff.userId);
-    
-    functions.logger.info(`[auth] Exchanged handoff code for user ${handoff.userId}`);
-    
+    const customToken = await admin.auth().createCustomToken(result.userId);
+
+    functions.logger.info(`[auth] Exchanged handoff code for user ${result.userId}`);
+
     res.json({ token: customToken });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -131,4 +139,3 @@ authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
     });
   }
 });
-

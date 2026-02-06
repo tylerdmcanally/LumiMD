@@ -1110,21 +1110,38 @@ export function useCareVisitSummary(
   visitId: string | undefined,
   options?: QueryEnabledOptions<CareVisitSummary>,
 ) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
   return useQuery<CareVisitSummary>({
     queryKey: ['care-visit-summary', patientId ?? 'unknown', visitId ?? 'unknown'],
     staleTime: 30_000,
-    enabled: Boolean(patientId && visitId),
+    enabled: Boolean(currentUserId && patientId && visitId),
     ...options,
     queryFn: async () => {
       if (!patientId || !visitId) {
         throw new Error('Patient ID and visit ID required');
       }
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
       const apiUrl =
         process.env.NEXT_PUBLIC_API_BASE_URL ||
         'https://us-central1-lumimd-dev.cloudfunctions.net/api';
-      const response = await fetch(`${apiUrl}/v1/shared/visits/${patientId}/${visitId}`);
+      const response = await fetch(`${apiUrl}/v1/care/${patientId}/visits/${visitId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
       if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
         if (response.status === 404) {
           throw new Error('Visit not found or not available');
         }

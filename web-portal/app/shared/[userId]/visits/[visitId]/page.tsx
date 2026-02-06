@@ -48,6 +48,10 @@ export default function SharedVisitPage() {
                 );
 
                 if (!response.ok) {
+                    if (response.status === 410) {
+                        setError('This visit link now requires a signed-in caregiver account.');
+                        return;
+                    }
                     if (response.status === 404) {
                         setError('Visit not found or sharing has expired');
                     } else {

@@ -580,6 +580,72 @@ careRouter.get('/:patientId/visits', requireAuth, async (req: AuthRequest, res) 
 });
 
 // =============================================================================
+// GET /v1/care/:patientId/visits/:visitId
+// Get a single visit summary for a shared patient
+// =============================================================================
+
+careRouter.get('/:patientId/visits/:visitId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const caregiverId = req.user!.uid;
+        const { patientId, visitId } = req.params;
+
+        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
+        if (!hasAccess) {
+            res.status(403).json({
+                code: 'forbidden',
+                message: 'You do not have access to this patient\'s data',
+            });
+            return;
+        }
+
+        const visitDoc = await getDb().collection('visits').doc(visitId).get();
+        if (!visitDoc.exists) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Visit not found',
+            });
+            return;
+        }
+
+        const visit = visitDoc.data()!;
+        if (visit.userId !== patientId) {
+            res.status(404).json({
+                code: 'not_found',
+                message: 'Visit not found',
+            });
+            return;
+        }
+
+        const userDoc = await getDb().collection('users').doc(patientId).get();
+        const userData = userDoc.exists ? userDoc.data() : {};
+        const patientName = userData?.firstName
+            ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
+            : undefined;
+
+        res.json({
+            id: visitId,
+            visitDate: visit.visitDate?.toDate?.()?.toISOString() ||
+                visit.createdAt?.toDate?.()?.toISOString() ||
+                null,
+            provider: visit.provider || undefined,
+            specialty: visit.specialty || undefined,
+            location: visit.location || undefined,
+            summary: visit.summary || undefined,
+            diagnoses: Array.isArray(visit.diagnoses) ? visit.diagnoses : [],
+            medications: visit.medications || {},
+            nextSteps: Array.isArray(visit.nextSteps) ? visit.nextSteps : [],
+            patientName,
+        });
+    } catch (error) {
+        functions.logger.error('[care] Error fetching patient visit summary:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to fetch visit summary',
+        });
+    }
+});
+
+// =============================================================================
 // GET /v1/care/:patientId/medication-status
 // Today's medication doses for a specific patient
 // =============================================================================
