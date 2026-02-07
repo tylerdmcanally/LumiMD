@@ -402,7 +402,7 @@ firebase firestore:query medicationSafetyCache --limit 100
 
 **Solution:**
 ```bash
-firebase functions:config:set openai.api_key="sk-..."
+firebase functions:config:set openai.api_key="<OPENAI_API_KEY>"
 ENABLE_AI_SAFETY_CHECKS=true firebase deploy --only functions
 ```
 

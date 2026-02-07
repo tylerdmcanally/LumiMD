@@ -561,10 +561,10 @@ FLOW                                 CODE PATH
 #### Functions (`functions/.env`)
 ```bash
 # Required
-OPENAI_API_KEY=sk-...              # OpenAI API key
+OPENAI_API_KEY=<OPENAI_API_KEY>    # OpenAI API key
 OPENAI_MODEL=gpt-4o                # Model to use (gpt-4o recommended)
-ASSEMBLYAI_API_KEY=...             # AssemblyAI API key
-RESEND_API_KEY=re_...              # Resend email API key
+ASSEMBLYAI_API_KEY=<ASSEMBLYAI_API_KEY>  # AssemblyAI API key
+RESEND_API_KEY=<RESEND_API_KEY>    # Resend email API key
 
 # Optional
 ALLOWED_ORIGINS=https://lumimd.app  # CORS allowed origins
@@ -574,7 +574,7 @@ NODE_ENV=production                  # Affects rate limits, error details
 #### Mobile (`mobile/.env`)
 ```bash
 # Firebase Config (all EXPO_PUBLIC_ prefix)
-EXPO_PUBLIC_FIREBASE_API_KEY=AIza...
+EXPO_PUBLIC_FIREBASE_API_KEY=<FIREBASE_WEB_API_KEY>
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=lumimd-dev.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=lumimd-dev
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=lumimd-dev.appspot.com
@@ -586,7 +586,7 @@ EXPO_PUBLIC_API_BASE_URL=https://us-central1-lumimd-dev.cloudfunctions.net/api
 #### Web Portal (`web-portal/.env.local`)
 ```bash
 # Firebase Config
-NEXT_PUBLIC_FIREBASE_API_KEY=AIza...
+NEXT_PUBLIC_FIREBASE_API_KEY=<FIREBASE_WEB_API_KEY>
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=lumimd-dev
 NEXT_PUBLIC_API_BASE_URL=https://us-central1-lumimd-dev.cloudfunctions.net/api
 
@@ -594,7 +594,7 @@ NEXT_PUBLIC_API_BASE_URL=https://us-central1-lumimd-dev.cloudfunctions.net/api
 FIREBASE_PROJECT_ID=lumimd-dev
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk@...
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."
-RESEND_API_KEY=re_...
+RESEND_API_KEY=<RESEND_API_KEY>
 ```
 **Note:** Use `NEXT_PUBLIC_API_BASE_URL` for web portal API calls. `NEXT_PUBLIC_API_URL` is deprecated.
 

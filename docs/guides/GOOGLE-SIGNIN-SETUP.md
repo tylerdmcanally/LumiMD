@@ -140,7 +140,7 @@ Add the Google Web Client ID to your `.env` file:
 
 ```bash
 # Existing Firebase config
-EXPO_PUBLIC_FIREBASE_API_KEY=AIzaSyDfwy_6f9a79S3gfLdtdUSMG0S1sf6osxk
+EXPO_PUBLIC_FIREBASE_API_KEY=<FIREBASE_WEB_API_KEY>
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=lumimd-dev.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=lumimd-dev
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=lumimd-dev.firebasestorage.app
@@ -389,4 +389,3 @@ Google Sign-In is now fully integrated! Users can:
 - Refer to `FIREBASE-SETUP-GUIDE.md` for Firebase basics
 
 **Happy Coding! 🚀**
-
