@@ -2,48 +2,32 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
+    function signedIn() { return request.auth != null; }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
+    function isValidAudioUpload() {
+      return request.resource != null
+        && request.resource.size < 100 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('audio/.*')
+          || request.resource.contentType == 'application/octet-stream'
+        );
     }
-
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
     function isViewerOf(ownerId) {
-      return exists(/databases/(default)/documents/shares/$(ownerId + '_' + request.auth.uid))
-        && firestore.get(/databases/(default)/documents/shares/$(ownerId + '_' + request.auth.uid)).data.status == 'accepted';
+      return signedIn() &&
+        firestore.exists(/databases/(default)/documents/shares/$(ownerId + '_' + request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/shares/$(ownerId + '_' + request.auth.uid)).data.status == 'accepted';
     }
 
-    // Audio files stored at: /audio/{userId}/{fileName}
     match /audio/{userId}/{fileName} {
-      // Owner can read and write their own audio files
-      allow read, write: if isAuthenticated() && isOwner(userId);
-
-      // Accepted caregivers can read only (no write access)
-      allow read: if isAuthenticated() && isViewerOf(userId);
-
-      // Enforce file size limits (max 100MB per file)
-      allow write: if request.resource.size < 100 * 1024 * 1024;
-
-      // Enforce allowed MIME types (audio files only)
-      allow write: if request.resource.contentType.matches('audio/.*')
-        || request.resource.contentType == 'application/octet-stream';
+      allow read: if isOwner(userId) || isViewerOf(userId);
+      allow create, update: if isOwner(userId) && isValidAudioUpload();
+      allow delete: if isOwner(userId);
     }
 
-    // Visit-specific audio storage: /visits/{userId}/{visitId}.{ext}
     match /visits/{userId}/{fileName} {
-      // Owner can read and write
-      allow read, write: if isAuthenticated() && isOwner(userId);
-
-      // Accepted caregivers can read only
-      allow read: if isAuthenticated() && isViewerOf(userId);
-
-      // File size and type restrictions
-      allow write: if request.resource.size < 100 * 1024 * 1024
-        && (request.resource.contentType.matches('audio/.*')
-            || request.resource.contentType == 'application/octet-stream');
+      allow read: if isOwner(userId) || isViewerOf(userId);
+      allow create, update: if isOwner(userId) && isValidAudioUpload();
+      allow delete: if isOwner(userId);
     }
   }
 }
