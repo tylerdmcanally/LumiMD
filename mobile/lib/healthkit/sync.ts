@@ -18,6 +18,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { api } from '../api/client';
+import { getCurrentUser } from '../auth';
 
 // Storage keys
 const HEALTHKIT_ENABLED_KEY = 'lumimd:healthkit:enabled';
@@ -48,6 +49,30 @@ const HEALTHKIT_READ_PERMISSIONS = [
 
 let healthKitInitialized = false;
 
+type SyncEnabledSetting = 'true' | 'false' | null;
+
+function getScopedStorageKey(baseKey: string): string {
+  const userId = getCurrentUser()?.uid;
+  return userId ? `${baseKey}:${userId}` : baseKey;
+}
+
+async function getSyncEnabledSetting(): Promise<SyncEnabledSetting> {
+  const scopedKey = getScopedStorageKey(HEALTHKIT_ENABLED_KEY);
+  const scopedValue = await AsyncStorage.getItem(scopedKey);
+  if (scopedValue === 'true' || scopedValue === 'false') {
+    return scopedValue;
+  }
+
+  // Migration fallback from legacy shared key.
+  const legacyValue = await AsyncStorage.getItem(HEALTHKIT_ENABLED_KEY);
+  if (legacyValue === 'true') {
+    await AsyncStorage.setItem(scopedKey, legacyValue);
+    return legacyValue;
+  }
+
+  return null;
+}
+
 export interface SyncResult {
   success: boolean;
   synced: number;
@@ -63,8 +88,7 @@ export async function isHealthKitSyncEnabled(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
   
   try {
-    const enabled = await AsyncStorage.getItem(HEALTHKIT_ENABLED_KEY);
-    return enabled === 'true';
+    return (await getSyncEnabledSetting()) === 'true';
   } catch {
     return false;
   }
@@ -74,14 +98,16 @@ export async function isHealthKitSyncEnabled(): Promise<boolean> {
  * Enable HealthKit sync (called after user grants permission)
  */
 export async function enableHealthKitSync(): Promise<void> {
-  await AsyncStorage.setItem(HEALTHKIT_ENABLED_KEY, 'true');
+  const key = getScopedStorageKey(HEALTHKIT_ENABLED_KEY);
+  await AsyncStorage.setItem(key, 'true');
 }
 
 /**
  * Disable HealthKit sync
  */
 export async function disableHealthKitSync(): Promise<void> {
-  await AsyncStorage.setItem(HEALTHKIT_ENABLED_KEY, 'false');
+  const key = getScopedStorageKey(HEALTHKIT_ENABLED_KEY);
+  await AsyncStorage.setItem(key, 'false');
 }
 
 /**
@@ -89,7 +115,8 @@ export async function disableHealthKitSync(): Promise<void> {
  */
 async function getSyncedIds(): Promise<Set<string>> {
   try {
-    const data = await AsyncStorage.getItem(HEALTHKIT_SYNCED_IDS_KEY);
+    const key = getScopedStorageKey(HEALTHKIT_SYNCED_IDS_KEY);
+    const data = await AsyncStorage.getItem(key);
     if (!data) return new Set();
     return new Set(JSON.parse(data));
   } catch {
@@ -102,6 +129,7 @@ async function getSyncedIds(): Promise<Set<string>> {
  */
 async function addSyncedIds(ids: string[]): Promise<void> {
   try {
+    const key = getScopedStorageKey(HEALTHKIT_SYNCED_IDS_KEY);
     const existing = await getSyncedIds();
     ids.forEach(id => existing.add(id));
     
@@ -109,7 +137,7 @@ async function addSyncedIds(ids: string[]): Promise<void> {
     const allIds = Array.from(existing);
     const trimmedIds = allIds.slice(-MAX_CACHED_IDS);
     
-    await AsyncStorage.setItem(HEALTHKIT_SYNCED_IDS_KEY, JSON.stringify(trimmedIds));
+    await AsyncStorage.setItem(key, JSON.stringify(trimmedIds));
   } catch (error) {
     console.warn('[HealthKit Sync] Failed to save synced IDs:', error);
   }
@@ -144,7 +172,8 @@ function generateSourceId(
  */
 async function shouldSync(): Promise<boolean> {
   try {
-    const lastSync = await AsyncStorage.getItem(HEALTHKIT_LAST_SYNC_KEY);
+    const key = getScopedStorageKey(HEALTHKIT_LAST_SYNC_KEY);
+    const lastSync = await AsyncStorage.getItem(key);
     if (!lastSync) return true;
     
     const lastSyncTime = parseInt(lastSync, 10);
@@ -160,7 +189,8 @@ async function shouldSync(): Promise<boolean> {
  * Update last sync timestamp
  */
 async function updateLastSyncTime(): Promise<void> {
-  await AsyncStorage.setItem(HEALTHKIT_LAST_SYNC_KEY, String(Date.now()));
+  const key = getScopedStorageKey(HEALTHKIT_LAST_SYNC_KEY);
+  await AsyncStorage.setItem(key, String(Date.now()));
 }
 
 async function ensureHealthKitInitialized(appleHealthKit: any): Promise<boolean> {
@@ -225,12 +255,6 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     return { success: true, synced: 0, skipped: 0, errors: 0, message: 'Not iOS' };
   }
 
-  // Check if sync is enabled
-  const enabled = await isHealthKitSyncEnabled();
-  if (!enabled) {
-    return { success: true, synced: 0, skipped: 0, errors: 0, message: 'Sync not enabled' };
-  }
-
   // Check if enough time has passed
   if (!(await shouldSync())) {
     return { success: true, synced: 0, skipped: 0, errors: 0, message: 'Too soon since last sync' };
@@ -261,6 +285,16 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     const isInitialized = await ensureHealthKitInitialized(AppleHealthKit);
     if (!isInitialized) {
       return { success: false, synced: 0, skipped: 0, errors: 1, message: 'HealthKit not authorized' };
+    }
+
+    const syncEnabled = await getSyncEnabledSetting();
+    if (syncEnabled === 'false') {
+      return { success: true, synced: 0, skipped: 0, errors: 0, message: 'Sync disabled' };
+    }
+    if (syncEnabled === null) {
+      // Auto-enable sync when iOS permissions are already granted (e.g. reinstall/TestFlight updates).
+      await enableHealthKitSync();
+      console.log('[HealthKit Sync] Auto-enabled sync after detecting authorized HealthKit access');
     }
 
     // Get already-synced IDs
@@ -544,7 +578,8 @@ export async function initializeHealthKitSync(): Promise<SyncResult> {
  */
 export async function forceHealthKitSync(): Promise<SyncResult> {
   // Clear the last sync time to force immediate sync
-  await AsyncStorage.removeItem(HEALTHKIT_LAST_SYNC_KEY);
+  const key = getScopedStorageKey(HEALTHKIT_LAST_SYNC_KEY);
+  await AsyncStorage.removeItem(key);
   return syncHealthKitData();
 }
 
@@ -553,7 +588,8 @@ export async function forceHealthKitSync(): Promise<SyncResult> {
  */
 export async function getLastSyncTime(): Promise<Date | null> {
   try {
-    const lastSync = await AsyncStorage.getItem(HEALTHKIT_LAST_SYNC_KEY);
+    const key = getScopedStorageKey(HEALTHKIT_LAST_SYNC_KEY);
+    const lastSync = await AsyncStorage.getItem(key);
     if (!lastSync) return null;
     return new Date(parseInt(lastSync, 10));
   } catch {

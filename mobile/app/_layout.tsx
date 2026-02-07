@@ -65,6 +65,8 @@ function NotificationHandler() {
           console.log(`[HealthKit] (${trigger}) synced ${result.synced} new readings`);
           queryClient.invalidateQueries({ queryKey: queryKeys.healthLogs });
           queryClient.invalidateQueries({ queryKey: queryKeys.healthLogsSummary });
+        } else if (result.message) {
+          console.log(`[HealthKit] (${trigger}) sync skipped: ${result.message}`);
         }
       } catch (error) {
         console.warn(`[HealthKit] ${trigger} sync failed:`, error);
