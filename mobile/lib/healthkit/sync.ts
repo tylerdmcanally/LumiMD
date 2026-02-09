@@ -20,22 +20,30 @@ import { Platform } from 'react-native';
 import { api } from '../api/client';
 import { getCurrentUser } from '../auth';
 
+type MetricType = 'bp' | 'glucose' | 'weight' | 'steps' | 'heart_rate' | 'oxygen_saturation';
+type SyncEnabledSetting = 'true' | 'false' | null;
+type SyncWriteResult = 'created' | 'updated' | 'duplicate' | 'error';
+
 // Storage keys
 const HEALTHKIT_ENABLED_KEY = 'lumimd:healthkit:enabled';
 const HEALTHKIT_LAST_SYNC_KEY = 'lumimd:healthkit:lastSync';
-const HEALTHKIT_SYNCED_IDS_KEY = 'lumimd:healthkit:syncedIds';
+const HEALTHKIT_CURSOR_KEY = 'lumimd:healthkit:cursor';
 
-// Maximum synced IDs to keep in cache (rolling window)
-const MAX_CACHED_IDS = 1000;
-
-// Sync window: 7 days
-const SYNC_DAYS = 7;
+const INITIAL_LOOKBACK_DAYS: Record<MetricType, number> = {
+  bp: 30,
+  glucose: 30,
+  weight: 30,
+  heart_rate: 14,
+  oxygen_saturation: 14,
+  steps: 14,
+};
 
 // Minimum time between syncs (1 minute)
 const MIN_SYNC_INTERVAL_MS = 1 * 60 * 1000;
 
 // How many samples to fetch per data type
 const SAMPLES_LIMIT = 200;
+const CURSOR_OVERLAP_MS = 5 * 60 * 1000;
 
 const HEALTHKIT_READ_PERMISSIONS = [
   'Weight',
@@ -48,8 +56,6 @@ const HEALTHKIT_READ_PERMISSIONS = [
 ];
 
 let healthKitInitialized = false;
-
-type SyncEnabledSetting = 'true' | 'false' | null;
 
 function getScopedStorageKey(baseKey: string): string {
   const userId = getCurrentUser()?.uid;
@@ -111,36 +117,59 @@ export async function disableHealthKitSync(): Promise<void> {
 }
 
 /**
- * Get set of already-synced source IDs from local cache
+ * Get the storage key for a metric cursor, scoped to current user.
  */
-async function getSyncedIds(): Promise<Set<string>> {
+function getCursorStorageKey(metric: MetricType): string {
+  return getScopedStorageKey(`${HEALTHKIT_CURSOR_KEY}:${metric}`);
+}
+
+/**
+ * Get the latest synced cursor for a metric.
+ */
+async function getMetricCursor(metric: MetricType): Promise<Date | null> {
   try {
-    const key = getScopedStorageKey(HEALTHKIT_SYNCED_IDS_KEY);
-    const data = await AsyncStorage.getItem(key);
-    if (!data) return new Set();
-    return new Set(JSON.parse(data));
+    const value = await AsyncStorage.getItem(getCursorStorageKey(metric));
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed;
   } catch {
-    return new Set();
+    return null;
   }
 }
 
 /**
- * Add synced IDs to local cache
+ * Persist a metric cursor only if it moves forward.
  */
-async function addSyncedIds(ids: string[]): Promise<void> {
+async function setMetricCursor(metric: MetricType, cursor: Date): Promise<void> {
+  const nextTime = cursor.getTime();
+  if (Number.isNaN(nextTime)) return;
+
   try {
-    const key = getScopedStorageKey(HEALTHKIT_SYNCED_IDS_KEY);
-    const existing = await getSyncedIds();
-    ids.forEach(id => existing.add(id));
-    
-    // Keep only the most recent IDs (rolling window)
-    const allIds = Array.from(existing);
-    const trimmedIds = allIds.slice(-MAX_CACHED_IDS);
-    
-    await AsyncStorage.setItem(key, JSON.stringify(trimmedIds));
+    const existing = await getMetricCursor(metric);
+    if (existing && existing.getTime() >= nextTime) {
+      return;
+    }
+    await AsyncStorage.setItem(getCursorStorageKey(metric), cursor.toISOString());
   } catch (error) {
-    console.warn('[HealthKit Sync] Failed to save synced IDs:', error);
+    console.warn(`[HealthKit Sync] Failed to save ${metric} cursor:`, error);
   }
+}
+
+/**
+ * Determine metric query start using cursor with overlap fallback.
+ */
+async function getMetricQueryStart(metric: MetricType): Promise<Date> {
+  const fallback = new Date();
+  fallback.setDate(fallback.getDate() - INITIAL_LOOKBACK_DAYS[metric]);
+
+  const cursor = await getMetricCursor(metric);
+  if (!cursor) return fallback;
+
+  const cursorWithOverlap = new Date(cursor.getTime() - CURSOR_OVERLAP_MS);
+  return cursorWithOverlap > fallback ? cursorWithOverlap : fallback;
 }
 
 /**
@@ -222,27 +251,34 @@ async function ensureHealthKitInitialized(appleHealthKit: any): Promise<boolean>
  * Sync a single health log to the backend
  */
 async function syncHealthLog(
-  type: 'bp' | 'glucose' | 'weight' | 'steps' | 'heart_rate' | 'oxygen_saturation',
+  type: MetricType,
   value: Record<string, unknown>,
   sourceId: string,
   recordedAt: string
-): Promise<boolean> {
+): Promise<SyncWriteResult> {
   try {
-    await api.healthLogs.create({
+    const response = await api.healthLogs.create({
       type,
       value: value as any,
       source: 'healthkit',
       sourceId,
       recordedAt,
-    });
-    return true;
+    } as any) as Record<string, unknown>;
+
+    if (response?.duplicate === true) {
+      return 'duplicate';
+    }
+    if (response?.updated === true) {
+      return 'updated';
+    }
+    return 'created';
   } catch (error: any) {
     // If it's a duplicate error, that's okay - already synced
     if (error?.status === 409 || error?.message?.includes('duplicate')) {
-      return true;
+      return 'duplicate';
     }
     console.warn(`[HealthKit Sync] Failed to sync ${type}:`, error?.message || error);
-    return false;
+    return 'error';
   }
 }
 
@@ -297,45 +333,69 @@ export async function syncHealthKitData(): Promise<SyncResult> {
       console.log('[HealthKit Sync] Auto-enabled sync after detecting authorized HealthKit access');
     }
 
-    // Get already-synced IDs
-    const syncedIds = await getSyncedIds();
-    const newSyncedIds: string[] = [];
-
-    // Date range: last 7 days
+    // Date range end
     const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - SYNC_DAYS);
+    const metricStarts: Record<MetricType, Date> = {
+      bp: await getMetricQueryStart('bp'),
+      glucose: await getMetricQueryStart('glucose'),
+      weight: await getMetricQueryStart('weight'),
+      heart_rate: await getMetricQueryStart('heart_rate'),
+      oxygen_saturation: await getMetricQueryStart('oxygen_saturation'),
+      steps: await getMetricQueryStart('steps'),
+    };
 
-    const baseQueryOptions = {
-      startDate: startDate.toISOString(),
+    const buildMetricQueryOptions = (
+      metric: MetricType,
+      extra: Record<string, unknown> = {}
+    ): Record<string, unknown> => ({
+      startDate: metricStarts[metric].toISOString(),
       endDate: endDate.toISOString(),
       ascending: false,
-    };
+      ...extra,
+    });
 
     // Helper to process and sync samples
     const processSamples = async <T extends { startDate: string }>(
       samples: T[],
-      type: 'bp' | 'glucose' | 'weight' | 'steps' | 'heart_rate' | 'oxygen_saturation',
+      type: MetricType,
       valueExtractor: (sample: T) => Record<string, unknown>
     ) => {
       console.log(`[HealthKit Sync] Processing ${samples.length} ${type} samples`);
-      
-      for (const sample of samples) {
-        const value = valueExtractor(sample);
-        const sourceId = generateSourceId(type, sample.startDate, value);
+      let latestHandledAt: Date | null = null;
+      let hadErrors = false;
 
-        if (syncedIds.has(sourceId)) {
+      for (const sample of samples) {
+        if (!sample?.startDate) {
           skipped++;
           continue;
         }
 
-        const success = await syncHealthLog(type, value, sourceId, sample.startDate);
-        if (success) {
-          synced++;
-          newSyncedIds.push(sourceId);
-        } else {
-          errors++;
+        const sampleDate = new Date(sample.startDate);
+        if (Number.isNaN(sampleDate.getTime())) {
+          skipped++;
+          continue;
         }
+
+        const value = valueExtractor(sample);
+        const sourceId = generateSourceId(type, sample.startDate, value);
+        const writeResult = await syncHealthLog(type, value, sourceId, sample.startDate);
+        if (writeResult === 'error') {
+          errors++;
+          hadErrors = true;
+          continue;
+        }
+        if (writeResult === 'duplicate') {
+          skipped++;
+        } else {
+          synced++;
+        }
+        if (!latestHandledAt || sampleDate > latestHandledAt) {
+          latestHandledAt = sampleDate;
+        }
+      }
+
+      if (!hadErrors && latestHandledAt) {
+        await setMetricCursor(type, latestHandledAt);
       }
     };
 
@@ -344,7 +404,7 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     // =========================================================================
     await new Promise<void>((resolve) => {
       AppleHealthKit.getBloodPressureSamples(
-        { ...baseQueryOptions, limit: SAMPLES_LIMIT },
+        buildMetricQueryOptions('bp', { limit: SAMPLES_LIMIT }),
         async (err: any, results: any[]) => {
           if (err) {
             console.warn('[HealthKit Sync] BP fetch error:', err);
@@ -366,7 +426,7 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     // =========================================================================
     await new Promise<void>((resolve) => {
       AppleHealthKit.getWeightSamples(
-        { ...baseQueryOptions, limit: SAMPLES_LIMIT, unit: 'pound' },
+        buildMetricQueryOptions('weight', { limit: SAMPLES_LIMIT, unit: 'pound' }),
         async (err: any, results: any[]) => {
           if (err) {
             console.warn('[HealthKit Sync] Weight fetch error:', err);
@@ -388,7 +448,7 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     // =========================================================================
     await new Promise<void>((resolve) => {
       AppleHealthKit.getBloodGlucoseSamples(
-        { ...baseQueryOptions, limit: SAMPLES_LIMIT, unit: 'mgPerdL' },
+        buildMetricQueryOptions('glucose', { limit: SAMPLES_LIMIT, unit: 'mgPerdL' }),
         async (err: any, results: any[]) => {
           if (err) {
             console.warn('[HealthKit Sync] Glucose fetch error:', err);
@@ -411,7 +471,7 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     // =========================================================================
     await new Promise<void>((resolve) => {
       AppleHealthKit.getHeartRateSamples(
-        { ...baseQueryOptions, limit: SAMPLES_LIMIT, unit: 'bpm' },
+        buildMetricQueryOptions('heart_rate', { limit: SAMPLES_LIMIT, unit: 'bpm' }),
         async (err: any, results: any[]) => {
           if (err) {
             console.warn('[HealthKit Sync] Heart rate fetch error:', err);
@@ -433,7 +493,7 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     // =========================================================================
     await new Promise<void>((resolve) => {
       AppleHealthKit.getOxygenSaturationSamples(
-        { ...baseQueryOptions, limit: SAMPLES_LIMIT },
+        buildMetricQueryOptions('oxygen_saturation', { limit: SAMPLES_LIMIT }),
         async (err: any, results: any[]) => {
           if (err) {
             console.warn('[HealthKit Sync] SpO2 fetch error:', err);
@@ -452,6 +512,9 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     // =========================================================================
     // SYNC STEPS - Daily totals (uses getStepCount for accurate daily total)
     // =========================================================================
+    let latestStepsHandledAt: Date | null = null;
+    let stepMetricHadErrors = false;
+
     // Get today's steps using the aggregated method
     await new Promise<void>((resolve) => {
       const today = new Date().toISOString().slice(0, 10);
@@ -474,12 +537,16 @@ export async function syncHealthKitData(): Promise<SyncResult> {
 
             // Always sync today's steps (even 0) so we have an entry for today
             // Backend handles dedup/update
-            const success = await syncHealthLog('steps', value, sourceId, `${today}T12:00:00.000Z`);
-            if (success) {
-              synced++;
-              // Don't cache today's steps sourceId - we want to update it throughout the day
-            } else {
+            const writeResult = await syncHealthLog('steps', value, sourceId, `${today}T12:00:00.000Z`);
+            if (writeResult === 'error') {
               errors++;
+              stepMetricHadErrors = true;
+            } else if (writeResult === 'duplicate') {
+              skipped++;
+              latestStepsHandledAt = latestStepsHandledAt || new Date(`${today}T12:00:00.000Z`);
+            } else {
+              synced++;
+              latestStepsHandledAt = new Date(`${today}T12:00:00.000Z`);
             }
           } else {
             console.log('[HealthKit Sync] No steps data available');
@@ -493,7 +560,7 @@ export async function syncHealthKitData(): Promise<SyncResult> {
     await new Promise<void>((resolve) => {
       AppleHealthKit.getDailyStepCountSamples(
         {
-          startDate: startDate.toISOString(),
+          startDate: metricStarts.steps.toISOString(),
           endDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday and before
           includeManuallyAdded: true,
         },
@@ -515,18 +582,23 @@ export async function syncHealthKitData(): Promise<SyncResult> {
             for (const [day, totalSteps] of stepsByDay) {
               const value = { count: totalSteps, date: day };
               const sourceId = `hk_steps_${day}`;
+              const recordedAt = `${day}T23:59:59.000Z`;
+              const recordedAtDate = new Date(recordedAt);
 
-              if (syncedIds.has(sourceId)) {
-                skipped++;
-                continue;
-              }
-
-              const success = await syncHealthLog('steps', value, sourceId, `${day}T23:59:59.000Z`);
-              if (success) {
-                synced++;
-                newSyncedIds.push(sourceId);
-              } else {
+              const writeResult = await syncHealthLog('steps', value, sourceId, recordedAt);
+              if (writeResult === 'error') {
                 errors++;
+                stepMetricHadErrors = true;
+              } else if (writeResult === 'duplicate') {
+                skipped++;
+                if (!latestStepsHandledAt || recordedAtDate > latestStepsHandledAt) {
+                  latestStepsHandledAt = recordedAtDate;
+                }
+              } else {
+                synced++;
+                if (!latestStepsHandledAt || recordedAtDate > latestStepsHandledAt) {
+                  latestStepsHandledAt = recordedAtDate;
+                }
               }
             }
           } else {
@@ -536,10 +608,8 @@ export async function syncHealthKitData(): Promise<SyncResult> {
         }
       );
     });
-
-    // Save newly synced IDs
-    if (newSyncedIds.length > 0) {
-      await addSyncedIds(newSyncedIds);
+    if (!stepMetricHadErrors && latestStepsHandledAt) {
+      await setMetricCursor('steps', latestStepsHandledAt);
     }
 
     // Update last sync time
@@ -570,6 +640,8 @@ export async function syncHealthKitData(): Promise<SyncResult> {
  */
 export async function initializeHealthKitSync(): Promise<SyncResult> {
   await enableHealthKitSync();
+  const key = getScopedStorageKey(HEALTHKIT_LAST_SYNC_KEY);
+  await AsyncStorage.removeItem(key);
   return syncHealthKitData();
 }
 
