@@ -13,9 +13,15 @@ module.exports = {
       resizeMode: 'cover',
       backgroundColor: '#40C9D0',
     },
+    updates: {
+      url: 'https://u.expo.dev/e496534e-6396-4109-9051-6569d134e1f7',
+    },
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.lumimd.app',
+      runtimeVersion: {
+        policy: 'appVersion',
+      },
       buildNumber: String(buildNumber),
       appleTeamId: '42M6N2GJD2',
       googleServicesFile: './GoogleService-Info.plist',
