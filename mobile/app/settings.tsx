@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -238,7 +238,7 @@ export default function SettingsScreen() {
     try {
       const baseUrl = cfg.apiBaseUrl;
 
-      const token = await user.getIdToken();
+      const token = await user.getIdToken(true);
 
       // Download PDF from API directly to file (avoids base64 conversion on RN)
       const fileName = `LumiMD-Health-Report-${new Date().toISOString().slice(0, 10)}.pdf`;
