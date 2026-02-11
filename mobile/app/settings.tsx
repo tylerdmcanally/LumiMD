@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
@@ -30,6 +32,7 @@ export default function SettingsScreen() {
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isLoadingPush, setIsLoadingPush] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingReport, setIsExportingReport] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(true);
@@ -224,6 +227,68 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleExportProviderReport = async () => {
+    if (!user) {
+      Alert.alert('Not signed in', 'Please sign in to export your report.');
+      return;
+    }
+    setIsExportingReport(true);
+    let downloadedUri: string | null = null;
+    try {
+      const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+      if (!baseUrl) {
+        throw new Error('Missing EXPO_PUBLIC_API_BASE_URL');
+      }
+
+      const token = await user.getIdToken();
+
+      // Download PDF from API directly to file (avoids base64 conversion on RN)
+      const fileName = `LumiMD-Health-Report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      // Use cache to avoid persisting PHI on-device; we delete after share.
+      const dir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+      if (!dir) {
+        throw new Error('No writable directory available');
+      }
+      const fileUri = dir + fileName;
+      const response = await FileSystem.downloadAsync(
+        `${baseUrl}/v1/health-logs/provider-report`,
+        fileUri,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/pdf',
+          },
+        }
+      );
+
+      if (response.status !== 200) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      downloadedUri = response.uri ?? fileUri;
+
+      // Share the file
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(downloadedUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Share Health Report',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('Sharing not available', 'Unable to share files on this device.');
+      }
+    } catch (error) {
+      console.error('[Settings] Provider report export failed', error);
+      Alert.alert('Export failed', 'Unable to generate provider report. Please try again.');
+    } finally {
+      if (downloadedUri) {
+        try {
+          await FileSystem.deleteAsync(downloadedUri, { idempotent: true });
+        } catch {}
+      }
+      setIsExportingReport(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
     if (!user) {
       Alert.alert('Not signed in', 'Please sign in to delete your account.');
@@ -403,6 +468,27 @@ export default function SettingsScreen() {
                 <Text style={styles.linkLabel}>
                   {isExporting ? 'Preparing export…' : 'Export my data'}
                 </Text>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </Pressable>
+
+              <View style={styles.divider} />
+
+              <Pressable
+                style={styles.linkRow}
+                onPress={handleExportProviderReport}
+                disabled={isExportingReport}
+              >
+                <View style={styles.settingIcon}>
+                  <Ionicons name="document-attach-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.linkLabel, { marginLeft: 0 }]}>
+                    {isExportingReport ? 'Generating report…' : 'Provider Health Report'}
+                  </Text>
+                  <Text style={styles.settingDescription}>
+                    PDF report for your healthcare provider
+                  </Text>
+                </View>
                 <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
               </Pressable>
 
