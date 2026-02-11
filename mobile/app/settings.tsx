@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
+import { cfg } from '../lib/config';
 import {
   clearStoredPushToken,
   getNotificationPermissions,
@@ -235,10 +236,7 @@ export default function SettingsScreen() {
     setIsExportingReport(true);
     let downloadedUri: string | null = null;
     try {
-      const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-      if (!baseUrl) {
-        throw new Error('Missing EXPO_PUBLIC_API_BASE_URL');
-      }
+      const baseUrl = cfg.apiBaseUrl;
 
       const token = await user.getIdToken();
 
