@@ -26,6 +26,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useHealthLogs } from '../lib/api/hooks';
+import { cfg } from '../lib/config';
 import type { HealthLog, HealthLogSource, BloodPressureValue, GlucoseValue, AlertLevel } from '@lumimd/sdk';
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../components/lumibot';
 import type { WeightValue } from '../components/lumibot';
@@ -184,6 +185,7 @@ function EmptyState() {
 
 export default function HealthScreen() {
   const router = useRouter();
+  const healthEnabled = cfg.flags.health;
   
   // Logging modal state
   const [showLogMenu, setShowLogMenu] = useState(false);
@@ -203,7 +205,7 @@ export default function HealthScreen() {
     error,
     refetch, 
     isRefetching 
-  } = useHealthLogs({ limit: 50 });
+  } = useHealthLogs({ limit: 50 }, { enabled: healthEnabled });
 
   const handleRefresh = useCallback(async () => {
     await refetch();
@@ -322,6 +324,30 @@ export default function HealthScreen() {
   }, [groupedLogs.latestByType]);
 
   const infoDataSourcesText = 'All health data is unified from manual entries and LumiBot check-ins.';
+
+  if (!healthEnabled) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={8}>
+            <Ionicons name="chevron-back" size={28} color={Colors.text} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Health</Text>
+          <View style={{ width: 28 }} />
+        </View>
+
+        <View style={styles.disabledContainer}>
+          <Card style={styles.disabledCard}>
+            <Ionicons name="fitness-outline" size={28} color={Colors.textMuted} />
+            <Text style={styles.disabledTitle}>Health metrics are disabled</Text>
+            <Text style={styles.disabledSubtitle}>
+              Health metrics are out of scope for now while we focus on core workflows.
+            </Text>
+          </Card>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -526,6 +552,27 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  disabledContainer: {
+    padding: spacing(4),
+  },
+  disabledCard: {
+    padding: spacing(5),
+    alignItems: 'center',
+    gap: spacing(2),
+  },
+  disabledTitle: {
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  disabledSubtitle: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   header: {
     flexDirection: 'row',

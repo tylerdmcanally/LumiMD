@@ -22,7 +22,6 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
 import { ShareConfirmationSheet } from '../components/ShareConfirmationSheet';
 import { useVisitSharePrompt } from '../lib/hooks/useVisitSharePrompt';
-import { HealthSnapshotCard } from '../components/HealthSnapshotCard';
 import { trackEvent } from '../lib/telemetry';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
@@ -521,7 +520,6 @@ export default function HomeScreen() {
                     />
                   )}
 
-                  <HealthSnapshotCard />
                 </>
               )}
             </View>
