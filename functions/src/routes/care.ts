@@ -19,14 +19,14 @@ const getDb = () => admin.firestore();
 // Canonical access source is the shares collection
 // =============================================================================
 
-async function getAcceptedSharesForCaregiver(caregiverId: string) {
+export async function getAcceptedSharesForCaregiver(caregiverId: string) {
     const sharesSnapshot = await getDb()
         .collection('shares')
         .where('caregiverUserId', '==', caregiverId)
         .where('status', '==', 'accepted')
         .get();
 
-    const acceptedShares = sharesSnapshot.docs.map((doc) => {
+    const serializeShare = (doc: FirebaseFirestore.QueryDocumentSnapshot) => {
         const data = doc.data();
         return {
             id: doc.id,
@@ -34,10 +34,46 @@ async function getAcceptedSharesForCaregiver(caregiverId: string) {
             ownerName: data.ownerName,
             ownerEmail: data.ownerEmail,
         };
+    };
+
+    const acceptedSharesMap = new Map<string, ReturnType<typeof serializeShare>>();
+    sharesSnapshot.docs.forEach((doc) => {
+        acceptedSharesMap.set(doc.id, serializeShare(doc));
     });
 
+    let emailFallbackCount = 0;
+    try {
+        const caregiverAuth = await admin.auth().getUser(caregiverId);
+        const caregiverEmail = caregiverAuth.email?.toLowerCase().trim();
+        if (caregiverEmail) {
+            const emailSharesSnapshot = await getDb()
+                .collection('shares')
+                .where('caregiverEmail', '==', caregiverEmail)
+                .where('status', '==', 'accepted')
+                .get();
+            emailFallbackCount = emailSharesSnapshot.size;
+
+            await Promise.all(
+                emailSharesSnapshot.docs.map(async (doc) => {
+                    const data = doc.data();
+                    if (!data.caregiverUserId) {
+                        await doc.ref.update({
+                            caregiverUserId: caregiverId,
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        });
+                    }
+                    acceptedSharesMap.set(doc.id, serializeShare(doc));
+                }),
+            );
+        }
+    } catch (error) {
+        functions.logger.warn('[care] Unable to apply caregiver email fallback in overview', error);
+    }
+
+    const acceptedShares = Array.from(acceptedSharesMap.values());
+
     functions.logger.info(
-        `[care] Found ${acceptedShares.length} accepted shares for caregiver ${caregiverId}`
+        `[care] Found ${acceptedShares.length} accepted shares for caregiver ${caregiverId} (uid matches=${sharesSnapshot.size}, email fallback=${emailFallbackCount})`
     );
     return acceptedShares;
 }
@@ -275,6 +311,40 @@ async function getPendingActionsCount(patientId: string): Promise<number> {
     return actionsSnapshot.size;
 }
 
+function parseActionDueAt(rawDueAt: unknown): Date | null {
+    if (!rawDueAt) return null;
+
+    if (rawDueAt instanceof Date) {
+        return Number.isNaN(rawDueAt.getTime()) ? null : rawDueAt;
+    }
+
+    if (rawDueAt instanceof admin.firestore.Timestamp) {
+        const date = rawDueAt.toDate();
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    if (
+        typeof rawDueAt === 'object' &&
+        rawDueAt !== null &&
+        'toDate' in (rawDueAt as Record<string, unknown>) &&
+        typeof (rawDueAt as { toDate?: unknown }).toDate === 'function'
+    ) {
+        try {
+            const date = (rawDueAt as { toDate: () => Date }).toDate();
+            return Number.isNaN(date.getTime()) ? null : date;
+        } catch {
+            return null;
+        }
+    }
+
+    if (typeof rawDueAt === 'string' || typeof rawDueAt === 'number') {
+        const date = new Date(rawDueAt);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    return null;
+}
+
 // =============================================================================
 // HELPER: Get alerts for a patient (missed doses, overdue actions)
 // =============================================================================
@@ -306,19 +376,19 @@ async function getPatientAlerts(patientId: string) {
 
     actionsSnapshot.docs.forEach((doc) => {
         const data = doc.data();
-        if (data.dueAt) {
-            const dueDate = new Date(data.dueAt);
-            if (dueDate < now) {
-                const daysOverdue = Math.floor(
-                    (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
-                );
-                alerts.push({
-                    type: 'overdue_action',
-                    priority: daysOverdue >= 7 ? 'high' : 'medium',
-                    message: `Action "${data.description?.substring(0, 50)}..." overdue by ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}`,
-                });
-            }
+        const dueDate = parseActionDueAt(data.dueAt);
+        if (!dueDate || dueDate >= now) {
+            return;
         }
+
+        const daysOverdue = Math.floor(
+            (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        alerts.push({
+            type: 'overdue_action',
+            priority: daysOverdue >= 7 ? 'high' : 'medium',
+            message: `Action "${data.description?.substring(0, 50)}..." overdue by ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}`,
+        });
     });
 
     return alerts;
@@ -1171,9 +1241,10 @@ careRouter.get('/:patientId/export/summary', requireAuth, async (req: AuthReques
 
         const pendingActions = actionsSnapshot.docs.map((doc) => {
             const data = doc.data();
+            const dueDate = parseActionDueAt(data.dueAt);
             return {
                 title: data.title || data.text || 'Unknown',
-                dueDate: data.dueDate?.toDate?.()?.toISOString() || null,
+                dueDate: dueDate?.toISOString() || null,
                 priority: data.priority || 'normal',
             };
         });
@@ -1877,8 +1948,6 @@ careRouter.get('/:patientId/quick-overview', requireAuth, async (req: AuthReques
                 .collection('actions')
                 .where('userId', '==', patientId)
                 .where('completed', '==', false)
-                .orderBy('dueDate', 'asc')
-                .limit(10)
                 .get(),
             // Recent visits
             getDb()
@@ -1918,7 +1987,7 @@ careRouter.get('/:patientId/quick-overview', requireAuth, async (req: AuthReques
         // Check for overdue actions
         const overdueActions = recentActionsSnapshot.docs.filter((doc) => {
             const data = doc.data();
-            const dueDate = data.dueDate?.toDate?.();
+            const dueDate = parseActionDueAt(data.dueAt);
             return dueDate && dueDate < now;
         });
         if (overdueActions.length > 0) {

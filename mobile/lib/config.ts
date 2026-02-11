@@ -53,5 +53,3 @@ function validateConfig() {
 }
 
 validateConfig();
-
-

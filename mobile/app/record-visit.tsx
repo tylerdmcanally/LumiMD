@@ -17,7 +17,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing } from '../components/ui';
 import { useAudioRecording, MAX_RECORDING_MS } from '../lib/hooks/useAudioRecording';
-import { uploadAudioFile, UploadProgress } from '../lib/storage';
+import { uploadAudioFile, UploadProgress, deleteAudioFile } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -156,6 +156,7 @@ export default function RecordVisitScreen() {
 
     setUploading(true);
     setUploadProgress(0);
+    let uploadedStoragePath: string | null = null;
 
     try {
       // Upload audio file
@@ -168,6 +169,7 @@ export default function RecordVisitScreen() {
       );
 
       console.log('[RecordVisit] Audio uploaded:', downloadUrl);
+      uploadedStoragePath = storagePath;
 
       // Create visit record
       await api.visits.create({
@@ -193,6 +195,17 @@ export default function RecordVisitScreen() {
       }, 2000);
     } catch (error: any) {
       console.error('[RecordVisit] Upload error:', error);
+
+      // If upload succeeded but visit creation failed, delete orphaned audio.
+      if (uploadedStoragePath) {
+        try {
+          await deleteAudioFile(uploadedStoragePath);
+          console.log('[RecordVisit] Cleaned up orphaned upload:', uploadedStoragePath);
+        } catch (cleanupError) {
+          console.error('[RecordVisit] Failed to clean up orphaned upload:', cleanupError);
+        }
+      }
+
       showError(extractUserMessage(error, 'Failed to save your recording. Please try again.'));
       Alert.alert(
         'Upload Failed',
@@ -605,4 +618,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

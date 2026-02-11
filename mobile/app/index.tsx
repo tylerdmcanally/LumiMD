@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollView, View, StyleSheet, Text, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, StyleSheet, Text, ActivityIndicator, Alert, RefreshControl, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, spacing } from '../components/ui';
@@ -23,8 +23,10 @@ import { LumiBotContainer } from '../components/lumibot';
 import { ShareConfirmationSheet } from '../components/ShareConfirmationSheet';
 import { useVisitSharePrompt } from '../lib/hooks/useVisitSharePrompt';
 import { HealthSnapshotCard } from '../components/HealthSnapshotCard';
+import { trackEvent } from '../lib/telemetry';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
+type RefreshSource = 'pull_to_refresh' | 'banner_retry' | 'card_retry';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -32,6 +34,8 @@ export default function HomeScreen() {
   const {
     data: profile,
     isLoading: profileLoading,
+    isRefetching: profileRefetching,
+    refetch: refetchProfile,
     error: profileError,
   } = useUserProfile({
     enabled: isAuthenticated,
@@ -42,18 +46,24 @@ export default function HomeScreen() {
   const {
     data: actions,
     isLoading: actionsLoading,
+    isRefetching: actionsRefetching,
+    refetch: refetchActions,
     error: actionsError,
   } = useRealtimePendingActions(user?.uid);
 
   const {
     data: visits,
     isLoading: visitsLoading,
+    isRefetching: visitsRefetching,
+    refetch: refetchVisits,
     error: visitsError,
   } = useRealtimeVisits(user?.uid);
 
   const {
     data: medications,
     isLoading: medsLoading,
+    isRefetching: medsRefetching,
+    refetch: refetchMeds,
     error: medsError,
   } = useRealtimeActiveMedications(user?.uid);
 
@@ -61,7 +71,10 @@ export default function HomeScreen() {
   const {
     data: schedule,
     isLoading: scheduleLoading,
-  } = useMedicationSchedule({ enabled: isAuthenticated });
+    isRefetching: scheduleRefetching,
+    refetch: refetchSchedule,
+    error: scheduleError,
+  } = useMedicationSchedule(user?.uid, { enabled: isAuthenticated });
 
   // Web portal banner state - for placing "Need help?" button below cards
   const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();
@@ -87,7 +100,9 @@ export default function HomeScreen() {
 
 
   const [lastViewedCompletedVisitId, setLastViewedCompletedVisitIdState] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const latestCompletedVisitIdRef = useRef<string | null>(null);
+  const previousFailureSignatureRef = useRef<string>('');
 
 
   const persistLastViewedVisit = useCallback(async (visitId: string | null) => {
@@ -209,14 +224,119 @@ export default function HomeScreen() {
     medications: Array.isArray(medications) ? medications.length : 0,
   };
 
-  const isLoadingData = actionsLoading || visitsLoading || medsLoading || profileLoading;
-  const hasErrors = actionsError || visitsError || medsError || profileError;
+  const handleRefresh = useCallback(async (source: RefreshSource = 'pull_to_refresh') => {
+    const currentFailures = [
+      actionsError ? 'Action Items' : null,
+      visitsError ? 'Recent Visits' : null,
+      medsError ? 'Medications' : null,
+      scheduleError ? "Today's Schedule" : null,
+      profileError ? 'Profile' : null,
+    ].filter(Boolean) as string[];
 
-  // Extract medical conditions for HealthKit relevance filtering
-  const medicalConditions = useMemo(() => {
-    const conditions = (profile as any)?.medicalHistory;
-    return Array.isArray(conditions) ? conditions : [];
-  }, [profile]);
+    trackEvent('home_recovery_attempt', {
+      source,
+      hadFailures: currentFailures.length > 0,
+      failedCards: currentFailures.join('|') || 'none',
+    });
+
+    setIsRefreshing(true);
+    try {
+      const results = await Promise.allSettled([
+        refetchProfile(),
+        refetchActions(),
+        refetchVisits(),
+        refetchMeds(),
+        refetchSchedule(),
+      ]);
+      const rejectedCount = results.filter(result => result.status === 'rejected').length;
+      const erroredCount = results.filter((result) => {
+        if (result.status !== 'fulfilled') return false;
+        return Boolean((result.value as { error?: unknown } | undefined)?.error);
+      }).length;
+
+      trackEvent('home_recovery_result', {
+        source,
+        rejectedCount,
+        erroredCount,
+        success: rejectedCount === 0 && erroredCount === 0,
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [
+    actionsError,
+    medsError,
+    profileError,
+    refetchActions,
+    refetchMeds,
+    refetchProfile,
+    refetchSchedule,
+    refetchVisits,
+    scheduleError,
+    visitsError,
+  ]);
+
+  const isRefreshInFlight =
+    isRefreshing ||
+    profileRefetching ||
+    actionsRefetching ||
+    visitsRefetching ||
+    medsRefetching ||
+    scheduleRefetching;
+
+  const hasLoadedAnyData =
+    Array.isArray(actions) ||
+    Array.isArray(visits) ||
+    Array.isArray(medications) ||
+    schedule !== undefined ||
+    Boolean(profile);
+
+  const isInitialLoading =
+    !hasLoadedAnyData &&
+    (actionsLoading || visitsLoading || medsLoading || profileLoading || scheduleLoading);
+
+  const failedOverviewCards: string[] = [];
+  if (actionsError) failedOverviewCards.push('Action Items');
+  if (visitsError) failedOverviewCards.push('Recent Visits');
+  if (medsError) failedOverviewCards.push('Medications');
+  if (scheduleError) failedOverviewCards.push("Today's Schedule");
+
+  const failedCards = [...failedOverviewCards];
+  if (profileError) failedCards.push('Profile');
+  const showPartialErrorBanner = failedCards.length > 0;
+  const failureSignature = `${failedCards.join('|')}|profile:${profileError ? '1' : '0'}`;
+  const hasFullOverviewFailure =
+    failedOverviewCards.length > 0 &&
+    failedOverviewCards.length === 4;
+
+  useEffect(() => {
+    if (isInitialLoading) return;
+
+    const previous = previousFailureSignatureRef.current;
+    if (previous === failureSignature) return;
+
+    if (failedCards.length === 0) {
+      if (previous) {
+        trackEvent('home_load_recovered', {
+          previousFailure: previous,
+        });
+      }
+    } else {
+      trackEvent(hasFullOverviewFailure ? 'home_load_full_failure' : 'home_load_partial_failure', {
+        failedCount: failedCards.length,
+        overviewFailedCount: failedOverviewCards.length,
+        failedCards: failedCards.join('|'),
+      });
+    }
+
+    previousFailureSignatureRef.current = failedCards.length === 0 ? '' : failureSignature;
+  }, [
+    failedCards,
+    failedOverviewCards.length,
+    failureSignature,
+    hasFullOverviewFailure,
+    isInitialLoading,
+  ]);
 
   const latestVisitBadge = useMemo(() => {
     if (!latestVisit) return undefined;
@@ -269,7 +389,19 @@ export default function HomeScreen() {
     <ErrorBoundary title="Unable to load your dashboard" description="Try refreshing the home screen. If this keeps happening, please force close and reopen the app.">
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <View style={{ flex: 1 }}>
-          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.container}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshInFlight}
+                  onRefresh={() => {
+                    void handleRefresh('pull_to_refresh');
+                  }}
+                  tintColor={Colors.primary}
+                />
+              }
+            >
             <HeroBanner userName={(profile as any)?.firstName} />
 
             {/* LumiBot - Only shows when there are active nudges */}
@@ -286,68 +418,110 @@ export default function HomeScreen() {
                 <Text style={styles.sectionTitle}>Quick Overview</Text>
               </View>
 
-              {isLoadingData ? (
+              {showPartialErrorBanner && (
+                <View style={styles.warningBanner}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.warningTitle}>Some dashboard data could not refresh</Text>
+                    <Text style={styles.warningText}>
+                      {failedCards.join(', ')} {failedCards.length === 1 ? 'is' : 'are'} currently unavailable.
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={styles.retryButton}
+                    onPress={() => {
+                      void handleRefresh('banner_retry');
+                    }}
+                  >
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {isInitialLoading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color={Colors.primary} />
                   <Text style={styles.loadingText}>Loading your data...</Text>
-                </View>
-              ) : hasErrors ? (
-                <View style={styles.loadingContainer}>
-                  <Text style={styles.loadingText}>Unable to load data. Please check your connection.</Text>
                 </View>
               ) : (
                 <>
                   <GlanceableCard
                     title="Action Items"
-                    count={stats.openActions}
-                    countLabel="pending"
-                    emptyStateText="All caught up!"
+                    count={actionsError ? 0 : stats.openActions}
+                    countLabel={actionsError ? 'unavailable' : 'pending'}
+                    emptyStateText={actionsError ? 'Unable to load. Tap to retry.' : 'All caught up!'}
                     icon="checkmark-circle-outline"
-                    onPress={() => router.push('/actions')}
+                    onPress={
+                      actionsError
+                        ? () => {
+                            void handleRefresh('card_retry');
+                          }
+                        : () => router.push('/actions')
+                    }
                   />
 
                   <GlanceableCard
                     title="Recent Visits"
-                    count={stats.recentVisits}
-                    countLabel="visits"
-                    emptyStateText="Record your first visit"
-                    statusBadge={latestVisitBadge}
+                    count={visitsError ? 0 : stats.recentVisits}
+                    countLabel={visitsError ? 'unavailable' : 'visits'}
+                    emptyStateText={visitsError ? 'Unable to load. Tap to retry.' : 'Record your first visit'}
+                    statusBadge={visitsError ? undefined : latestVisitBadge}
                     icon="document-text-outline"
-                    onPress={handleRecentVisitsPress}
+                    onPress={
+                      visitsError
+                        ? () => {
+                            void handleRefresh('card_retry');
+                          }
+                        : handleRecentVisitsPress
+                    }
                   />
 
                   <GlanceableCard
                     title="Medications"
-                    count={stats.medications}
-                    countLabel="active"
-                    emptyStateText="None tracked yet"
+                    count={medsError ? 0 : stats.medications}
+                    countLabel={medsError ? 'unavailable' : 'active'}
+                    emptyStateText={medsError ? 'Unable to load. Tap to retry.' : 'None tracked yet'}
                     icon="medkit-outline"
-                    onPress={() => router.push('/medications')}
+                    onPress={
+                      medsError
+                        ? () => {
+                            void handleRefresh('card_retry');
+                          }
+                        : () => router.push('/medications')
+                    }
                   />
 
-                  {/* Today's Schedule - only show if user has medication reminders */}
-                  {schedule && schedule.summary && schedule.summary.total > 0 && (
+                  {/* Today's Schedule - show when data exists or load failed */}
+                  {((schedule && schedule.summary && schedule.summary.total > 0) || scheduleError) && (
                     <GlanceableCard
                       title="Today's Schedule"
-                      count={schedule.summary.taken}
-                      countLabel={`of ${schedule.summary.total} taken`}
+                      count={scheduleError ? 0 : schedule?.summary?.taken ?? 0}
+                      countLabel={
+                        scheduleError
+                          ? 'unavailable'
+                          : `of ${schedule?.summary?.total ?? 0} taken`
+                      }
+                      emptyStateText={scheduleError ? 'Unable to load. Tap to retry.' : undefined}
                       statusBadge={
-                        schedule.summary.taken === schedule.summary.total
+                        scheduleError
+                          ? undefined
+                          : schedule && schedule.summary.taken === schedule.summary.total
                           ? { text: 'All done!', color: Colors.success }
-                          : schedule.summary.pending > 0
+                          : schedule && schedule.summary.pending > 0
                             ? { text: `${schedule.summary.pending} pending`, color: Colors.primary }
                             : undefined
                       }
                       icon="today-outline"
-                      onPress={() => router.push('/medication-schedule')}
+                      onPress={
+                        scheduleError
+                          ? () => {
+                              void handleRefresh('card_retry');
+                            }
+                          : () => router.push('/medication-schedule')
+                      }
                     />
                   )}
 
-                  {/* Apple Health Integration - shows personalized vitals */}
-                  <HealthSnapshotCard
-                    medicalConditions={medicalConditions}
-                    maxVitals={3}
-                  />
+                  <HealthSnapshotCard />
                 </>
               )}
             </View>
@@ -418,10 +592,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
   },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(3),
+    borderRadius: spacing(3),
+    borderWidth: 1,
+    borderColor: `${Colors.warning}66`,
+    backgroundColor: `${Colors.warning}14`,
+    padding: spacing(3),
+    marginBottom: spacing(3),
+  },
+  warningTitle: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.warning,
+  },
+  warningText: {
+    marginTop: spacing(0.5),
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+  },
+  retryButton: {
+    borderRadius: spacing(2),
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(2),
+    backgroundColor: Colors.warning,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#fff',
+  },
   webPortalSection: {
     marginTop: spacing(5),
   },
 });
-
-
-

@@ -35,8 +35,7 @@ module.exports = {
   // Faster transforms
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: 'tsconfig.json',
-      isolatedModules: true
+      tsconfig: 'tsconfig.json'
     }]
   }
 };

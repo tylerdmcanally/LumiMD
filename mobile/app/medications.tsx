@@ -65,7 +65,7 @@ const buildDetails = (med: any) => {
 
 export default function MedicationsScreen() {
   const router = useRouter();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, user } = useAuth();
   const [showInactive, setShowInactive] = useState(false);
 
   // Reminder modal state
@@ -85,7 +85,7 @@ export default function MedicationsScreen() {
   });
 
   // Reminders data
-  const { data: reminders = [] } = useMedicationReminders({
+  const { data: reminders = [] } = useMedicationReminders(user?.uid, {
     enabled: isAuthenticated,
   });
 

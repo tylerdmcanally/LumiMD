@@ -6,6 +6,10 @@ import VisitDetailScreen from '../app/visit-detail';
 const mockUseVisit = jest.fn();
 const mockRetry = jest.fn();
 const mockSetQueryData = jest.fn();
+const mockRouter = {
+  back: jest.fn(),
+  replace: jest.fn(),
+};
 
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({
@@ -23,7 +27,6 @@ jest.mock('../lib/api/client', () => ({
 }));
 
 jest.mock('expo-router', () => {
-  const mockRouter = { back: jest.fn() };
   return {
     useRouter: () => mockRouter,
     useLocalSearchParams: () => ({ id: 'visit-1' }),
@@ -35,6 +38,8 @@ describe('VisitDetailScreen', () => {
     mockUseVisit.mockReset();
     mockRetry.mockReset();
     mockSetQueryData.mockReset();
+    mockRouter.back.mockReset();
+    mockRouter.replace.mockReset();
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
@@ -53,6 +58,7 @@ describe('VisitDetailScreen', () => {
       isLoading: false,
       isRefetching: false,
       refetch: jest.fn(),
+      error: null,
     });
 
     mockRetry.mockResolvedValue({ id: 'visit-1', processingStatus: 'processing' });
@@ -63,6 +69,29 @@ describe('VisitDetailScreen', () => {
     await waitFor(() => {
       expect(mockRetry).toHaveBeenCalledWith('visit-1');
       expect(Alert.alert).toHaveBeenCalled();
+    });
+  });
+
+  it('shows fallback actions when visit cannot be loaded', async () => {
+    const mockRefetch = jest.fn();
+
+    mockUseVisit.mockReturnValue({
+      data: null,
+      isLoading: false,
+      isRefetching: false,
+      refetch: mockRefetch,
+      error: new Error('network error'),
+    });
+
+    const { getByText } = render(<VisitDetailScreen />);
+
+    expect(getByText('Unable to load this visit')).toBeTruthy();
+    fireEvent.press(getByText('Try Again'));
+    fireEvent.press(getByText('Back to Home'));
+
+    await waitFor(() => {
+      expect(mockRefetch).toHaveBeenCalled();
+      expect(mockRouter.replace).toHaveBeenCalledWith('/');
     });
   });
 });

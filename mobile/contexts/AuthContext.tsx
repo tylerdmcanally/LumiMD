@@ -3,23 +3,22 @@
  * Provides auth state and functions to all components
  */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   onAuthStateChange,
   signInWithEmail,
   signUpWithEmail,
   signOut as authSignOut,
 } from '../lib/auth';
-import { 
-  unregisterAllPushTokens, 
-  cancelAllScheduledNotifications, 
+import {
+  unregisterAllPushTokens,
+  cancelAllScheduledNotifications,
   dismissAllNotifications,
-  clearBadge 
+  clearBadge,
+  clearStoredPushToken,
 } from '../lib/notifications';
-
-const PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
 
 interface AuthContextType {
   user: FirebaseAuthTypes.User | null;
@@ -35,6 +34,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const previousUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Subscribe to auth state changes
@@ -47,6 +48,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Cleanup subscription
     return () => unsubscribe();
   }, []);
+
+  // Clear all cached query data when account context changes.
+  useEffect(() => {
+    const nextUserId = user?.uid ?? null;
+    if (previousUserIdRef.current === nextUserId) {
+      return;
+    }
+
+    previousUserIdRef.current = nextUserId;
+    queryClient.clear();
+    console.log('[AuthContext] Cleared query cache after auth user change');
+  }, [user?.uid, queryClient]);
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -100,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
+      await clearStoredPushToken();
     } catch (err) {
       console.error('[AuthContext] Failed to clear local push token during sign out:', err);
     }

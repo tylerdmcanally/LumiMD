@@ -839,6 +839,213 @@ function getDayBoundariesInTimezone(timezone: string): { startOfDay: Date; endOf
   return { startOfDay: startOfDayUTC, endOfDay: endOfDayUTC };
 }
 
+type DoseCompletionAction = 'taken' | 'skipped';
+
+interface CompletionLogState {
+  id: string;
+  action: DoseCompletionAction;
+  loggedAtMillis: number;
+}
+
+interface CompletionUpsertResult {
+  id: string;
+  status: 'created' | 'updated' | 'unchanged';
+  previousAction?: DoseCompletionAction;
+}
+
+function buildDoseKey(medicationId: string, scheduledTime: string): string {
+  return `${medicationId}_${scheduledTime}`;
+}
+
+function buildDoseCompletionLogDocId(
+  medicationId: string,
+  scheduledDate: string,
+  scheduledTime: string,
+): string {
+  const safeDate = scheduledDate.replace(/-/g, '');
+  const safeTime = scheduledTime.replace(/:/g, '');
+  return `dose_${medicationId}_${safeDate}_${safeTime}`;
+}
+
+function getLogTimestampMillis(log: admin.firestore.DocumentData | undefined): number {
+  if (!log) return 0;
+  if (typeof log.loggedAt?.toMillis === 'function') {
+    return log.loggedAt.toMillis();
+  }
+  if (log.loggedAt instanceof Date) {
+    return log.loggedAt.getTime();
+  }
+  return 0;
+}
+
+function getLogDateStringInTimezone(
+  log: admin.firestore.DocumentData | undefined,
+  timezone: string,
+): string | null {
+  if (!log) return null;
+  if (typeof log.scheduledDate === 'string' && log.scheduledDate.trim().length > 0) {
+    return log.scheduledDate;
+  }
+  if (typeof log.loggedAt?.toDate === 'function') {
+    return log.loggedAt.toDate().toLocaleDateString('en-CA', { timeZone: timezone });
+  }
+  if (log.loggedAt instanceof Date) {
+    return log.loggedAt.toLocaleDateString('en-CA', { timeZone: timezone });
+  }
+  return null;
+}
+
+async function getTodayCompletionLogMap(
+  userId: string,
+  timezone: string,
+  intendedDateStr: string,
+): Promise<Map<string, CompletionLogState>> {
+  const { startOfDay, endOfDay } = getDayBoundariesInTimezone(timezone);
+  const logsSnapshot = await getDb()
+    .collection('medicationLogs')
+    .where('userId', '==', userId)
+    .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(startOfDay))
+    .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
+    .get();
+
+  const completionLogs = new Map<string, CompletionLogState>();
+
+  logsSnapshot.docs.forEach((doc) => {
+    const log = doc.data();
+    if (log.action !== 'taken' && log.action !== 'skipped') return;
+    if (typeof log.medicationId !== 'string' || typeof log.scheduledTime !== 'string') return;
+
+    const logDateStr = getLogDateStringInTimezone(log, timezone);
+    if (logDateStr !== intendedDateStr) return;
+
+    const doseKey = buildDoseKey(log.medicationId, log.scheduledTime);
+    const candidate: CompletionLogState = {
+      id: doc.id,
+      action: log.action,
+      loggedAtMillis: getLogTimestampMillis(log),
+    };
+    const existing = completionLogs.get(doseKey);
+    if (!existing || candidate.loggedAtMillis >= existing.loggedAtMillis) {
+      completionLogs.set(doseKey, candidate);
+    }
+  });
+
+  return completionLogs;
+}
+
+async function upsertDoseCompletionLog(params: {
+  userId: string;
+  medicationId: string;
+  medicationName: string;
+  scheduledTime: string;
+  scheduledDate: string;
+  action: DoseCompletionAction;
+  now: admin.firestore.Timestamp;
+  completionLogs: Map<string, CompletionLogState>;
+}): Promise<CompletionUpsertResult> {
+  const {
+    userId,
+    medicationId,
+    medicationName,
+    scheduledTime,
+    scheduledDate,
+    action,
+    now,
+    completionLogs,
+  } = params;
+
+  const doseKey = buildDoseKey(medicationId, scheduledTime);
+  const existingForDose = completionLogs.get(doseKey);
+
+  if (existingForDose) {
+    if (existingForDose.action === action) {
+      return { id: existingForDose.id, status: 'unchanged' };
+    }
+
+    await getDb().collection('medicationLogs').doc(existingForDose.id).set({
+      userId,
+      medicationId,
+      medicationName,
+      action,
+      scheduledTime,
+      scheduledDate,
+      loggedAt: now,
+      updatedAt: now,
+    }, { merge: true });
+
+    completionLogs.set(doseKey, {
+      id: existingForDose.id,
+      action,
+      loggedAtMillis: now.toMillis(),
+    });
+
+    return {
+      id: existingForDose.id,
+      status: 'updated',
+      previousAction: existingForDose.action,
+    };
+  }
+
+  const logId = buildDoseCompletionLogDocId(medicationId, scheduledDate, scheduledTime);
+  const logRef = getDb().collection('medicationLogs').doc(logId);
+  const existingDoc = await logRef.get();
+
+  if (existingDoc.exists) {
+    const existingData = existingDoc.data();
+    const existingAction =
+      existingData?.action === 'taken' || existingData?.action === 'skipped'
+        ? (existingData.action as DoseCompletionAction)
+        : undefined;
+
+    if (existingAction === action) {
+      completionLogs.set(doseKey, {
+        id: logId,
+        action,
+        loggedAtMillis: getLogTimestampMillis(existingData),
+      });
+      return { id: logId, status: 'unchanged' };
+    }
+
+    await logRef.set({
+      userId,
+      medicationId,
+      medicationName,
+      action,
+      scheduledTime,
+      scheduledDate,
+      loggedAt: now,
+      updatedAt: now,
+    }, { merge: true });
+
+    completionLogs.set(doseKey, {
+      id: logId,
+      action,
+      loggedAtMillis: now.toMillis(),
+    });
+
+    return { id: logId, status: 'updated', previousAction: existingAction };
+  }
+
+  await logRef.set({
+    userId,
+    medicationId,
+    medicationName,
+    action,
+    scheduledTime,
+    scheduledDate,
+    loggedAt: now,
+    createdAt: now,
+  });
+
+  completionLogs.set(doseKey, {
+    id: logId,
+    action,
+    loggedAtMillis: now.toMillis(),
+  });
+
+  return { id: logId, status: 'created' };
+}
+
 /**
  * GET /v1/meds/schedule
  * Get today's medication schedule with taken status
@@ -883,25 +1090,59 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
     // Get today's date string in user's timezone for validation
     const todayDateStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
 
-    // Build a map of logged doses: medicationId_time -> log
-    // Only include logs that are actually from today (double-check date to prevent interday issues)
-    const loggedDoses = new Map<string, any>();
+    // Build maps for today's dose state:
+    // - loggedDoses: definitive completion state (taken/skipped)
+    // - activeSnoozes: latest snooze window for each scheduled dose
+    const loggedDoses = new Map<string, {
+      id: string;
+      action: DoseCompletionAction;
+      loggedAt: admin.firestore.Timestamp | Date | null;
+      scheduledDate: string | null;
+      loggedAtMillis: number;
+    }>();
+    const activeSnoozes = new Map<string, any>();
     logsSnapshot.docs.forEach(doc => {
       const log = doc.data();
-      const logDate = log.loggedAt?.toDate();
-      
-      // Verify the log is actually from today in user's timezone
-      if (logDate) {
-        const logDateStr = logDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
-        if (logDateStr !== todayDateStr) {
-          // Log is from a different day, skip it (shouldn't happen due to query, but safety check)
-          functions.logger.warn(`[medications] Skipping log ${doc.id} - date mismatch: ${logDateStr} vs ${todayDateStr}`);
-          return;
+      if (typeof log.medicationId !== 'string' || typeof log.scheduledTime !== 'string') {
+        return;
+      }
+
+      const logDateStr = getLogDateStringInTimezone(log, userTimezone);
+      if (logDateStr !== todayDateStr) {
+        // Log is from a different day, skip it (shouldn't happen due to query, but safety check)
+        functions.logger.warn(
+          `[medications] Skipping log ${doc.id} - date mismatch: ${logDateStr} vs ${todayDateStr}`,
+        );
+        return;
+      }
+
+      const key = buildDoseKey(log.medicationId, log.scheduledTime);
+      const currentLoggedAtMillis = getLogTimestampMillis(log);
+
+      if (log.action === 'taken' || log.action === 'skipped') {
+        const existing = loggedDoses.get(key);
+        // Keep the latest completion action for this scheduled dose.
+        if (!existing || currentLoggedAtMillis >= existing.loggedAtMillis) {
+          loggedDoses.set(key, {
+            id: doc.id,
+            action: log.action,
+            loggedAt: log.loggedAt ?? null,
+            scheduledDate: typeof log.scheduledDate === 'string' ? log.scheduledDate : null,
+            loggedAtMillis: currentLoggedAtMillis,
+          });
         }
       }
-      
-      const key = `${log.medicationId}_${log.scheduledTime || 'any'}`;
-      loggedDoses.set(key, { id: doc.id, ...log });
+
+      if (log.action === 'snoozed' && log.scheduledTime) {
+        const existing = activeSnoozes.get(key);
+        const currentSnoozeLoggedAtMillis = currentLoggedAtMillis;
+        const existingLoggedAtMillis = existing?.loggedAt?.toMillis?.() ?? 0;
+
+        // Keep only the latest snooze action for this dose.
+        if (!existing || currentSnoozeLoggedAtMillis >= existingLoggedAtMillis) {
+          activeSnoozes.set(key, { id: doc.id, ...log });
+        }
+      }
     });
 
     // Get medication details for each reminder
@@ -937,7 +1178,7 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
       // Each reminder can have multiple times
       const times = reminder.times || [];
       times.forEach((time: string) => {
-        const logKey = `${reminder.medicationId}_${time}`;
+        const logKey = buildDoseKey(reminder.medicationId, time);
         const log = loggedDoses.get(logKey);
 
         // Additional validation: if we found a log, verify it's actually for today
@@ -948,8 +1189,15 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
         if (log) {
           // Prefer scheduledDate if available (new logs), otherwise fall back to loggedAt date
           const logDateStr = log.scheduledDate || (() => {
-            const logDate = log.loggedAt?.toDate();
-            return logDate ? logDate.toLocaleDateString('en-CA', { timeZone: userTimezone }) : null;
+            if (log.loggedAt && typeof (log.loggedAt as admin.firestore.Timestamp).toDate === 'function') {
+              return (log.loggedAt as admin.firestore.Timestamp)
+                .toDate()
+                .toLocaleDateString('en-CA', { timeZone: userTimezone });
+            }
+            if (log.loggedAt instanceof Date) {
+              return log.loggedAt.toLocaleDateString('en-CA', { timeZone: userTimezone });
+            }
+            return null;
           })();
           
           if (logDateStr === todayDateStr) {
@@ -962,7 +1210,12 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
           }
         }
 
-        if (status === 'pending') {
+        const snoozeLog = activeSnoozes.get(logKey);
+        const snoozedUntilMillis = snoozeLog?.snoozeUntil?.toMillis?.();
+        const isActivelySnoozed =
+          typeof snoozedUntilMillis === 'number' && snoozedUntilMillis > now.getTime();
+
+        if (status === 'pending' && !isActivelySnoozed) {
           const [hours, minutes] = time.split(':').map(Number);
           const scheduledMinutes = hours * 60 + minutes;
           if (scheduledMinutes <= currentMinutes - overdueGraceMinutes) {
@@ -978,6 +1231,10 @@ medicationsRouter.get('/schedule/today', requireAuth, async (req: AuthRequest, r
           scheduledTime: time,
           status,
           logId,
+          snoozedUntil:
+            isActivelySnoozed && snoozeLog?.snoozeUntil
+              ? snoozeLog.snoozeUntil.toDate().toISOString()
+              : null,
         });
       });
     });
@@ -1052,32 +1309,43 @@ medicationsRouter.post('/schedule/mark', requireAuth, async (req: AuthRequest, r
     }
 
     const now = admin.firestore.Timestamp.now();
-    
+
     // Get user's timezone to determine the intended date for this scheduled dose
     const userTimezone = await getUserTimezone(userId);
     const nowDate = new Date();
     const intendedDateStr = nowDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
+    const completionLogs = await getTodayCompletionLogMap(
+      userId,
+      userTimezone,
+      intendedDateStr,
+    );
 
-    // Create medication log with the intended date for the scheduled dose
-    // This helps prevent interday matching issues
-    const logRef = await getDb().collection('medicationLogs').add({
+    const upsertResult = await upsertDoseCompletionLog({
       userId,
       medicationId: data.medicationId,
       medicationName: medication.name,
-      action: data.action,
       scheduledTime: data.scheduledTime,
-      scheduledDate: intendedDateStr, // Store the date this dose was intended for
-      loggedAt: now,
-      createdAt: now,
+      scheduledDate: intendedDateStr,
+      action: data.action,
+      now,
+      completionLogs,
     });
 
-    functions.logger.info(`[medications] Logged ${data.action} for ${medication.name} at ${data.scheduledTime}`);
+    functions.logger.info(
+      `[medications] ${upsertResult.status} ${data.action} for ${medication.name} at ${data.scheduledTime}`,
+      upsertResult.previousAction
+        ? { previousAction: upsertResult.previousAction }
+        : undefined,
+    );
 
-    res.status(201).json({
-      id: logRef.id,
+    res.status(upsertResult.status === 'created' ? 201 : 200).json({
+      id: upsertResult.id,
       medicationId: data.medicationId,
       action: data.action,
       scheduledTime: data.scheduledTime,
+      status: upsertResult.status,
+      idempotent: upsertResult.status === 'unchanged',
+      previousAction: upsertResult.previousAction ?? null,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -1117,56 +1385,100 @@ medicationsRouter.post('/schedule/mark-batch', requireAuth, async (req: AuthRequ
     const now = admin.firestore.Timestamp.now();
     const results: any[] = [];
     const errors: any[] = [];
+    const seenDoseKeys = new Set<string>();
+    const uniqueDoses = data.doses.filter((dose) => {
+      const key = buildDoseKey(dose.medicationId, dose.scheduledTime);
+      if (seenDoseKeys.has(key)) return false;
+      seenDoseKeys.add(key);
+      return true;
+    });
 
-    // Process each dose
-    for (const dose of data.doses) {
+    // Resolve timezone/date once per batch.
+    const userTimezone = await getUserTimezone(userId);
+    const nowDate = new Date();
+    const intendedDateStr = nowDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
+    const completionLogs = await getTodayCompletionLogMap(
+      userId,
+      userTimezone,
+      intendedDateStr,
+    );
+    const medicationCache = new Map<string, admin.firestore.DocumentData>();
+
+    // Process each unique dose
+    for (const dose of uniqueDoses) {
       try {
-        const medDoc = await getDb().collection('medications').doc(dose.medicationId).get();
-        if (!medDoc.exists) {
-          errors.push({ medicationId: dose.medicationId, error: 'not_found' });
-          continue;
+        let medication = medicationCache.get(dose.medicationId);
+
+        if (!medication) {
+          const medDoc = await getDb().collection('medications').doc(dose.medicationId).get();
+          if (!medDoc.exists) {
+            errors.push({
+              medicationId: dose.medicationId,
+              scheduledTime: dose.scheduledTime,
+              error: 'not_found',
+            });
+            continue;
+          }
+
+          medication = medDoc.data()!;
+          medicationCache.set(dose.medicationId, medication);
         }
 
-        const medication = medDoc.data()!;
         if (medication.userId !== userId) {
-          errors.push({ medicationId: dose.medicationId, error: 'forbidden' });
+          errors.push({
+            medicationId: dose.medicationId,
+            scheduledTime: dose.scheduledTime,
+            error: 'forbidden',
+          });
           continue;
         }
 
-        // Get user's timezone for intended date
-        const userTimezone = await getUserTimezone(userId);
-        const nowDate = new Date();
-        const intendedDateStr = nowDate.toLocaleDateString('en-CA', { timeZone: userTimezone });
-
-        const logRef = await getDb().collection('medicationLogs').add({
+        const upsertResult = await upsertDoseCompletionLog({
           userId,
           medicationId: dose.medicationId,
           medicationName: medication.name,
-          action: data.action,
           scheduledTime: dose.scheduledTime,
-          scheduledDate: intendedDateStr, // Store the date this dose was intended for
-          loggedAt: now,
-          createdAt: now,
+          scheduledDate: intendedDateStr,
+          action: data.action,
+          now,
+          completionLogs,
         });
 
         results.push({
-          id: logRef.id,
+          id: upsertResult.id,
           medicationId: dose.medicationId,
           medicationName: medication.name,
           scheduledTime: dose.scheduledTime,
           action: data.action,
+          status: upsertResult.status,
+          idempotent: upsertResult.status === 'unchanged',
+          previousAction: upsertResult.previousAction ?? null,
         });
       } catch (err) {
-        errors.push({ medicationId: dose.medicationId, error: 'failed' });
+        errors.push({
+          medicationId: dose.medicationId,
+          scheduledTime: dose.scheduledTime,
+          error: 'failed',
+        });
       }
     }
 
+    const createdCount = results.filter(result => result.status === 'created').length;
+    const updatedCount = results.filter(result => result.status === 'updated').length;
+    const unchangedCount = results.filter(result => result.status === 'unchanged').length;
+    const duplicateInputCount = data.doses.length - uniqueDoses.length;
+
     functions.logger.info(`[medications] Batch marked ${results.length} doses as ${data.action}`, {
-      success: results.length,
+      created: createdCount,
+      updated: updatedCount,
+      unchanged: unchangedCount,
+      duplicateInputsIgnored: duplicateInputCount,
       errors: errors.length,
     });
 
-    res.status(201).json({ results, errors });
+    res
+      .status(createdCount > 0 ? 201 : 200)
+      .json({ results, errors, duplicateInputsIgnored: duplicateInputCount });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({

@@ -3,7 +3,7 @@
  * Displays AI-generated summary, transcript, and action items for a visit
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { useVisit, queryKeys } from '../lib/api/hooks';
 import { api } from '../lib/api/client';
 import { openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { trackEvent } from '../lib/telemetry';
 
 dayjs.extend(relativeTime);
 
@@ -35,6 +36,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: keyof typeof Ionicons.glyp
   { key: 'transcript', label: 'Transcript', icon: 'document-text' },
   { key: 'actions', label: 'Next Steps', icon: 'checkmark-circle' },
 ];
+type VisitDetailRefreshSource = 'pull_to_refresh' | 'error_fallback';
 
 function getStatusBadge(status: string | undefined) {
   switch (status) {
@@ -147,6 +149,7 @@ export default function VisitDetailScreen() {
 
   const [activeTab, setActiveTab] = useState<TabKey>('summary');
   const [retrying, setRetrying] = useState(false);
+  const hadLoadFailureRef = useRef(false);
   const processingStates = ['pending', 'processing', 'transcribing', 'summarizing'];
   const queryClient = useQueryClient();
 
@@ -155,6 +158,7 @@ export default function VisitDetailScreen() {
     isLoading,
     isRefetching,
     refetch,
+    error,
   } = useVisit(visitId ?? '', {
     enabled: Boolean(visitId),
     refetchOnMount: 'always',
@@ -208,6 +212,7 @@ export default function VisitDetailScreen() {
     isProcessing && lastUpdateMs ? Date.now() - lastUpdateMs > STUCK_THRESHOLD_MS : false;
   const stuckMinutes =
     isStuck && lastUpdateMs ? Math.floor((Date.now() - lastUpdateMs) / (60 * 1000)) : null;
+  const hasLoadFailure = !isLoading && !visit;
 
   const processingMessage = useMemo(() => {
     switch (visit?.processingStatus) {
@@ -223,6 +228,21 @@ export default function VisitDetailScreen() {
         return null;
     }
   }, [visit?.processingStatus]);
+
+  useEffect(() => {
+    if (hasLoadFailure && !hadLoadFailureRef.current) {
+      trackEvent('visit_detail_load_failure', {
+        reason: error ? 'query_error' : 'missing_visit',
+      });
+      hadLoadFailureRef.current = true;
+      return;
+    }
+
+    if (!hasLoadFailure && hadLoadFailureRef.current && visit) {
+      trackEvent('visit_detail_load_recovered');
+      hadLoadFailureRef.current = false;
+    }
+  }, [error, hasLoadFailure, visit]);
 
   const handleRetry = async () => {
     if (!visitId) return;
@@ -272,6 +292,14 @@ export default function VisitDetailScreen() {
     }
   };
 
+  const handleRefresh = useCallback((source: VisitDetailRefreshSource = 'pull_to_refresh') => {
+    trackEvent('visit_detail_retry_attempt', {
+      source,
+      fromErrorState: hasLoadFailure,
+    });
+    void refetch();
+  }, [hasLoadFailure, refetch]);
+
   return (
     <ErrorBoundary
       title="Unable to open visit details"
@@ -293,6 +321,38 @@ export default function VisitDetailScreen() {
           </View>
         )}
 
+        {!isLoading && !visit && (
+          <View style={styles.loadingState}>
+            <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
+            <Text style={styles.errorTitle}>Unable to load this visit</Text>
+            <Text style={styles.errorSubtitle}>
+              {error
+                ? 'There was a network or server issue loading this visit.'
+                : 'This visit may have been removed or is temporarily unavailable.'}
+            </Text>
+            <View style={styles.errorActionRow}>
+              <Pressable
+                style={styles.errorRetryButton}
+                onPress={() => {
+                  handleRefresh('error_fallback');
+                }}
+              >
+                {isRefetching ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.errorRetryButtonText}>Try Again</Text>
+                )}
+              </Pressable>
+              <Pressable
+                style={styles.errorSecondaryButton}
+                onPress={() => router.replace('/')}
+              >
+                <Text style={styles.errorSecondaryButtonText}>Back to Home</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         {!isLoading && visit && (
           <View style={{ flex: 1 }}>
             <ScrollView
@@ -301,7 +361,9 @@ export default function VisitDetailScreen() {
               refreshControl={
                 <RefreshControl
                   refreshing={isRefetching}
-                  onRefresh={refetch}
+                  onRefresh={() => {
+                    handleRefresh('pull_to_refresh');
+                  }}
                   tintColor={Colors.primary}
                 />
               }
@@ -564,6 +626,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.textMuted,
   },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  errorSubtitle: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: spacing(8),
+  },
+  errorActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    marginTop: spacing(2),
+  },
+  errorRetryButton: {
+    paddingHorizontal: spacing(5),
+    paddingVertical: spacing(2.5),
+    borderRadius: spacing(2),
+    backgroundColor: Colors.primary,
+    minWidth: 108,
+    alignItems: 'center',
+  },
+  errorRetryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  errorSecondaryButton: {
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(2.5),
+    borderRadius: spacing(2),
+    borderWidth: 1,
+    borderColor: Colors.stroke,
+    backgroundColor: Colors.surface,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  errorSecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+  },
   content: {
     paddingHorizontal: spacing(5),
     paddingBottom: spacing(8),
@@ -776,5 +883,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-

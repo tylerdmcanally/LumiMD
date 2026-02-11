@@ -29,6 +29,31 @@ interface MedicationReminderDoc {
     lastSentLockAt?: admin.firestore.Timestamp;
 }
 
+type ReminderDueReason = 'schedule' | 'snooze';
+
+interface DoseSnoozeState {
+    snoozeUntilMillis: number;
+    loggedAtMillis: number;
+}
+
+interface UserReminderCandidate {
+    id: string;
+    medicationName: string;
+    medicationDose?: string;
+    medicationId: string;
+    times: string[];
+    lastSentAt?: admin.firestore.Timestamp;
+}
+
+interface DueReminderCandidate {
+    id: string;
+    medicationName: string;
+    medicationDose?: string;
+    medicationId: string;
+    matchedTime: string;
+    dueReason: ReminderDueReason;
+}
+
 /**
  * Get user's timezone from their profile
  */
@@ -115,6 +140,37 @@ function wasRecentlySent(lastSentAt: admin.firestore.Timestamp | undefined): boo
     return lastSentAt.toDate() > thirtyMinutesAgo;
 }
 
+export function resolveDoseDueReason(params: {
+    scheduledTime: string;
+    currentTime: string;
+    lastSentAt?: admin.firestore.Timestamp;
+    snoozeState?: DoseSnoozeState;
+    nowMillis: number;
+}): ReminderDueReason | null {
+    const { scheduledTime, currentTime, lastSentAt, snoozeState, nowMillis } = params;
+
+    if (snoozeState) {
+        if (snoozeState.snoozeUntilMillis > nowMillis) {
+            return null;
+        }
+
+        const lastSentMillis = lastSentAt?.toMillis() ?? 0;
+        if (lastSentMillis < snoozeState.loggedAtMillis) {
+            return 'snooze';
+        }
+    }
+
+    if (!isTimeWithinWindow(scheduledTime, currentTime)) {
+        return null;
+    }
+
+    if (wasRecentlySent(lastSentAt)) {
+        return null;
+    }
+
+    return 'schedule';
+}
+
 async function acquireReminderSendLock(
     reminderId: string,
     now: admin.firestore.Timestamp,
@@ -170,52 +226,14 @@ export async function processAndNotifyMedicationReminders(): Promise<{
     const batch = getDb().batch();
     const now = admin.firestore.Timestamp.now();
 
-    // Group due reminders by user (and by matched time)
-    const remindersByUser = new Map<string, Array<{
-        id: string;
-        medicationName: string;
-        medicationDose?: string;
-        medicationId: string;
-        matchedTime: string;
-    }>>();
+    // Group enabled reminders by user. Per-dose due evaluation happens later with logs/snooze state.
+    const remindersByUser = new Map<string, UserReminderCandidate[]>();
 
     // Cache user timezones to avoid repeated Firestore calls
     const userTimezoneCache = new Map<string, string>();
 
     for (const doc of remindersSnapshot.docs) {
         const reminder = doc.data() as MedicationReminderDoc;
-
-        // Get user's timezone (cached)
-        let userTimezone = userTimezoneCache.get(reminder.userId);
-        if (!userTimezone) {
-            userTimezone = await getUserTimezone(reminder.userId);
-            userTimezoneCache.set(reminder.userId, userTimezone);
-        }
-
-        // Get current time in user's timezone
-        const currentTime = getCurrentTimeHHMM(userTimezone);
-
-        // Log all reminders and their times for debugging
-        functions.logger.info(`[MedReminders] Checking reminder ${doc.id}`, {
-            medication: reminder.medicationName,
-            times: reminder.times,
-            currentTime,
-            userTimezone,
-            lastSentAt: reminder.lastSentAt?.toDate?.()?.toISOString() || 'never',
-        });
-
-        // Check if any reminder time matches current window
-        const matchingTime = reminder.times.find(time => isTimeWithinWindow(time, currentTime));
-        if (!matchingTime) {
-            functions.logger.debug(`[MedReminders] No matching time for ${doc.id} - times: ${reminder.times.join(', ')}`);
-            continue;
-        }
-
-        // Skip if recently sent
-        if (wasRecentlySent(reminder.lastSentAt)) {
-            functions.logger.info(`[MedReminders] Skipping ${doc.id} - recently sent at ${reminder.lastSentAt?.toDate?.()?.toISOString()}`);
-            continue;
-        }
 
         // Verify medication is still active - defense against orphaned reminders
         try {
@@ -240,7 +258,8 @@ export async function processAndNotifyMedicationReminders(): Promise<{
             medicationName: reminder.medicationName,
             medicationDose: reminder.medicationDose,
             medicationId: reminder.medicationId,
-            matchedTime: matchingTime,
+            times: Array.isArray(reminder.times) ? reminder.times : [],
+            lastSentAt: reminder.lastSentAt,
         });
     }
 
@@ -252,12 +271,14 @@ export async function processAndNotifyMedicationReminders(): Promise<{
     // Process each user's reminders
     for (const [userId, reminders] of remindersByUser) {
         try {
-            // Fetch today's logs for this user (used to suppress reminders already taken/skipped)
+            // Fetch today's logs and evaluate per-dose due state (including snooze windows).
             let userTimezone = userTimezoneCache.get(userId);
             if (!userTimezone) {
                 userTimezone = await getUserTimezone(userId);
                 userTimezoneCache.set(userId, userTimezone);
             }
+
+            const currentTime = getCurrentTimeHHMM(userTimezone);
             const { startOfDay, endOfDay, todayStr } = getDayBoundariesInTimezone(userTimezone);
             const logsSnapshot = await getDb()
                 .collection('medicationLogs')
@@ -265,20 +286,105 @@ export async function processAndNotifyMedicationReminders(): Promise<{
                 .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(startOfDay))
                 .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
                 .get();
+
             const loggedDoseKeys = new Set<string>();
+            const snoozedDoseStates = new Map<string, DoseSnoozeState>();
+
             logsSnapshot.docs.forEach((doc) => {
                 const log = doc.data();
-                if (log.action !== 'taken' && log.action !== 'skipped') return;
                 const scheduledTime = log.scheduledTime;
                 if (!scheduledTime) return;
+
                 const logDateStr =
                     log.scheduledDate ||
                     (log.loggedAt?.toDate
                         ? log.loggedAt.toDate().toLocaleDateString('en-CA', { timeZone: userTimezone })
                         : null);
                 if (logDateStr !== todayStr) return;
-                loggedDoseKeys.add(`${log.medicationId}_${scheduledTime}`);
+
+                const doseKey = `${log.medicationId}_${scheduledTime}`;
+
+                if (log.action === 'taken' || log.action === 'skipped') {
+                    loggedDoseKeys.add(doseKey);
+                    return;
+                }
+
+                if (log.action !== 'snoozed') {
+                    return;
+                }
+
+                const snoozeUntilMillis =
+                    typeof log.snoozeUntil?.toMillis === 'function'
+                        ? log.snoozeUntil.toMillis()
+                        : null;
+                const loggedAtMillis =
+                    typeof log.loggedAt?.toMillis === 'function'
+                        ? log.loggedAt.toMillis()
+                        : null;
+
+                if (snoozeUntilMillis === null || loggedAtMillis === null) {
+                    return;
+                }
+
+                const existingSnooze = snoozedDoseStates.get(doseKey);
+                if (!existingSnooze || loggedAtMillis >= existingSnooze.loggedAtMillis) {
+                    snoozedDoseStates.set(doseKey, {
+                        snoozeUntilMillis,
+                        loggedAtMillis,
+                    });
+                }
             });
+
+            const dueReminders: DueReminderCandidate[] = [];
+            for (const reminder of reminders) {
+                let dueReminderForDoc: DueReminderCandidate | null = null;
+
+                for (const scheduledTime of reminder.times) {
+                    const doseKey = `${reminder.medicationId}_${scheduledTime}`;
+                    if (loggedDoseKeys.has(doseKey)) {
+                        continue;
+                    }
+
+                    const dueReason = resolveDoseDueReason({
+                        scheduledTime,
+                        currentTime,
+                        lastSentAt: reminder.lastSentAt,
+                        snoozeState: snoozedDoseStates.get(doseKey),
+                        nowMillis: now.toMillis(),
+                    });
+
+                    if (!dueReason) {
+                        continue;
+                    }
+
+                    const candidate: DueReminderCandidate = {
+                        id: reminder.id,
+                        medicationName: reminder.medicationName,
+                        medicationDose: reminder.medicationDose,
+                        medicationId: reminder.medicationId,
+                        matchedTime: scheduledTime,
+                        dueReason,
+                    };
+
+                    // Prioritize explicit snooze expiry sends over schedule-window sends.
+                    if (dueReason === 'snooze') {
+                        dueReminderForDoc = candidate;
+                        break;
+                    }
+
+                    if (!dueReminderForDoc) {
+                        dueReminderForDoc = candidate;
+                    }
+                }
+
+                if (dueReminderForDoc) {
+                    dueReminders.push(dueReminderForDoc);
+                }
+            }
+
+            if (dueReminders.length === 0) {
+                continue;
+            }
 
             const tokens = await notificationService.getUserPushTokens(userId);
 
@@ -294,23 +400,15 @@ export async function processAndNotifyMedicationReminders(): Promise<{
             if (tokens.length === 0) {
                 functions.logger.info(`[MedReminders] No tokens for user ${userId} - skipping`);
                 // Mark as processed but skipped
-                for (const reminder of reminders) {
+                for (const reminder of dueReminders) {
                     batch.update(getRemindersCollection().doc(reminder.id), { lastSentAt: now });
                 }
-                stats.processed += reminders.length;
+                stats.processed += dueReminders.length;
                 continue;
             }
 
-            // Send notification for each due medication (skip if already logged today)
-            for (const reminder of reminders) {
-                if (loggedDoseKeys.has(`${reminder.medicationId}_${reminder.matchedTime}`)) {
-                    functions.logger.info(
-                        `[MedReminders] Skipping reminder ${reminder.id} - already logged for ${reminder.matchedTime}`,
-                    );
-                    stats.processed++;
-                    continue;
-                }
-
+            // Send notification for each due reminder candidate.
+            for (const reminder of dueReminders) {
                 const lockAcquired = await acquireReminderSendLock(reminder.id, now);
                 if (!lockAcquired) {
                     functions.logger.info(
@@ -331,6 +429,8 @@ export async function processAndNotifyMedicationReminders(): Promise<{
                         reminderId: reminder.id,
                         medicationId: reminder.medicationId,
                         medicationName: reminder.medicationName,
+                        scheduledTime: reminder.matchedTime,
+                        dueReason: reminder.dueReason,
                     },
                     sound: 'default',
                     priority: 'high',
@@ -362,6 +462,8 @@ export async function processAndNotifyMedicationReminders(): Promise<{
                 functions.logger.info(`[MedReminders] Sent notification for ${reminder.id}`, {
                     userId,
                     medication: reminder.medicationName,
+                    dueReason: reminder.dueReason,
+                    scheduledTime: reminder.matchedTime,
                     successCount,
                 });
             }

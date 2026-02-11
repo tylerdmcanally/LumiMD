@@ -5,33 +5,124 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
+import auth from '@react-native-firebase/auth';
 import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 
 import { createApiHooks, queryKeys, sortByTimestampDescending } from '@lumimd/sdk';
-import type { Visit, Medication, ActionItem, UserProfile } from '@lumimd/sdk';
+import type {
+  Visit,
+  Medication,
+  ActionItem,
+  UserProfile,
+  Nudge,
+  HealthLog,
+  HealthLogSummaryResponse,
+  Share,
+  ShareInvite,
+} from '@lumimd/sdk';
 import { api } from './client';
+import { filterDueNudges } from './nudgeFilters';
 
 // Create hooks using the mobile API client
 const hooks = createApiHooks(api);
 
-// Export all hooks
-export const {
-  useVisits,
-  useVisit,
-  useLatestVisit,
-  useActionItems,
-  usePendingActions,
-  useMedications,
-  useActiveMedications,
-  useUserProfile,
-  // LumiBot hooks
-  useNudges,
-  useHealthLogs,
-  useHealthLogsSummary,
-  useUpdateNudge,
-  useRespondToNudge,
-  useCreateHealthLog,
-} = hooks;
+type ApiHookQueryOptions<TData> = Omit<
+  UseQueryOptions<TData, Error, TData, QueryKey>,
+  'queryKey' | 'queryFn'
+>;
+
+const getSessionKey = () => auth().currentUser?.uid ?? 'anonymous';
+
+// Session-scoped API hooks (prevents stale cached data across account switches)
+export function useVisits(options?: ApiHookQueryOptions<Visit[]>) {
+  return hooks.useVisits({
+    ...options,
+    queryKey: [...queryKeys.visits, getSessionKey()],
+  });
+}
+
+export function useVisit(
+  id: string,
+  options?: ApiHookQueryOptions<Visit>,
+) {
+  return hooks.useVisit(id, {
+    ...options,
+    queryKey: [...queryKeys.visit(id), getSessionKey()],
+  });
+}
+
+export function useLatestVisit(options?: ApiHookQueryOptions<Visit | null>) {
+  return hooks.useLatestVisit({
+    ...options,
+    queryKey: [...queryKeys.visits, 'latest', getSessionKey()],
+  });
+}
+
+export function useActionItems(options?: ApiHookQueryOptions<ActionItem[]>) {
+  return hooks.useActionItems({
+    ...options,
+    queryKey: [...queryKeys.actions, getSessionKey()],
+  });
+}
+
+export function usePendingActions(options?: ApiHookQueryOptions<ActionItem[]>) {
+  return hooks.usePendingActions({
+    ...options,
+    queryKey: [...queryKeys.actions, getSessionKey()],
+  });
+}
+
+export function useMedications(options?: ApiHookQueryOptions<Medication[]>) {
+  return hooks.useMedications({
+    ...options,
+    queryKey: [...queryKeys.medications, getSessionKey()],
+  });
+}
+
+export function useActiveMedications(options?: ApiHookQueryOptions<Medication[]>) {
+  return hooks.useActiveMedications({
+    ...options,
+    queryKey: [...queryKeys.medications, getSessionKey()],
+  });
+}
+
+export function useUserProfile(options?: ApiHookQueryOptions<UserProfile>) {
+  return hooks.useUserProfile({
+    ...options,
+    queryKey: [...queryKeys.profile, getSessionKey()],
+  });
+}
+
+export function useNudges(options?: ApiHookQueryOptions<Nudge[]>) {
+  return hooks.useNudges({
+    ...options,
+    queryKey: [...queryKeys.nudges, getSessionKey()],
+  });
+}
+
+export function useHealthLogs(
+  params?: { type?: string; limit?: number },
+  options?: ApiHookQueryOptions<HealthLog[]>,
+) {
+  return hooks.useHealthLogs(params, {
+    ...options,
+    queryKey: [...queryKeys.healthLogs, params ?? null, getSessionKey()],
+  });
+}
+
+export function useHealthLogsSummary(
+  days?: number,
+  options?: ApiHookQueryOptions<HealthLogSummaryResponse>,
+) {
+  return hooks.useHealthLogsSummary(days, {
+    ...options,
+    queryKey: [...queryKeys.healthLogsSummary, days ?? null, getSessionKey()],
+  });
+}
+
+export const useUpdateNudge = hooks.useUpdateNudge;
+export const useRespondToNudge = hooks.useRespondToNudge;
+export const useCreateHealthLog = hooks.useCreateHealthLog;
 
 // Export query keys for cache management
 export { queryKeys };
@@ -237,9 +328,6 @@ export function useRealtimePendingActions(
   });
 }
 
-// Import Nudge type
-import type { Nudge } from '@lumimd/sdk';
-
 // Add nudges to realtime query keys
 export const realtimeNudgesKey = (userId?: string | null) =>
   ['realtime', 'nudges', userId ?? 'anonymous'] as const;
@@ -258,21 +346,7 @@ export function useRealtimeNudges(
 
   // Filter for active/pending nudges that are due
   const filterActiveNudges = useCallback((nudges: Nudge[]) => {
-    const now = Date.now();
-    return nudges
-      .filter((nudge) => {
-        // Only show pending/active nudges that are scheduled for now or past
-        if (nudge.status !== 'pending' && nudge.status !== 'active') return false;
-        const scheduledTime = nudge.scheduledFor ? Date.parse(nudge.scheduledFor) : 0;
-        return scheduledTime <= now;
-      })
-      .sort((a, b) => {
-        // Sort by scheduledFor ascending (oldest first)
-        const aTime = a.scheduledFor ? Date.parse(a.scheduledFor) : 0;
-        const bTime = b.scheduledFor ? Date.parse(b.scheduledFor) : 0;
-        return aTime - bTime;
-      })
-      .slice(0, 10); // Limit to 10
+    return filterDueNudges(nudges);
   }, []);
 
   // Set up realtime listener
@@ -341,11 +415,17 @@ import type {
   UpdateMedicationReminderRequest,
 } from '@lumimd/sdk';
 
-export const medicationRemindersKey = ['medicationReminders'] as const;
+const toSessionKey = (userId?: string | null) => userId ?? 'anonymous';
 
-export function useMedicationReminders(options?: QueryEnabledOptions<MedicationReminder[]>) {
+export const medicationRemindersKey = (userId?: string | null) =>
+  ['medicationReminders', toSessionKey(userId)] as const;
+
+export function useMedicationReminders(
+  userId?: string | null,
+  options?: QueryEnabledOptions<MedicationReminder[]>,
+) {
   return useQuery<MedicationReminder[]>({
-    queryKey: medicationRemindersKey,
+    queryKey: medicationRemindersKey(userId),
     staleTime: 30_000,
     ...options,
     queryFn: async () => {
@@ -362,8 +442,8 @@ export function useCreateMedicationReminder() {
     mutationFn: (data: CreateMedicationReminderRequest) =>
       api.medicationReminders.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
-      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+      queryClient.invalidateQueries({ queryKey: ['medicationReminders'] });
+      queryClient.invalidateQueries({ queryKey: ['medicationSchedule'] });
     },
   });
 }
@@ -375,8 +455,8 @@ export function useUpdateMedicationReminder() {
     mutationFn: ({ id, data }: { id: string; data: UpdateMedicationReminderRequest }) =>
       api.medicationReminders.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
-      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+      queryClient.invalidateQueries({ queryKey: ['medicationReminders'] });
+      queryClient.invalidateQueries({ queryKey: ['medicationSchedule'] });
     },
   });
 }
@@ -387,8 +467,8 @@ export function useDeleteMedicationReminder() {
   return useMutation({
     mutationFn: (id: string) => api.medicationReminders.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: medicationRemindersKey });
-      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+      queryClient.invalidateQueries({ queryKey: ['medicationReminders'] });
+      queryClient.invalidateQueries({ queryKey: ['medicationSchedule'] });
     },
   });
 }
@@ -413,7 +493,8 @@ export interface MedicationScheduleResponse {
   nextDue: { name: string; time: string } | null;
 }
 
-export const medicationScheduleKey = ['medicationSchedule'] as const;
+export const medicationScheduleKey = (userId?: string | null) =>
+  ['medicationSchedule', toSessionKey(userId)] as const;
 
 // Helper to make API calls directly with auth
 async function fetchWithAuth<T>(path: string, options?: RequestInit): Promise<T> {
@@ -437,9 +518,12 @@ async function fetchWithAuth<T>(path: string, options?: RequestInit): Promise<T>
   return response.json();
 }
 
-export function useMedicationSchedule(options?: QueryEnabledOptions<MedicationScheduleResponse>) {
+export function useMedicationSchedule(
+  userId?: string | null,
+  options?: QueryEnabledOptions<MedicationScheduleResponse>,
+) {
   return useQuery<MedicationScheduleResponse>({
-    queryKey: medicationScheduleKey,
+    queryKey: medicationScheduleKey(userId),
     staleTime: 30_000,
     ...options,
     queryFn: async () => {
@@ -458,7 +542,7 @@ export function useMarkDose() {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+      queryClient.invalidateQueries({ queryKey: ['medicationSchedule'] });
     },
   });
 }
@@ -476,7 +560,7 @@ export function useMarkBatch() {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+      queryClient.invalidateQueries({ queryKey: ['medicationSchedule'] });
     },
   });
 }
@@ -495,7 +579,7 @@ export function useSnoozeDose() {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: medicationScheduleKey });
+      queryClient.invalidateQueries({ queryKey: ['medicationSchedule'] });
     },
   });
 }
@@ -559,6 +643,84 @@ export function useAcknowledgeMedicationWarnings() {
     onSuccess: () => {
       // Invalidate medications to refresh the warningAcknowledgedAt field
       queryClient.invalidateQueries({ queryKey: ['medications'] });
+    },
+  });
+}
+
+// =============================================================================
+// Caregiver Sharing Hooks
+// =============================================================================
+
+export const sharesKey = (userId?: string | null) =>
+  ['shares', toSessionKey(userId)] as const;
+
+export const shareInvitesKey = (userId?: string | null) =>
+  ['shareInvites', toSessionKey(userId)] as const;
+
+export function useShares(
+  userId?: string | null,
+  options?: QueryEnabledOptions<Share[]>,
+) {
+  return useQuery<Share[]>({
+    queryKey: sharesKey(userId),
+    staleTime: 30_000,
+    enabled: Boolean(userId),
+    ...options,
+    queryFn: async () => {
+      return api.shares.list();
+    },
+  });
+}
+
+export function useMyShareInvites(
+  userId?: string | null,
+  options?: QueryEnabledOptions<ShareInvite[]>,
+) {
+  return useQuery<ShareInvite[]>({
+    queryKey: shareInvitesKey(userId),
+    staleTime: 30_000,
+    enabled: Boolean(userId),
+    ...options,
+    queryFn: async () => {
+      return api.shares.myInvites();
+    },
+  });
+}
+
+export function useInviteCaregiver() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { caregiverEmail: string; message?: string }) =>
+      api.shares.invite(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shares'] });
+      queryClient.invalidateQueries({ queryKey: ['shareInvites'] });
+    },
+  });
+}
+
+export function useRevokeShareAccess() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (shareId: string) =>
+      api.shares.update(shareId, { status: 'revoked' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shares'] });
+      queryClient.invalidateQueries({ queryKey: ['shareInvites'] });
+    },
+  });
+}
+
+export function useRevokeShareInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (token: string) => api.shares.revokeInvite(token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shares'] });
+      queryClient.invalidateQueries({ queryKey: ['shareInvites'] });
     },
   });
 }

@@ -23,6 +23,7 @@ import {
     checkHealthValue,
     screenForEmergencySymptoms,
 } from '../services/safetyChecker';
+import { resolveHealthLogDedupAction } from '../services/healthLogDedupService';
 import { completeNudge, createFollowUpNudge, createInsightNudge } from '../services/lumibotAnalyzer';
 import { getPrimaryInsight } from '../services/trendAnalyzer';
 import { escalatePatientFrequency } from '../triggers/personalRNEvaluation';
@@ -140,7 +141,7 @@ async function checkForTrendInsights(userId: string, logType: string): Promise<v
         const data = doc.data();
         return {
             type: data.type as string,
-            value: data.data as Record<string, unknown>,
+            value: data.value as Record<string, unknown>,
             createdAt: (data.createdAt as admin.firestore.Timestamp).toDate(),
         };
     });
@@ -191,34 +192,36 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
                 const existingDoc = existingSnapshot.docs[0];
                 const existingData = existingDoc.data();
 
-                // For STEPS: Update the existing record (steps accumulate throughout the day)
-                if (data.type === 'steps') {
-                    const newValue = data.value as { count: number; date?: string };
-                    const oldValue = existingData.value as { count: number; date?: string };
+                const dedupAction = resolveHealthLogDedupAction({
+                    incomingType: data.type as HealthLogType,
+                    incomingValue: data.value,
+                    existingValue: existingData.value,
+                });
 
-                    // Only update if the new count is higher
-                    if (newValue.count > (oldValue?.count || 0)) {
-                        await existingDoc.ref.update({
-                            value: data.value,
-                            syncedAt: admin.firestore.Timestamp.now(),
-                        });
-                        functions.logger.info(`[healthLogs] Updated steps from ${oldValue?.count || 0} to ${newValue.count}`, {
-                            docId: existingDoc.id,
-                            sourceId: data.sourceId,
-                        });
-                        res.status(200).json({
-                            id: existingDoc.id,
-                            userId: existingData.userId,
-                            type: existingData.type,
-                            value: data.value, // Return the updated value
-                            alertLevel: existingData.alertLevel,
-                            createdAt: existingData.createdAt?.toDate().toISOString(),
-                            source: existingData.source,
-                            sourceId: existingData.sourceId,
-                            updated: true,
-                        });
-                        return;
-                    }
+                // For steps imports, keep the daily record current by updating only on higher counts.
+                if (dedupAction === 'update_existing') {
+                    const newValue = data.value as { count?: number };
+                    const oldValue = existingData.value as { count?: number };
+                    await existingDoc.ref.update({
+                        value: data.value,
+                        syncedAt: admin.firestore.Timestamp.now(),
+                    });
+                    functions.logger.info(`[healthLogs] Updated steps from ${oldValue?.count || 0} to ${newValue?.count || 0}`, {
+                        docId: existingDoc.id,
+                        sourceId: data.sourceId,
+                    });
+                    res.status(200).json({
+                        id: existingDoc.id,
+                        userId: existingData.userId,
+                        type: existingData.type,
+                        value: data.value,
+                        alertLevel: existingData.alertLevel,
+                        createdAt: existingData.createdAt?.toDate().toISOString(),
+                        source: existingData.source,
+                        sourceId: existingData.sourceId,
+                        updated: true,
+                    });
+                    return;
                 }
 
                 // For other types: Just return existing (true duplicate)

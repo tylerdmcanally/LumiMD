@@ -37,7 +37,9 @@ interface DueNudge {
 }
 
 // Priority order for nudge types (higher = more important)
-const NUDGE_TYPE_PRIORITY: Record<string, number> = {
+export const NUDGE_TYPE_PRIORITY: Record<string, number> = {
+    // Keep both keys for compatibility with legacy/variant producers.
+    'followup': 3,
     'follow_up': 3,
     'medication_checkin': 2,
     'condition_tracking': 1,
@@ -107,7 +109,7 @@ async function getDailyNudgeCount(userId: string): Promise<number> {
 /**
  * Sort nudges by priority (follow-ups first, then medication, then condition)
  */
-function sortNudgesByPriority(nudges: DueNudge[]): DueNudge[] {
+export function sortNudgesByPriority(nudges: DueNudge[]): DueNudge[] {
     return [...nudges].sort((a, b) => {
         const priorityA = NUDGE_TYPE_PRIORITY[a.type || ''] || 0;
         const priorityB = NUDGE_TYPE_PRIORITY[b.type || ''] || 0;
@@ -350,4 +352,3 @@ export async function backfillNotificationSentField(): Promise<number> {
 
     return updated;
 }
-

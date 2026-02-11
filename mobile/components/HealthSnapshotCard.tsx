@@ -3,8 +3,7 @@
  * 
  * A simple, clickable card matching the GlanceableCard pattern.
  * Shows unified health data from all sources:
- * - Apple HealthKit
- * - Manual entries  
+ * - Manual entries
  * - LumiBot prompts
  * 
  * Tapping navigates to the detailed health page.
@@ -17,34 +16,27 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, spacing, Card } from './ui';
 import { useHealthLogs } from '../lib/api/hooks';
 
-interface HealthSnapshotCardProps {
-  /** User's medical conditions from their profile */
-  medicalConditions?: string[];
-  /** Maximum number of vitals to show (default: 3) */
-  maxVitals?: number;
-  /** Called when user taps "See All" */
-  onSeeAll?: () => void;
+interface HealthSnapshotStats {
+  count: number;
+  latestReading: { type: string; value: any; source: string; createdAt: string } | null;
+  todaySteps: { count: number } | null;
+  hasData: boolean;
 }
 
-export function HealthSnapshotCard({
-  medicalConditions = [],
-  maxVitals = 3,
-  onSeeAll,
-}: HealthSnapshotCardProps) {
+export function HealthSnapshotCard() {
   const router = useRouter();
   
   // Fetch unified health logs from all sources
-  const { data: logs = [], isLoading } = useHealthLogs({ limit: 20 });
+  const { data: logs = [], isLoading, isRefetching, refetch, error } = useHealthLogs({ limit: 20 });
 
   // Count unique metric types that have data
-  const metricStats = useMemo(() => {
+  const metricStats = useMemo<HealthSnapshotStats>(() => {
     const vitalTypes = ['bp', 'glucose', 'weight', 'heart_rate', 'steps', 'oxygen_saturation'];
     const typesWithData = new Set<string>();
     let latestReading: { type: string; value: any; source: string; createdAt: string } | null = null;
@@ -81,15 +73,12 @@ export function HealthSnapshotCard({
   }, [logs]);
 
   const handlePress = useCallback(() => {
+    if (error) {
+      void refetch();
+      return;
+    }
     router.push('/health');
-  }, [router]);
-
-  // Hide on non-iOS (HealthKit only available on iOS)
-  // But we still show the card since manual entries work everywhere
-  // Actually, let's keep it iOS only for now since the health page is iOS focused
-  if (Platform.OS !== 'ios') {
-    return null;
-  }
+  }, [error, refetch, router]);
 
   // Determine badge text - prioritize today's steps
   let statusBadge: { text: string; color: string } | undefined;
@@ -146,11 +135,13 @@ export function HealthSnapshotCard({
           <View style={styles.content}>
             <Text style={styles.title}>Health Metrics</Text>
             
-            {isLoading ? (
+            {isLoading || isRefetching ? (
               <View style={styles.loadingRow}>
                 <ActivityIndicator size="small" color={Colors.primary} />
                 <Text style={styles.loadingText}>Loading...</Text>
               </View>
+            ) : error ? (
+              <Text style={styles.errorText}>Unable to load metrics. Tap to retry.</Text>
             ) : statusBadge ? (
               <View style={[styles.badge, { backgroundColor: `${statusBadge.color}1A` }]}>
                 <Text style={[styles.badgeText, { color: statusBadge.color }]}>
@@ -214,6 +205,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
+  },
+  errorText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.error,
   },
   badge: {
     alignSelf: 'flex-start',

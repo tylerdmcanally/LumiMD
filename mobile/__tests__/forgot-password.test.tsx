@@ -3,10 +3,10 @@ import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ForgotPasswordScreen from '../app/forgot-password';
 
-const mockResetPassword = jest.fn(async () => ({ error: null }));
+const mockResetPassword = jest.fn(async (_email: string) => ({ error: null }));
 
 jest.mock('../lib/auth', () => ({
-  resetPassword: (...args: any[]) => mockResetPassword(...args),
+  resetPassword: (email: string) => mockResetPassword(email),
 }));
 
 describe('ForgotPasswordScreen', () => {

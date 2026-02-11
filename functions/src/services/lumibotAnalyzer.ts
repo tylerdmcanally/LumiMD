@@ -51,7 +51,7 @@ async function hasExistingConditionNudges(userId: string, conditionId: string): 
     const snapshot = await getNudgesCollection()
         .where('userId', '==', userId)
         .where('conditionId', '==', conditionId)
-        .where('status', 'in', ['pending', 'active'])
+        .where('status', 'in', ['pending', 'active', 'snoozed'])
         .limit(1)
         .get();
 
@@ -109,7 +109,7 @@ async function hasExistingMedicationNudges(userId: string, medicationName: strin
     const snapshot = await getNudgesCollection()
         .where('userId', '==', userId)
         .where('medicationName', '==', medicationName)
-        .where('status', 'in', ['pending', 'active'])
+        .where('status', 'in', ['pending', 'active', 'snoozed'])
         .limit(1)
         .get();
 
@@ -538,7 +538,7 @@ export async function analyzeVisitForNudges(
         const existingNudges = await getNudgesCollection()
             .where('userId', '==', userId)
             .where('conditionId', '==', protocol.id)
-            .where('status', 'in', ['pending', 'active'])
+            .where('status', 'in', ['pending', 'active', 'snoozed'])
             .limit(1)
             .get();
 

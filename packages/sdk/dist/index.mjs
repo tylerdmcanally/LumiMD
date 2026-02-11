@@ -422,105 +422,116 @@ var queryKeys = {
 };
 function createApiHooks(api) {
   function useVisits(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.visits,
+      queryKey: queryKey ?? queryKeys.visits,
       queryFn: () => api.visits.list(),
       staleTime: 5 * 60 * 1e3,
       // 5 minutes
-      ...options
+      ...queryOptions
     });
   }
   function useVisit(id, options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.visit(id),
+      queryKey: queryKey ?? queryKeys.visit(id),
       queryFn: () => api.visits.get(id),
       enabled: !!id,
       staleTime: 5 * 60 * 1e3,
-      ...options
+      ...queryOptions
     });
   }
   function useLatestVisit(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: [...queryKeys.visits, "latest"],
+      queryKey: queryKey ?? [...queryKeys.visits, "latest"],
       queryFn: async () => {
         const visits = await api.visits.list({ limit: 1, sort: "desc" });
         return visits.length > 0 ? visits[0] : null;
       },
       staleTime: 2 * 60 * 1e3,
       // 2 minutes
-      ...options
+      ...queryOptions
     });
   }
   function useActionItems(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.actions,
+      queryKey: queryKey ?? queryKeys.actions,
       queryFn: () => api.actions.list(),
       staleTime: 5 * 60 * 1e3,
-      ...options
+      ...queryOptions
     });
   }
   function usePendingActions(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.actions,
+      queryKey: queryKey ?? queryKeys.actions,
       queryFn: () => api.actions.list(),
       select: (actions) => actions.filter((action) => !action.completed),
       staleTime: 30 * 1e3,
       // 30 seconds
-      ...options
+      ...queryOptions
     });
   }
   function useMedications(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.medications,
+      queryKey: queryKey ?? queryKeys.medications,
       queryFn: () => api.medications.list(),
       staleTime: 60 * 1e3,
       // 1 minute
-      ...options
+      ...queryOptions
     });
   }
   function useActiveMedications(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.medications,
+      queryKey: queryKey ?? queryKeys.medications,
       queryFn: () => api.medications.list(),
       select: (meds) => meds.filter((med) => med.active !== false),
       staleTime: 60 * 1e3,
       // 1 minute
-      ...options
+      ...queryOptions
     });
   }
   function useUserProfile(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.profile,
+      queryKey: queryKey ?? queryKeys.profile,
       queryFn: () => api.user.getProfile(),
       staleTime: 5 * 60 * 1e3,
-      ...options
+      ...queryOptions
     });
   }
   function useNudges(options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.nudges,
+      queryKey: queryKey ?? queryKeys.nudges,
       queryFn: () => api.nudges.list(),
       staleTime: 30 * 1e3,
       // 30 seconds
-      ...options
+      ...queryOptions
     });
   }
   function useHealthLogs(params, options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: [...queryKeys.healthLogs, params],
+      queryKey: queryKey ?? [...queryKeys.healthLogs, params],
       queryFn: () => api.healthLogs.list(params),
       staleTime: 60 * 1e3,
       // 1 minute
-      ...options
+      ...queryOptions
     });
   }
   function useHealthLogsSummary(days, options) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: [...queryKeys.healthLogsSummary, days],
+      queryKey: queryKey ?? [...queryKeys.healthLogsSummary, days],
       queryFn: () => api.healthLogs.summary(days),
       staleTime: 5 * 60 * 1e3,
       // 5 minutes
-      ...options
+      ...queryOptions
     });
   }
   function useUpdateNudge() {

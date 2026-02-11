@@ -28,6 +28,56 @@ const WEB_PORTAL_URL = process.env.WEB_PORTAL_URL || 'https://portal.lumimd.app'
 
 const getDb = () => admin.firestore();
 
+const normalizeEmail = (value: unknown): string => {
+  if (typeof value !== 'string') return '';
+  return value.toLowerCase().trim();
+};
+
+const toISOStringSafe = (value: unknown): string | null => {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toDate' in (value as Record<string, unknown>) &&
+    typeof (value as { toDate?: unknown }).toDate === 'function'
+  ) {
+    try {
+      const date = (value as { toDate: () => Date }).toDate();
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  return null;
+};
+
+const serializeSharePayload = (
+  id: string,
+  data: Record<string, unknown>,
+  type?: 'outgoing' | 'incoming',
+) => ({
+  id,
+  ...data,
+  createdAt: toISOStringSafe(data.createdAt),
+  updatedAt: toISOStringSafe(data.updatedAt),
+  acceptedAt: toISOStringSafe(data.acceptedAt),
+  ...(type ? { type } : {}),
+});
+
+const getInviteCaregiverEmail = (invite: Record<string, unknown>): string =>
+  normalizeEmail(invite.caregiverEmail ?? invite.inviteeEmail);
+
 const ensureCaregiverRole = async (userId: string) => {
   const userRef = getDb().collection('users').doc(userId);
   const userDoc = await userRef.get();
@@ -87,20 +137,12 @@ sharesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
       .get();
 
     const shares = [
-      ...ownedSharesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate().toISOString(),
-        updatedAt: doc.data().updatedAt?.toDate().toISOString(),
-        type: 'outgoing' as const, // User shared their data with someone
-      })),
-      ...caregiverSharesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate().toISOString(),
-        updatedAt: doc.data().updatedAt?.toDate().toISOString(),
-        type: 'incoming' as const, // Someone shared their data with user
-      })),
+      ...ownedSharesSnapshot.docs.map((doc) =>
+        serializeSharePayload(doc.id, doc.data(), 'outgoing'),
+      ),
+      ...caregiverSharesSnapshot.docs.map((doc) =>
+        serializeSharePayload(doc.id, doc.data(), 'incoming'),
+      ),
     ];
 
     res.json(shares);
@@ -123,6 +165,7 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
   try {
     const ownerId = req.user!.uid;
     const data = createShareSchema.parse(req.body);
+    const caregiverEmail = normalizeEmail(data.caregiverEmail);
 
     // Get owner info for email
     const ownerUser = await admin.auth().getUser(ownerId);
@@ -136,7 +179,7 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
       ownerEmail.split('@')[0];
 
     // Prevent sharing with yourself
-    if (ownerEmail.toLowerCase() === data.caregiverEmail.toLowerCase()) {
+    if (normalizeEmail(ownerEmail) === caregiverEmail) {
       res.status(400).json({
         code: 'invalid_share',
         message: 'You cannot share with yourself',
@@ -145,15 +188,24 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
     }
 
     // Check for existing share or invite
-    const existingInviteQuery = await getDb()
-      .collection('shareInvites')
-      .where('ownerId', '==', ownerId)
-      .where('inviteeEmail', '==', data.caregiverEmail.toLowerCase())
-      .where('status', '==', 'pending')
-      .limit(1)
-      .get();
+    const [existingInviteByLegacyEmail, existingInviteByCaregiverEmail] = await Promise.all([
+      getDb()
+        .collection('shareInvites')
+        .where('ownerId', '==', ownerId)
+        .where('inviteeEmail', '==', caregiverEmail)
+        .where('status', '==', 'pending')
+        .limit(1)
+        .get(),
+      getDb()
+        .collection('shareInvites')
+        .where('ownerId', '==', ownerId)
+        .where('caregiverEmail', '==', caregiverEmail)
+        .where('status', '==', 'pending')
+        .limit(1)
+        .get(),
+    ]);
 
-    if (!existingInviteQuery.empty) {
+    if (!existingInviteByLegacyEmail.empty || !existingInviteByCaregiverEmail.empty) {
       res.status(409).json({
         code: 'invite_exists',
         message: 'An invitation has already been sent to this email',
@@ -164,7 +216,7 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
     // Try to find existing user
     let caregiverUserId: string | null = null;
     try {
-      const caregiverUser = await admin.auth().getUserByEmail(data.caregiverEmail);
+      const caregiverUser = await admin.auth().getUserByEmail(caregiverEmail);
       caregiverUserId = caregiverUser.uid;
 
       // Check if share already exists
@@ -204,7 +256,7 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
           ownerName,
           ownerEmail,
           caregiverUserId,
-          caregiverEmail: data.caregiverEmail.toLowerCase(),
+          caregiverEmail,
           role: data.role,
           status: 'pending',
           message: data.message || null,
@@ -239,7 +291,8 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
           ownerId,
           ownerEmail,
           ownerName,
-          inviteeEmail: data.caregiverEmail.toLowerCase(),
+          inviteeEmail: caregiverEmail,
+          caregiverEmail,
           status: 'pending',
           message: data.message || null,
           role: data.role,
@@ -259,7 +312,8 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
         ownerId,
         ownerEmail,
         ownerName,
-        inviteeEmail: data.caregiverEmail,
+        caregiverEmail,
+        inviteeEmail: caregiverEmail,
         status: 'pending',
         message: data.message || null,
         role: data.role,
@@ -294,7 +348,7 @@ sharesRouter.get('/invites', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const user = await admin.auth().getUser(userId);
-    const userEmail = user.email?.toLowerCase();
+    const userEmail = normalizeEmail(user.email);
 
     if (!userEmail) {
       res.status(400).json({
@@ -304,17 +358,31 @@ sharesRouter.get('/invites', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const invitesSnapshot = await getDb()
-      .collection('shareInvites')
-      .where('inviteeEmail', '==', userEmail)
-      .where('status', '==', 'pending')
-      .get();
+    const [legacyInvitesSnapshot, currentInvitesSnapshot] = await Promise.all([
+      getDb()
+        .collection('shareInvites')
+        .where('inviteeEmail', '==', userEmail)
+        .where('status', '==', 'pending')
+        .get(),
+      getDb()
+        .collection('shareInvites')
+        .where('caregiverEmail', '==', userEmail)
+        .where('status', '==', 'pending')
+        .get(),
+    ]);
 
-    const invites = invitesSnapshot.docs.map((doc) => {
+    const invitesById = new Map<string, admin.firestore.QueryDocumentSnapshot>();
+    legacyInvitesSnapshot.docs.forEach((doc) => invitesById.set(doc.id, doc));
+    currentInvitesSnapshot.docs.forEach((doc) => invitesById.set(doc.id, doc));
+
+    const invites = Array.from(invitesById.values()).map((doc) => {
       const data = doc.data();
+      const caregiverEmail = getInviteCaregiverEmail(data as Record<string, unknown>);
       return {
         id: doc.id,
         ...data,
+        caregiverEmail: caregiverEmail || null,
+        inviteeEmail: normalizeEmail(data.inviteeEmail) || caregiverEmail || null,
         createdAt: data.createdAt?.toDate().toISOString(),
         expiresAt: data.expiresAt?.toDate().toISOString(),
       };
@@ -396,10 +464,16 @@ sharesRouter.patch('/invites/:id', requireAuth, async (req: AuthRequest, res) =>
  * Get a specific share by ID
  * Only accessible by owner or caregiver
  */
-sharesRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
+sharesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.uid;
     const shareId = req.params.id;
+
+    // Allow static routes registered later (e.g. /my-invites) to resolve correctly.
+    if (shareId === 'my-invites') {
+      next();
+      return;
+    }
 
     const shareDoc = await getDb().collection('shares').doc(shareId).get();
 
@@ -422,12 +496,7 @@ sharesRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    res.json({
-      id: shareDoc.id,
-      ...share,
-      createdAt: share.createdAt?.toDate().toISOString(),
-      updatedAt: share.updatedAt?.toDate().toISOString(),
-    });
+    res.json(serializeSharePayload(shareDoc.id, share));
   } catch (error) {
     functions.logger.error('[shares] Error getting share:', error);
     res.status(500).json({
@@ -552,8 +621,8 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
 
       // Verify email matches (normalize both to lowercase for comparison)
       const user = await admin.auth().getUser(userId);
-      const userEmail = user.email?.toLowerCase().trim() || '';
-      const inviteEmail = invite.inviteeEmail?.toLowerCase().trim() || '';
+      const userEmail = normalizeEmail(user.email);
+      const inviteEmail = getInviteCaregiverEmail(invite as Record<string, unknown>);
 
       if (userEmail !== inviteEmail) {
         functions.logger.warn(
@@ -562,7 +631,7 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
         res.status(403).json({
           code: 'email_mismatch',
           message: 'This invitation was sent to a different email address',
-          userMessage: `This invitation was sent to ${invite.inviteeEmail}, but you are signed in as ${user.email}. Please sign in with the email address that received the invitation.`,
+          userMessage: `This invitation was sent to ${inviteEmail || 'a different email address'}, but you are signed in as ${user.email}. Please sign in with the email address that received the invitation.`,
         });
         return;
       }
@@ -600,7 +669,7 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
           ownerName: invite.ownerName,
           ownerEmail: invite.ownerEmail,
           caregiverUserId: userId,
-          caregiverEmail: invite.inviteeEmail,
+          caregiverEmail: inviteEmail,
           role: invite.role,
           status: 'accepted',
           message: invite.message || null,
@@ -823,10 +892,12 @@ sharesRouter.get('/invite-info/:token', async (req, res) => {
       return;
     }
 
+    const caregiverEmail = getInviteCaregiverEmail(invite);
+
     // Return only public info needed for sign-up flow
     res.json({
       ownerName: invite.ownerName || 'Someone',
-      caregiverEmail: invite.caregiverEmail,
+      caregiverEmail: caregiverEmail || null,
       status: invite.status,
       expiresAt: invite.expiresAt?.toDate().toISOString(),
     });
@@ -907,7 +978,15 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       .limit(1)
       .get();
 
-    if (!existingPendingInvite.empty) {
+    const existingLegacyPendingInvite = await getDb()
+      .collection('shareInvites')
+      .where('ownerId', '==', ownerId)
+      .where('inviteeEmail', '==', caregiverEmail)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+
+    if (!existingPendingInvite.empty || !existingLegacyPendingInvite.empty) {
       res.status(409).json({
         code: 'invite_exists',
         message: 'An invitation has already been sent to this email',
@@ -1064,6 +1143,7 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
     }
 
     const invite = inviteDoc.data()!;
+    const inviteEmail = getInviteCaregiverEmail(invite);
 
     // Edge case: Check if expired
     const now = admin.firestore.Timestamp.now();
@@ -1078,16 +1158,16 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
 
     // Get current user's email
     const currentUser = await admin.auth().getUser(userId);
-    const currentUserEmail = currentUser.email?.toLowerCase().trim();
+    const currentUserEmail = normalizeEmail(currentUser.email);
 
-    functions.logger.info(`[shares] Accept attempt: token=${token}, userId=${userId}, userEmail=${currentUserEmail}, inviteEmail=${invite.caregiverEmail}`);
+    functions.logger.info(`[shares] Accept attempt: token=${token}, userId=${userId}, userEmail=${currentUserEmail}, inviteEmail=${inviteEmail}`);
 
     // Edge case: Validate email match
-    if (!currentUserEmail || currentUserEmail !== invite.caregiverEmail) {
+    if (!currentUserEmail || !inviteEmail || currentUserEmail !== inviteEmail) {
       res.status(403).json({
         code: 'email_mismatch',
-        message: `This invitation was sent to ${invite.caregiverEmail}. Please sign in with that email address.`,
-        userMessage: `This invitation was sent to ${invite.caregiverEmail}. Please sign in with that email address.`,
+        message: `This invitation was sent to ${inviteEmail || 'a different email address'}. Please sign in with that email address.`,
+        userMessage: `This invitation was sent to ${inviteEmail || 'a different email address'}. Please sign in with that email address.`,
       });
       return;
     }
@@ -1118,6 +1198,7 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
     await inviteDoc.ref.update({
       status: 'accepted',
       caregiverUserId: userId,
+      caregiverEmail: inviteEmail,
       acceptedAt,
     });
 
@@ -1134,7 +1215,7 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
           ownerName: invite.ownerName,
           ownerEmail: invite.ownerEmail,
           caregiverUserId: userId,
-          caregiverEmail: invite.caregiverEmail,
+          caregiverEmail: inviteEmail,
           role: invite.role || 'viewer',
           status: 'accepted',
           message: invite.message || null,

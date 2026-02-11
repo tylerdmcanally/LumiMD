@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "npm run build -w packages/sdk --if-present && rm -rf node_modules/react-native-health/node_modules/@expo 2>/dev/null || true"
+    "postinstall": "npm run build -w packages/sdk --if-present"
   },
   "dependencies": {
     "firebase-admin": "^13.6.0"

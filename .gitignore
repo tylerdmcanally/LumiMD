@@ -80,6 +80,7 @@ bash/
 web-portal/.next/
 web-portal/tsconfig.tsbuildinfo
 functions/lib/
+mobile/dist/
 
 # Local environment secrets
 web-portal/.env.local

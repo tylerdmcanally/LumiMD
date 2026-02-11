@@ -4,6 +4,7 @@ import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { webhookConfig } from '../config';
+import { buildWebhookVisitUpdate } from '../services/visitProcessingTransitions';
 
 export const webhooksRouter = Router();
 
@@ -93,29 +94,25 @@ webhooksRouter.post('/assemblyai/transcription-complete', async (req, res) => {
       const fullTranscript = await assemblyAI.getTranscript(transcript_id);
 
       const formattedTranscript = assemblyAI.formatTranscript(fullTranscript.utterances, fullTranscript.text);
-
-      await visitRef.update({
-        transcriptionStatus: 'completed',
-        transcriptionCompletedAt: now,
-        transcriptionError: admin.firestore.FieldValue.delete(),
-        transcript: formattedTranscript,
+      const updatePayload = buildWebhookVisitUpdate({
+        status: 'completed',
+        now,
+        fieldDelete: admin.firestore.FieldValue.delete(),
+        formattedTranscript,
         transcriptText: fullTranscript.text || text || '',
-        processingStatus: 'summarizing',
-        processingError: admin.firestore.FieldValue.delete(),
-        updatedAt: now,
-        webhookTriggered: true,
       });
+
+      await visitRef.update(updatePayload);
 
       functions.logger.info(`[webhooks] Visit ${visitRef.id} moved to summarizing via webhook`);
     } else if (status === 'error') {
-      await visitRef.update({
-        transcriptionStatus: 'error',
-        transcriptionError: error || 'Transcription failed',
-        processingStatus: 'failed',
-        status: 'failed',
-        processingError: error || 'Transcription failed',
-        updatedAt: now,
+      const updatePayload = buildWebhookVisitUpdate({
+        status: 'error',
+        now,
+        fieldDelete: admin.firestore.FieldValue.delete(),
+        error,
       });
+      await visitRef.update(updatePayload);
 
       functions.logger.error(`[webhooks] Visit ${visitRef.id} transcription failed: ${error}`);
     }
@@ -131,5 +128,4 @@ webhooksRouter.post('/assemblyai/transcription-complete', async (req, res) => {
     res.status(500).json({ code: 'server_error', message: 'Failed to process webhook' });
   }
 });
-
 

@@ -4,7 +4,10 @@ module.exports = {
   expo: {
     name: 'LumiMD',
     slug: 'lumimd',
-    version: '1.3.0',
+    version: '1.4.0',
+    runtimeVersion: {
+      policy: 'appVersion',
+    },
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
     icon: './assets/icon.png',
@@ -31,10 +34,6 @@ module.exports = {
           'LumiMD needs access to your microphone to record your medical visits.',
         NSCalendarsUsageDescription:
           'LumiMD needs access to your calendar to add action items as reminders for follow-up appointments and medical tasks.',
-        NSHealthShareUsageDescription:
-          'LumiMD uses your health data to provide a comprehensive view of your vitals, including weight, heart rate, and blood pressure, alongside your medical visits and medications.',
-        NSHealthUpdateUsageDescription:
-          'LumiMD may record health observations from your medical visits.',
         ITSAppUsesNonExemptEncryption: false,
         UIBackgroundModes: ['audio', 'remote-notification'],
       },
@@ -89,14 +88,6 @@ module.exports = {
         },
       ],
       '@react-native-firebase/app',
-      [
-        './plugins/withHealthKit',
-        {
-          usageDescription:
-            'LumiMD uses your health data to provide a comprehensive view of your vitals, including weight, heart rate, and blood pressure, alongside your medical visits and medications.',
-          backgroundDelivery: false,
-        },
-      ],
     ],
     extra: {
       router: {},

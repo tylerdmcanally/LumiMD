@@ -6,7 +6,6 @@
  */
 
 import { Platform, NativeModules } from 'react-native';
-import SharedGroupPreferences from 'react-native-shared-group-preferences';
 import type { MedicationScheduleResponse } from '../api/hooks';
 
 // App Group identifier - must match widget and app entitlements
@@ -14,6 +13,20 @@ const APP_GROUP_ID = 'group.com.lumimd.app';
 
 // Key used in App Groups UserDefaults
 const MEDICATION_SCHEDULE_KEY = 'medicationSchedule';
+
+type SharedGroupPreferencesModule = {
+    setItem: (key: string, value: string, appGroupId: string) => Promise<void>;
+};
+
+function loadSharedGroupPreferences(): SharedGroupPreferencesModule | null {
+    try {
+        return require('react-native-shared-group-preferences') as SharedGroupPreferencesModule;
+    } catch {
+        return null;
+    }
+}
+
+const SharedGroupPreferences = loadSharedGroupPreferences();
 
 /**
  * Shared medication structure for widget consumption
@@ -42,6 +55,10 @@ export async function syncMedicationScheduleToWidget(
 ): Promise<void> {
     // Only supported on iOS
     if (Platform.OS !== 'ios') return;
+    if (!SharedGroupPreferences) {
+        console.log('[WidgetSync] SharedGroupPreferences native module not available');
+        return;
+    }
 
     try {
         const now = new Date().toISOString();

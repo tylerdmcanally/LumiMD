@@ -3,6 +3,7 @@
     "module": "commonjs",
     "noImplicitReturns": true,
     "noUnusedLocals": true,
+    "isolatedModules": true,
     "outDir": "lib",
     "sourceMap": true,
     "strict": true,
@@ -17,5 +18,4 @@
     "src"
   ]
 }
-
 

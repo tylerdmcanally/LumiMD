@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
+import { createHash } from 'crypto';
 import { z } from 'zod';
 
 import { requireAuth, AuthRequest } from '../middlewares/auth';
@@ -9,6 +10,13 @@ export const usersRouter = Router();
 
 const getDb = () => admin.firestore();
 const FIRESTORE_DELETE_BATCH_SIZE = 450;
+const PUSH_TOKEN_FALLBACK_SCAN_LIMIT = 1000;
+const PUSH_TOKEN_FALLBACK_SCAN_CHUNK = 25;
+const ANALYTICS_AUDIT_COLLECTION = 'privacyAuditLogs';
+const ANALYTICS_CONSENT_EVENT_TYPE = 'analytics_consent_changed';
+const DEFAULT_AUDIT_QUERY_LIMIT = 50;
+const MAX_AUDIT_QUERY_LIMIT = 100;
+const AUDIT_LOG_HASH_SALT = process.env.AUDIT_LOG_HASH_SALT?.trim() ?? '';
 
 type DeletionQueryTarget = {
   collection: string;
@@ -122,6 +130,20 @@ const unregisterPushTokenSchema = z.object({
   token: z.string().min(1, 'Push token is required'),
 });
 
+const analyticsConsentSchema = z.object({
+  granted: z.boolean(),
+  source: z
+    .enum(['settings_toggle', 'app_boot_sync', 'migration', 'server_default'])
+    .default('settings_toggle'),
+  policyVersion: z.string().trim().min(1).max(40).optional(),
+  platform: z.enum(['ios', 'android', 'web']).optional(),
+  appVersion: z.string().trim().min(1).max(40).optional(),
+});
+
+const analyticsConsentAuditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_AUDIT_QUERY_LIMIT).optional(),
+});
+
 // Legacy caregiver schemas removed - now using shares collection
 
 const sanitizeString = (value?: string | null) => {
@@ -129,6 +151,43 @@ const sanitizeString = (value?: string | null) => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 };
+
+const sanitizeAuditString = (value?: string | null, maxLength = 200) => {
+  const sanitized = sanitizeString(value);
+  if (!sanitized) return undefined;
+  return sanitized.slice(0, maxLength);
+};
+
+const timestampToIso = (value: unknown): string | null => {
+  return (value as admin.firestore.Timestamp | undefined)?.toDate?.().toISOString?.() ?? null;
+};
+
+const getHashedAuditValue = (value?: string | null): string | undefined => {
+  const sanitized = sanitizeAuditString(value, 256);
+  if (!sanitized || !AUDIT_LOG_HASH_SALT) return undefined;
+  return createHash('sha256')
+    .update(`${AUDIT_LOG_HASH_SALT}:${sanitized}`)
+    .digest('hex');
+};
+
+const getClientIp = (req: AuthRequest): string | undefined => {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
+    return sanitizeAuditString(forwardedFor[0]?.split(',')[0], 128);
+  }
+  if (typeof forwardedFor === 'string') {
+    return sanitizeAuditString(forwardedFor.split(',')[0], 128);
+  }
+  return sanitizeAuditString(req.ip, 128);
+};
+
+const serializeAnalyticsConsent = (consentData: Record<string, unknown> | undefined) => ({
+  granted: typeof consentData?.granted === 'boolean' ? consentData.granted : false,
+  source: typeof consentData?.source === 'string' ? consentData.source : null,
+  policyVersion:
+    typeof consentData?.policyVersion === 'string' ? consentData.policyVersion : null,
+  updatedAt: timestampToIso(consentData?.updatedAt),
+});
 
 const sanitizeStringArray = (values?: string[]) => {
   if (!Array.isArray(values)) return undefined;
@@ -152,6 +211,66 @@ const isProfileComplete = (data: Record<string, unknown>): boolean => {
   const hasDob = typeof data.dateOfBirth === 'string' && data.dateOfBirth.trim().length > 0;
   return hasFirstName && hasDob;
 };
+
+async function findStalePushTokenRefsByUserScan(params: {
+  currentUserId: string;
+  tokensToClean: Set<string>;
+  deviceId?: string;
+}): Promise<Map<string, admin.firestore.DocumentReference>> {
+  const { currentUserId, tokensToClean, deviceId } = params;
+  const staleRefs = new Map<string, admin.firestore.DocumentReference>();
+
+  const usersSnapshot = await getDb()
+    .collection('users')
+    .limit(PUSH_TOKEN_FALLBACK_SCAN_LIMIT)
+    .get();
+
+  const candidateUsers = usersSnapshot.docs.filter((doc) => doc.id !== currentUserId);
+
+  for (let start = 0; start < candidateUsers.length; start += PUSH_TOKEN_FALLBACK_SCAN_CHUNK) {
+    const chunk = candidateUsers.slice(start, start + PUSH_TOKEN_FALLBACK_SCAN_CHUNK);
+    const tokenSnapshots = await Promise.all(
+      chunk.map(async (userDoc) => {
+        try {
+          return await userDoc.ref.collection('pushTokens').get();
+        } catch (error) {
+          functions.logger.warn(
+            `[users] Fallback push token scan failed for user ${userDoc.id}:`,
+            error,
+          );
+          return null;
+        }
+      }),
+    );
+
+    tokenSnapshots.forEach((snapshot) => {
+      if (!snapshot) return;
+      snapshot.docs.forEach((tokenDoc) => {
+        const tokenData = tokenDoc.data();
+        const tokenMatch =
+          typeof tokenData.token === 'string' && tokensToClean.has(tokenData.token);
+        const deviceMatch =
+          typeof deviceId === 'string' &&
+          deviceId.length > 0 &&
+          typeof tokenData.deviceId === 'string' &&
+          tokenData.deviceId === deviceId;
+
+        if (tokenMatch || deviceMatch) {
+          staleRefs.set(tokenDoc.ref.path, tokenDoc.ref);
+        }
+      });
+    });
+  }
+
+  if (usersSnapshot.size === PUSH_TOKEN_FALLBACK_SCAN_LIMIT) {
+    functions.logger.warn(
+      '[users] Fallback push token scan hit limit; some stale tokens may remain',
+      { scannedUsers: usersSnapshot.size, limit: PUSH_TOKEN_FALLBACK_SCAN_LIMIT },
+    );
+  }
+
+  return staleRefs;
+}
 
 
 usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
@@ -295,6 +414,196 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
 });
 
 /**
+ * GET /v1/users/privacy/analytics-consent
+ * Fetch analytics consent state for the authenticated user.
+ */
+usersRouter.get('/privacy/analytics-consent', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const userDoc = await getDb().collection('users').doc(userId).get();
+    const userData = userDoc.data() ?? {};
+    const privacy = (userData.privacy as Record<string, unknown> | undefined) ?? {};
+    const analyticsConsent = (privacy.analyticsConsent as Record<string, unknown> | undefined) ?? {};
+
+    res.json(serializeAnalyticsConsent(analyticsConsent));
+  } catch (error) {
+    functions.logger.error('[users] Error fetching analytics consent:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch analytics consent state',
+    });
+  }
+});
+
+/**
+ * POST /v1/users/privacy/analytics-consent
+ * Update analytics consent and write immutable audit log entry when state changes.
+ */
+usersRouter.post('/privacy/analytics-consent', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const payload = analyticsConsentSchema.parse(req.body);
+    const now = admin.firestore.Timestamp.now();
+    const userRef = getDb().collection('users').doc(userId);
+
+    const traceHeader = sanitizeAuditString(req.header('x-cloud-trace-context'), 256);
+    const traceId = traceHeader ? traceHeader.split('/')[0] : null;
+    const userAgent = sanitizeAuditString(req.get('user-agent'), 256) ?? null;
+    const origin = sanitizeAuditString(req.get('origin'), 256) ?? null;
+    const ipHash = getHashedAuditValue(getClientIp(req)) ?? null;
+
+    const transactionResult = await getDb().runTransaction(async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      const userData = userDoc.data() ?? {};
+      const privacy = (userData.privacy as Record<string, unknown> | undefined) ?? {};
+      const existingConsent =
+        (privacy.analyticsConsent as Record<string, unknown> | undefined) ?? {};
+
+      const previousGranted =
+        typeof existingConsent.granted === 'boolean' ? existingConsent.granted : null;
+      const existingSource =
+        typeof existingConsent.source === 'string' ? existingConsent.source : null;
+      const existingPolicyVersion =
+        typeof existingConsent.policyVersion === 'string'
+          ? existingConsent.policyVersion
+          : null;
+
+      const hasChanged =
+        previousGranted === null ||
+        previousGranted !== payload.granted ||
+        existingSource !== payload.source ||
+        existingPolicyVersion !== (payload.policyVersion ?? null);
+
+      const nextConsent = {
+        granted: payload.granted,
+        source: payload.source,
+        policyVersion: payload.policyVersion ?? null,
+        updatedAt: now,
+      };
+
+      transaction.set(
+        userRef,
+        {
+          privacy: {
+            analyticsConsent: nextConsent,
+          },
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+
+      if (hasChanged) {
+        const auditRef = userRef.collection(ANALYTICS_AUDIT_COLLECTION).doc();
+        transaction.set(auditRef, {
+          eventType: ANALYTICS_CONSENT_EVENT_TYPE,
+          granted: payload.granted,
+          previousGranted,
+          source: payload.source,
+          policyVersion: payload.policyVersion ?? null,
+          platform: payload.platform ?? null,
+          appVersion: payload.appVersion ?? null,
+          occurredAt: now,
+          traceId,
+          userAgent,
+          origin,
+          ipHash,
+        });
+      }
+
+      return {
+        hasChanged,
+        nextConsent,
+      };
+    });
+
+    functions.logger.info('[users] Updated analytics consent state', {
+      userId,
+      granted: payload.granted,
+      source: payload.source,
+      changed: transactionResult.hasChanged,
+    });
+
+    res.json({
+      ...serializeAnalyticsConsent(transactionResult.nextConsent),
+      changed: transactionResult.hasChanged,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error updating analytics consent:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to update analytics consent state',
+    });
+  }
+});
+
+/**
+ * GET /v1/users/privacy/analytics-consent/audit
+ * Return recent analytics consent audit events for authenticated user.
+ */
+usersRouter.get('/privacy/analytics-consent/audit', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const { limit } = analyticsConsentAuditQuerySchema.parse(req.query);
+    const auditLimit = limit ?? DEFAULT_AUDIT_QUERY_LIMIT;
+
+    const auditSnapshot = await getDb()
+      .collection('users')
+      .doc(userId)
+      .collection(ANALYTICS_AUDIT_COLLECTION)
+      .orderBy('occurredAt', 'desc')
+      .limit(auditLimit)
+      .get();
+
+    const events = auditSnapshot.docs.map((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      return {
+        id: doc.id,
+        eventType: typeof data.eventType === 'string' ? data.eventType : null,
+        granted: typeof data.granted === 'boolean' ? data.granted : null,
+        previousGranted:
+          typeof data.previousGranted === 'boolean' ? data.previousGranted : null,
+        source: typeof data.source === 'string' ? data.source : null,
+        policyVersion:
+          typeof data.policyVersion === 'string' ? data.policyVersion : null,
+        platform: typeof data.platform === 'string' ? data.platform : null,
+        appVersion: typeof data.appVersion === 'string' ? data.appVersion : null,
+        occurredAt: timestampToIso(data.occurredAt),
+      };
+    });
+
+    res.json({
+      events,
+      count: events.length,
+      limit: auditLimit,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid query parameters',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error fetching analytics consent audit trail:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch analytics consent audit trail',
+    });
+  }
+});
+
+/**
  * POST /v1/users/push-tokens
  * Register a push notification token for the authenticated user
  * 
@@ -311,17 +620,17 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
     const now = admin.firestore.Timestamp.now();
     const userRef = getDb().collection('users').doc(userId);
     const tokensRef = userRef.collection('pushTokens');
+    let collectionGroupLookupFailed = false;
+    const tokensToClean = new Set<string>([token]);
+    if (previousToken && previousToken !== token) {
+      tokensToClean.add(previousToken);
+    }
 
     // CRITICAL: Remove this device/token from ALL other users first.
     // We clean by token and (when provided) by stable deviceId to handle token rotation.
     const staleTokenRefs = new Map<string, admin.firestore.DocumentReference>();
 
     try {
-      const tokensToClean = new Set<string>([token]);
-      if (previousToken && previousToken !== token) {
-        tokensToClean.add(previousToken);
-      }
-
       for (const tokenToClean of tokensToClean) {
         const allTokensWithThisValue = await getDb()
           .collectionGroup('pushTokens')
@@ -338,6 +647,7 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
       }
     } catch (tokenCleanupError) {
       functions.logger.warn('[users] Error cleaning stale tokens by token (non-fatal):', tokenCleanupError);
+      collectionGroupLookupFailed = true;
     }
 
     if (deviceId) {
@@ -356,7 +666,20 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
         }
       } catch (deviceCleanupError) {
         functions.logger.warn('[users] Error cleaning stale tokens by deviceId (non-fatal):', deviceCleanupError);
+        collectionGroupLookupFailed = true;
       }
+    }
+
+    if (collectionGroupLookupFailed) {
+      const fallbackRefs = await findStalePushTokenRefsByUserScan({
+        currentUserId: userId,
+        tokensToClean,
+        deviceId,
+      });
+      fallbackRefs.forEach((ref, path) => staleTokenRefs.set(path, ref));
+      functions.logger.info(
+        `[users] Fallback scan identified ${fallbackRefs.size} stale push token(s)`,
+      );
     }
 
     if (staleTokenRefs.size > 0) {
@@ -530,17 +853,28 @@ usersRouter.delete('/push-tokens/all', requireAuth, async (req: AuthRequest, res
 usersRouter.get('/me/export', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const userRef = getDb().collection('users').doc(userId);
 
     // Fetch all user data
-    const [userDoc, visitsSnapshot, actionsSnapshot, medicationsSnapshot, sharesSnapshot] = await Promise.all([
-      getDb().collection('users').doc(userId).get(),
+    const [
+      userDoc,
+      visitsSnapshot,
+      actionsSnapshot,
+      medicationsSnapshot,
+      sharesSnapshot,
+      consentAuditSnapshot,
+    ] = await Promise.all([
+      userRef.get(),
       getDb().collection('visits').where('userId', '==', userId).get(),
       getDb().collection('actions').where('userId', '==', userId).get(),
       getDb().collection('medications').where('userId', '==', userId).get(),
       getDb().collection('shares').where('ownerId', '==', userId).get(),
+      userRef.collection(ANALYTICS_AUDIT_COLLECTION).orderBy('occurredAt', 'desc').limit(1000).get(),
     ]);
 
     const userData = userDoc.exists ? userDoc.data() : {};
+    const privacy = (userData?.privacy as Record<string, unknown> | undefined) ?? {};
+    const analyticsConsent = (privacy.analyticsConsent as Record<string, unknown> | undefined) ?? {};
 
     const exportData = {
       user: {
@@ -580,6 +914,25 @@ usersRouter.get('/me/export', requireAuth, async (req: AuthRequest, res) => {
         updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
         acceptedAt: doc.data().acceptedAt?.toDate?.().toISOString() ?? null,
       })),
+      privacy: {
+        analyticsConsent: serializeAnalyticsConsent(analyticsConsent),
+        analyticsConsentAudit: consentAuditSnapshot.docs.map((doc) => {
+          const data = doc.data() as Record<string, unknown>;
+          return {
+            id: doc.id,
+            eventType: typeof data.eventType === 'string' ? data.eventType : null,
+            granted: typeof data.granted === 'boolean' ? data.granted : null,
+            previousGranted:
+              typeof data.previousGranted === 'boolean' ? data.previousGranted : null,
+            source: typeof data.source === 'string' ? data.source : null,
+            policyVersion:
+              typeof data.policyVersion === 'string' ? data.policyVersion : null,
+            platform: typeof data.platform === 'string' ? data.platform : null,
+            appVersion: typeof data.appVersion === 'string' ? data.appVersion : null,
+            occurredAt: timestampToIso(data.occurredAt),
+          };
+        }),
+      },
       exportedAt: new Date().toISOString(),
     };
 

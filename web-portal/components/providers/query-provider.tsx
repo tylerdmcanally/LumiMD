@@ -1,10 +1,12 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Toaster } from 'sonner';
+import { auth } from '@/lib/firebase';
 
 type QueryProviderProps = {
   children: ReactNode;
@@ -26,6 +28,19 @@ export function QueryProvider({ children }: QueryProviderProps) {
         },
       }),
   );
+  const lastAuthUserIdRef = useRef<string | null>(auth.currentUser?.uid ?? null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const nextUserId = user?.uid ?? null;
+      if (nextUserId !== lastAuthUserIdRef.current) {
+        queryClient.clear();
+        lastAuthUserIdRef.current = nextUserId;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -49,4 +64,3 @@ export function QueryProvider({ children }: QueryProviderProps) {
     </QueryClientProvider>
   );
 }
-

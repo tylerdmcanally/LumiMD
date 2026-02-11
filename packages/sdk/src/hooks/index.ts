@@ -3,7 +3,13 @@
  * Platform-agnostic data fetching hooks with caching and optimistic updates
  */
 
-import { useQuery, useMutation, UseQueryOptions, useQueryClient } from '@tanstack/react-query';
+import {
+  QueryKey,
+  useQuery,
+  useMutation,
+  UseQueryOptions,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { ApiClient } from '../api-client';
 import type { Visit, Medication, ActionItem, UserProfile } from '../models';
 import type {
@@ -31,34 +37,38 @@ export const queryKeys = {
   healthLogsSummary: ['healthLogs', 'summary'] as const,
 };
 
+type ApiQueryOptions<TData> = Omit<
+  UseQueryOptions<TData, Error, TData, QueryKey>,
+  'queryFn' | 'queryKey'
+> & {
+  queryKey?: QueryKey;
+};
+
 export function createApiHooks(api: ApiClient) {
   /**
    * Fetch all visits
    */
-  function useVisits(
-    options?: Omit<UseQueryOptions<Visit[], Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useVisits(options?: ApiQueryOptions<Visit[]>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.visits,
+      queryKey: queryKey ?? queryKeys.visits,
       queryFn: () => api.visits.list(),
       staleTime: 5 * 60 * 1000, // 5 minutes
-      ...options,
+      ...queryOptions,
     });
   }
 
   /**
    * Fetch single visit
    */
-  function useVisit(
-    id: string,
-    options?: Omit<UseQueryOptions<Visit, Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useVisit(id: string, options?: ApiQueryOptions<Visit>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.visit(id),
+      queryKey: queryKey ?? queryKeys.visit(id),
       queryFn: () => api.visits.get(id),
       enabled: !!id,
       staleTime: 5 * 60 * 1000,
-      ...options,
+      ...queryOptions,
     });
   }
 
@@ -66,31 +76,29 @@ export function createApiHooks(api: ApiClient) {
    * Fetch latest visit (most recent)
    * Uses backend query parameter for efficiency
    */
-  function useLatestVisit(
-    options?: Omit<UseQueryOptions<Visit | null, Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useLatestVisit(options?: ApiQueryOptions<Visit | null>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: [...queryKeys.visits, 'latest'],
+      queryKey: queryKey ?? [...queryKeys.visits, 'latest'],
       queryFn: async () => {
         const visits = await api.visits.list({ limit: 1, sort: 'desc' });
         return visits.length > 0 ? visits[0] : null;
       },
       staleTime: 2 * 60 * 1000, // 2 minutes
-      ...options,
+      ...queryOptions,
     });
   }
 
   /**
    * Fetch all action items
    */
-  function useActionItems(
-    options?: Omit<UseQueryOptions<ActionItem[], Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useActionItems(options?: ApiQueryOptions<ActionItem[]>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.actions,
+      queryKey: queryKey ?? queryKeys.actions,
       queryFn: () => api.actions.list(),
       staleTime: 5 * 60 * 1000,
-      ...options,
+      ...queryOptions,
     });
   }
 
@@ -98,29 +106,27 @@ export function createApiHooks(api: ApiClient) {
    * Fetch pending action items only
    * Uses select to derive from cached data
    */
-  function usePendingActions(
-    options?: Omit<UseQueryOptions<ActionItem[], Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function usePendingActions(options?: ApiQueryOptions<ActionItem[]>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.actions,
+      queryKey: queryKey ?? queryKeys.actions,
       queryFn: () => api.actions.list(),
       select: (actions) => actions.filter((action) => !action.completed),
       staleTime: 30 * 1000, // 30 seconds
-      ...options,
+      ...queryOptions,
     });
   }
 
   /**
    * Fetch all medications
    */
-  function useMedications(
-    options?: Omit<UseQueryOptions<Medication[], Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useMedications(options?: ApiQueryOptions<Medication[]>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.medications,
+      queryKey: queryKey ?? queryKeys.medications,
       queryFn: () => api.medications.list(),
       staleTime: 60 * 1000, // 1 minute
-      ...options,
+      ...queryOptions,
     });
   }
 
@@ -128,29 +134,27 @@ export function createApiHooks(api: ApiClient) {
    * Fetch active medications only
    * Uses select to derive from cached data
    */
-  function useActiveMedications(
-    options?: Omit<UseQueryOptions<Medication[], Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useActiveMedications(options?: ApiQueryOptions<Medication[]>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.medications,
+      queryKey: queryKey ?? queryKeys.medications,
       queryFn: () => api.medications.list(),
       select: (meds) => meds.filter((med) => med.active !== false),
       staleTime: 60 * 1000, // 1 minute
-      ...options,
+      ...queryOptions,
     });
   }
 
   /**
    * Fetch user profile
    */
-  function useUserProfile(
-    options?: Omit<UseQueryOptions<UserProfile, Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useUserProfile(options?: ApiQueryOptions<UserProfile>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.profile,
+      queryKey: queryKey ?? queryKeys.profile,
       queryFn: () => api.user.getProfile(),
       staleTime: 5 * 60 * 1000,
-      ...options,
+      ...queryOptions,
     });
   }
 
@@ -161,44 +165,39 @@ export function createApiHooks(api: ApiClient) {
   /**
    * Fetch active nudges
    */
-  function useNudges(
-    options?: Omit<UseQueryOptions<Nudge[], Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useNudges(options?: ApiQueryOptions<Nudge[]>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: queryKeys.nudges,
+      queryKey: queryKey ?? queryKeys.nudges,
       queryFn: () => api.nudges.list(),
       staleTime: 30 * 1000, // 30 seconds
-      ...options,
+      ...queryOptions,
     });
   }
 
   /**
    * Fetch health logs
    */
-  function useHealthLogs(
-    params?: { type?: string; limit?: number },
-    options?: Omit<UseQueryOptions<HealthLog[], Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useHealthLogs(params?: { type?: string; limit?: number }, options?: ApiQueryOptions<HealthLog[]>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: [...queryKeys.healthLogs, params],
+      queryKey: queryKey ?? [...queryKeys.healthLogs, params],
       queryFn: () => api.healthLogs.list(params),
       staleTime: 60 * 1000, // 1 minute
-      ...options,
+      ...queryOptions,
     });
   }
 
   /**
    * Fetch health logs summary
    */
-  function useHealthLogsSummary(
-    days?: number,
-    options?: Omit<UseQueryOptions<HealthLogSummaryResponse, Error>, 'queryKey' | 'queryFn'>
-  ) {
+  function useHealthLogsSummary(days?: number, options?: ApiQueryOptions<HealthLogSummaryResponse>) {
+    const { queryKey, ...queryOptions } = options ?? {};
     return useQuery({
-      queryKey: [...queryKeys.healthLogsSummary, days],
+      queryKey: queryKey ?? [...queryKeys.healthLogsSummary, days],
       queryFn: () => api.healthLogs.summary(days),
       staleTime: 5 * 60 * 1000, // 5 minutes
-      ...options,
+      ...queryOptions,
     });
   }
 
@@ -263,4 +262,3 @@ export function createApiHooks(api: ApiClient) {
     useCreateHealthLog,
   };
 }
-

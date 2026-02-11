@@ -6,6 +6,10 @@ import { requireAuth, AuthRequest } from '../middlewares/auth';
 import { storageConfig } from '../config';
 import { normalizeMedicationSummary } from '../services/medicationSync';
 import { getAssemblyAIService } from '../services/assemblyai';
+import {
+  calculateRetryWaitSeconds,
+  resolveRetryPath,
+} from '../services/visitProcessingTransitions';
 
 export const visitsRouter = Router();
 
@@ -555,16 +559,18 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
     const lastRetryAt = visit.lastRetryAt as admin.firestore.Timestamp | undefined;
     const MIN_RETRY_INTERVAL_MS = 30 * 1000;
 
-    if (lastRetryAt) {
-      const elapsedMs = Date.now() - lastRetryAt.toMillis();
-      if (elapsedMs < MIN_RETRY_INTERVAL_MS) {
-        const waitSeconds = Math.ceil((MIN_RETRY_INTERVAL_MS - elapsedMs) / 1000);
-        res.status(429).json({
-          code: 'retry_too_soon',
-          message: `Please wait ${waitSeconds} more seconds before retrying`,
-        });
-        return;
-      }
+    const waitSeconds = calculateRetryWaitSeconds({
+      lastRetryAtMillis: lastRetryAt?.toMillis?.(),
+      nowMillis: Date.now(),
+      minIntervalMs: MIN_RETRY_INTERVAL_MS,
+    });
+
+    if (waitSeconds > 0) {
+      res.status(429).json({
+        code: 'retry_too_soon',
+        message: `Please wait ${waitSeconds} more seconds before retrying`,
+      });
+      return;
     }
 
     const storagePath =
@@ -582,11 +588,9 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
       parseBucketFromAudioUrl(visit.audioUrl) || storageConfig.bucket || visit.bucketName;
 
     // Check if we already have a transcript to save costs/time
-    const hasTranscript =
-      (typeof visit.transcript === 'string' && visit.transcript.trim().length > 0) ||
-      (typeof visit.transcriptText === 'string' && visit.transcriptText.trim().length > 0);
+    const retryPath = resolveRetryPath(visit);
 
-    if (hasTranscript) {
+    if (retryPath === 'summarize') {
       // Skip transcription and go straight to summarization
       await visitRef.update({
         processingStatus: 'summarizing',

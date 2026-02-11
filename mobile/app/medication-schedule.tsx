@@ -20,7 +20,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 
 export default function MedicationScheduleScreen() {
     const router = useRouter();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
 
     // Snooze modal state
     const [snoozeModalVisible, setSnoozeModalVisible] = useState(false);
@@ -32,7 +32,7 @@ export default function MedicationScheduleScreen() {
         isRefetching,
         refetch,
         error,
-    } = useMedicationSchedule({ enabled: isAuthenticated });
+    } = useMedicationSchedule(user?.uid, { enabled: isAuthenticated });
 
     const markDose = useMarkDose();
     const markBatch = useMarkBatch();

@@ -207,7 +207,7 @@ interface ShareInvite {
  *
  * Types for nudges, health logs, and health tracking.
  */
-type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight';
+type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight' | 'followup';
 type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
 type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'pickup_check' | 'started_check' | 'feeling_check' | 'side_effects' | 'symptom_check' | 'acknowledge' | 'view_insight';
 interface Nudge {
@@ -224,6 +224,9 @@ interface Nudge {
     scheduledFor: string;
     sequenceDay: number;
     status: NudgeStatus;
+    snoozedUntil?: string;
+    completedAt?: string;
+    dismissedAt?: string;
     createdAt: string;
 }
 type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
@@ -497,21 +500,24 @@ declare const queryKeys: {
     healthLogs: readonly ["healthLogs"];
     healthLogsSummary: readonly ["healthLogs", "summary"];
 };
+type ApiQueryOptions<TData> = Omit<UseQueryOptions<TData, Error, TData, QueryKey>, 'queryFn' | 'queryKey'> & {
+    queryKey?: QueryKey;
+};
 declare function createApiHooks(api: ApiClient): {
-    useVisits: (options?: Omit<UseQueryOptions<Visit[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Visit[], Error>;
-    useVisit: (id: string, options?: Omit<UseQueryOptions<Visit, Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Visit, Error>;
-    useLatestVisit: (options?: Omit<UseQueryOptions<Visit | null, Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Visit | null, Error>;
-    useActionItems: (options?: Omit<UseQueryOptions<ActionItem[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<ActionItem[], Error>;
-    usePendingActions: (options?: Omit<UseQueryOptions<ActionItem[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<ActionItem[], Error>;
-    useMedications: (options?: Omit<UseQueryOptions<Medication[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
-    useActiveMedications: (options?: Omit<UseQueryOptions<Medication[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
-    useUserProfile: (options?: Omit<UseQueryOptions<UserProfile, Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<UserProfile, Error>;
-    useNudges: (options?: Omit<UseQueryOptions<Nudge[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<Nudge[], Error>;
+    useVisits: (options?: ApiQueryOptions<Visit[]>) => _tanstack_react_query.UseQueryResult<Visit[], Error>;
+    useVisit: (id: string, options?: ApiQueryOptions<Visit>) => _tanstack_react_query.UseQueryResult<Visit, Error>;
+    useLatestVisit: (options?: ApiQueryOptions<Visit | null>) => _tanstack_react_query.UseQueryResult<Visit | null, Error>;
+    useActionItems: (options?: ApiQueryOptions<ActionItem[]>) => _tanstack_react_query.UseQueryResult<ActionItem[], Error>;
+    usePendingActions: (options?: ApiQueryOptions<ActionItem[]>) => _tanstack_react_query.UseQueryResult<ActionItem[], Error>;
+    useMedications: (options?: ApiQueryOptions<Medication[]>) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
+    useActiveMedications: (options?: ApiQueryOptions<Medication[]>) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
+    useUserProfile: (options?: ApiQueryOptions<UserProfile>) => _tanstack_react_query.UseQueryResult<UserProfile, Error>;
+    useNudges: (options?: ApiQueryOptions<Nudge[]>) => _tanstack_react_query.UseQueryResult<Nudge[], Error>;
     useHealthLogs: (params?: {
         type?: string;
         limit?: number;
-    }, options?: Omit<UseQueryOptions<HealthLog[], Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<HealthLog[], Error>;
-    useHealthLogsSummary: (days?: number, options?: Omit<UseQueryOptions<HealthLogSummaryResponse, Error>, "queryKey" | "queryFn">) => _tanstack_react_query.UseQueryResult<HealthLogSummaryResponse, Error>;
+    }, options?: ApiQueryOptions<HealthLog[]>) => _tanstack_react_query.UseQueryResult<HealthLog[], Error>;
+    useHealthLogsSummary: (days?: number, options?: ApiQueryOptions<HealthLogSummaryResponse>) => _tanstack_react_query.UseQueryResult<HealthLogSummaryResponse, Error>;
     useUpdateNudge: () => _tanstack_react_query.UseMutationResult<NudgeUpdateResponse, Error, {
         id: string;
         data: UpdateNudgeRequest;

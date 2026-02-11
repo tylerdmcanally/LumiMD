@@ -2,7 +2,6 @@
  * Health Details Screen
  * 
  * Shows UNIFIED health data from all sources:
- * - Apple HealthKit (automatic sync)
  * - Manual entries (user-entered)
  * - LumiBot prompts (nudge responses)
  * 
@@ -20,16 +19,13 @@ import {
   Text,
   View,
   Alert,
-  Platform,
   Modal,
   TouchableOpacity,
-  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
-import { useHealthKit, forceHealthKitSync, initializeHealthKitSync } from '../lib/healthkit';
-import { useHealthLogs, useHealthLogsSummary } from '../lib/api/hooks';
+import { useHealthLogs } from '../lib/api/hooks';
 import type { HealthLog, HealthLogSource, BloodPressureValue, GlucoseValue, AlertLevel } from '@lumimd/sdk';
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../components/lumibot';
 import type { WeightValue } from '../components/lumibot';
@@ -55,8 +51,6 @@ function formatRelativeTime(dateString: string): string {
 
 function getSourceIcon(source: HealthLogSource): { icon: keyof typeof Ionicons.glyphMap; color: string; label: string } {
   switch (source) {
-    case 'healthkit':
-      return { icon: 'logo-apple', color: '#000', label: 'Apple Health' };
     case 'manual':
       return { icon: 'create-outline', color: Colors.primary, label: 'Manual Entry' };
     case 'nudge':
@@ -172,7 +166,7 @@ function EmptyState() {
       <Ionicons name="heart-outline" size={48} color={Colors.textMuted} />
       <Text style={styles.emptyTitle}>No Health Data Yet</Text>
       <Text style={styles.emptySubtitle}>
-        Log your vitals manually or connect Apple Health to automatically sync your data.
+        Log your vitals manually or respond to LumiBot check-ins.
       </Text>
       <Pressable 
         style={styles.emptyButton}
@@ -190,7 +184,6 @@ function EmptyState() {
 
 export default function HealthScreen() {
   const router = useRouter();
-  const healthKit = useHealthKit();
   
   // Logging modal state
   const [showLogMenu, setShowLogMenu] = useState(false);
@@ -207,37 +200,14 @@ export default function HealthScreen() {
   const { 
     data: logs = [], 
     isLoading, 
+    error,
     refetch, 
     isRefetching 
   } = useHealthLogs({ limit: 50 });
 
-  // Fetch summary for trends
-  const { data: summary } = useHealthLogsSummary(7);
-
   const handleRefresh = useCallback(async () => {
-    // Sync fresh data from HealthKit if connected
-    if (healthKit.permissionStatus === 'authorized') {
-      await forceHealthKitSync();
-    }
-    // Then refetch from backend
-    refetch();
-  }, [refetch, healthKit.permissionStatus]);
-
-  const handleSettings = useCallback(() => {
-    Alert.alert(
-      'Health Data Settings',
-      'Manage your health data sources',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Apple Health Settings', 
-          onPress: () => {
-            Linking.openSettings();
-          }
-        }
-      ]
-    );
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   // Logging handlers
   const handleLogOption = useCallback((option: 'bp' | 'glucose' | 'weight') => {
@@ -351,25 +321,7 @@ export default function HealthScreen() {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [groupedLogs.latestByType]);
 
-  // Non-iOS fallback
-  if (Platform.OS !== 'ios') {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={8}>
-            <Ionicons name="chevron-back" size={28} color={Colors.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Health Data</Text>
-          <View style={{ width: 28 }} />
-        </View>
-        <View style={styles.centerContainer}>
-          <Text style={styles.unavailableText}>
-            Health tracking features are optimized for iOS devices.
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const infoDataSourcesText = 'All health data is unified from manual entries and LumiBot check-ins.';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -379,9 +331,7 @@ export default function HealthScreen() {
           <Ionicons name="chevron-back" size={28} color={Colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Health Data</Text>
-        <Pressable onPress={handleSettings} hitSlop={8}>
-          <Ionicons name="settings-outline" size={24} color={Colors.textMuted} />
-        </Pressable>
+        <View style={{ width: 28 }} />
       </View>
 
       <ScrollView
@@ -400,15 +350,12 @@ export default function HealthScreen() {
           style={styles.collapsibleHeader}
           onPress={() => setSourcesExpanded(!sourcesExpanded)}
         >
-          <View style={styles.collapsibleLeft}>
-            <Ionicons name="swap-horizontal" size={18} color={Colors.textMuted} />
-            <Text style={styles.collapsibleTitle}>Data Sources</Text>
-            {/* Quick status indicator */}
-            <View style={[
-              styles.quickStatusDot, 
-              healthKit.permissionStatus === 'authorized' ? styles.sourceDotActive : styles.sourceDotInactive
-            ]} />
-          </View>
+            <View style={styles.collapsibleLeft}>
+              <Ionicons name="swap-horizontal" size={18} color={Colors.textMuted} />
+              <Text style={styles.collapsibleTitle}>Data Sources</Text>
+              {/* Quick status indicator */}
+              <View style={[styles.quickStatusDot, styles.sourceDotActive]} />
+            </View>
           <Ionicons 
             name={sourcesExpanded ? 'chevron-up' : 'chevron-down'} 
             size={20} 
@@ -419,27 +366,6 @@ export default function HealthScreen() {
         {sourcesExpanded && (
           <Card style={styles.statusCard}>
             <View style={styles.sourcesList}>
-              <View style={styles.sourceItem}>
-                <View style={[styles.sourceDot, healthKit.permissionStatus === 'authorized' && styles.sourceDotActive]} />
-                <Ionicons name="logo-apple" size={16} color={Colors.text} />
-                <Text style={styles.sourceItemText}>Apple Health</Text>
-                {healthKit.permissionStatus === 'authorized' ? (
-                  <Text style={styles.sourceStatus}>Connected</Text>
-                ) : (
-                  <Pressable 
-                    style={styles.connectButton}
-                    onPress={async () => {
-                      const granted = await healthKit.requestPermissions();
-                      if (granted) {
-                        await initializeHealthKitSync();
-                        refetch();
-                      }
-                    }}
-                  >
-                    <Text style={styles.connectButtonText}>Connect</Text>
-                  </Pressable>
-                )}
-              </View>
               <View style={styles.sourceItem}>
                 <View style={[styles.sourceDot, styles.sourceDotActive]} />
                 <Ionicons name="create-outline" size={16} color={Colors.primary} />
@@ -465,10 +391,18 @@ export default function HealthScreen() {
         )}
 
         {/* Empty State */}
-        {!isLoading && latestReadings.length === 0 && <EmptyState />}
+        {!isLoading && error && (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={40} color={Colors.error} />
+            <Text style={styles.errorTitle}>Unable to load health data</Text>
+            <Text style={styles.errorSubtitle}>Pull to refresh and try again.</Text>
+          </View>
+        )}
+
+        {!isLoading && !error && latestReadings.length === 0 && <EmptyState />}
 
         {/* Latest Readings */}
-        {!isLoading && latestReadings.length > 0 && (
+        {!isLoading && !error && latestReadings.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Latest Readings</Text>
             <Text style={styles.sectionSubtitle}>
@@ -502,7 +436,7 @@ export default function HealthScreen() {
         {infoExpanded && (
           <View style={styles.infoSection}>
             <Text style={styles.infoText}>
-              All health data is unified from Apple Health, manual entries, and LumiBot check-ins. 
+              {infoDataSourcesText}{' '}
               Your caregivers can view this data on your shared dashboard.
             </Text>
           </View>
@@ -611,17 +545,6 @@ const styles = StyleSheet.create({
     padding: spacing(4),
     paddingBottom: spacing(8),
   },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing(6),
-  },
-  unavailableText: {
-    fontSize: 16,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
 
   // Collapsible Header
   collapsibleHeader: {
@@ -646,9 +569,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  sourceDotInactive: {
-    backgroundColor: '#F59E0B',
   },
 
   // Status Card
@@ -681,17 +601,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
   },
-  connectButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: spacing(3),
-    paddingVertical: spacing(1.5),
-    borderRadius: Radius.sm,
-  },
-  connectButtonText: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: '#fff',
-  },
 
   // Loading
   loadingContainer: {
@@ -700,6 +609,20 @@ const styles = StyleSheet.create({
     gap: spacing(3),
   },
   loadingText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing(8),
+    gap: spacing(2),
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.text,
+  },
+  errorSubtitle: {
     fontSize: 14,
     color: Colors.textMuted,
   },

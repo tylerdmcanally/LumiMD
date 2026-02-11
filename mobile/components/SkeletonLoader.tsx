@@ -4,14 +4,14 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { View, StyleSheet, ViewStyle, StyleProp, DimensionValue } from 'react-native';
 import { Colors, Radius, spacing } from './ui';
 
 type SkeletonVariant = 'card' | 'text' | 'avatar' | 'button';
 
 type SkeletonLoaderProps = {
   variant?: SkeletonVariant;
-  width?: number | string;
+  width?: DimensionValue;
   height?: number;
   style?: StyleProp<ViewStyle>;
 };
@@ -43,7 +43,7 @@ export function SkeletonLoader({
   style,
 }: SkeletonLoaderProps) {
   const variantStyle = variantStyles[variant];
-  const finalHeight = height ?? variantStyle.height;
+  const finalHeight = (height ?? variantStyle.height) as DimensionValue | undefined;
 
   return (
     <View
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing(4),
-    backgroundColor: Colors.surfaceWarm,
+    backgroundColor: Colors.surface,
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.stroke,

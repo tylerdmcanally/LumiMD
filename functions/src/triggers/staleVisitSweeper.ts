@@ -14,15 +14,19 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { getAssemblyAIService } from '../services/assemblyai';
+import {
+    resolveSummarizingRecoveryMode,
+    resolveTranscribingRecoveryMode,
+} from '../services/visitProcessingTransitions';
 
 const db = () => admin.firestore();
 
 // Thresholds for stale states (in milliseconds)
-const TRANSCRIBING_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const SUMMARIZING_TIMEOUT_MS = 15 * 60 * 1000;  // 15 minutes
+export const TRANSCRIBING_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+export const SUMMARIZING_TIMEOUT_MS = 15 * 60 * 1000;  // 15 minutes
 
 // Maximum retries before marking as permanently failed
-const MAX_RETRIES = 3;
+export const MAX_RETRIES = 3;
 
 interface StaleVisitStats {
     staleTranscribing: number;
@@ -35,7 +39,7 @@ interface StaleVisitStats {
 /**
  * Checks if a Firestore Timestamp is older than the given threshold
  */
-function isOlderThan(timestamp: admin.firestore.Timestamp | undefined, thresholdMs: number): boolean {
+export function isOlderThan(timestamp: admin.firestore.Timestamp | undefined, thresholdMs: number): boolean {
     if (!timestamp) return false;
     const now = Date.now();
     const timestampMs = timestamp.toMillis();
@@ -45,15 +49,20 @@ function isOlderThan(timestamp: admin.firestore.Timestamp | undefined, threshold
 /**
  * Attempts to recover a stale transcribing visit by checking AssemblyAI status
  */
-async function recoverTranscribingVisit(
+export async function recoverTranscribingVisit(
     visitRef: FirebaseFirestore.DocumentReference,
     visitData: FirebaseFirestore.DocumentData,
 ): Promise<'retried' | 'failed' | 'skipped'> {
     const visitId = visitRef.id;
     const retryCount = visitData.retryCount || 0;
+    const initialMode = resolveTranscribingRecoveryMode({
+        retryCount,
+        hasTranscriptionId: Boolean(visitData.transcriptionId),
+        maxRetries: MAX_RETRIES,
+    });
 
     // If we've exceeded max retries, mark as failed
-    if (retryCount >= MAX_RETRIES) {
+    if (initialMode === 'fail_max_retries') {
         logger.warn(`[sweeper] Visit ${visitId} exceeded max retries (${MAX_RETRIES}), marking as failed`);
         await visitRef.update({
             processingStatus: 'failed',
@@ -64,13 +73,31 @@ async function recoverTranscribingVisit(
         return 'failed';
     }
 
-    // Try to check transcription status with AssemblyAI if we have a transcriptionId
+    // No transcription id available: reset to pending for a clean retry.
+    if (initialMode === 'retry_pending') {
+        logger.info(`[sweeper] Visit ${visitId} has no transcriptionId, resetting to pending`);
+        await visitRef.update({
+            processingStatus: 'pending',
+            retryCount: admin.firestore.FieldValue.increment(1),
+            processingError: 'Transcription timed out, retrying',
+            updatedAt: admin.firestore.Timestamp.now(),
+        });
+        return 'retried';
+    }
+
+    // Try to check transcription status with AssemblyAI for known transcription ids.
     if (visitData.transcriptionId) {
         try {
             const assemblyAI = getAssemblyAIService();
             const transcript = await assemblyAI.getTranscript(visitData.transcriptionId);
+            const mode = resolveTranscribingRecoveryMode({
+                retryCount,
+                hasTranscriptionId: true,
+                transcriptStatus: transcript.status,
+                maxRetries: MAX_RETRIES,
+            });
 
-            if (transcript.status === 'completed') {
+            if (mode === 'resume_summarizing') {
                 // Transcription completed but webhook may have failed
                 // Format the transcript and move to summarizing
                 const transcriptText = assemblyAI.formatTranscript(transcript.utterances, transcript.text);
@@ -86,7 +113,7 @@ async function recoverTranscribingVisit(
                 return 'retried';
             }
 
-            if (transcript.status === 'error') {
+            if (mode === 'mark_failed') {
                 // Transcription failed at AssemblyAI
                 logger.warn(`[sweeper] Visit ${visitId} transcription failed at AssemblyAI: ${transcript.error}`);
                 await visitRef.update({
@@ -114,29 +141,24 @@ async function recoverTranscribingVisit(
             return 'retried';
         }
     }
-
-    // No transcriptionId - reset to pending for retry
-    logger.info(`[sweeper] Visit ${visitId} has no transcriptionId, resetting to pending`);
-    await visitRef.update({
-        processingStatus: 'pending',
-        retryCount: admin.firestore.FieldValue.increment(1),
-        processingError: 'Transcription timed out, retrying',
-        updatedAt: admin.firestore.Timestamp.now(),
-    });
-    return 'retried';
+    return 'skipped';
 }
 
 /**
  * Attempts to recover a stale summarizing visit
  */
-async function recoverSummarizingVisit(
+export async function recoverSummarizingVisit(
     visitRef: FirebaseFirestore.DocumentReference,
     visitData: FirebaseFirestore.DocumentData,
 ): Promise<'retried' | 'failed'> {
     const visitId = visitRef.id;
     const retryCount = visitData.retryCount || 0;
+    const mode = resolveSummarizingRecoveryMode({
+        retryCount,
+        maxRetries: MAX_RETRIES,
+    });
 
-    if (retryCount >= MAX_RETRIES) {
+    if (mode === 'fail_max_retries') {
         logger.warn(`[sweeper] Visit ${visitId} exceeded max retries (${MAX_RETRIES}) for summarization`);
         await visitRef.update({
             processingStatus: 'failed',

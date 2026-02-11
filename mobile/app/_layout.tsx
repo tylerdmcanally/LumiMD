@@ -1,18 +1,18 @@
 import { Stack, useRouter } from 'expo-router';
-import { useColorScheme, AppState, Platform } from 'react-native';
+import { useColorScheme, AppState } from 'react-native';
 import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFonts, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
-import { usePendingActions, useVisits, useMedicationSchedule, queryKeys } from '../lib/api/hooks';
+import { usePendingActions, useVisits, useMedicationSchedule } from '../lib/api/hooks';
 import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
-import { syncHealthKitData } from '../lib/healthkit';
+import { initializeTelemetryConsent } from '../lib/telemetry';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -51,44 +51,9 @@ function NotificationHandler() {
   // Only fetch data when authenticated to prevent SDK errors
   const { data: pendingActions } = usePendingActions({ enabled: isAuthenticated && !!user });
   const { data: visits } = useVisits({ enabled: isAuthenticated && !!user });
-  const { data: medicationSchedule, refetch: refetchSchedule } = useMedicationSchedule({ 
+  const { data: medicationSchedule, refetch: refetchSchedule } = useMedicationSchedule(user?.uid, {
     enabled: isAuthenticated && !!user 
   });
-
-  const runHealthKitSync = useCallback(
-    async (trigger: 'launch' | 'foreground' | 'interval') => {
-      if (!isAuthenticated || Platform.OS !== 'ios') return;
-
-      try {
-        const result = await syncHealthKitData();
-        if (result.synced > 0) {
-          console.log(`[HealthKit] (${trigger}) synced ${result.synced} new readings`);
-          queryClient.invalidateQueries({ queryKey: queryKeys.healthLogs });
-          queryClient.invalidateQueries({ queryKey: queryKeys.healthLogsSummary });
-        } else if (result.message) {
-          console.log(`[HealthKit] (${trigger}) sync skipped: ${result.message}`);
-        }
-      } catch (error) {
-        console.warn(`[HealthKit] ${trigger} sync failed:`, error);
-      }
-    },
-    [isAuthenticated]
-  );
-
-  // Run HealthKit sync once on launch/auth and then periodically while app is active.
-  useEffect(() => {
-    if (!isAuthenticated || Platform.OS !== 'ios') return;
-
-    void runHealthKitSync('launch');
-
-    const intervalId = setInterval(() => {
-      if (AppState.currentState === 'active') {
-        void runHealthKitSync('interval');
-      }
-    }, 5 * 60 * 1000);
-
-    return () => clearInterval(intervalId);
-  }, [isAuthenticated, runHealthKitSync]);
 
   // Update badge count when actions or visits change
   useEffect(() => {
@@ -187,7 +152,7 @@ function NotificationHandler() {
     };
   }, [isAuthenticated, router]);
 
-  // Refresh data and sync HealthKit on app foreground
+  // Refresh schedule data on app foreground
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (
@@ -198,9 +163,6 @@ function NotificationHandler() {
         // App has come to the foreground - refresh schedule
         console.log('[AppState] App came to foreground, refreshing data');
         refetchSchedule();
-
-        // Sync HealthKit data in background (iOS only, silent)
-        void runHealthKitSync('foreground');
       }
       appState.current = nextAppState;
     });
@@ -208,7 +170,7 @@ function NotificationHandler() {
     return () => {
       subscription.remove();
     };
-  }, [isAuthenticated, refetchSchedule, runHealthKitSync]);
+  }, [isAuthenticated, refetchSchedule]);
 
   return null;
 }
@@ -222,6 +184,10 @@ export default function RootLayout() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
   });
+
+  useEffect(() => {
+    void initializeTelemetryConsent();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

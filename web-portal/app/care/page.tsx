@@ -21,11 +21,19 @@ import {
     TrendingDown,
     Minus,
 } from 'lucide-react';
+import { useQueries } from '@tanstack/react-query';
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useCareOverview, CarePatientOverview, useCareAlerts, CareAlert } from '@/lib/api/hooks';
+import {
+    useCareOverview,
+    CarePatientOverview,
+    useCareAlerts,
+    CareAlert,
+    CareAlertsResponse,
+} from '@/lib/api/hooks';
+import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 
 // =============================================================================
@@ -151,8 +159,38 @@ function AlertItem({
 // =============================================================================
 
 function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) {
-    // Fetch unified alerts for each patient
-    const alertQueries = patients.map((p) => useCareAlerts(p.userId, { days: 7 }));
+    const alertsApiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+
+    // Fetch unified alerts for each patient with one hook call.
+    const alertQueries = useQueries({
+        queries: patients.map((patient) => ({
+            queryKey: ['care-alerts', patient.userId, 7],
+            staleTime: 30_000,
+            enabled: Boolean(patient.userId),
+            queryFn: async (): Promise<CareAlertsResponse> => {
+                const user = auth.currentUser;
+                if (!user) {
+                    throw new Error('Not authenticated');
+                }
+
+                const token = await user.getIdToken();
+                const response = await fetch(
+                    `${alertsApiUrl}/v1/care/${patient.userId}/alerts?days=7`,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                    },
+                );
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch alerts');
+                }
+
+                return response.json() as Promise<CareAlertsResponse>;
+            },
+        })),
+    });
     const isLoadingAlerts = alertQueries.some((q) => q.isLoading);
 
     // Aggregate all alerts across patients

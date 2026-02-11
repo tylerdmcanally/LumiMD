@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import auth from '@react-native-firebase/auth';
 import { api } from './client';
-import { queryKeys } from './hooks';
+import { queryKeys, sharesKey, shareInvitesKey } from './hooks';
 
 interface ToggleActionInput {
   id: string;
@@ -10,6 +11,8 @@ interface ToggleActionInput {
 
 export function useCompleteAction() {
   const queryClient = useQueryClient();
+  const currentUserId = auth().currentUser?.uid;
+  const actionsKey = [...queryKeys.actions, currentUserId ?? 'anonymous'] as const;
 
   return useMutation({
     mutationFn: async ({ id, completed }: ToggleActionInput) => {
@@ -22,12 +25,11 @@ export function useCompleteAction() {
       return api.actions.update(id, payload);
     },
     onMutate: async (variables) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.actions });
-      await queryClient.cancelQueries({ queryKey: [...queryKeys.actions, 'pending'] });
+      await queryClient.cancelQueries({ queryKey: actionsKey });
 
-      const previousActions = queryClient.getQueryData<any[]>(queryKeys.actions);
+      const previousActions = queryClient.getQueryData<any[]>(actionsKey);
 
-      queryClient.setQueryData<any[]>(queryKeys.actions, (old) => {
+      queryClient.setQueryData<any[]>(actionsKey, (old) => {
         if (!old) return old;
         return old.map((action) => {
           if (action.id !== variables.id) return action;
@@ -40,21 +42,15 @@ export function useCompleteAction() {
         });
       });
 
-      queryClient.setQueryData<any[]>([...queryKeys.actions, 'pending'], (old) => {
-        if (!old) return old;
-        return old.filter((action) => action.id !== variables.id);
-      });
-
       return { previousActions };
     },
     onError: (_error, _variables, context) => {
       if (context?.previousActions) {
-        queryClient.setQueryData(queryKeys.actions, context.previousActions);
+        queryClient.setQueryData(actionsKey, context.previousActions);
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.actions });
-      queryClient.invalidateQueries({ queryKey: [...queryKeys.actions, 'pending'] });
+      queryClient.invalidateQueries({ queryKey: actionsKey });
     },
   });
 }
@@ -72,13 +68,14 @@ interface UpdateProfileInput {
 
 export function useUpdateUserProfile() {
   const queryClient = useQueryClient();
+  const profileKey = [...queryKeys.profile, auth().currentUser?.uid ?? 'anonymous'] as const;
 
   return useMutation({
     mutationFn: async (payload: UpdateProfileInput) => {
       return api.user.updateProfile(payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+      queryClient.invalidateQueries({ queryKey: profileKey });
     },
   });
 }
@@ -91,13 +88,14 @@ interface AddCaregiverInput {
 
 export function useAddCaregiver() {
   const queryClient = useQueryClient();
+  const profileKey = [...queryKeys.profile, auth().currentUser?.uid ?? 'anonymous'] as const;
 
   return useMutation({
     mutationFn: async (payload: AddCaregiverInput) => {
       return api.user.addCaregiver(payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+      queryClient.invalidateQueries({ queryKey: profileKey });
     },
   });
 }
@@ -108,6 +106,9 @@ export function useAddCaregiver() {
  */
 export function useInviteCaregiver() {
   const queryClient = useQueryClient();
+  const currentUserId = auth().currentUser?.uid;
+  const userSharesKey = sharesKey(currentUserId);
+  const userShareInvitesKey = shareInvitesKey(currentUserId);
 
   return useMutation({
     mutationFn: async (payload: { caregiverEmail: string; message?: string }) => {
@@ -123,8 +124,8 @@ export function useInviteCaregiver() {
       return invite;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shares'] });
-      queryClient.invalidateQueries({ queryKey: ['share-invites'] });
+      queryClient.invalidateQueries({ queryKey: userSharesKey });
+      queryClient.invalidateQueries({ queryKey: userShareInvitesKey });
     },
   });
 }

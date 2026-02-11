@@ -20,7 +20,50 @@ Notifications.setNotificationHandler({
 });
 
 const DEVICE_ID_STORAGE_KEY = 'lumimd:deviceInstallationId';
-const LAST_PUSH_TOKEN_STORAGE_KEY = 'lumimd:lastExpoPushToken';
+export const LEGACY_PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
+export const LAST_PUSH_TOKEN_STORAGE_KEY = 'lumimd:lastExpoPushToken';
+
+/**
+ * Reads the canonical stored push token and migrates legacy storage key if needed.
+ */
+export async function getStoredPushToken(): Promise<string | null> {
+  const storedPairs = await AsyncStorage.multiGet([
+    LAST_PUSH_TOKEN_STORAGE_KEY,
+    LEGACY_PUSH_TOKEN_STORAGE_KEY,
+  ]);
+  const storedLastToken = storedPairs[0]?.[1] ?? null;
+  const storedLegacyToken = storedPairs[1]?.[1] ?? null;
+
+  if (storedLastToken) {
+    return storedLastToken;
+  }
+
+  if (storedLegacyToken) {
+    await AsyncStorage.setItem(LAST_PUSH_TOKEN_STORAGE_KEY, storedLegacyToken);
+    await AsyncStorage.removeItem(LEGACY_PUSH_TOKEN_STORAGE_KEY);
+    return storedLegacyToken;
+  }
+
+  return null;
+}
+
+/**
+ * Persists the canonical push token and removes legacy key.
+ */
+export async function setStoredPushToken(token: string): Promise<void> {
+  await AsyncStorage.setItem(LAST_PUSH_TOKEN_STORAGE_KEY, token);
+  await AsyncStorage.removeItem(LEGACY_PUSH_TOKEN_STORAGE_KEY);
+}
+
+/**
+ * Removes all stored push token keys.
+ */
+export async function clearStoredPushToken(): Promise<void> {
+  await AsyncStorage.multiRemove([
+    LAST_PUSH_TOKEN_STORAGE_KEY,
+    LEGACY_PUSH_TOKEN_STORAGE_KEY,
+  ]);
+}
 
 function generateDeviceInstallationId(): string {
   const randomPart = Math.random().toString(36).slice(2);
@@ -114,7 +157,7 @@ export async function registerPushToken(token: string): Promise<void> {
     // Get device's current timezone (e.g., 'America/New_York')
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const deviceId = await getDeviceInstallationId();
-    const previousToken = await AsyncStorage.getItem(LAST_PUSH_TOKEN_STORAGE_KEY);
+    const previousToken = await getStoredPushToken();
     const previousTokenForCleanup =
       previousToken && previousToken !== token ? previousToken : undefined;
 
@@ -127,7 +170,7 @@ export async function registerPushToken(token: string): Promise<void> {
           deviceId,
           previousToken: previousTokenForCleanup,
         } as any);
-        await AsyncStorage.setItem(LAST_PUSH_TOKEN_STORAGE_KEY, token);
+        await setStoredPushToken(token);
         console.log('[Notifications] Push token registered with timezone:', timezone);
         return;
       } catch (error) {

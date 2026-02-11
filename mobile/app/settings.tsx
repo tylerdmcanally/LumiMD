@@ -5,19 +5,25 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  clearStoredPushToken,
   getNotificationPermissions,
+  getStoredPushToken,
   getExpoPushToken,
   registerPushToken,
+  setStoredPushToken,
   unregisterPushToken,
 } from '../lib/notifications';
 import { api } from '../lib/api/client';
 import { openManageSubscriptions, restorePurchases } from '../lib/store';
-
-const PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
+import {
+  getTelemetryConsent,
+  isTelemetryConfigured,
+  refreshTelemetryConsentFromServer,
+  setTelemetryConsent,
+} from '../lib/telemetry';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -28,6 +34,8 @@ export default function SettingsScreen() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingReport, setIsExportingReport] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(true);
 
   // Check notification permission status on mount
   useEffect(() => {
@@ -38,8 +46,8 @@ export default function SettingsScreen() {
         setPushEnabled(isGranted);
 
         if (isGranted) {
-          // Try to get existing token from storage
-          const storedToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+          const storedToken = await getStoredPushToken();
+
           if (storedToken) {
             setPushToken(storedToken);
           } else {
@@ -47,7 +55,7 @@ export default function SettingsScreen() {
             const token = await getExpoPushToken();
             if (token) {
               setPushToken(token);
-              await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+              await setStoredPushToken(token);
               try {
                 await registerPushToken(token);
               } catch (error) {
@@ -66,6 +74,48 @@ export default function SettingsScreen() {
     }
   }, [user]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadAnalyticsConsent = async () => {
+      try {
+        if (user) {
+          const remoteState = await refreshTelemetryConsentFromServer();
+          if (mounted) {
+            setAnalyticsEnabled(Boolean(remoteState.granted));
+          }
+        } else {
+          const consent = await getTelemetryConsent();
+          if (mounted) {
+            setAnalyticsEnabled(consent);
+          }
+        }
+      } catch (error) {
+        console.error('[Settings] Error loading analytics consent from server:', error);
+        try {
+          const localConsent = await getTelemetryConsent();
+          if (mounted) {
+            setAnalyticsEnabled(localConsent);
+          }
+        } catch {
+          if (mounted) {
+            setAnalyticsEnabled(false);
+          }
+        }
+      } finally {
+        if (mounted) {
+          setIsLoadingAnalytics(false);
+        }
+      }
+    };
+
+    loadAnalyticsConsent();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
   const handlePushToggle = async (enabled: boolean) => {
     setIsLoadingPush(true);
     try {
@@ -74,7 +124,7 @@ export default function SettingsScreen() {
         const token = await getExpoPushToken();
         if (token) {
           setPushToken(token);
-          await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+          await setStoredPushToken(token);
           await registerPushToken(token);
           setPushEnabled(true);
         } else {
@@ -92,9 +142,9 @@ export default function SettingsScreen() {
           } catch (error) {
             console.error('[Settings] Error unregistering push token:', error);
           }
-          await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
-          setPushToken(null);
         }
+        await clearStoredPushToken();
+        setPushToken(null);
         setPushEnabled(false);
       }
     } catch (error) {
@@ -104,6 +154,30 @@ export default function SettingsScreen() {
       setPushEnabled(!enabled);
     } finally {
       setIsLoadingPush(false);
+    }
+  };
+
+  const handleAnalyticsToggle = async (enabled: boolean) => {
+    if (enabled && !isTelemetryConfigured()) {
+      Alert.alert(
+        'Unavailable in this build',
+        'Privacy-safe analytics are disabled unless this build is explicitly configured for analytics.',
+      );
+      return;
+    }
+
+    const previous = analyticsEnabled;
+    setAnalyticsEnabled(enabled);
+    try {
+      await setTelemetryConsent(enabled, {
+        syncRemote: true,
+        source: 'settings_toggle',
+        platform: Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : 'web',
+      });
+    } catch (error) {
+      console.error('[Settings] Error updating analytics consent:', error);
+      setAnalyticsEnabled(previous);
+      Alert.alert('Update failed', 'Unable to save analytics preference. Please try again.');
     }
   };
 
@@ -284,6 +358,29 @@ export default function SettingsScreen() {
                   disabled={isLoadingPush}
                   trackColor={{ false: '#d1d5db', true: Colors.accent }}
                   thumbColor={pushEnabled ? Colors.primary : '#f3f4f6'}
+                />
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.settingRow}>
+                <View style={styles.settingIcon}>
+                  <Ionicons name="bar-chart-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingLabel}>Privacy-Safe Analytics</Text>
+                  <Text style={styles.settingDescription}>
+                    {isTelemetryConfigured()
+                      ? 'Share anonymous reliability metrics. No health details are sent.'
+                      : 'Disabled in this build unless explicitly configured.'}
+                  </Text>
+                </View>
+                <Switch
+                  value={analyticsEnabled}
+                  onValueChange={handleAnalyticsToggle}
+                  disabled={isLoadingAnalytics || !isTelemetryConfigured()}
+                  trackColor={{ false: '#d1d5db', true: Colors.accent }}
+                  thumbColor={analyticsEnabled ? Colors.primary : '#f3f4f6'}
                 />
               </View>
 
@@ -583,4 +680,3 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
 });
-

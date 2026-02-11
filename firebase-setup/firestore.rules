@@ -55,6 +55,13 @@ service cloud.firestore {
       match /pushTokens/{tokenId} {
         allow read, write: if isAuthenticated() && isOwner(userId);
       }
+
+      // Subcollection: Privacy Audit Logs
+      // HIPAA/compliance-sensitive metadata should only be accessed via backend APIs.
+      // Admin SDK (Cloud Functions) bypasses rules; deny all direct client access.
+      match /privacyAuditLogs/{auditId} {
+        allow read, write: if false;
+      }
     }
 
     match /visits/{visitId} {

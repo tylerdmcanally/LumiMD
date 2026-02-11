@@ -367,7 +367,7 @@ async function checkForActiveNudge(userId: string): Promise<boolean> {
     const snapshot = await db()
         .collection('nudges')
         .where('userId', '==', userId)
-        .where('status', 'in', ['pending', 'active'])
+        .where('status', 'in', ['pending', 'active', 'snoozed'])
         .limit(1)
         .get();
 
