@@ -110,6 +110,7 @@
     min-height: 100%;
     /* Prevent horizontal overflow globally */
     overflow-x: hidden;
+    overflow-y: auto;
     width: 100%;
   }
 
@@ -124,8 +125,10 @@
     min-height: 100vh;
     min-height: var(--app-height);
     overflow-x: hidden;
+    overflow-y: auto;
     width: 100%;
-    overscroll-behavior: none;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
     -webkit-overflow-scrolling: touch;
     -webkit-text-size-adjust: 100%;
     /* Safe area support for notched devices */
