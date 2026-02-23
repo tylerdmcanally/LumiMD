@@ -10,10 +10,27 @@ import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
+import { ensureResourceOwnerAccessOrReject } from '../middlewares/resourceAccess';
+import { UserDomainService } from '../services/domain/users/UserDomainService';
+import { FirestoreUserRepository } from '../services/repositories/users/FirestoreUserRepository';
+import { sanitizePlainText } from '../utils/inputSanitization';
+import { resolveTimezoneOrDefault } from '../utils/medicationReminderTiming';
 
 const router = express.Router();
 const getDb = () => admin.firestore();
 const getLogsCollection = () => getDb().collection('medicationLogs');
+const getUserDomainService = () => new UserDomainService(new FirestoreUserRepository(getDb()));
+const MEDICATION_LOG_NAME_MAX_LENGTH = 200;
+
+async function getUserTimezone(userId: string): Promise<string> {
+    try {
+        const user = await getUserDomainService().getById(userId);
+        return resolveTimezoneOrDefault(user?.timezone);
+    } catch (error) {
+        functions.logger.warn(`[medicationLogs] Could not fetch timezone for user ${userId}:`, error);
+    }
+    return resolveTimezoneOrDefault(null);
+}
 
 // Validation schemas
 const logActionSchema = z.object({
@@ -38,13 +55,44 @@ const getLogsQuerySchema = z.object({
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
-        const data = logActionSchema.parse(req.body);
+        const parsedData = logActionSchema.parse(req.body);
+        const medicationName = sanitizePlainText(
+            parsedData.medicationName,
+            MEDICATION_LOG_NAME_MAX_LENGTH,
+        );
+        if (!medicationName) {
+            res.status(400).json({
+                error: 'Medication name is required',
+            });
+            return;
+        }
+        const data = {
+            ...parsedData,
+            medicationName,
+        };
 
-        const userDoc = await getDb().collection('users').doc(userId).get();
-        const userTimezone =
-            typeof userDoc.data()?.timezone === 'string'
-                ? (userDoc.data()?.timezone as string)
-                : 'America/Chicago';
+        const medicationDoc = await getDb().collection('medications').doc(data.medicationId).get();
+        if (!medicationDoc.exists) {
+            res.status(404).json({
+                code: 'medication_not_found',
+                message: 'Medication not found',
+            });
+            return;
+        }
+
+        if (
+            !ensureResourceOwnerAccessOrReject(userId, medicationDoc.data(), res, {
+                resourceName: 'medication',
+                forbiddenCode: 'forbidden',
+                notFoundCode: 'medication_not_found',
+                notFoundMessage: 'Medication not found',
+                message: 'Cannot log action for another user\'s medication',
+            })
+        ) {
+            return;
+        }
+
+        const userTimezone = await getUserTimezone(userId);
         const intendedDateStr = new Date().toLocaleDateString('en-CA', { timeZone: userTimezone });
         const now = admin.firestore.Timestamp.now();
 
@@ -120,6 +168,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
             loggedAt: doc.data().loggedAt?.toDate?.()?.toISOString() || null,
         }));
 
+        res.set('Cache-Control', 'private, max-age=30');
         res.json({ logs });
     } catch (error) {
         functions.logger.error('[MedLogs] Error fetching logs:', error);
@@ -198,6 +247,7 @@ router.get('/summary', requireAuth, async (req: AuthRequest, res) => {
             ? Math.round((totalTaken / totalRelevant) * 100)
             : 100;
 
+        res.set('Cache-Control', 'private, max-age=60');
         res.json({
             period: {
                 days: daysNum,

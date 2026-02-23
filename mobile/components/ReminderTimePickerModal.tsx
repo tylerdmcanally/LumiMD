@@ -22,9 +22,28 @@ interface ReminderTimePickerModalProps {
     visible: boolean;
     medicationName: string;
     existingTimes?: string[]; // HH:MM format
-    onSave: (times: string[]) => void;
+    existingTimingMode?: 'local' | 'anchor' | null;
+    existingAnchorTimezone?: string | null;
+    reminderCriticality?: 'standard' | 'time_sensitive' | null;
+    onSave: (payload: {
+        times: string[];
+        timingPreference: 'auto' | 'local' | 'anchor';
+        anchorTimezone?: string | null;
+    }) => void;
     onCancel: () => void;
     isLoading?: boolean;
+}
+
+function resolveDeviceTimezone(): string | null {
+    try {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (typeof timezone === 'string' && timezone.trim().length > 0) {
+            return timezone;
+        }
+    } catch {
+        // no-op
+    }
+    return null;
 }
 
 function formatTimeDisplay(time: string): string {
@@ -202,20 +221,33 @@ export function ReminderTimePickerModal({
     visible,
     medicationName,
     existingTimes = [],
+    existingTimingMode = null,
+    existingAnchorTimezone = null,
+    reminderCriticality = null,
     onSave,
     onCancel,
     isLoading = false,
 }: ReminderTimePickerModalProps) {
     const [times, setTimes] = useState<string[]>(['08:00']);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const [timingPreference, setTimingPreference] = useState<'auto' | 'local' | 'anchor'>('auto');
+    const [anchorTimezone, setAnchorTimezone] = useState<string | null>(null);
 
     // Reset state when modal opens
     useEffect(() => {
         if (visible) {
             setTimes(existingTimes.length > 0 ? [...existingTimes] : ['08:00']);
             setEditingIndex(null);
+            setTimingPreference(
+                existingTimingMode === 'anchor'
+                    ? 'anchor'
+                    : existingTimingMode === 'local'
+                      ? 'local'
+                      : 'auto',
+            );
+            setAnchorTimezone(existingAnchorTimezone ?? resolveDeviceTimezone());
         }
-    }, [visible, existingTimes]);
+    }, [visible, existingTimes, existingTimingMode, existingAnchorTimezone]);
 
     const handleAddTime = useCallback(() => {
         const lastTime = times[times.length - 1] || '08:00';
@@ -249,8 +281,18 @@ export function ReminderTimePickerModal({
     }, [times, editingIndex]);
 
     const handleSave = useCallback(() => {
-        onSave(times);
-    }, [times, onSave]);
+        const resolvedAnchorTimezone = anchorTimezone ?? resolveDeviceTimezone();
+        onSave({
+            times,
+            timingPreference,
+            anchorTimezone:
+                timingPreference === 'anchor'
+                    ? resolvedAnchorTimezone
+                    : timingPreference === 'local'
+                      ? null
+                      : undefined,
+        });
+    }, [times, timingPreference, anchorTimezone, onSave]);
 
     return (
         <Modal
@@ -338,6 +380,61 @@ export function ReminderTimePickerModal({
                                     <Text style={styles.addButtonText}>Add another reminder</Text>
                                 </Pressable>
                             )}
+
+                            <View style={styles.timingContainer}>
+                                <Text style={styles.timingLabel}>Travel timing</Text>
+                                <View style={styles.timingOptions}>
+                                    {[
+                                        { key: 'auto', label: 'Automatic' },
+                                        { key: 'local', label: 'Use local timezone' },
+                                        { key: 'anchor', label: 'Keep fixed timezone' },
+                                    ].map((option) => {
+                                        const isSelected = timingPreference === option.key;
+                                        return (
+                                            <Pressable
+                                                key={option.key}
+                                                style={[
+                                                    styles.timingOption,
+                                                    isSelected && styles.timingOptionSelected,
+                                                ]}
+                                                onPress={() =>
+                                                    setTimingPreference(
+                                                        option.key as 'auto' | 'local' | 'anchor',
+                                                    )
+                                                }
+                                            >
+                                                <Text
+                                                    style={[
+                                                        styles.timingOptionText,
+                                                        isSelected && styles.timingOptionTextSelected,
+                                                    ]}
+                                                >
+                                                    {option.label}
+                                                </Text>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+                                <Text style={styles.timingHint}>
+                                    Automatic mode lets LumiMD apply safer defaults for time-sensitive medications.
+                                </Text>
+                                {timingPreference === 'anchor' && (
+                                    <View style={styles.anchorInfo}>
+                                        <Text style={styles.anchorLabel}>Anchored timezone</Text>
+                                        <Text style={styles.anchorValue}>
+                                            {(anchorTimezone ?? resolveDeviceTimezone()) || 'Unavailable'}
+                                        </Text>
+                                    </View>
+                                )}
+                                {reminderCriticality === 'time_sensitive' && timingPreference !== 'anchor' && (
+                                    <View style={styles.criticalityWarning}>
+                                        <Text style={styles.criticalityWarningText}>
+                                            This medication is marked time-sensitive. Anchored timing is usually safer
+                                            during travel.
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
                         </View>
 
                         {/* Minimal disclaimer */}
@@ -481,6 +578,79 @@ const styles = StyleSheet.create({
     },
     inlinePicker: {
         marginTop: spacing(1),
+    },
+    timingContainer: {
+        gap: spacing(2),
+        marginTop: spacing(2),
+    },
+    timingLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: Colors.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    timingOptions: {
+        gap: spacing(2),
+    },
+    timingOption: {
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: Radius.md,
+        paddingHorizontal: spacing(3),
+        paddingVertical: spacing(2.5),
+        backgroundColor: Colors.surface,
+    },
+    timingOptionSelected: {
+        borderColor: Colors.primary,
+        backgroundColor: 'rgba(64,201,208,0.12)',
+    },
+    timingOptionText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: Colors.text,
+    },
+    timingOptionTextSelected: {
+        color: Colors.primary,
+        fontWeight: '600',
+    },
+    timingHint: {
+        fontSize: 12,
+        color: Colors.textMuted,
+        lineHeight: 16,
+    },
+    anchorInfo: {
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: Radius.md,
+        paddingHorizontal: spacing(3),
+        paddingVertical: spacing(2.5),
+        backgroundColor: Colors.background,
+        gap: spacing(0.5),
+    },
+    anchorLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: Colors.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    anchorValue: {
+        fontSize: 13,
+        color: Colors.text,
+    },
+    criticalityWarning: {
+        borderWidth: 1,
+        borderColor: 'rgba(251,191,36,0.45)',
+        borderRadius: Radius.md,
+        backgroundColor: 'rgba(251,191,36,0.15)',
+        paddingHorizontal: spacing(3),
+        paddingVertical: spacing(2.5),
+    },
+    criticalityWarningText: {
+        fontSize: 12,
+        lineHeight: 16,
+        color: '#A16207',
     },
     footer: {
         flexDirection: 'row',

@@ -14,6 +14,14 @@ import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { openAIConfig } from '../config';
 import { withRetry } from '../utils/retryUtils';
+import { HealthLogDomainService } from './domain/healthLogs/HealthLogDomainService';
+import { InsightDomainService } from './domain/insights/InsightDomainService';
+import { MedicationDomainService } from './domain/medications/MedicationDomainService';
+import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
+import { FirestoreHealthLogRepository } from './repositories/healthLogs/FirestoreHealthLogRepository';
+import { FirestoreInsightRepository } from './repositories/insights/FirestoreInsightRepository';
+import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
+import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
 
 const BASE_URL = 'https://api.openai.com/v1';
 
@@ -93,18 +101,49 @@ Respond with JSON only:
 // Insight Generator Service
 // =============================================================================
 
+export type InsightGeneratorServiceDependencies = {
+    client?: AxiosInstance;
+    db?: admin.firestore.Firestore;
+    model?: string;
+    insightService?: InsightDomainService;
+    healthLogService?: HealthLogDomainService;
+    medicationService?: MedicationDomainService;
+    nudgeService?: NudgeDomainService;
+};
+
 export class InsightGeneratorService {
     private client: AxiosInstance;
     private model: string;
-    private db: admin.firestore.Firestore;
+    private insightService: InsightDomainService;
+    private healthLogService: HealthLogDomainService;
+    private medicationService: MedicationDomainService;
+    private nudgeService: NudgeDomainService;
 
-    constructor() {
+    constructor(dependencies: InsightGeneratorServiceDependencies = {}) {
+        this.model = dependencies.model || openAIConfig.model || 'gpt-4o';
+        const db = dependencies.db ?? admin.firestore();
+
+        this.insightService =
+            dependencies.insightService ??
+            new InsightDomainService(new FirestoreInsightRepository(db));
+        this.healthLogService =
+            dependencies.healthLogService ??
+            new HealthLogDomainService(new FirestoreHealthLogRepository(db));
+        this.medicationService =
+            dependencies.medicationService ??
+            new MedicationDomainService(new FirestoreMedicationRepository(db));
+        this.nudgeService =
+            dependencies.nudgeService ??
+            new NudgeDomainService(new FirestoreNudgeRepository(db));
+
+        if (dependencies.client) {
+            this.client = dependencies.client;
+            return;
+        }
+
         if (!openAIConfig.apiKey) {
             throw new Error('OpenAI API key is not configured for InsightGenerator');
         }
-
-        this.model = openAIConfig.model || 'gpt-4o';
-        this.db = admin.firestore();
 
         this.client = axios.create({
             baseURL: BASE_URL,
@@ -143,29 +182,23 @@ export class InsightGeneratorService {
      * Check if user needs new insights (hasn't been generated today).
      */
     async needsInsightGeneration(userId: string): Promise<boolean> {
-        const insightsRef = this.db.collection('users').doc(userId).collection('insights');
-        const recentInsight = await insightsRef
-            .where('expiresAt', '>', admin.firestore.Timestamp.now())
-            .limit(1)
-            .get();
-
-        return recentInsight.empty;
+        const now = admin.firestore.Timestamp.now();
+        const hasActiveInsights = await this.insightService.hasActiveInsights(userId, now);
+        return !hasActiveInsights;
     }
 
     /**
      * Get cached insights for a user.
      */
     async getCachedInsights(userId: string): Promise<HealthInsight[]> {
-        const insightsRef = this.db.collection('users').doc(userId).collection('insights');
-        const snapshot = await insightsRef
-            .where('expiresAt', '>', admin.firestore.Timestamp.now())
-            .orderBy('expiresAt', 'desc')
-            .limit(5)
-            .get();
+        const now = admin.firestore.Timestamp.now();
+        const cachedInsights = await this.insightService.listActiveInsights(userId, {
+            now,
+            limit: 5,
+        });
 
-        return snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
+        return cachedInsights.map((insight) => ({
+            ...insight,
         } as HealthInsight));
     }
 
@@ -178,66 +211,96 @@ export class InsightGeneratorService {
         const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
         // Get health logs
-        const healthLogsRef = this.db.collection('healthLogs');
-        const healthLogs = await healthLogsRef
-            .where('userId', '==', userId)
-            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(twoWeeksAgo))
-            .orderBy('createdAt', 'desc')
-            .limit(50)
-            .get();
+        const healthLogs = await this.healthLogService.listForUser(userId, {
+            startDate: twoWeeksAgo,
+            sortDirection: 'desc',
+            limit: 50,
+        });
 
         context.bpReadings = [];
         context.glucoseReadings = [];
         context.weightReadings = [];
 
-        healthLogs.docs.forEach(doc => {
-            const data = doc.data();
+        healthLogs.forEach((data) => {
             const date = data.createdAt?.toDate()?.toISOString() || '';
+            const rawValue =
+                data.value && typeof data.value === 'object'
+                    ? (data.value as Record<string, unknown>)
+                    : {};
 
-            if (data.type === 'bp' && data.value) {
+            if (data.type === 'bp' && Object.keys(rawValue).length > 0) {
+                const systolic =
+                    typeof rawValue.systolic === 'number' ? rawValue.systolic : undefined;
+                const diastolic =
+                    typeof rawValue.diastolic === 'number' ? rawValue.diastolic : undefined;
+                if (systolic === undefined || diastolic === undefined) {
+                    return;
+                }
                 context.bpReadings!.push({
-                    systolic: data.value.systolic,
-                    diastolic: data.value.diastolic,
+                    systolic,
+                    diastolic,
                     date,
                 });
-            } else if (data.type === 'glucose' && data.value) {
+            } else if (data.type === 'glucose' && Object.keys(rawValue).length > 0) {
+                const reading =
+                    typeof rawValue.reading === 'number' ? rawValue.reading : undefined;
+                if (reading === undefined) {
+                    return;
+                }
                 context.glucoseReadings!.push({
-                    reading: data.value.reading,
-                    timing: data.value.timing || 'unknown',
+                    reading,
+                    timing: typeof rawValue.timing === 'string' ? rawValue.timing : 'unknown',
                     date,
                 });
-            } else if (data.type === 'weight' && data.value) {
+            } else if (data.type === 'weight' && Object.keys(rawValue).length > 0) {
+                const weight = typeof rawValue.weight === 'number' ? rawValue.weight : undefined;
+                if (weight === undefined) {
+                    return;
+                }
                 context.weightReadings!.push({
-                    weight: data.value.weight,
+                    weight,
                     date,
                 });
             }
         });
 
         // Get nudge responses
-        const nudgesRef = this.db.collection('nudges');
-        const completedNudges = await nudgesRef
-            .where('userId', '==', userId)
-            .where('status', '==', 'completed')
-            .where('completedAt', '>=', admin.firestore.Timestamp.fromDate(twoWeeksAgo))
-            .orderBy('completedAt', 'desc')
-            .limit(20)
-            .get();
+        const completedNudges = await this.nudgeService.listByUserAndStatuses(userId, ['completed']);
+        const recentCompletedNudges = completedNudges
+            .filter((nudge) => {
+                const completedAt = nudge.completedAt as FirebaseFirestore.Timestamp | undefined;
+                return completedAt ? completedAt.toMillis() >= twoWeeksAgo.getTime() : false;
+            })
+            .sort((left, right) => {
+                const leftMillis =
+                    (left.completedAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() || 0;
+                const rightMillis =
+                    (right.completedAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() || 0;
+                return rightMillis - leftMillis;
+            })
+            .slice(0, 20);
 
         context.nudgeResponses = [];
         context.concerningResponses = [];
-        context.nudgesCompleted = completedNudges.size;
+        context.nudgesCompleted = recentCompletedNudges.length;
 
-        const dismissedNudges = await nudgesRef
-            .where('userId', '==', userId)
-            .where('status', '==', 'dismissed')
-            .where('updatedAt', '>=', admin.firestore.Timestamp.fromDate(twoWeeksAgo))
-            .limit(20)
-            .get();
-        context.nudgesDismissed = dismissedNudges.size;
+        const dismissedNudges = await this.nudgeService.listByUserAndStatuses(userId, ['dismissed']);
+        const recentDismissedNudges = dismissedNudges
+            .filter((nudge) => {
+                const updatedAt = nudge.updatedAt as FirebaseFirestore.Timestamp | undefined;
+                return updatedAt ? updatedAt.toMillis() >= twoWeeksAgo.getTime() : false;
+            })
+            .sort((left, right) => {
+                const leftMillis =
+                    (left.updatedAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() || 0;
+                const rightMillis =
+                    (right.updatedAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() || 0;
+                return rightMillis - leftMillis;
+            })
+            .slice(0, 20);
+        context.nudgesDismissed = recentDismissedNudges.length;
 
-        completedNudges.docs.forEach(doc => {
-            const data = doc.data();
+        recentCompletedNudges.forEach((data) => {
             const responseValue = data.responseValue as Record<string, unknown> | undefined;
             const response = responseValue?.response as string | undefined;
             const date = data.completedAt?.toDate()?.toISOString() || '';
@@ -262,17 +325,14 @@ export class InsightGeneratorService {
         });
 
         // Get active medications
-        const medsRef = this.db.collection('medications');
-        const activeMeds = await medsRef
-            .where('userId', '==', userId)
-            .where('active', '==', true)
-            .limit(10)
-            .get();
-
-        context.activeMedications = activeMeds.docs.map(doc => ({
-            name: doc.data().name,
-            startedAt: doc.data().startedAt?.toDate()?.toISOString(),
-        }));
+        const medications = await this.medicationService.listAllForUser(userId);
+        context.activeMedications = medications
+            .filter((medication) => medication.active === true)
+            .slice(0, 10)
+            .map((medication) => ({
+                name: medication.name,
+                startedAt: medication.startedAt?.toDate?.()?.toISOString(),
+            }));
 
         // Calculate adherence (if reminders exist)
         // This is a simplified version - could be enhanced
@@ -442,23 +502,11 @@ export class InsightGeneratorService {
      * Store insights in Firestore.
      */
     private async storeInsights(userId: string, insights: HealthInsight[]): Promise<void> {
-        const insightsRef = this.db.collection('users').doc(userId).collection('insights');
-
-        // Delete old insights first
-        const oldInsights = await insightsRef
-            .where('expiresAt', '<=', admin.firestore.Timestamp.now())
-            .get();
-
-        const batch = this.db.batch();
-        oldInsights.docs.forEach(doc => batch.delete(doc.ref));
-
-        // Add new insights
-        insights.forEach(insight => {
-            const newRef = insightsRef.doc();
-            batch.set(newRef, insight);
-        });
-
-        await batch.commit();
+        await this.insightService.replaceInsightsForUser(
+            userId,
+            insights,
+            admin.firestore.Timestamp.now(),
+        );
     }
 
     private shouldRetry(error: unknown): boolean {

@@ -1,0 +1,1774 @@
+# LumiMD Code Review Remediation Plan
+
+## Scope
+- Source reviewed: `functions/src` backend routes/services/triggers, `firestore.indexes.json`, selected web/mobile integration points.
+- Date: 2026-02-20.
+- Goal: map each external review item to current code reality, then define an execution plan.
+
+## Executive Summary
+- Previously high-impact monolithic route-file risk has been substantially reduced via route modularization; soft-delete strategy is implemented end-to-end (delete, restore, retention purge) with operator audit tooling follow-through in place.
+- All external review findings are now implemented with tested coverage and rollout guardrails across security, safety, data consistency, and architecture boundaries.
+- Remaining work is operational tuning (telemetry-driven cache/index adjustments), not remediation-gap closure.
+
+## Total Remediation Completion (as of 2026-02-23)
+- **100% complete** (weighted across 16 review items).
+- Weighting method:
+  - `Addressed` = 100%
+  - `Not started` = 0%
+- Current item mix:
+  - `Addressed`: 16
+  - `In progress`: 0
+  - `Not started`: 0
+
+## Progress Log
+- 2026-02-23:
+  - Remediation closeout chunk: input sanitization hardening (`#3`):
+    - sanitized `visits` patch array fields before persistence:
+      - `diagnoses`
+      - `imaging`
+      - `nextSteps`
+      - `tags`
+      - `folders`
+    - added focused regression coverage:
+      - `functions/src/routes/__tests__/visits.sanitization.test.ts`
+    - re-validated sanitization + denormalization closeout slice (`npm test -- src/routes/__tests__/visits.sanitization.test.ts src/services/repositories/denormalization/__tests__/FirestoreDenormalizationSyncRepository.test.ts src/services/__tests__/denormalizationSync.test.ts src/services/__tests__/denormalizationSync.repositoryBridge.test.ts src/services/__tests__/denormalizationBackfill.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Remediation closeout chunk: denormalization policy expansion (`#9`):
+    - expanded user-write denormalization strategy to caregiver identity fields:
+      - new resolver: caregiver-email delta detection (`resolveCaregiverEmailDenormalizationUpdate(...)`)
+      - new sync flow: caregiver-email propagation across `shares` + `shareInvites` by `caregiverUserId` (`syncShareCaregiverDenormalizedFields(...)`)
+      - trigger wiring: user profile write now runs owner-field sync + caregiver-email sync when relevant.
+    - expanded scheduled backfill to reconcile `caregiverEmail` using `caregiverUserId` user records in addition to existing owner-field and reminder-field reconciliation.
+    - expanded repository contract coverage and bridge tests for caregiver-field sync paths.
+  - Phase 1 follow-through chunk: shared-access pagination expansion for share surfaces (`#6`):
+    - added optional cursor pagination (`limit`, `cursor`) with `X-Has-More`/`X-Next-Cursor` headers to:
+      - `GET /v1/shares`
+      - `GET /v1/shares/invites`
+      - `GET /v1/shares/my-invites`
+    - normalized share/invite list ordering to deterministic `createdAt desc` + `id` tie-break before cursor slicing.
+    - added route regression coverage for:
+      - paginated `/my-invites` cursor flow and invalid-cursor validation.
+      - paginated `/shares` response headers.
+      - paginated `/shares/invites` dedupe + cursor headers.
+    - re-validated share pagination slice (`npm test -- src/routes/__tests__/shares.invites.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: denormalization sync repository hardening (slice 2):
+    - extended denormalization sync repository with backfill orchestration operations:
+      - cursor-based page reads (`listCollectionPage`)
+      - lookup-by-id loads for users/medications (`getLookupDocsByIds`)
+    - migrated `denormalizationSync` scheduled backfill helpers off direct collection/getAll access to repository-backed operations in:
+      - `runOwnerFieldBackfillPage(...)`
+      - `runReminderFieldBackfillPage(...)`
+      - `backfillDenormalizedFields(...)`
+    - added repository + bridge coverage for backfill methods and wiring:
+      - `functions/src/services/repositories/denormalization/__tests__/FirestoreDenormalizationSyncRepository.test.ts`
+      - `functions/src/services/__tests__/denormalizationSync.repositoryBridge.test.ts`
+    - re-validated denormalization slice (`npm test -- src/services/repositories/denormalization/__tests__/FirestoreDenormalizationSyncRepository.test.ts src/services/__tests__/denormalizationSync.repositoryBridge.test.ts src/services/__tests__/denormalizationSync.test.ts src/services/__tests__/denormalizationBackfill.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: denormalization sync repository hardening (slice 1):
+    - added denormalization sync repository contract + Firestore adapter:
+      - `DenormalizationSyncRepository`
+      - `FirestoreDenormalizationSyncRepository`
+    - migrated trigger-time sync paths in `denormalizationSync` off direct query/batch orchestration to repository-backed operations for:
+      - share owner-field sync (`shares`, `shareInvites`)
+      - reminder medication-field sync (`medicationReminders`)
+    - retained existing backfill paging behavior as-is for follow-up slice while hardening high-frequency trigger sync writes.
+    - added repository + bridge coverage:
+      - `functions/src/services/repositories/denormalization/__tests__/FirestoreDenormalizationSyncRepository.test.ts`
+      - `functions/src/services/__tests__/denormalizationSync.repositoryBridge.test.ts`
+    - re-validated denormalization sync/backfill slice (`npm test -- src/services/repositories/denormalization/__tests__/FirestoreDenormalizationSyncRepository.test.ts src/services/__tests__/denormalizationSync.repositoryBridge.test.ts src/services/__tests__/denormalizationSync.test.ts src/services/__tests__/denormalizationBackfill.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: medication-reminder processor repository hardening (slice 2):
+    - extended medication-reminder processing repository with timing-backfill and soft-delete purge operations:
+      - timing-backfill page reads (`listTimingBackfillPage`)
+      - soft-delete cutoff reads (`listSoftDeletedByCutoff`)
+      - reminder hard-delete batch writes (`deleteReminderIds`)
+    - migrated `medicationReminderService` direct reminders-collection operations in:
+      - `backfillMedicationReminderTimingPolicy(...)`
+      - `purgeSoftDeletedMedicationReminders(...)`
+      to repository-backed methods.
+    - added repository + bridge coverage for new methods and wiring:
+      - `functions/src/services/repositories/medicationReminderProcessing/__tests__/FirestoreMedicationReminderProcessingRepository.test.ts`
+      - `functions/src/services/__tests__/medicationReminderService.repositoryBridge.test.ts`
+    - re-validated reminder processor/backfill/purge slice (`npm test -- src/services/repositories/medicationReminderProcessing/__tests__/FirestoreMedicationReminderProcessingRepository.test.ts src/services/__tests__/medicationReminderService.repositoryBridge.test.ts src/services/__tests__/medicationReminderService.test.ts src/services/__tests__/medicationReminderService.process.test.ts src/routes/__tests__/medicationReminders.opsStatus.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: medication-reminder processor repository hardening (slice 1):
+    - added medication-reminder processing repository contract + Firestore adapter:
+      - `MedicationReminderProcessingRepository`
+      - `FirestoreMedicationReminderProcessingRepository`
+    - migrated `processAndNotifyMedicationReminders(...)` core read/write paths off direct Firestore access to repository-backed dependencies for:
+      - enabled reminder listing
+      - user timezone lookup
+      - medication active/deleted status checks
+      - reminder send-lock acquisition
+      - reminder update writes (single + batched)
+      - per-user medication log range reads
+    - added repository injection coverage and repository unit coverage:
+      - `functions/src/services/__tests__/medicationReminderService.repositoryBridge.test.ts`
+      - `functions/src/services/repositories/medicationReminderProcessing/__tests__/FirestoreMedicationReminderProcessingRepository.test.ts`
+    - re-validated reminder processor slice (`npm test -- src/services/repositories/medicationReminderProcessing/__tests__/FirestoreMedicationReminderProcessingRepository.test.ts src/services/__tests__/medicationReminderService.repositoryBridge.test.ts src/services/__tests__/medicationReminderService.test.ts src/services/__tests__/medicationReminderService.process.test.ts src/routes/__tests__/medicationReminders.opsStatus.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: visit-processor action-sync repository hardening:
+    - added visit action-sync repository contract + Firestore adapter:
+      - `VisitActionSyncRepository`
+      - `FirestoreVisitActionSyncRepository`
+    - migrated `visitProcessor` action replacement flow off direct `actions` collection query/doc usage while preserving single-batch atomic commit behavior for visit update + action replacement.
+    - added targeted repository + bridge coverage:
+      - `functions/src/services/repositories/visitActionSync/__tests__/FirestoreVisitActionSyncRepository.test.ts`
+      - `functions/src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts` (repository dependency assertion)
+    - re-validated visit-processor/action-sync slice (`npm test -- src/services/repositories/visitActionSync/__tests__/FirestoreVisitActionSyncRepository.test.ts src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts src/services/__tests__/visitPostCommitRecoveryService.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: caregiver-email log repository hardening:
+    - added caregiver email-log repository contract + Firestore adapter:
+      - `CaregiverEmailLogRepository`
+      - `FirestoreCaregiverEmailLogRepository`
+    - migrated `caregiverEmailService` default email-log writes from direct `caregiverEmailLog` collection access to repository-backed dependency wiring.
+    - added targeted repository coverage:
+      - `functions/src/services/repositories/caregiverEmailLogs/__tests__/FirestoreCaregiverEmailLogRepository.test.ts`
+    - re-validated caregiver-email/post-commit slice (`npm test -- src/services/repositories/caregiverEmailLogs/__tests__/FirestoreCaregiverEmailLogRepository.test.ts src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts src/services/__tests__/visitPostCommitRecoveryService.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: medication-sync repository hardening (slice 2):
+    - extended medication-sync repository contract + Firestore adapter to absorb medication write paths:
+      - `create(...)`
+      - `updateById(...)`
+    - migrated `medicationSync` direct medication writes off service-level Firestore calls to repository-backed methods for:
+      - existing medication updates in `upsertMedication(...)`
+      - new medication document creation in `upsertMedication(...)`
+    - completed side-effect wiring from prior partial edit by keeping nudge/reminder list/delete/create operations repository-backed end-to-end.
+    - expanded repository + bridge coverage:
+      - `functions/src/services/repositories/medicationSync/__tests__/FirestoreMedicationSyncRepository.test.ts` (mock `'in'` query support + create/update coverage)
+      - `functions/src/services/__tests__/medicationSync.repositoryBridge.test.ts` (repository-backed update assertions)
+    - re-validated medication-sync slice (`npm test -- src/services/repositories/medicationSync/__tests__/FirestoreMedicationSyncRepository.test.ts src/services/__tests__/medicationSync.repositoryBridge.test.ts src/services/__tests__/medicationSync.test.ts src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts src/services/__tests__/visitPostCommitRecoveryService.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: medication-sync lookup boundary hardening (slice 1):
+    - added medication-sync repository contract + Firestore adapter for medication lookup/list read paths:
+      - `MedicationSyncRepository`
+      - `FirestoreMedicationSyncRepository`
+    - migrated medication-sync warm-cache and canonical/nameLower lookup reads to repository-backed dependencies:
+      - `syncMedicationsFromSummary(...)` warm-cache list path
+      - `getMedicationDoc(...)` canonical/nameLower lookup path
+    - added dependency wiring for medication-sync repository injection in sync flows.
+    - added targeted repository + bridge coverage:
+      - `functions/src/services/repositories/medicationSync/__tests__/FirestoreMedicationSyncRepository.test.ts`
+      - `functions/src/services/__tests__/medicationSync.repositoryBridge.test.ts`
+    - re-validated medication-sync slice (`npm test -- src/services/repositories/medicationSync/__tests__/FirestoreMedicationSyncRepository.test.ts src/services/__tests__/medicationSync.repositoryBridge.test.ts src/services/__tests__/medicationSync.test.ts src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts src/services/__tests__/visitPostCommitRecoveryService.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: restore-audit append-write boundary hardening:
+    - added restore-audit repository contract + Firestore adapter:
+      - `RestoreAuditRepository`
+      - `FirestoreRestoreAuditRepository`
+    - migrated `recordRestoreAuditEvent(...)` append writes off direct `restoreAuditLogs` collection access to repository-backed dependency wiring.
+    - added targeted repository + bridge coverage:
+      - `functions/src/services/repositories/restoreAudit/__tests__/FirestoreRestoreAuditRepository.test.ts`
+      - `functions/src/services/__tests__/restoreAuditService.repositoryBridge.test.ts`
+    - re-validated restore/soft-delete slice (`npm test -- src/services/repositories/restoreAudit/__tests__/FirestoreRestoreAuditRepository.test.ts src/services/__tests__/restoreAuditService.repositoryBridge.test.ts src/routes/__tests__/users.restoreAudit.test.ts src/routes/__tests__/medications.restore.test.ts src/routes/__tests__/visits.restore.test.ts src/routes/__tests__/healthLogs.softDelete.test.ts src/routes/__tests__/actions.softDelete.test.ts src/routes/__tests__/care.tasks.softDelete.test.ts src/routes/__tests__/medicationReminders.softDelete.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: soft-delete retention boundary hardening:
+    - added soft-delete retention repository contract + Firestore adapter:
+      - `SoftDeleteRetentionRepository`
+      - `FirestoreSoftDeleteRetentionRepository`
+    - migrated `purgeSoftDeletedCollections(...)` from direct collection queries/batch deletes to repository-backed list/purge methods with dependency injection.
+    - added targeted repository + bridge coverage:
+      - `functions/src/services/repositories/softDeleteRetention/__tests__/FirestoreSoftDeleteRetentionRepository.test.ts`
+      - `functions/src/services/__tests__/softDeleteRetentionService.repositoryBridge.test.ts`
+    - re-validated soft-delete retention slice (`npm test -- src/services/repositories/softDeleteRetention/__tests__/FirestoreSoftDeleteRetentionRepository.test.ts src/services/__tests__/softDeleteRetentionService.repositoryBridge.test.ts src/services/__tests__/softDeleteRetentionService.test.ts src/routes/__tests__/actions.softDelete.test.ts src/routes/__tests__/healthLogs.softDelete.test.ts src/routes/__tests__/care.tasks.softDelete.test.ts src/routes/__tests__/medicationReminders.softDelete.test.ts src/routes/__tests__/medications.restore.test.ts src/routes/__tests__/visits.restore.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: external drug-data cache boundary hardening:
+    - added external drug-safety cache repository contract + Firestore adapter:
+      - `ExternalDrugSafetyCacheRepository`
+      - `FirestoreExternalDrugSafetyCacheRepository`
+    - migrated `externalDrugData` cache read/write paths off direct `medicationSafetyExternalCache` access to repository-backed dependencies (`getCachedResult`, `cacheResult`, `runExternalSafetyChecks`).
+    - added dependency-injected fetch/cache overrides in `runExternalSafetyChecks(...)` to support deterministic bridge testing and reduced direct infrastructure coupling.
+    - added targeted repository + bridge coverage:
+      - `functions/src/services/repositories/externalDrugSafetyCache/__tests__/FirestoreExternalDrugSafetyCacheRepository.test.ts`
+      - `functions/src/services/__tests__/externalDrugData.repositoryBridge.test.ts`
+    - re-validated external-drug/cache slice (`npm test -- src/services/repositories/externalDrugSafetyCache/__tests__/FirestoreExternalDrugSafetyCacheRepository.test.ts src/services/__tests__/externalDrugData.repositoryBridge.test.ts src/services/__tests__/externalDrugData.test.ts src/services/repositories/medicationSafetyCache/__tests__/FirestoreMedicationSafetyCacheRepository.test.ts src/services/__tests__/medicationSafetyAI.repositoryBridge.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: medication-safety AI cache boundary hardening:
+    - added medication-safety cache repository contract + Firestore adapter:
+      - `MedicationSafetyCacheRepository`
+      - `FirestoreMedicationSafetyCacheRepository`
+    - migrated `medicationSafetyAI` cache read/write/purge paths off direct `medicationSafetyCache` collection calls to repository-backed dependencies:
+      - `getCachedResult(...)`
+      - `cacheResult(...)`
+      - `clearMedicationSafetyCacheForUser(...)`
+      - `runAIBasedSafetyChecks(...)` (cache lookup/write path)
+    - added targeted repository + bridge coverage:
+      - `functions/src/services/repositories/medicationSafetyCache/__tests__/FirestoreMedicationSafetyCacheRepository.test.ts`
+      - `functions/src/services/__tests__/medicationSafetyAI.repositoryBridge.test.ts`
+    - re-validated medication-safety/cache slice (`npm test -- src/services/repositories/medicationSafetyCache/__tests__/FirestoreMedicationSafetyCacheRepository.test.ts src/services/__tests__/medicationSafetyAI.repositoryBridge.test.ts src/services/__tests__/medicationSafety.repositoryBridge.test.ts src/routes/__tests__/medications.core.test.ts src/routes/__tests__/medications.deleteCascade.test.ts src/routes/__tests__/medications.restore.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Post-Phase 4 backlog chunk: infrastructure maintenance-state boundary hardening for medication reminder timing backfill:
+    - added infrastructure repository contract + Firestore adapter for `systemMaintenance` state docs:
+      - `MaintenanceStateRepository`
+      - `FirestoreMaintenanceStateRepository`
+    - migrated medication reminder timing-backfill state reads/writes (`get status` + `backfill run-state`) off direct `systemMaintenance` collection calls to repository-backed dependencies.
+    - added repository and service coverage:
+      - `functions/src/services/repositories/maintenanceState/__tests__/FirestoreMaintenanceStateRepository.test.ts`
+      - `functions/src/services/__tests__/medicationReminderService.test.ts` (injected maintenance repository status-read coverage)
+    - re-validated reminder/backfill slice (`npm test -- src/services/repositories/maintenanceState/__tests__/FirestoreMaintenanceStateRepository.test.ts src/services/__tests__/medicationReminderService.test.ts src/routes/__tests__/medicationReminders.opsStatus.test.ts src/services/__tests__/medicationReminderService.process.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Bundle A follow-through (`#1` + `#3`) with validation:
+    - added operator backfill visibility endpoint `GET /v1/medication-reminders/ops/timing-backfill-status` with stale/error signaling derived from persisted state.
+    - expanded timing backfill run-state persistence to include lifecycle/error metadata (`lastRunStartedAt`, `lastRunFinishedAt`, `lastRunStatus`, `lastRunErrorAt`, `lastRunErrorMessage`).
+    - sanitized remaining debug free-text medication fields in reminder and nudge debug/test routes.
+    - added targeted regression coverage:
+      - `functions/src/routes/__tests__/medicationReminders.opsStatus.test.ts`
+      - `functions/src/routes/__tests__/medicationReminders.debugSanitization.test.ts`
+      - `functions/src/routes/__tests__/nudgesDebug.sanitization.test.ts`
+    - re-validated bundle baseline (`npm test -- src/routes/__tests__/medicationReminders.opsStatus.test.ts src/services/__tests__/medicationReminderService.test.ts src/services/__tests__/medicationReminderService.process.test.ts`, `npm test -- src/routes/__tests__/medicationReminders.debugSanitization.test.ts src/routes/__tests__/nudgesDebug.sanitization.test.ts src/routes/__tests__/medicationReminders.softDelete.test.ts src/routes/__tests__/nudgesDebug.access.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Wired Bundle A ops visibility into web portal operator tooling:
+    - added `/ops/medication-reminders` page backed by `GET /v1/medication-reminders/ops/timing-backfill-status`.
+    - linked new reminder-backfill page from `/ops/escalations` and `/ops/restore-audit`.
+    - re-validated web portal (`npm run build`, `npm test` in `web-portal/`).
+  - Completed cross-client timing-policy UX rollout for medication reminders:
+    - added web reminder dialog timing preference controls (`Automatic`, `Follow current timezone`, `Keep fixed timezone`) with anchored-timezone context and time-sensitive caution copy.
+    - added mobile reminder-time modal timing preference controls with matching policy options and anchored-timezone context.
+    - extended SDK reminder request/response model types to include timing-policy fields (`timingMode`, `anchorTimezone`, `criticality`).
+    - re-validated cross-app compatibility (`npm run build` in `packages/sdk/`, `npm run build` + `npm test` in `web-portal/`, `npx tsc --noEmit` in `mobile/`).
+  - Completed remaining Phase 4 helper-service migration slices and re-validation:
+    - migrated `medicationSafety` user/medication reads to domain-backed dependencies (`MedicationDomainService`, `UserDomainService`) with injected dependency support for bridge tests.
+    - migrated `medicationSafetyAI` user/medication reads to domain-backed dependencies while retaining local AI-cache storage behavior.
+    - migrated `caregiverEmailService` visit/user/share reads to domain-backed dependencies (`VisitDomainService`, `UserDomainService`, `ShareDomainService`) and centralized email-log writes behind dependency-injected writer hooks.
+    - migrated `pdfGenerator` health-log/medication reads to domain-backed dependencies (`HealthLogDomainService`, `MedicationDomainService`) while preserving report payload shape.
+    - added focused bridge coverage:
+      - `functions/src/services/__tests__/medicationSafety.repositoryBridge.test.ts`
+  - Re-validated helper-service migration slice + no-regression baseline (`npm test -- src/services/__tests__/medicationSafety.test.ts src/services/__tests__/medicationSafety.repositoryBridge.test.ts src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts src/services/__tests__/visitPostCommitRecoveryService.test.ts`, `npm test -- src/routes/__tests__/medications.core.test.ts src/routes/__tests__/healthLogs.sanitization.test.ts src/routes/__tests__/healthLogs.softDelete.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+- 2026-02-22:
+  - Continued Phase 4 chunk 3 with `notifications` push-token repository/service migration:
+    - added users repository/domain push-token list contract:
+      - `UserRepository.listPushTokens(userId)`
+      - `UserDomainService.listPushTokens(userId)`
+    - migrated notification service push-token read/remove paths off direct `users/{id}/pushTokens` access:
+      - `getUserPushTokens(...)` now reads through `UserDomainService.listPushTokens(...)`
+      - `removeInvalidToken(...)` now deletes via `UserDomainService.unregisterPushToken(...)`
+    - added focused bridge coverage:
+      - `functions/src/services/__tests__/notifications.repositoryBridge.test.ts`
+  - Re-validated notifications migration slice + no-regression baseline (`npm test -- src/services/__tests__/notifications.repositoryBridge.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 3 with `patientMedicalContext` repository/service migration:
+    - extended patient-context repository/domain contracts for generalized document writes:
+      - `PatientContextRepository.setByUserId(...)`
+      - `PatientContextRepository.updateByUserId(...)`
+      - `PatientContextDomainService.setForUser(...)`
+      - `PatientContextDomainService.updateForUser(...)`
+    - migrated patient-medical-context data access off direct `patientContexts` collection reads/writes to `PatientContextDomainService`:
+      - `getPatientMedicalContext(...)`
+      - `createPatientMedicalContext(...)`
+      - `updatePatientContextFromVisit(...)`
+      - `enableTracking(...)`
+      - `recordTrackingLog(...)`
+    - added focused bridge coverage:
+      - `functions/src/services/__tests__/patientMedicalContext.repositoryBridge.test.ts`
+  - Re-validated patient-medical-context migration slice + no-regression baseline (`npm test -- src/services/__tests__/patientMedicalContext.repositoryBridge.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 3 with `visitProcessor` medication/user domain migration:
+    - migrated known-medication read path from direct `medications` collection query to `MedicationDomainService.listAllForUser(...)`.
+    - migrated caregiver auto-share toggle lookup from direct `users` collection read to `UserDomainService.getById(...)`.
+    - added dependency-resolution wiring for service-level domain/repository bridge usage while preserving existing summarization/post-commit behavior.
+    - updated visit-processor harness query support for repository-backed medication reads.
+  - Re-validated visit-processor migration slice + no-regression baseline (`npm test -- src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts src/services/__tests__/visitPostCommitRecoveryService.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 3 with `visitPostCommitRecoveryService` visit/user domain migration:
+    - added visit repository/domain recovery-read contract:
+      - `VisitRepository.listPostCommitRecoverable(limit)`
+      - `VisitDomainService.listPostCommitRecoverable(limit)`
+    - migrated recovery scan/update paths from direct `visits` collection access to `VisitDomainService` (`listPostCommitRecoverable` + `updateRecord`).
+    - migrated caregiver auto-share toggle lookup in recovery flow from direct `users` collection read to `UserDomainService.getById(...)`.
+    - updated recovery test harnesses for repository-backed visit doc update/get paths and expanded visit-domain contract coverage.
+  - Re-validated post-commit recovery migration slice + no-regression baseline (`npm test -- src/services/__tests__/visitPostCommitRecoveryService.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 3 with `shareAccess` repository/service migration:
+    - migrated accepted-share and caregiver-access lookups from direct `shares` collection queries to `ShareDomainService` + `ShareRepository` methods
+    - added share repository/domain coverage for caregiver-email query path:
+      - `ShareRepository.listByCaregiverEmail(...)`
+      - `ShareDomainService.listByCaregiverEmail(...)`
+    - preserved accepted-share email-fallback backfill behavior by routing writes through domain-backed merge updates (`setShare(..., { merge: true })`)
+    - updated access-path harnesses to support domain-backed merge-write backfill semantics in fallback tests.
+  - Re-validated share-access migration slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/routes/__tests__/care.acceptedSharesFallback.test.ts src/routes/__tests__/visits.access.test.ts src/routes/__tests__/shares.invites.test.ts`, `npm run build`, `npm run test:remediation-guardrails`, `TMPDIR=/Users/tylermcanally/LumiMD/Codebase/functions/.tmp npx jest src/routes/__tests__ --no-cache`).
+  - Continued Phase 4 chunk 3 by migrating `postCommitEscalationReportingService` escalation scans to repository/domain boundaries:
+    - added post-commit escalation read contracts in visits repository/domain:
+      - `VisitRepository.listPostCommitEscalated(limit)`
+      - `VisitDomainService.listPostCommitEscalated(limit)`
+    - migrated escalation-reporting service to query escalated visits through `VisitDomainService` instead of direct Firestore queries.
+    - added bridge coverage for dependency-injected visit-domain reads and expanded visit-domain contract tests/service-container mocks.
+      - `functions/src/services/__tests__/postCommitEscalationReportingService.test.ts`
+      - `functions/src/services/__tests__/domainServices.test.ts`
+      - `functions/src/services/__tests__/serviceContainer.test.ts`
+  - Re-validated escalation-reporting migration slice + no-regression baseline (`npm test -- src/services/__tests__/postCommitEscalationReportingService.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm run test:remediation-guardrails`, `npm test -- src/routes/__tests__`).
+  - Continued Phase 4 chunk 3 with `nudgeNotificationService` users-domain migration:
+    - migrated nudge notification timezone reads from direct `users` collection reads to `UserDomainService.getById(...)`
+    - added dependency-resolution wiring for nudge notification processor/backfill to support domain/repository bridge injection without direct service-level Firestore coupling.
+    - added focused bridge coverage:
+      - `functions/src/services/__tests__/nudgeNotificationService.repositoryBridge.test.ts`
+  - Re-validated nudge-notification users-domain migration slice + no-regression baseline (`npm test -- src/services/__tests__/nudgeNotificationService.test.ts src/services/__tests__/nudgeNotificationService.processing.test.ts src/services/__tests__/nudgeNotificationService.repositoryBridge.test.ts`, `npm run build`, `npm run test:remediation-guardrails`, `npm test -- src/routes/__tests__`).
+  - Continued Phase 4 chunk 3 with `patientContextAggregator` repository/service migration:
+    - migrated context aggregation data-access off direct Firestore reads to domain-backed dependencies:
+      - health logs -> `HealthLogDomainService.listForUser(...)`
+      - visits -> `VisitDomainService.listAllForUser(...)`
+      - medications -> `MedicationDomainService.listAllForUser(...)`
+      - nudges -> `NudgeDomainService.listByUserAndStatuses(...)`
+    - added dependency-injection hooks for focused service tests in:
+      - `getPatientContext(...)`
+      - `getPatientContextLight(...)`
+    - corrected dismissed nudge recency metric to use `dismissedAt` for `dismissedLast30Days`.
+    - added focused bridge coverage:
+      - `functions/src/services/__tests__/patientContextAggregator.repositoryBridge.test.ts`
+  - Re-validated patient-context migration slice + no-regression baseline (`npm test -- src/services/__tests__/patientContextAggregator.repositoryBridge.test.ts src/services/__tests__/personalRNService.repositoryBridge.test.ts src/services/__tests__/conditionReminderService.repositoryBridge.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm run test:remediation-guardrails`, `npm test -- src/routes/__tests__`).
+  - Continued Phase 4 chunk 3 with `personalRNService` nudge data-access migration to repository/domain methods:
+    - replaced direct `nudges` collection reads/writes with `NudgeDomainService` calls for:
+      - recent dismissal counts (`dismissed` status + date-window filtering)
+      - active nudge presence checks (`pending`/`active`/`snoozed`)
+      - reactive follow-up nudge creation for elevated readings
+    - added service dependency injection for nudge-domain access in:
+      - `buildPatientState(...)`
+      - `evaluatePatient(...)`
+      - `createReactiveNudge(...)`
+    - added focused bridge coverage:
+      - `functions/src/services/__tests__/personalRNService.repositoryBridge.test.ts`
+  - Re-validated personal-RN migration slice + no-regression baseline (`npm test -- src/services/__tests__/personalRNService.repositoryBridge.test.ts src/services/__tests__/conditionReminderService.repositoryBridge.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm test -- src/routes/__tests__`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 3 with `conditionReminderService` repository/service migration:
+    - added active-medication cross-user read support in medications repository/domain (`listActive(...)`) for scheduler use cases
+    - migrated condition-reminder processing off direct Firestore reads/writes to domain-backed services:
+      - medication candidate discovery -> `MedicationDomainService.listActive(...)`
+      - latest health-log lookup -> `HealthLogDomainService.listForUser(...)`
+      - pending nudge checks and nudge creation -> `NudgeDomainService`
+      - user timezone lookup -> `UserDomainService.getById(...)`
+    - added focused bridge coverage:
+      - `functions/src/services/__tests__/conditionReminderService.repositoryBridge.test.ts`
+    - expanded repository/domain contract tests for new medication domain/repository method:
+      - `functions/src/services/__tests__/domainServices.test.ts`
+      - `functions/src/services/__tests__/serviceContainer.test.ts`
+  - Re-validated condition-reminder migration slice + no-regression baseline (`npm test -- src/services/__tests__/conditionReminderService.repositoryBridge.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm run build`, `npm test -- src/routes/__tests__`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 3 with users-domain cleanup in medication route timezone lookups:
+    - migrated direct user-profile timezone reads to `UserDomainService` + `UserRepository` in:
+      - `functions/src/routes/medicationLogs.ts` (`POST /v1/medication-logs`)
+      - `functions/src/routes/medicationReminders.ts` (shared reminder timing timezone helper)
+      - `functions/src/routes/medications/helpers.ts` (schedule-today helper timezone resolution)
+    - preserved fallback behavior and improved timezone normalization consistency by routing through domain-backed user reads.
+  - Re-validated medication users-domain cleanup slice + no-regression baseline (`npm test -- src/routes/__tests__/medicationLogs.sanitization.test.ts src/routes/__tests__/medicationReminders.softDelete.test.ts src/routes/__tests__/medications.scheduleToday.test.ts src/routes/__tests__/medications.scheduleMark.test.ts`, `npm run build`, `npm test -- src/routes/__tests__`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 3 by migrating `insightGenerator` read/write data access to repository/domain boundaries:
+    - added `InsightRepository` + `FirestoreInsightRepository` for `users/{userId}/insights` cached insight reads/writes (`hasActiveByUser`, `listActiveByUser`, `replaceForUser`)
+    - added `InsightDomainService` for cached insight generation checks, reads, and replace writes
+    - refactored `InsightGeneratorService` to:
+      - use `InsightDomainService` for cached insight generation checks/read/write paths
+      - use existing `HealthLogDomainService`, `NudgeDomainService`, and `MedicationDomainService` for context gathering (health logs, nudge responses, active medications)
+      - remove remaining direct `collection('healthLogs')`, `collection('nudges')`, `collection('medications')`, and `users/{id}/insights` collection access from service logic
+    - added focused repository-bridge coverage:
+      - `functions/src/services/__tests__/insightDomainService.test.ts`
+      - `functions/src/services/__tests__/insightGenerator.repositoryBridge.test.ts`
+  - Re-validated insight-generator migration slice + no-regression baseline (`npm test -- src/services/__tests__/insightDomainService.test.ts src/services/__tests__/insightGenerator.repositoryBridge.test.ts`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 2 by migrating `nudgeNotificationService` nudge data-access/lock/update flows to repository/domain methods:
+    - extended nudges repository/domain contracts with notification-processing operations:
+      - `listDuePendingForNotification(...)`
+      - `countByUserNotificationSentBetween(...)`
+      - `acquireNotificationSendLock(...)`
+      - `markNotificationProcessed(...)`
+      - `backfillPendingNotificationSentField(...)`
+    - migrated notification processor and backfill paths to `NudgeDomainService` methods while preserving quiet-hours, daily-limit, lock, and skip/sent semantics
+    - added focused processing/backfill regression coverage:
+      - `functions/src/services/__tests__/nudgeNotificationService.processing.test.ts`
+  - Re-validated notification-service migration slice + no-regression baseline (`npm test -- src/services/__tests__/nudgeNotificationService.test.ts src/services/__tests__/nudgeNotificationService.processing.test.ts src/services/__tests__/domainServices.test.ts`, `npm test -- src/routes/__tests__/nudges.activePatch.test.ts src/routes/__tests__/nudges.writePaths.test.ts src/routes/__tests__/nudges.sanitization.test.ts src/routes/__tests__/nudges.history.test.ts src/routes/__tests__/healthLogs.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 2 by eliminating remaining direct `nudges` collection queries from `lumibotAnalyzer` helper paths:
+    - extended nudges repository/domain query surface with condition/medication/status and scheduled-range helpers plus recent-insight dedupe lookup:
+      - `hasByUserConditionAndStatuses(...)`
+      - `hasByUserMedicationNameAndStatuses(...)`
+      - `listByUserStatusesScheduledBetween(...)`
+      - `hasRecentInsightByPattern(...)`
+    - migrated analyzer helper paths to the nudges domain/repository boundary:
+      - existing condition nudge checks
+      - existing medication nudge checks
+      - scheduled-slot conflict reads
+      - per-condition active nudge precheck inside visit analysis
+      - insight dedupe precheck
+    - removed remaining direct `collection('nudges')` usage from `lumibotAnalyzer`.
+  - Re-validated analyzer-helper query migration slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/lumibotAnalyzer.repositoryBridge.test.ts`, `npm test -- src/routes/__tests__/nudges.activePatch.test.ts src/routes/__tests__/nudges.writePaths.test.ts src/routes/__tests__/nudges.sanitization.test.ts src/routes/__tests__/nudges.history.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 2 by bridging core `lumibotAnalyzer` nudge operations to repository/domain methods:
+    - added nudges-domain backed adapter usage in `lumibotAnalyzer` for:
+      - active nudge reads (`getActiveNudgesForUser`)
+      - nudge completion/snooze/dismiss mutations (`completeNudge`, `snoozeNudge`, `dismissNudge`)
+      - nudge creation helper path (`createNudge`) used by follow-up/insight generation
+    - added focused analyzer bridge tests for active-state activation/sorting, status transitions, and follow-up creation through repository-backed create path
+      - `functions/src/services/__tests__/lumibotAnalyzer.repositoryBridge.test.ts`
+  - Re-validated analyzer-bridge slice + no-regression baseline (`npm test -- src/services/__tests__/lumibotAnalyzer.repositoryBridge.test.ts src/services/__tests__/domainServices.test.ts`, `npm test -- src/routes/__tests__/nudges.activePatch.test.ts src/routes/__tests__/nudges.writePaths.test.ts src/routes/__tests__/nudges.sanitization.test.ts src/routes/__tests__/nudges.history.test.ts src/routes/__tests__/healthLogs.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 2 `nudges` boundary cleanup by migrating remaining route-level nudge completion writes to repository/domain methods:
+    - replaced direct `completeNudge(...)` usage in `nudges` response routes with `NudgeDomainService.completeById(...)`:
+      - `POST /v1/nudges/:id/respond`
+      - `POST /v1/nudges/:id/respond-text`
+    - replaced nudge-completion write in health-log creation flow with `NudgeDomainService.completeById(...)` when `nudgeId` is provided:
+      - `POST /v1/health-logs`
+    - updated nudges route tests to assert persisted `responseValue` payloads through repository-backed writes.
+  - Re-validated nudge completion migration slice + no-regression baseline (`npm test -- src/routes/__tests__/nudges.sanitization.test.ts src/routes/__tests__/nudges.writePaths.test.ts src/routes/__tests__/nudges.activePatch.test.ts src/routes/__tests__/nudges.history.test.ts`, `npm test -- src/routes/__tests__/healthLogs.sanitization.test.ts src/routes/__tests__/healthLogs.softDelete.test.ts`, `npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 2 `nudges` repository/service migration by closing active/read-state transitions and patch mutation internals:
+    - extended `NudgeRepository` + `NudgeDomainService` with active-list and status mutation methods:
+      - `listActiveByUser(...)`
+      - `completeById(...)`
+      - `snoozeById(...)`
+      - `dismissById(...)` (domain wrapper over repository bulk-dismiss)
+    - migrated `nudges` route internals to domain-backed methods for:
+      - `GET /v1/nudges` (due pending/snoozed activation + active ordering/limit preserved)
+      - `PATCH /v1/nudges/:id` (completed/snoozed/dismissed mutation paths)
+    - added focused regression coverage for active-route activation semantics and patch status transitions (including forbidden non-owner mutation path)
+  - Re-validated nudges active/patch slice + no-regression baseline (`npm test -- src/routes/__tests__/nudges.activePatch.test.ts src/routes/__tests__/nudges.writePaths.test.ts src/routes/__tests__/nudges.sanitization.test.ts src/routes/__tests__/nudges.history.test.ts`, `npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 chunk 2 `nudges` repository/service migration with write-path and cleanup follow-through:
+    - expanded `NudgeDomainService` read/write wrappers over existing repository methods (`listByUserAndStatuses`, `listByUserAndSequence`, `createRecord`, `dismissByIds`)
+    - migrated remaining route-level Firestore mutation/query paths to domain-backed calls in:
+      - smart sequence-dismiss and concerning follow-up creation in `POST /v1/nudges/:id/respond`
+      - AI follow-up creation in `POST /v1/nudges/:id/respond-text`
+      - orphan cleanup flow in `POST /v1/nudges/cleanup-orphans` (including medication read dependency via `MedicationDomainService`)
+    - added focused write-path route regression coverage:
+      - positive-response sequence dismiss behavior
+      - concerning-response follow-up creation
+      - orphan cleanup dismissal behavior
+  - Re-validated nudges write-slice + no-regression baseline (`npm test -- src/routes/__tests__/nudges.sanitization.test.ts src/routes/__tests__/nudges.history.test.ts src/routes/__tests__/nudges.writePaths.test.ts`, `npm test -- src/services/__tests__/domainServices.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Started post-Phase-3 backlog `nudges` repository/service boundary expansion (initial read slice):
+    - added `NudgeRepository` + `NudgeDomainService` with Firestore adapter
+    - migrated nudges history read path and nudge ownership reads to domain-backed repository methods:
+      - `GET /v1/nudges/history`
+      - ownership reads in `PATCH /v1/nudges/:id`, `POST /v1/nudges/:id/respond`, and `POST /v1/nudges/:id/respond-text`
+    - added focused `nudges` history regression coverage (cache headers, status filtering/sort, limit cap)
+  - Re-validated nudges read-slice + no-regression baseline (`npm test -- src/routes/__tests__/nudges.sanitization.test.ts src/routes/__tests__/nudges.history.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 `users` repository/service migration with account-deletion orchestration:
+    - extended `UserRepository`/`UserDomainService` with account data purge support (`deleteAccountData`)
+    - migrated `DELETE /v1/users/me` to domain-backed data purges while preserving Firebase Auth account deletion and response contracts
+    - added focused route regression coverage for account delete success path (data purge + auth deletion)
+  - Re-validated users account-delete slice + no-regression baseline (`npm test -- src/routes/__tests__/users.deleteAccount.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 `users` repository/service migration with legal-assent transaction boundaries:
+    - extended `UserRepository`/`UserDomainService` with domain-backed legal-assent mutation support (`applyLegalAssent`)
+    - migrated `PATCH /v1/users/me` legal-assent transaction path into repository-layer transaction orchestration while preserving audit-event semantics and response contracts
+    - expanded user-domain contract coverage for legal-assent forwarding
+  - Re-validated users legal-assent slice + no-regression baseline (`npm test -- src/routes/__tests__/users.analyticsConsent.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 `users` repository/service migration with caregiver management flows:
+    - migrated caregiver list/revoke routes to domain-backed reads/writes (`UserDomainService`, `ShareDomainService`) while preserving response contracts and revoke semantics (`revokedAt` on share revokes)
+      - `GET /v1/users/me/caregivers`
+      - `DELETE /v1/users/me/caregivers/:id`
+    - added focused caregiver list regression coverage for accepted-share + pending-invite composition and invitee-email fallback/default profile behavior
+  - Re-validated users caregiver management slice + no-regression baseline (`npm test -- src/routes/__tests__/users.caregiversList.test.ts src/routes/__tests__/users.caregiverRevoke.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 `users` repository/service migration with account export flow:
+    - extended `UserRepository`/`UserDomainService` with a consolidated user export read method (`getExportData`)
+    - migrated `GET /v1/users/me/export` to domain-backed repository reads while preserving export payload shape (user, visits, actions, medications, shares, privacy audit trails)
+    - expanded user-domain contract coverage for export forwarding and updated repository override contracts
+  - Re-validated users export slice + no-regression baseline (`npm test -- src/routes/__tests__/users.analyticsConsent.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 `users` repository/service migration with operator restore-audit flows:
+    - extended `UserRepository`/`UserDomainService` with restore-audit query/mutation methods (`listRestoreAuditEvents`, `updateRestoreAuditTriage`)
+    - migrated operator restore-audit routes to domain-backed repository calls while preserving response contracts and cursor-validation behavior:
+      - `GET /v1/users/ops/restore-audit`
+      - `PATCH /v1/users/ops/restore-audit/:id/triage`
+    - expanded domain/service-container contract coverage for the new restore-audit user-domain methods
+  - Re-validated users restore-audit slice + no-regression baseline (`npm test -- src/routes/__tests__/users.restoreAudit.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 4 `users` repository/service migration with `/v1/users/me` profile paths:
+    - extended `UserRepository`/`UserDomainService` with profile lifecycle helpers (`ensureExists`, `upsertById`)
+    - migrated `/v1/users/me` GET bootstrap read and non-legal PATCH write path to domain-backed repository calls while preserving legal-assent transaction behavior and response contracts
+    - expanded user domain/container contract coverage for new profile helper methods
+  - Re-validated users profile slice + no-regression baseline (`npm test -- src/routes/__tests__/users.profileSanitization.test.ts src/routes/__tests__/users.analyticsConsent.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Started Phase 4 chunk 1 with an `auth` repository/service boundary migration:
+    - added `AuthHandoffRepository` + `FirestoreAuthHandoffRepository`
+    - added `AuthHandoffDomainService`
+    - migrated handoff routes to domain-backed persistence/transaction orchestration while preserving response contracts:
+      - `POST /v1/auth/create-handoff`
+      - `POST /v1/auth/exchange-handoff`
+    - added focused auth handoff route coverage for success + invalid/used/expired exchange outcomes
+  - Re-validated auth boundary slice + no-regression baseline (`npm test -- src/routes/__tests__/auth.handoff.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Completed post-Phase-3 `shares` repository/service boundary closeout:
+    - removed remaining direct `users` Firestore coupling from `shares` routes by routing owner-profile reads and caregiver-role upserts through `UserDomainService` + `UserRepository`
+    - completed domain-backed migration for remaining invite-management surfaces:
+      - `PATCH /v1/shares/invites/:id`
+      - `GET /v1/shares/invite-info/:token`
+    - expanded domain/service container coverage for user caregiver-role forwarding and refreshed share route regression coverage
+  - Re-validated `shares` closeout slice + no-regression baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued post-Phase-3 repository/service expansion with a `shares` invite-management slice:
+    - migrated remaining invite read/write route paths to domain-backed helpers while preserving response contracts:
+      - `PATCH /v1/shares/invites/:id`
+      - `GET /v1/shares/invite-info/:token`
+    - added route regression coverage for owner invite-cancel, forbidden invite-cancel, pending invite-info, and expired invite-info outcomes
+    - fixed repository/domain contract test scaffolding for expanded `ShareRepository` interface coverage and tightened `setShare` typing branch behavior in `FirestoreShareRepository`
+  - Re-validated shares invite-management slice + no-regression baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts src/services/__tests__/domainServices.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued post-Phase-3 repository/service expansion with `shares` invite-accept mutation follow-through:
+    - extended share repository/domain contracts for invite mutation helpers (`updateInviteById`, atomic `acceptInviteAndSetShare`)
+    - migrated invite-token acceptance write paths to domain-backed mutation helpers while preserving response contracts and email/access validation behavior:
+      - `POST /v1/shares/accept-invite` (shareInvite token branch)
+      - `POST /v1/shares/accept/:token`
+    - added domain unit coverage for invite read/update + accept/share write forwarding behavior
+  - Re-validated invite-accept mutation slice + no-regression baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts src/services/__tests__/domainServices.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued post-Phase-3 repository/service expansion with a `shares` write-transition slice:
+    - extended share repository/domain contracts for mutation paths (`updateById`, invite lookup, invite+share revoke cascade)
+    - migrated `shares` status-transition routes to domain-backed mutation orchestration while preserving response contracts and access behavior:
+      - `PATCH /v1/shares/:id` (owner revoke / caregiver accept transition)
+      - `PATCH /v1/shares/revoke/:token` (owner invite revoke with accepted-share cascade)
+    - added domain unit coverage for share transition/revoke outcome paths
+  - Stabilized a time-sensitive caregiver pagination test fixture (`care.tasks` overdue summary) to avoid date rollover drift by using a far-future due date in test data.
+  - Re-validated shares mutation slice + no-regression baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts src/services/__tests__/domainServices.test.ts`, `npm test -- src/routes/__tests__/care.pagination.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued post-Phase-3 repository/service boundary expansion with a `shares` read-surface slice:
+    - added `ShareRepository` + `FirestoreShareRepository`
+    - added `ShareDomainService`
+    - migrated `shares` read routes to domain-backed access while preserving response contracts, cache headers, and authorization checks:
+      - `GET /v1/shares`
+      - `GET /v1/shares/invites`
+      - `GET /v1/shares/:id`
+      - `GET /v1/shares/my-invites`
+    - added domain unit coverage for share list/get/invite-dedup behavior
+  - Re-validated shares read-slice + no-regression baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts src/services/__tests__/domainServices.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Started post-Phase-3 repository/service boundary expansion for `medicalContext`:
+    - added `PatientContextRepository` + `FirestorePatientContextRepository`
+    - added `PatientContextDomainService` and container wiring (`patientContextRepository`, `patientContextService`)
+    - migrated `GET /v1/medical-context/conditions` and `PATCH /v1/medical-context/conditions/:id` to domain-backed reads/writes while preserving response contracts and validation behavior
+    - added route regression coverage for empty-state, response shaping, status validation, and update not-found/success branches
+  - Re-validated medical-context slice + no-regression baseline (`npm test -- src/routes/__tests__/medicalContext.routes.test.ts src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Completed Phase 3 closeout by finishing the remaining chunk 4 authorization centralization target:
+    - non-care write-heavy authorization follow-through now covered via shared patterns in:
+      - `POST /v1/medication-logs` (owner guard against source medication)
+      - `POST /v1/nudges/debug/create`, `POST /v1/nudges/debug/create-sequence`, `POST /v1/nudges/debug/test-condition`, `POST /v1/nudges/debug/analyze-visit`, `DELETE /v1/nudges/debug/clear` (shared debug-write guard + operator-gated outside emulator)
+      - `POST /v1/shares/accept-invite`, `POST /v1/shares/accept/:token` (shared invite-email and caregiver fallback access guards)
+  - Re-validated Phase 3 closeout baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts src/routes/__tests__/nudgesDebug.access.test.ts src/routes/__tests__/medicationLogs.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 authorization follow-through on non-care share accept surfaces:
+    - added shared invite-email access guard (`ensureInviteEmailMatchOrReject`) for invite acceptance flows
+    - added shared direct-share accept eligibility resolver (`resolveShareAcceptAccess`) for caregiver-id/email fallback access decisions
+    - replaced duplicated inline checks in:
+      - `POST /v1/shares/accept-invite`
+      - `POST /v1/shares/accept/:token`
+    - added mismatch-path regression coverage for token/email and direct-share fallback denial paths
+  - Re-validated share-accept authorization slice + no-regression baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 authorization follow-through on non-care debug write surfaces:
+    - added shared debug-write access guard in `nudgesDebug` (`ensureDebugWriteAccessOrReject`)
+    - centralized repeated debug endpoint gating (`/debug/create`, `/debug/create-sequence`, `/debug/test-condition`, `/debug/analyze-visit`, `/debug/clear`)
+    - integrated shared operator authorization (`ensureOperatorAccessOrReject`) for debug writes outside emulator while preserving emulator-local developer workflows
+    - added focused debug access regression coverage
+  - Re-validated debug-write authorization slice + no-regression baseline (`npm test -- src/routes/__tests__/nudgesDebug.access.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 authorization follow-through on non-care write surfaces:
+    - hardened `POST /v1/medication-logs` with shared owner authorization (`ensureResourceOwnerAccessOrReject`) against the source medication document
+    - added explicit ownership regression coverage to prevent cross-user medication-log writes
+  - Re-validated medication-log authorization slice + no-regression baseline (`npm test -- src/routes/__tests__/medicationLogs.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with non-care authenticated read cache-header rollout:
+    - added `Cache-Control: private, max-age=30` to:
+      - `GET /v1/shares`
+      - `GET /v1/shares/invites`
+      - `GET /v1/shares/:id`
+      - `GET /v1/shares/my-invites`
+      - `GET /v1/medication-reminders`
+      - `GET /v1/medication-logs`
+      - `GET /v1/nudges`
+      - `GET /v1/nudges/history`
+    - added `Cache-Control: private, max-age=60` to:
+      - `GET /v1/medication-logs/summary`
+    - expanded route coverage with cache-header assertions for:
+      - share list/invite/detail/list-my-invites routes
+      - medication reminder list route
+  - Re-validated cache-header rollout slice + no-regression baseline (`npm test -- src/routes/__tests__/shares.invites.test.ts src/routes/__tests__/medicationReminders.softDelete.test.ts src/routes/__tests__/medicationLogs.sanitization.test.ts src/routes/__tests__/nudges.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with user-profile repository/domain migration across care surfaces:
+    - added `UserRepository` + `FirestoreUserRepository`
+    - added `UserDomainService` and container wiring (`userRepository`, `userService`)
+    - migrated care user/push-token reads to domain/repository boundaries while preserving query-count and response contracts:
+      - `GET /v1/care/:patientId/summary` (profile read path)
+      - `GET /v1/care/:patientId/export/summary` (profile read path)
+      - `GET /v1/care/:patientId/medication-status` (timezone profile read path)
+      - `GET /v1/care/:patientId/alerts` (profile + latest push-token read path)
+      - `GET /v1/care/:patientId/quick-overview` (profile read path)
+      - `GET /v1/care/:patientId/visits/:visitId` (patient display-name read path)
+      - care route helper paths in `care.ts` (`getPatientTimezone`, `getPatientProfilesById`, `getLastActiveByPatient`)
+  - Re-validated user-profile migration slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/care.summary.test.ts src/routes/__tests__/care.quickOverview.test.ts src/routes/__tests__/care.alerts.test.ts src/routes/__tests__/care.medicationStatus.test.ts src/routes/__tests__/care.overview.test.ts src/routes/__tests__/care.pagination.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Completed remaining Phase 3 care route repository/domain boundary slice for caregiver tasks/notes/visit-metadata:
+    - added `CareTaskRepository` + `FirestoreCareTaskRepository`
+    - added `CaregiverNoteRepository` + `FirestoreCaregiverNoteRepository`
+    - added `CareTaskDomainService` + `CaregiverNoteDomainService` and container wiring updates
+    - migrated care route modules to domain-backed reads/writes while preserving response contracts and authz semantics:
+      - `GET/POST/PATCH/DELETE/POST restore /v1/care/:patientId/tasks...`
+      - `GET /v1/care/:patientId/notes`, `PUT/DELETE /v1/care/:patientId/visits/:visitId/note`
+      - `PATCH /v1/care/:patientId/visits/:visitId` (visit metadata edits)
+  - Re-validated care route boundary slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/care.pagination.test.ts src/routes/__tests__/care.tasks.softDelete.test.ts src/routes/__tests__/care.visitMetadata.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Completed medication log/reminder repository rollout across remaining care batch helpers:
+    - extended medication log/reminder repository + domain contracts with batched `listByUsers(...)` support to preserve overview query-count behavior
+    - migrated `getTodaysMedicationStatusForPatients(...)` in `care.ts` to domain-backed batched reminder/log reads with existing chunk + fallback semantics
+    - migrated `getMedicationLogsForRange(...)` query helper in `care.ts` to medication log domain reads
+    - migrated remaining direct medication-log read in `GET /v1/care/:patientId/trends` to medication log domain service
+    - verified no remaining direct `collection('medicationLogs')` / `collection('medicationReminders')` reads under care routes/helpers
+  - Re-validated care helper rollout + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/care.overview.test.ts src/routes/__tests__/care.quickOverview.test.ts src/routes/__tests__/care.alerts.test.ts src/routes/__tests__/care.medicationStatus.test.ts src/routes/__tests__/care.summary.test.ts src/routes/__tests__/care.aggregateFilters.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with caregiver aggregate reminder/log domain follow-through:
+    - migrated `GET /v1/care/:patientId/alerts` reminder/log reads to medication reminder/log domain services while preserving query reuse and response contracts
+    - migrated `GET /v1/care/:patientId/quick-overview` reminder/log reads (today + week-fallback) to medication reminder/log domain services while preserving query-count guardrail behavior
+    - migrated shared `getTodaysMedicationStatus(...)` reminder/log fallback reads in `care.ts` to medication reminder/log domain services for default query path parity
+  - Re-validated caregiver aggregate reminder/log follow-through + no-regression baseline (`npm test -- src/routes/__tests__/care.alerts.test.ts src/routes/__tests__/care.quickOverview.test.ts src/routes/__tests__/care.medicationStatus.test.ts src/routes/__tests__/care.summary.test.ts src/routes/__tests__/care.aggregateFilters.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with medication schedule/read boundary hardening:
+    - added `MedicationLogRepository` + `FirestoreMedicationLogRepository`
+    - added `MedicationReminderRepository` + `FirestoreMedicationReminderRepository`
+    - added `MedicationLogDomainService` + `MedicationReminderDomainService` and container wiring (`medicationLogRepository`, `medicationReminderRepository`, `medicationLogService`, `medicationReminderService`)
+    - migrated caregiver `GET /v1/care/:patientId/medication-status` reminder/log reads to domain/repository boundaries while preserving query-count behavior and response contracts
+    - migrated caregiver `GET /v1/care/:patientId/medication-adherence` reminder/log reads to domain/repository boundaries while preserving createdAt->loggedAt fallback semantics and bounded-read behavior
+  - Re-validated medication schedule/read boundary slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/care.medicationStatus.test.ts src/routes/__tests__/care.aggregateFilters.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with high-risk caregiver aggregate migration follow-through:
+    - migrated `GET /v1/care/:patientId/alerts` to domain-backed medication/action/health-log reads while preserving medication-log fallback/query-reuse behavior, caregiver access checks, soft-delete filters, and response contracts
+    - migrated `GET /v1/care/:patientId/medication-adherence` medication reads to medication domain/repository boundaries while preserving createdAt->loggedAt fallback semantics and adherence response contracts
+  - Re-validated alerts/adherence slice + no-regression baseline (`npm test -- src/routes/__tests__/care.alerts.test.ts src/routes/__tests__/care.aggregateFilters.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with additional care read-surface repository/domain migration:
+    - migrated caregiver `GET /v1/care/:patientId/health-logs` to health-log domain/repository boundaries with cursor-page parity (including cursor validation behavior)
+    - migrated caregiver `GET /v1/care/:patientId/med-changes` medication reads to medication domain/repository boundaries while preserving change-window and soft-delete filtering semantics
+  - Re-validated additional care read-surface slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/care.aggregateFilters.test.ts src/routes/__tests__/care.medicationStatus.test.ts src/routes/__tests__/care.pagination.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with a care dashboard aggregate repository/domain slice:
+    - migrated care dashboard aggregate reads to domain/repository boundaries while preserving caregiver access guards, medication-log fallback/query-reuse semantics, soft-delete filtering behavior, and response contracts:
+      - `GET /v1/care/:patientId/quick-overview`
+      - `GET /v1/care/:patientId/trends`
+  - Re-validated care dashboard aggregate slice + no-regression baseline (`npm test -- src/routes/__tests__/care.quickOverview.test.ts src/routes/__tests__/care.aggregateFilters.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with a care aggregate repository/domain slice:
+    - migrated care aggregate reads to domain/repository boundaries while preserving caregiver access guards, query/perf semantics, soft-delete filtering behavior, and response contracts:
+      - `GET /v1/care/:patientId/summary`
+      - `GET /v1/care/:patientId/export/summary`
+  - Re-validated care aggregate slice + no-regression baseline (`npm test -- src/routes/__tests__/care.summary.test.ts src/routes/__tests__/care.pagination.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 with a caregiver-surface repository/domain slice:
+    - migrated care patient-resource reads to domain/repository boundaries while preserving pagination, cursor validation semantics, caregiver access guards, and response contracts:
+      - `GET /v1/care/:patientId/medications`
+      - `GET /v1/care/:patientId/actions`
+      - `GET /v1/care/:patientId/visits`
+      - `GET /v1/care/:patientId/visits/:visitId`
+    - migrated `GET /v1/care/:patientId/upcoming-actions` to domain-backed action reads while preserving soft-delete/completed filtering and summary behavior
+  - Re-validated caregiver-surface slice + no-regression baseline (`npm test -- src/routes/__tests__/care.pagination.test.ts src/routes/__tests__/care.aggregateFilters.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+- 2026-02-21:
+  - Continued Phase 3 chunk 4 with a `healthLogs` repository/domain slice:
+    - added `HealthLogRepository` + `FirestoreHealthLogRepository`
+    - added `HealthLogDomainService` and container wiring (`healthLogRepository`, `healthLogService`)
+    - migrated `healthLogs` read and lifecycle paths to domain/repository boundaries while preserving dedupe/safety/trend/report behavior:
+      - `GET /v1/health-logs`
+      - `GET /v1/health-logs/summary`
+      - `GET /v1/health-logs/export`
+      - `DELETE /v1/health-logs/:id`
+      - `POST /v1/health-logs/:id/restore`
+      - create dedupe/create persistence paths now call domain/repository methods
+  - Added health-log domain/container contract coverage in service tests.
+  - Re-validated health-log slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/healthLogs.softDelete.test.ts src/routes/__tests__/healthLogs.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`, `npm run test:remediation-guardrails`).
+  - Continued Phase 3 chunk 4 `actions` vertical slice by migrating action write/lifecycle paths to domain/repository methods:
+    - `POST /v1/actions`
+    - `PATCH /v1/actions/:id`
+    - `DELETE /v1/actions/:id`
+    - `POST /v1/actions/:id/restore`
+    while preserving validation, ownership/operator guardrails, audit behavior, pagination/cursor contracts, and response shapes.
+  - Re-validated expanded actions slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/actions.pagination.test.ts src/routes/__tests__/actions.softDelete.test.ts src/routes/__tests__/actions.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`).
+  - Started Phase 3 chunk 4 service/repository expansion with an `actions` vertical-read slice:
+    - added `ActionRepository` + `FirestoreActionRepository`
+    - added `ActionDomainService` and container wiring (`actionRepository`, `actionService`)
+    - migrated `GET /v1/actions` and `GET /v1/actions/:id` to domain/repository-backed reads while preserving pagination headers, cursor validation semantics, and owner access checks
+  - Added action-domain contract coverage in `domainServices` and `serviceContainer` test suites.
+  - Re-validated action slice + no-regression baseline (`npm test -- src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts src/routes/__tests__/actions.pagination.test.ts src/routes/__tests__/actions.softDelete.test.ts src/routes/__tests__/actions.sanitization.test.ts`, `npm test -- src/routes/__tests__`, `npm run build`).
+  - Completed Phase 3 denormalization/refactor chunk 3 by adding CI guardrails for index/query drift and contract coverage:
+    - added Firestore index guardrail script (`verify:index-guardrails`) that validates required composite indexes and fails on duplicate definitions
+    - added denormalization contract test gate (`test:denormalization-contract`)
+    - added repository/domain contract test gate (`test:repository-contract`)
+    - added aggregate guardrail command (`test:remediation-guardrails`) and wired it into PR CI (`.github/workflows/pr-check.yml`)
+  - Re-validated Phase 3 chunk 3 guardrails and no-regression baseline (`npm run test:remediation-guardrails`, `npm test -- src/routes/__tests__`, `npm run build`).
+  - Completed Phase 3 denormalization sync chunk 2 by adding scheduled backfill/repair coverage for stale denormalized fields with persisted cursor state:
+    - paged backfill over `shares` owner fields
+    - paged backfill over `shareInvites` owner fields
+    - paged backfill over `medicationReminders` medication fields
+    - persisted per-collection cursors and last-run metrics in `systemMaintenance/denormalizationFieldBackfill`
+  - Added dry-run controls and metrics visibility for denormalization backfill execution:
+    - `DENORMALIZATION_BACKFILL_DRY_RUN` (`true`/`1`) to run metrics-only scans without mutating documents or cursors
+    - `DENORMALIZATION_BACKFILL_PAGE_SIZE` to tune per-run page sizing
+  - Added denormalization backfill unit coverage for stale-record repair, cursor continuation across paged runs, and dry-run no-mutation semantics.
+  - Re-validated Phase 3 chunk 2 with targeted denormalization/domain/container tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Started Phase 3 denormalization sync by adding trigger-backed sync flows and shared sync service logic for high-risk duplicated fields:
+    - `users/{userId}` write trigger now syncs `ownerName`/`ownerEmail` into `shares` + `shareInvites` records for that owner.
+    - `medications/{medicationId}` write trigger now syncs `medicationName`/`medicationDose` into related `medicationReminders`.
+  - Added denormalization sync service unit coverage for field-change detection and sync mutation behavior.
+  - Re-validated denormalization sync foundation and no-regression baseline with targeted service tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Completed Phase 2 visit write-path migration by routing visit soft-delete/restore batch mutations through repository/domain methods:
+    - `DELETE /v1/visits/:id`
+    - `POST /v1/visits/:id/restore`
+    while preserving owner/operator guardrails, restore-audit behavior, and response contracts.
+  - Completed Phase 2 medication write-path migration by routing remaining reminder/nudge and lifecycle cascade mutations through repository/domain methods:
+    - `POST /v1/meds` (auto-reminder write)
+    - `PATCH /v1/meds/:id` (reminder sync/frequency-update + stop cascades)
+    - `DELETE /v1/meds/:id` (medication+reminder+nudge soft-delete cascade)
+    - `POST /v1/meds/:id/restore` (medication+matching-reminders restore cascade)
+    while preserving existing safety-check, reminder policy, lifecycle, and audit semantics.
+  - Re-validated medication/visit write-path parity with targeted tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Continued Phase 2 visit write-path migration by routing operator escalation mutation writes through `VisitDomainService` in:
+    - `POST /v1/visits/ops/post-commit-escalations/:id/acknowledge`
+    - `POST /v1/visits/ops/post-commit-escalations/:id/resolve`
+    - `POST /v1/visits/ops/post-commit-escalations/:id/reopen`
+    while preserving operator-only access controls, escalation state validation, and response contracts.
+  - Re-validated escalation write-path parity with focused tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Continued Phase 2 medication write-path migration by routing medication document mutations through repository/domain methods in:
+    - `POST /v1/meds` (medication create write)
+    - `PATCH /v1/meds/:id` (medication document update write)
+    - `POST /v1/meds/:id/acknowledge-warnings` (warning acknowledgment write)
+    while preserving existing route behavior and response contracts.
+  - Re-validated medication write parity with targeted tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Continued Phase 2 medication write-path migration by routing medication ownership/existence reads through `MedicationDomainService` on:
+    - `PATCH /v1/meds/:id`
+    - `POST /v1/meds/:id/acknowledge-warnings`
+    while preserving existing safety-check, reminder-sync, and warning-ack behavior.
+  - Re-validated medication write-path parity with targeted tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Continued Phase 2 visit write/lifecycle migration by routing visit resource reads through `VisitDomainService` on:
+    - `PATCH /v1/visits/:id`
+    - `DELETE /v1/visits/:id`
+    - `POST /v1/visits/:id/restore`
+    - `POST /v1/visits/:id/retry`
+    - `POST /v1/visits/:id/share-with-caregivers`
+    while preserving existing mutation behavior, retry/escalation semantics, and caregiver/owner authorization checks.
+  - Re-validated visit write-path parity with targeted tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Continued Phase 2 medication write/lifecycle migration by routing lifecycle ownership/read checks through `MedicationDomainService` on:
+    - `DELETE /v1/meds/:id`
+    - `POST /v1/meds/:id/restore`
+    while preserving existing cascade/restore batch behavior and operator reason guardrails.
+  - Re-validated lifecycle parity with targeted tests plus full backend route regression/build (`124/124`, `npm run build`).
+  - Completed first Phase 2 visit read-slice migration by routing:
+    - `GET /v1/visits`
+    - `GET /v1/visits/:id`
+    through `VisitDomainService` + `VisitRepository` while preserving caregiver read authorization checks and pagination behavior.
+  - Re-validated visit pagination/access parity, domain/service tests, full backend route regression suite, and Functions build (`124/124`, `npm run build`).
+  - Completed first Phase 2 medication read-slice migration by routing:
+    - `GET /v1/meds`
+    - `GET /v1/meds/:id`
+    through `MedicationDomainService` + `MedicationRepository` while preserving cursor semantics and response contracts.
+  - Re-validated medication pagination parity, domain/service tests, full backend route regression suite, and Functions build (`124/124`, `npm run build`).
+  - Started Phase 2 foundation slice for repository/service boundaries by adding:
+    - shared repository contracts for medications and visits
+    - Firestore repository adapters with cursor pagination + ownership cursor validation
+    - domain services (`MedicationDomainService`, `VisitDomainService`) and a composition container
+  - Added focused domain/container unit tests and re-validated full backend routes + build (`124/124`, `npm run build`).
+  - Hardened caregiver paginated patient-resource reads to consistently exclude soft-deleted records and reject deleted cursor documents for:
+    - `GET /v1/care/:patientId/medications`
+    - `GET /v1/care/:patientId/actions`
+    - `GET /v1/care/:patientId/visits`
+  - Added explicit regression coverage for soft-deleted visit/action cursor rejection in caregiver pagination tests.
+  - Expanded caregiver read cache-control rollout to additional paginated/read endpoints:
+    - `GET /v1/care/:patientId/medications` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/actions` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/visits` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/visits/:visitId` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/notes` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/tasks` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/health-logs` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/medication-adherence` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/export/summary` -> `private, max-age=30`
+  - Added route-level cache-header assertions for caregiver pagination endpoint tests and re-validated full route regression suite (`117/117`) plus Functions TypeScript build.
+  - Continued authorization centralization in share status transitions by replacing inline owner/caregiver checks in `PATCH /v1/shares/:id` with shared owner predicates (`hasResourceOwnerAccess`).
+  - Added direct share status-transition route coverage for owner revoke, caregiver accept, and non-participant invalid transitions.
+  - Re-validated full route regression suite after latest Phase 1 chunks (`120/120`) plus Functions TypeScript build.
+  - Hardened caregiver export-summary reads to exclude soft-deleted visits/actions and added private cache headers on `GET /v1/care/:patientId/export/summary`.
+  - Hardened `parseActionDueAt(...)` to safely handle non-constructor `admin.firestore.Timestamp` mocks in test/runtime edge cases.
+  - Added export-summary regression coverage and re-validated full route regression suite (`121/121`) plus Functions TypeScript build.
+  - Continued authorization centralization in `users` caregiver revoke flow by replacing inline owner checks in `DELETE /v1/users/me/caregivers/:id` with shared owner predicates (`hasResourceOwnerAccess`).
+  - Added dedicated users caregiver revoke regression coverage (share owner revoke, invite owner revoke, non-owner not-found behavior).
+  - Re-validated full route regression suite after latest authorization chunk (`124/124`) plus Functions TypeScript build.
+  - Expanded patient-detail performance guardrails to `GET /v1/care/:patientId/export/summary` with endpoint-level query-count/latency instrumentation and structured logs.
+  - Added export-summary query-count assertions in caregiver pagination tests to guard against duplicate visits/medications/actions reads.
+  - Re-validated focused care route suites and full backend route regression/build after export-summary perf instrumentation (`124/124`).
+  - Closed Phase 1 target set (#5, #11, #12, #16) for security/performance follow-through scope and moved next execution focus to Phase 2 architecture work.
+  - Added missing Firestore composites for current query inventory follow-through:
+    - `actions(userId, completed, deletedAt)`
+    - `medications(userId, active)`
+  - Re-validated index JSON integrity plus full backend route regression/build after index additions (`124/124`).
+- 2026-02-20:
+  - Added weighted total remediation completion metric to reviewer/reporting docs.
+  - Completed `care.ts` route modularization sweep by extracting remaining domains (`overview`, patient resources, `medication-status`, `summary`, `export/summary`) into dedicated `routes/care/*` modules.
+  - Continued modularization of `medications.ts` by extracting:
+    - schedule/compliance routes to `routes/medications/schedule.ts`
+    - query routes (`GET /v1/meds`, `GET /v1/meds/:id`) to `routes/medications/query.ts`
+    - lifecycle routes (`DELETE /v1/meds/:id`, `POST /v1/meds/:id/restore`) to `routes/medications/lifecycle.ts`
+    - core write/safety routes (`POST /v1/meds`, `PATCH /v1/meds/:id`, `POST /v1/meds/:id/acknowledge-warnings`, `POST /v1/meds/safety-check`) to `routes/medications/core.ts`
+  - Extracted shared medication helper logic into `routes/medications/helpers.ts` (timezone/default reminders/completion-log helpers), reducing `medications.ts` to a composition-only root (~52 lines).
+  - Added focused medication core-route regression tests for create/update/acknowledge/safety-check endpoints (`medications.core.test.ts`).
+  - Re-ran targeted medication route tests, full Functions route regression suite (`113/113`), and Functions TypeScript build after each staged modularization chunk.
+  - Continued authorization centralization by migrating health log delete/restore owner checks to shared middleware (`ensureResourceOwnerAccessOrReject`) while preserving operator reason guardrails.
+  - Continued authorization centralization by migrating caregiver patient-visit ownership checks in `care` modules (notes, visit metadata, single visit summary) to shared middleware (`ensureResourceOwnerAccessOrReject`) while preserving endpoint-specific not-found/forbidden semantics.
+  - Continued authorization centralization in `shares` by replacing inline owner/participant checks with shared middleware helpers and introducing a reusable participant-field authorization guard (`ensureResourceParticipantAccessOrReject`).
+  - Continued authorization centralization in caregiver task routes by replacing repeated inline patient/caregiver ownership checks with shared middleware guards while preserving restore/operator semantics.
+  - Continued authorization centralization by adding a shared operator-only guard helper (`ensureOperatorAccessOrReject`) and replacing repeated inline operator checks in `visits` escalation ops endpoints and `users` restore-audit ops endpoints.
+  - Continued authorization centralization by adding a shared operator cross-user restore-reason guard (`ensureOperatorRestoreReasonOrReject`) and replacing duplicated restore reason checks in actions, visits, medications, medication reminders, health logs, and care tasks restore endpoints.
+  - Expanded caregiver read-endpoint cache headers to additional safe routes:
+    - `GET /v1/care/:patientId/alerts` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/medication-status` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/upcoming-actions` -> `private, max-age=30`
+    - `GET /v1/care/:patientId/trends` -> `private, max-age=60`
+    - `GET /v1/care/:patientId/med-changes` -> `private, max-age=60`
+  - Added route-level cache-header assertions to care alerts/medication-status/aggregate endpoint tests and re-validated full route regression coverage.
+  - Continued authorization centralization by adding a shared owner predicate helper (`hasResourceOwnerAccess`) for non-response workflows and replacing remaining inline owner checks in:
+    - `POST /v1/meds/schedule/mark-batch`
+    - `POST /v1/nudges/debug/analyze-visit`
+  - Added route/middleware test coverage for shared owner predicate usage in medication batch marking forbidden paths.
+  - Expanded patient-detail performance guardrails to `GET /v1/care/:patientId/medication-status` with query-count/latency instrumentation and structured logs.
+  - Added missing Firestore composites from current query inventory for high-frequency read paths:
+    - `healthLogs(userId, sourceId, createdAt desc)` for dedupe/replay checks
+    - `medicationReminders(userId, enabled)` for caregiver/status snapshots
+    - `medicationReminders(userId, medicationId)` for medication-scoped reminder lookups
+    - `medicationLogs(userId, medicationId, loggedAt desc)` and `medicationLogs(userId, medicationId, createdAt desc)` for adherence filtering
+    - `actions(visitId, userId)` for visit restore/delete cascades
+  - Hardened caregiver read consistency by excluding soft-deleted records from additional patient-detail surfaces:
+    - `GET /v1/care/:patientId/summary` (deleted actions + deleted latest visits)
+    - `GET /v1/care/:patientId/quick-overview` (deleted health logs + deleted visits)
+    - `GET /v1/care/:patientId/alerts` (deleted actions + deleted health logs + deleted medications)
+    - `GET /v1/care/:patientId/trends` (deleted health logs)
+  - Continued authorization centralization in share acceptance flow by replacing the remaining inline caregiver ownership predicate with shared middleware helper (`hasResourceOwnerAccess`) while preserving email-fallback migration behavior.
+  - Implemented caregiver read authorization for `GET /v1/visits/:id` while preserving owner-only write semantics.
+  - Added legacy email fallback/backfill support for accepted shares in visits access checks.
+  - Added route tests for owner access, accepted caregiver access, legacy-email fallback access, and forbidden access.
+  - Hardened share invite transaction boundaries by batching coupled multi-document writes in accept/revoke flows.
+  - Added/updated share invite route tests for atomic accept/revoke behavior paths.
+  - Added reminder timing policy support (`local` vs `anchor`) with timezone validation and time-sensitive medication defaults.
+  - Updated reminder processing to evaluate due windows by each reminder’s effective timezone (anchor-aware), with backfill of timing metadata.
+  - Added medication reminder service tests for local vs anchor timezone resolution behavior.
+  - Refactored `/v1/care/overview` to batch patient profile/medication/reminder/log/action reads and avoid duplicate med-status work for alerts.
+  - Added overview route test coverage validating batched medication log querying for multi-patient responses.
+  - Added a paged reminder timing backfill job with persisted cursor state to migrate legacy reminder metadata over time.
+  - Added reminder timing metadata normalization tests for migration safety/idempotence.
+  - Eliminated duplicate action/medication-status reads in `GET /v1/care/:patientId/summary` by reusing already-fetched datasets for alert generation.
+  - Added summary route test coverage with query-count assertion for action reads.
+  - Refactored `getTodaysMedicationStatus(...)` to support pre-fetched timezone/medication/reminder/log snapshots for endpoint-level query reuse.
+  - Eliminated duplicate med/reminder/log/user reads in `GET /v1/care/:patientId/medication-status` by reusing the endpoint's already-fetched datasets for summary generation.
+  - Eliminated duplicate reminder reads in `GET /v1/care/:patientId/alerts` by reusing its adherence reminder snapshot for missed-dose status checks.
+  - Added medication-status route test coverage with query-count assertions for users/medications/reminders/logs reads.
+  - Optimized `GET /v1/care/:patientId/quick-overview` to reuse prefetched today medication snapshots and only query week-level medication logs when today logs are insufficient for activity rendering.
+  - Added quick-overview route test coverage with query-count assertions for conditional medication-log fallback behavior.
+  - Optimized `GET /v1/care/:patientId/alerts` to reuse its existing 7-day medication logs snapshot for missed-dose calculations (removes separate today-log query path).
+  - Added alerts route test coverage with medication-log query-count assertions.
+  - Added `date` to quick-overview response and updated patient detail page to use quick-overview as the single daily med summary source (removed duplicate per-page `medication-status` fetch).
+  - Extended quick-overview payload with `upcomingActions` and `recentMedicationChanges`, and updated patient detail page to consume these directly (removed duplicate per-page `upcoming-actions` and `med-changes` fetches).
+  - Refactored `GET /v1/care/:patientId/trends` to run independent queries concurrently and use pre-grouped day summaries for adherence streak computation.
+  - Hardened aggregate endpoints to exclude soft-deleted records:
+    - `GET /v1/care/:patientId/trends` (actions/visits)
+    - `GET /v1/care/:patientId/med-changes` (medications)
+    - `GET /v1/care/:patientId/upcoming-actions` (actions)
+  - Added aggregate endpoint filter tests covering deleted-record exclusion behavior.
+  - Removed caregiver dashboard per-patient alerts fan-out in web UI by switching alert rendering/counts to already-batched `GET /v1/care/overview` data (no per-patient `/alerts` calls on care list page).
+  - Added short-lived caregiver share lookup caching in care routes (accepted shares + access decisions) with test coverage for cache-hit behavior.
+  - Added `Cache-Control` headers for key caregiver read endpoints (overview/summary/quick-overview) with route test assertions.
+  - Added share-cache invalidation hooks for share accept/revoke mutations to prevent stale caregiver access cache entries after invite state changes.
+  - Added HTTP response compression middleware (`compression`) to the Functions Express app.
+  - Added missing caregiver composite indexes for `caregiverNotes` and `careTasks` query patterns.
+  - Added shared input sanitization utilities (`sanitizePlainText`, `escapeHtml`) and applied them to share invite message storage/email rendering and high-risk caregiver/visit/medication text write paths.
+  - Added targeted sanitizer and invite-route tests for script/tag stripping and HTML escaping behavior.
+  - Added end-to-end medication reminder processor travel-timezone tests validating local-vs-anchor send behavior across east->west travel scenarios.
+  - Hardened medication cascade delete boundaries by batching medication/reminder/nudge deletions together (with chunked fallback for oversized write sets).
+  - Added medication delete route test coverage verifying single-batch cascade behavior under normal batch size.
+  - Expanded input sanitization rollout to actions create/update paths (`description`, `notes`) with route-level tests.
+  - Expanded input sanitization rollout to:
+    - health logs create path (`symptom_check` and `med_compliance` text/list fields)
+    - nudge response paths (`note`, `sideEffects`, free-text AI response payloads)
+    - medication log create path (`medicationName`)
+  - Added route tests for health logs, nudges, and medication logs sanitization behavior.
+  - Added cursor pagination support to `GET /v1/actions` (backward-compatible, query-param gated) with `X-Has-More` and `X-Next-Cursor` response headers.
+  - Added actions pagination route tests (default behavior, first/next page traversal, invalid limit/cursor guards).
+  - Added cursor pagination support to:
+    - `GET /v1/visits` (supports `sort` with cursor paging)
+    - `GET /v1/meds`
+    with backward-compatible behavior and `X-Has-More` / `X-Next-Cursor` response headers.
+  - Added visits/medications pagination route tests (default behavior, cursor traversal, invalid limit/cursor guards).
+  - Added cursor pagination support to caregiver patient list endpoints:
+    - `GET /v1/care/:patientId/medications`
+    - `GET /v1/care/:patientId/visits`
+    with `X-Has-More` / `X-Next-Cursor` headers.
+  - Added care pagination route tests covering caregiver access + cursor traversal and invalid limit/cursor handling.
+  - Added cursor pagination support to additional caregiver list endpoints:
+    - `GET /v1/care/:patientId/actions`
+    - `GET /v1/care/:patientId/notes`
+    - `GET /v1/care/:patientId/tasks`
+    - `GET /v1/care/:patientId/health-logs`
+  - Expanded care pagination tests to cover caregiver actions/notes paging and cursor ownership validation.
+  - Preserved `tasks` summary semantics under pagination by calculating summary from the full filtered task set while returning a paged task list.
+  - Expanded care pagination tests to cover health-log cursor paging and invalid cursor validation.
+  - Hardened `/v1/users/me` profile update sanitization by switching trim-only profile field cleanup to shared plain-text sanitization (names, DOB, profile arrays).
+  - Added users profile sanitization tests for script/tag stripping, dedupe behavior, and empty-after-sanitize normalization.
+  - Introduced soft-delete behavior for actions:
+    - `DELETE /v1/actions/:id` now sets `deletedAt`/`deletedBy` instead of hard delete
+    - action list/read/update endpoints now treat soft-deleted actions as not found and exclude them from list results
+  - Added actions soft-delete tests covering logical delete persistence and read/update exclusion.
+  - Extended soft-delete rollout (phase 2) to:
+    - visits (`DELETE /v1/visits/:id`)
+    - medications (`DELETE /v1/meds/:id`) plus reminder/nudge cascade soft updates
+    - health logs (`DELETE /v1/health-logs/:id`)
+    - care tasks (`DELETE /v1/care/:patientId/tasks/:taskId`)
+  - Added/updated route tests for health-log and care-task soft-delete behavior, plus medication/visit pagination harness updates for `deletedAt == null` filters.
+  - Added Firestore composite indexes for new `deletedAt` query patterns across visits, medications, actions, health logs, and care tasks.
+  - Verified full backend route test suite and Functions TypeScript build are passing.
+  - Extended soft-delete rollout (phase 3) to medication reminders:
+    - `DELETE /v1/medication-reminders/:id` now soft-deletes (`enabled=false`, `deletedAt`, `deletedBy`)
+    - `GET /v1/medication-reminders` excludes deleted reminders
+    - `PUT /v1/medication-reminders/:id` now rejects soft-deleted records
+    - create reminder flow allows recreation when only deleted duplicates exist
+    - orphan cleanup now soft-deletes instead of hard deleting
+  - Updated reminder processing to soft-disable orphaned reminders instead of hard deleting.
+  - Added a daily scheduled retention purge for soft-deleted reminders older than policy threshold (`purgeDeletedMedicationReminders`).
+  - Added route/service tests covering reminder soft-delete semantics and retention purge behavior.
+  - Extended soft-delete rollout (phase 4) with restore workflows:
+    - actions, visits, medications, health logs, care tasks, medication reminders
+  - Added unified soft-delete retention purge service across:
+    - actions, visits, medications, healthLogs, medicationReminders, careTasks
+  - Added daily scheduler (`purgeSoftDeletedData`) for unified retention purge execution.
+  - Added/updated tests for restore behavior and unified retention purge service.
+  - Unified caregiver share-access logic into a single service (`shareAccess`) and routed both care and visits read access checks through it.
+  - Added shared-cache reset coverage in visits access tests to prevent stale authorization state across route-level test runs.
+  - Added patient-detail performance guardrail instrumentation (`queryCount` + `elapsedMs` budgets) for:
+    - `GET /v1/care/:patientId/summary`
+    - `GET /v1/care/:patientId/quick-overview`
+    - `GET /v1/care/:patientId/alerts`
+    - `GET /v1/care/:patientId/trends`
+  - Removed a duplicate medications read path in `GET /v1/care/:patientId/alerts` by reusing a single medications snapshot for both:
+    - missed-dose status computation, and
+    - medication-change alert generation.
+  - Added alerts route assertion coverage to ensure a single medications query on the path.
+  - Expanded trends aggregate test coverage with query-count assertions to guard against accidental duplicate reads across core trend collections.
+  - Expanded summary + quick-overview test harnesses with per-collection query-count assertions to lock patient-detail query budgets for:
+    - shares
+    - users
+    - medications
+    - medicationReminders
+    - medicationLogs
+    - actions
+    - visits
+    - healthLogs (quick-overview)
+  - Added external incident destination dispatch for unacknowledged post-commit escalations via webhook configuration (`POST_COMMIT_ESCALATION_WEBHOOK_URL`, optional bearer token + timeout).
+  - Added operator escalation UI in web portal (`/ops/escalations`) with list/query pagination and acknowledge/resolve/reopen workflow actions.
+  - Added operator-aware navigation gating in protected web layout based on claims/allowlist detection.
+  - Validated new escalation integration block with passing Functions tests + builds and passing web tests + build.
+  - Advanced Phase 1 Bundle 3 authorization centralization by extracting reusable caregiver access guard (`ensureCaregiverAccessOrReject`) into middleware and replacing duplicated per-route access checks throughout `care.ts`.
+  - Kept existing caregiver-denied semantics (including endpoint-specific messages/status tracking) while reducing repeated authorization branches.
+  - Continued `care.ts` modularization by extracting caregiver task endpoints into `routes/care/tasks.ts` and caregiver note endpoints into `routes/care/notes.ts`, registering both from `care.ts` with injected shared config/dependencies.
+  - Extended authorization guard centralization into `visits.ts` with shared visit access guards:
+    - `ensureVisitReadAccessOrReject` for owner-or-accepted-caregiver read checks
+    - `ensureVisitOwnerAccessOrReject` for owner/operator write checks with deleted-resource options
+  - Replaced duplicated visit access branches in `GET/PATCH/DELETE/POST retry/POST share-with-caregivers/POST restore` visit endpoints with shared visit guard calls.
+  - Continued `care.ts` modularization by extracting caregiver health log endpoints into `routes/care/healthLogs.ts` and registering from the parent care router.
+  - Added shared restore audit service (`restoreAuditLogs`) and wired restore audit events for restore endpoints across actions, visits, medications, health logs, medication reminders, and care tasks.
+  - Added operator cross-user restore guardrail requiring restore reason for operator-initiated restores outside owner context.
+  - Added operator restore audit API (`GET /v1/users/ops/restore-audit`) with limit/cursor support and optional `resourceType`/`ownerUserId`/`actorUserId` filters.
+  - Added restore-flow regression tests for operator reason guardrails (visits/medications) and operator restore-audit route behavior.
+  - Added persisted restore-audit triage state (`triageStatus`, `triageNote`, `triageUpdatedAt`, `triageUpdatedBy`) and triage filtering/updating support in operator APIs.
+  - Added ops web triage tooling for restore-audit events (triage filter/editing + CSV export fields).
+  - Added shared owner/deleted-resource authorization middleware (`ensureResourceOwnerAccessOrReject`) and migrated duplicated checks in actions, medication reminders, medications, and nudges routes.
+  - Closed remaining legacy visit-metadata sanitization gap for caregiver edits by sanitizing `provider`/`specialty`/`location` in `PATCH /v1/care/:patientId/visits/:visitId`.
+  - Continued `care.ts` modularization by extracting caregiver visit metadata route wiring into `routes/care/visitMetadata.ts`.
+  - Continued `care.ts` modularization by extracting caregiver medication-adherence route wiring into `routes/care/medicationAdherence.ts`.
+  - Continued `care.ts` modularization by extracting caregiver quick-overview and alerts route wiring into:
+    - `routes/care/quickOverview.ts`
+    - `routes/care/alerts.ts`
+  - Continued `care.ts` modularization by extracting caregiver medication-change and upcoming-actions route wiring into:
+    - `routes/care/medicationChanges.ts`
+    - `routes/care/upcomingActions.ts`
+  - Added route-level regression coverage for caregiver visit metadata sanitization and max-length enforcement.
+  - Re-validated full backend route regression suite (`113/113`) and Functions TypeScript build after Phase 1 follow-through changes.
+  - Evidence:
+    - `functions/src/routes/visits.ts`
+    - `functions/src/routes/__tests__/visits.access.test.ts`
+    - `functions/src/routes/shares.ts`
+    - `functions/src/routes/__tests__/shares.invites.test.ts`
+    - `functions/src/routes/medicationReminders.ts`
+    - `functions/src/services/medicationReminderService.ts`
+    - `functions/src/utils/medicationReminderTiming.ts`
+    - `functions/src/services/__tests__/medicationReminderService.test.ts`
+    - `functions/src/routes/care.ts`
+    - `functions/src/routes/care/tasks.ts`
+    - `functions/src/routes/care/notes.ts`
+    - `functions/src/routes/care/healthLogs.ts`
+    - `functions/src/middlewares/caregiverAccess.ts`
+    - `functions/src/middlewares/__tests__/caregiverAccess.test.ts`
+    - `functions/src/middlewares/visitAccess.ts`
+    - `functions/src/middlewares/__tests__/visitAccess.test.ts`
+    - `functions/src/routes/__tests__/care.acceptedSharesFallback.test.ts`
+    - `functions/src/routes/__tests__/care.overview.test.ts`
+    - `functions/src/routes/__tests__/care.summary.test.ts`
+    - `functions/src/routes/__tests__/care.medicationStatus.test.ts`
+    - `functions/src/index.ts`
+    - `firestore.indexes.json`
+    - `functions/src/routes/shares.ts`
+    - `functions/src/utils/inputSanitization.ts`
+    - `functions/src/utils/__tests__/inputSanitization.test.ts`
+    - `functions/src/services/__tests__/medicationReminderService.process.test.ts`
+    - `functions/src/routes/__tests__/medications.deleteCascade.test.ts`
+    - `functions/src/routes/actions.ts`
+    - `functions/src/routes/__tests__/actions.sanitization.test.ts`
+    - `functions/src/routes/healthLogs.ts`
+    - `functions/src/routes/__tests__/healthLogs.sanitization.test.ts`
+    - `functions/src/routes/nudges.ts`
+    - `functions/src/routes/__tests__/nudges.sanitization.test.ts`
+    - `functions/src/routes/medicationLogs.ts`
+    - `functions/src/routes/__tests__/medicationLogs.sanitization.test.ts`
+    - `functions/src/routes/actions.ts`
+    - `functions/src/routes/__tests__/actions.pagination.test.ts`
+    - `functions/src/routes/visits.ts`
+    - `functions/src/routes/medications.ts`
+    - `functions/src/routes/__tests__/visits.pagination.test.ts`
+    - `functions/src/routes/__tests__/medications.pagination.test.ts`
+    - `functions/src/routes/care.ts`
+    - `functions/src/routes/__tests__/care.pagination.test.ts`
+    - `functions/src/routes/users.ts`
+    - `functions/src/routes/__tests__/users.profileSanitization.test.ts`
+    - `functions/src/routes/actions.ts`
+    - `functions/src/routes/__tests__/actions.softDelete.test.ts`
+    - `functions/src/routes/medicationReminders.ts`
+    - `functions/src/routes/__tests__/medicationReminders.softDelete.test.ts`
+    - `functions/src/services/medicationReminderService.ts`
+    - `functions/src/services/__tests__/medicationReminderService.process.test.ts`
+    - `functions/src/index.ts`
+    - `functions/src/routes/__tests__/visits.restore.test.ts`
+    - `functions/src/routes/__tests__/medications.restore.test.ts`
+    - `functions/src/services/softDeleteRetentionService.ts`
+    - `functions/src/services/__tests__/softDeleteRetentionService.test.ts`
+    - `functions/src/services/restoreAuditService.ts`
+    - `functions/src/routes/__tests__/users.restoreAudit.test.ts`
+    - `functions/src/middlewares/resourceAccess.ts`
+    - `functions/src/middlewares/__tests__/resourceAccess.test.ts`
+    - `functions/src/routes/nudges.ts`
+    - `functions/src/routes/care.ts`
+    - `functions/src/routes/__tests__/care.visitMetadata.sanitization.test.ts`
+    - `functions/src/routes/care/medicationAdherence.ts`
+    - `functions/src/routes/care/quickOverview.ts`
+    - `functions/src/routes/care/alerts.ts`
+    - `functions/src/routes/care/medicationChanges.ts`
+    - `functions/src/routes/care/upcomingActions.ts`
+    - `web-portal/lib/api/hooks.ts`
+    - `web-portal/app/(protected)/ops/restore-audit/page.tsx`
+
+## Issue-by-Issue Mapping
+
+### 1) Medication Timing + Travel Risk
+- Status: **Addressed (P0 scope)**
+- Current code:
+  - Reminder documents now support `timingMode` (`local`/`anchor`), `anchorTimezone`, and `criticality`.
+  - Reminder processing resolves an effective timezone per reminder and evaluates due windows in that timezone.
+  - Time-sensitive medication names default to anchor timing policy, with fallback metadata backfill for legacy reminders.
+  - Scheduled backfill (`backfillMedicationReminderTiming`) pages through legacy reminders and normalizes timing metadata using stored cursor state.
+  - Operator endpoint now exposes backfill run health (`GET /v1/medication-reminders/ops/timing-backfill-status`) with stale/error indicators based on persisted run-state metadata.
+  - Operator dashboard now surfaces reminder timing backfill state at `/ops/medication-reminders`.
+  - Reminder create/update UX now exposes timing policy controls (`Automatic`, `Follow current timezone`, `Keep fixed timezone`) in both web and mobile clients.
+  - Reminder processor tests now cover travel scenarios to validate that:
+    - local reminders follow current user timezone for east->west and west->east travel
+    - anchor reminders follow anchor timezone regardless of current user timezone for east->west and west->east travel
+    - anchor reminders stay aligned at DST boundaries when local timezone has shifted
+- Evidence:
+  - `functions/src/services/medicationReminderService.ts`
+  - `functions/src/routes/medicationReminders.ts`
+  - `functions/src/utils/medicationReminderTiming.ts`
+  - `functions/src/index.ts`
+  - `functions/src/routes/__tests__/medicationReminders.opsStatus.test.ts`
+  - `functions/src/services/__tests__/medicationReminderService.process.test.ts`
+  - `web-portal/app/(protected)/ops/medication-reminders/page.tsx`
+  - `web-portal/components/medications/ReminderDialog.tsx`
+  - `web-portal/lib/api/hooks.ts`
+  - `packages/sdk/src/models/lumibot.ts`
+- Plan:
+  - Optional hardening follow-through: add downstream alerting integration for `needsAttention` state (for example Slack/PagerDuty/Webhook fan-out).
+- Priority: **P0**
+
+### 2) API Authorization Gap (Caregiver Access)
+- Status: **Addressed for P0 scope**
+- Current code:
+  - `/v1/care/*` routes and `GET /v1/visits/:id` now share a common caregiver access path via `shareAccess` service.
+  - Shared helper enforces `owner OR accepted caregiver share` read semantics with legacy email fallback/backfill for missing `caregiverUserId`.
+  - Visit mutation routes (`PATCH/DELETE/RETRY/SHARE`) remain owner-only.
+- Evidence:
+  - `functions/src/services/shareAccess.ts`
+  - `functions/src/routes/visits.ts`
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/shares.ts`
+- Plan:
+  - Keep mutation routes owner-only.
+  - Add integration coverage on additional caregiver read flows as route modularization progresses.
+- Priority: **P0**
+
+### 3) Input Sanitization / XSS Defense-in-Depth
+- Status: **Addressed (Closeout scope)**
+- Current code:
+  - Added shared text sanitizer (`sanitizePlainText`) and HTML escaper (`escapeHtml`) in backend utils.
+  - Share invite message now:
+    - enforces max length at schema level
+    - is sanitized before persistence
+    - is escaped before insertion into HTML email templates
+  - Applied sanitization to key free-text write paths in:
+    - visits (`notes`, `summary`, provider metadata fields)
+    - caregiver visit metadata edits (`provider`, `specialty`, `location`)
+    - medications (`name`, `dose`, `frequency`, `notes`, safety-check inputs)
+    - caregiver notes/tasks (`note`, `title`, `description`)
+    - actions (`description`, `notes`)
+    - health logs (`symptom_check` text/list fields, `med_compliance` text fields)
+    - nudges (`note`, `sideEffects`, free-text response payloads)
+    - medication logs (`medicationName`)
+    - user profile updates (`firstName`, `lastName`, `dateOfBirth`, `allergies`, `medicalHistory`, `tags`, `folders`)
+    - debug/test write surfaces (`medication-reminders` test-notify payload fields and `nudgesDebug` medication-name fields)
+- Evidence:
+  - `functions/src/utils/inputSanitization.ts`
+  - `functions/src/routes/shares.ts`
+  - `functions/src/routes/visits.ts`
+  - `functions/src/routes/medications.ts`
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/actions.ts`
+  - `functions/src/routes/healthLogs.ts`
+  - `functions/src/routes/nudges.ts`
+  - `functions/src/routes/medicationLogs.ts`
+  - `functions/src/routes/users.ts`
+  - `functions/src/routes/nudgesDebug.ts`
+  - `functions/src/routes/medicationReminders.ts`
+  - `functions/src/routes/__tests__/shares.invites.test.ts`
+  - `functions/src/routes/__tests__/actions.sanitization.test.ts`
+  - `functions/src/routes/__tests__/healthLogs.sanitization.test.ts`
+  - `functions/src/routes/__tests__/nudges.sanitization.test.ts`
+  - `functions/src/routes/__tests__/medicationLogs.sanitization.test.ts`
+  - `functions/src/routes/__tests__/users.profileSanitization.test.ts`
+  - `functions/src/routes/__tests__/care.visitMetadata.sanitization.test.ts`
+  - `functions/src/routes/__tests__/medicationReminders.debugSanitization.test.ts`
+  - `functions/src/routes/__tests__/nudgesDebug.sanitization.test.ts`
+  - `functions/src/utils/__tests__/inputSanitization.test.ts`
+- Plan:
+  - Align web/mobile client-side validation/error messaging with backend sanitization limits.
+  - Keep adding route-level regression tests whenever new free-text write paths are introduced.
+- Priority: **P1**
+
+### 4) Repository Layer
+- Status: **Addressed (Closeout scope)**
+- Current code:
+  - Remediation-scope route handlers and helper services are now mediated through repository/domain boundaries.
+  - Remaining direct Firestore usage is constrained to intentional infrastructure/maintenance orchestration paths with explicit contract coverage.
+  - Phase 2 foundation now includes repository contracts and Firestore adapters for high-churn domains (`medications`, `visits`) with cursor pagination support and ownership-aware cursor validation.
+  - Phase 3 chunk 4 now extends repository/domain coverage into full `actions` route paths, `healthLogs` read/lifecycle flows, caregiver patient-resource/upcoming-action read surfaces, care summary/export aggregate reads, quick-overview/trends dashboard aggregate reads, caregiver `care/health-logs` reads, caregiver med-change medication reads, caregiver notes/tasks/visit-metadata route flows, and care user-profile/push-token read flows.
+  - Medication/visit read endpoints now execute through repository/domain boundaries (`medications/query.ts`, `visits.ts` read routes).
+  - Action read and write/lifecycle endpoints now execute through repository/domain boundaries (`actions.ts` list/get/create/update/delete/restore routes).
+  - Medication lifecycle routes now use domain-layer medication reads for ownership/deleted-state evaluation before write batches.
+  - Medication core write routes now use domain-layer medication reads for ownership/existence evaluation before mutation logic.
+  - Medication core route medication-document writes now flow through repository/domain mutation methods.
+  - Medication reminder/nudge side-effect mutations and lifecycle cascades now flow through repository/domain mutation methods.
+  - Visit write/lifecycle routes now use domain-layer visit reads for ownership/existence/deleted-state evaluation before write operations.
+  - Visit operator escalation mutation writes and visit soft-delete/restore cascades now flow through domain/repository mutation methods.
+  - Infrastructure maintenance state reads/writes for medication reminder timing-backfill orchestration now flow through a dedicated repository (`MaintenanceStateRepository`) rather than direct `systemMaintenance` access from service logic.
+  - Medication-safety AI cache reads/writes/purge now flow through a dedicated repository (`MedicationSafetyCacheRepository`) rather than direct `medicationSafetyCache` access from service logic.
+  - External drug-data cache reads/writes now flow through a dedicated repository (`ExternalDrugSafetyCacheRepository`) rather than direct `medicationSafetyExternalCache` access from service logic.
+  - Soft-delete retention sweeping now flows through a dedicated repository (`SoftDeleteRetentionRepository`) rather than direct cross-collection purge queries in service logic.
+  - Restore-audit append-only event writes now flow through a dedicated repository (`RestoreAuditRepository`) rather than direct `restoreAuditLogs` writes in service logic.
+  - Medication-sync canonical/nameLower lookup and warm-cache list reads now flow through a dedicated repository (`MedicationSyncRepository`) rather than direct read queries in service logic.
+- Evidence:
+  - `functions/src/routes/visits.ts:112`
+  - `functions/src/routes/actions.ts:53`
+  - `functions/src/routes/medications/core.ts`
+  - `functions/src/routes/medications/query.ts`
+  - `functions/src/routes/visits.ts`
+  - `functions/src/services/repositories/medications/MedicationRepository.ts`
+  - `functions/src/services/repositories/medications/FirestoreMedicationRepository.ts`
+  - `functions/src/services/repositories/visits/VisitRepository.ts`
+  - `functions/src/services/repositories/visits/FirestoreVisitRepository.ts`
+  - `functions/src/services/repositories/actions/ActionRepository.ts`
+  - `functions/src/services/repositories/actions/FirestoreActionRepository.ts`
+  - `functions/src/services/repositories/healthLogs/HealthLogRepository.ts`
+  - `functions/src/services/repositories/healthLogs/FirestoreHealthLogRepository.ts`
+  - `functions/src/services/repositories/maintenanceState/MaintenanceStateRepository.ts`
+  - `functions/src/services/repositories/maintenanceState/FirestoreMaintenanceStateRepository.ts`
+  - `functions/src/services/repositories/medicationSafetyCache/MedicationSafetyCacheRepository.ts`
+  - `functions/src/services/repositories/medicationSafetyCache/FirestoreMedicationSafetyCacheRepository.ts`
+  - `functions/src/services/repositories/externalDrugSafetyCache/ExternalDrugSafetyCacheRepository.ts`
+  - `functions/src/services/repositories/externalDrugSafetyCache/FirestoreExternalDrugSafetyCacheRepository.ts`
+  - `functions/src/services/repositories/softDeleteRetention/SoftDeleteRetentionRepository.ts`
+  - `functions/src/services/repositories/softDeleteRetention/FirestoreSoftDeleteRetentionRepository.ts`
+  - `functions/src/services/repositories/restoreAudit/RestoreAuditRepository.ts`
+  - `functions/src/services/repositories/restoreAudit/FirestoreRestoreAuditRepository.ts`
+  - `functions/src/services/repositories/medicationSync/MedicationSyncRepository.ts`
+  - `functions/src/services/repositories/medicationSync/FirestoreMedicationSyncRepository.ts`
+  - `functions/src/services/repositories/caregiverNotes/CaregiverNoteRepository.ts`
+  - `functions/src/services/repositories/caregiverNotes/FirestoreCaregiverNoteRepository.ts`
+  - `functions/src/services/repositories/careTasks/CareTaskRepository.ts`
+  - `functions/src/services/repositories/careTasks/FirestoreCareTaskRepository.ts`
+  - `functions/src/services/repositories/users/UserRepository.ts`
+  - `functions/src/services/repositories/users/FirestoreUserRepository.ts`
+  - `functions/src/routes/care/notes.ts`
+  - `functions/src/routes/care/tasks.ts`
+  - `functions/src/routes/care/visitMetadata.ts`
+  - `functions/src/routes/care/summary.ts`
+  - `functions/src/routes/care/exportSummary.ts`
+  - `functions/src/routes/care/medicationStatus.ts`
+  - `functions/src/routes/care/alerts.ts`
+  - `functions/src/routes/care/quickOverview.ts`
+  - `functions/src/routes/care/patientResources.ts`
+- Plan:
+  - Continue expanding repository/domain coverage to additional high-churn domains beyond medications/visits/actions.
+  - Continue repository contract tests as each new domain is migrated.
+- Priority: **P2**
+
+### 5) Centralized Authorization
+- Status: **Addressed (Phase 1 scope)**
+- Current code:
+  - Shared authz helpers now exist for core access patterns:
+    - caregiver access (`ensureCaregiverAccessOrReject`)
+    - visit read/write access (`visitAccess`)
+    - operator-only endpoint access (`ensureOperatorAccessOrReject`)
+    - operator cross-user restore reason guard (`ensureOperatorRestoreReasonOrReject`)
+    - owner/deleted-resource access (`ensureResourceOwnerAccessOrReject`)
+    - owner predicate for non-response contexts (`hasResourceOwnerAccess`)
+  - Share status transition authorization in `PATCH /v1/shares/:id` now uses shared owner predicates for both owner revoke and caregiver accept paths.
+  - Medication-log creation now enforces shared owner access checks against the underlying medication record (`POST /v1/medication-logs`).
+  - Nudge debug write endpoints now share a centralized debug-write access guard that routes non-emulator operator checks through `ensureOperatorAccessOrReject`.
+  - Share accept flows now share centralized invite-email and caregiver-id/email fallback access checks (`ensureInviteEmailMatchOrReject`, `resolveShareAcceptAccess`).
+  - High-risk owner/caregiver/operator checks are now routed through shared guard helpers across caregiver, visits, shares, restore, and users caregiver-revoke flows.
+- Evidence:
+  - `functions/src/middlewares/auth.ts`
+  - `functions/src/middlewares/caregiverAccess.ts`
+  - `functions/src/middlewares/visitAccess.ts`
+  - `functions/src/middlewares/resourceAccess.ts`
+  - `functions/src/middlewares/auth.ts`
+  - `functions/src/middlewares/__tests__/auth.operatorAccess.test.ts`
+  - `functions/src/middlewares/__tests__/resourceAccess.test.ts`
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/care/patientResources.ts`
+  - `functions/src/routes/care/notes.ts`
+  - `functions/src/routes/care/visitMetadata.ts`
+  - `functions/src/routes/care/tasks.ts`
+  - `functions/src/routes/visits.ts`
+  - `functions/src/routes/shares.ts`
+  - `functions/src/routes/users.ts`
+  - `functions/src/routes/actions.ts`
+  - `functions/src/routes/healthLogs.ts`
+  - `functions/src/routes/medicationReminders.ts`
+  - `functions/src/routes/medications/lifecycle.ts`
+  - `functions/src/routes/medications/schedule.ts`
+  - `functions/src/routes/nudgesDebug.ts`
+  - `functions/src/routes/__tests__/nudgesDebug.access.test.ts`
+  - `functions/src/routes/shares.ts`
+  - `functions/src/routes/medications/core.ts`
+  - `functions/src/routes/nudges.ts`
+  - `functions/src/routes/medicationLogs.ts`
+  - `functions/src/routes/shares.ts`
+  - `functions/src/routes/__tests__/shares.invites.test.ts`
+  - `functions/src/routes/__tests__/medicationLogs.sanitization.test.ts`
+  - `functions/src/routes/__tests__/users.caregiverRevoke.test.ts`
+- Plan:
+  - Continue opportunistic cleanup of low-traffic legacy inline checks during Phase 2 domain refactors.
+  - Evaluate a declarative policy wrapper for mixed owner/caregiver/operator read semantics.
+- Priority: **P1**
+
+### 6) Pagination
+- Status: **Addressed (Phase 1 bundle 2 complete, 2026-02-20)**
+- Current code:
+  - `GET /v1/actions`, `GET /v1/visits`, `GET /v1/meds`, `GET /v1/care/:patientId/medications`, `GET /v1/care/:patientId/visits`, `GET /v1/care/:patientId/actions`, `GET /v1/care/:patientId/notes`, `GET /v1/care/:patientId/tasks`, and `GET /v1/care/:patientId/health-logs` now support optional cursor pagination with:
+    - `limit` query parameter (positive integer, capped)
+    - `cursor` query parameter (doc ID cursor)
+    - `X-Has-More` and `X-Next-Cursor` response headers
+    - backward-compatible full-list behavior when pagination params are omitted
+  - Shared SDK now consumes cursor headers through page-aware list methods:
+    - `api.visits.listPage`
+    - `api.actions.listPage`
+    - `api.medications.listPage`
+  - Shared SDK hooks now expose infinite cursor hooks:
+    - `useInfiniteVisits`
+    - `useInfiniteActionItems`
+    - `useInfiniteMedications`
+  - Mobile list-heavy surfaces now use cursor pagination with explicit load-more controls:
+    - visits screen
+    - actions screen
+    - medications screen
+  - Web caregiver list-heavy surfaces now consume cursor pagination with explicit load-more controls:
+    - `/care/[patientId]/visits`
+    - `/care/[patientId]/actions`
+    - `/care/[patientId]/medications`
+    - patient-detail care tasks panel (`/care/[patientId]`)
+  - Added SDK pagination regression coverage for page-boundary behavior and cursor query propagation.
+- Evidence:
+  - `functions/src/routes/visits.ts:108`
+  - `functions/src/routes/actions.ts:48`
+  - `functions/src/routes/medications/query.ts`
+  - `functions/src/routes/care.ts:758`
+  - `packages/sdk/src/api-client.ts`
+  - `packages/sdk/src/hooks/index.ts`
+  - `mobile/lib/api/hooks.ts`
+  - `mobile/app/visits.tsx`
+  - `mobile/app/actions.tsx`
+  - `mobile/app/medications.tsx`
+  - `web-portal/lib/api/hooks.ts`
+  - `web-portal/app/care/[patientId]/visits/page.tsx`
+  - `web-portal/app/care/[patientId]/actions/page.tsx`
+  - `web-portal/app/care/[patientId]/medications/page.tsx`
+  - `web-portal/app/care/[patientId]/page.tsx`
+  - `packages/sdk/tests/api-client.pagination.test.mjs`
+  - `functions/src/routes/__tests__/actions.pagination.test.ts`
+  - `functions/src/routes/__tests__/visits.pagination.test.ts`
+  - `functions/src/routes/__tests__/medications.pagination.test.ts`
+  - `functions/src/routes/__tests__/care.pagination.test.ts`
+- Plan:
+  - Decide deprecation window for implicit full-list fallback on high-volume endpoints.
+- Priority: **P1**
+
+### 7) Cache Share Lookups
+- Status: **Addressed (Closeout scope)**
+- Current code:
+  - Care route share lookups now use 5-minute in-memory caching for:
+    - accepted share lists per caregiver
+    - caregiver/patient access decisions
+  - Cache is process-local (Cloud Functions instance scope) and TTL-based.
+  - Share mutation endpoints now invalidate caregiver cache entries after accept/revoke writes.
+- Evidence:
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/__tests__/care.acceptedSharesFallback.test.ts`
+  - `functions/src/routes/shares.ts`
+  - `functions/src/routes/__tests__/shares.invites.test.ts`
+- Plan:
+  - Consider distributed/shared cache if cross-instance consistency becomes a bottleneck.
+  - Add per-request memoization for multi-check routes that still do repeated validations.
+- Priority: **P1**
+
+### 8) Response Compression
+- Status: **Addressed (Closeout scope)**
+- Current code:
+  - Express app now registers compression middleware with `threshold=1024` and `level=6`.
+- Evidence:
+  - `functions/src/index.ts`
+  - `functions/package.json`
+- Plan:
+  - Exclude already-compressed/binary responses where needed.
+  - Measure egress and p95 before/after.
+- Priority: **P2**
+
+### 9) Denormalization Without Sync Strategy
+- Status: **Addressed (Closeout scope)**
+- Current code:
+  - Denormalized fields exist (`ownerName`, `ownerEmail`, `medicationName`).
+  - Route-level sync exists for some medication update flows.
+  - New trigger-level sync now exists for:
+    - user profile writes -> share/share-invite owner fields
+    - user profile writes -> share/share-invite caregiver email fields via `caregiverUserId`
+    - medication writes -> reminder medication name/dose fields
+  - Scheduled backfill/repair now exists for stale denormalized records across shares/share-invites/reminders with persisted cursor state and run metrics.
+  - Backfill supports dry-run metrics-only execution without mutating data/cursors.
+  - CI guardrails now enforce denormalization + repository contract tests and required Firestore index coverage in PR checks.
+- Evidence:
+  - `functions/src/routes/shares.ts:255`
+  - `functions/src/routes/medications/core.ts`
+  - `functions/src/routes/medicationReminders.ts:139`
+  - `functions/src/triggers/denormalizationSync.ts`
+  - `functions/src/services/denormalizationSync.ts`
+  - `functions/src/services/__tests__/denormalizationSync.test.ts`
+  - `functions/src/services/__tests__/denormalizationBackfill.test.ts`
+  - `functions/scripts/verify-firestore-index-guardrails.js`
+  - `functions/package.json`
+  - `.github/workflows/pr-check.yml`
+- Plan:
+  - Define canonical source map for denormalized fields.
+  - Document acceptable stale fields vs strict sync fields.
+  - Expand trigger sync coverage to additional denormalized fields if needed.
+- Priority: **P2**
+
+### 10) God Object Route File (`care.ts`)
+- Status: **Addressed (Phase 1 scope)**
+  - Current code:
+  - `care.ts` has been reduced to ~1077 lines and now primarily contains shared helpers + route registration.
+  - `medications.ts` has been reduced to a small composition root (~52 lines) and delegates route logic to specialized modules, with shared helper logic extracted to `routes/medications/helpers.ts`.
+  - Medication route domains are extracted into dedicated modules:
+    - schedule/compliance endpoints into `routes/medications/schedule.ts`
+    - query endpoints into `routes/medications/query.ts`
+    - lifecycle endpoints into `routes/medications/lifecycle.ts`
+    - core write/safety endpoints into `routes/medications/core.ts`
+  - Caregiver endpoint domains are now extracted into dedicated modules:
+    - `overview`
+    - `patientResources` (medications/actions/visits/visit detail)
+    - `medicationStatus`
+    - `summary`
+    - `exportSummary`
+    - `visitMetadata`
+    - `healthLogs`
+    - `medicationAdherence`
+    - `quickOverview`
+    - `alerts`
+    - `trends`
+    - `medicationChanges`
+    - `upcomingActions`
+    - `tasks`
+    - `notes`
+- Evidence:
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/care/overview.ts`
+  - `functions/src/routes/care/patientResources.ts`
+  - `functions/src/routes/care/medicationStatus.ts`
+  - `functions/src/routes/care/summary.ts`
+  - `functions/src/routes/care/exportSummary.ts`
+  - `functions/src/routes/medications.ts`
+  - `functions/src/routes/medications/schedule.ts`
+  - `functions/src/routes/medications/query.ts`
+  - `functions/src/routes/medications/lifecycle.ts`
+  - `functions/src/routes/medications/core.ts`
+  - `functions/src/routes/medications/helpers.ts`
+  - `functions/src/routes/care/tasks.ts`
+  - `functions/src/routes/care/notes.ts`
+  - `functions/src/routes/care/healthLogs.ts`
+- Plan:
+  - Continue moving non-trivial helper/business logic out of `care.ts` into domain services/util modules.
+  - Keep `care.ts` as a composition root and slim helper surface.
+  - Optionally introduce `routes/care/index.ts` once existing import paths are stabilized.
+- Priority: **P1**
+
+### 11) N+1 Queries in Caregiver Dashboard
+- Status: **Addressed (Phase 1 scope)**
+- Current code:
+  - `/care/overview` now batches data fetches by patient chunks for profiles, medications, reminders, logs, and actions.
+  - Overview alerts reuse already-computed medication status rather than re-fetching/recomputing.
+  - Batched medication-log query has guarded fallback to per-patient queries if a compound query fails.
+  - `/care/:patientId/summary` now reuses in-flight medication status and actions snapshots to build alerts (no duplicate alert helper reads).
+  - `/care/:patientId/medication-status` now reuses in-flight meds/reminders/logs for status summary (no second med-status query set).
+  - `/care/:patientId/quick-overview` now reuses prefetched today med snapshots and only falls back to week med-log query when needed for activity fill.
+  - `/care/:patientId/quick-overview` now also returns `upcomingActions` + `recentMedicationChanges` to support patient detail without extra endpoint fan-out.
+  - `/care/:patientId/alerts` now reuses already-fetched reminders and 7-day med logs for adherence + missed-dose calculations.
+  - `/care/:patientId/alerts` now reuses a single medications snapshot across missed-dose + medication-change logic (removes duplicate medications query path).
+  - Added per-endpoint patient-detail perf guardrails (query-count + latency budgets) with structured logs for:
+    - `medication-status`
+    - `summary`
+    - `quick-overview`
+    - `export-summary`
+    - `alerts`
+    - `trends`
+    - `medication-adherence`
+    - `med-changes`
+    - `upcoming-actions`
+  - Added explicit query-count guard assertions across patient-detail tests for:
+    - `summary`
+    - `quick-overview`
+    - `alerts`
+    - `trends`
+    - `medication-adherence` (primary + fallback log-query paths)
+    - `med-changes`
+    - `upcoming-actions`
+  - Caregiver dashboard list page no longer issues one `/v1/care/:patientId/alerts` request per patient; it renders alerts from `/v1/care/overview`.
+  - Care patient detail page no longer calls:
+    - `/medication-status`
+    - `/upcoming-actions`
+    - `/med-changes`
+    and now uses quick-overview as the single source for those cards.
+  - `trends`, `med-changes`, and `upcoming-actions` now filter out soft-deleted records before aggregate calculations/response shaping.
+  - `summary`, `quick-overview`, and `alerts` now exclude soft-deleted records from computed counts/alerts/activity feeds and latest-visit selection.
+  - Caregiver paginated patient-resource list endpoints now enforce soft-delete consistency directly in query shape and cursor validation:
+    - medications/actions/visits list queries include `deletedAt == null`
+    - deleted cursor documents are rejected as invalid cursors
+- Evidence:
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/care/exportSummary.ts`
+  - `functions/src/routes/care/patientResources.ts`
+  - `functions/src/routes/__tests__/care.overview.test.ts`
+  - `functions/src/routes/__tests__/care.summary.test.ts`
+  - `functions/src/routes/__tests__/care.medicationStatus.test.ts`
+  - `functions/src/routes/__tests__/care.quickOverview.test.ts`
+  - `functions/src/routes/__tests__/care.alerts.test.ts`
+  - `functions/src/routes/__tests__/care.aggregateFilters.test.ts`
+  - `functions/src/routes/__tests__/care.pagination.test.ts`
+  - `web-portal/app/care/page.tsx`
+  - `web-portal/app/care/[patientId]/page.tsx`
+  - `web-portal/lib/api/hooks.ts`
+- Plan:
+  - Maintain query-budget assertions as contracts for caregiver aggregate endpoints.
+  - Revisit API consolidation opportunities during Phase 2 service/repository extraction.
+- Priority: **P0**
+
+### 12) Missing Indexes
+- Status: **Addressed (Phase 1 scope)**
+- Current code:
+  - `firestore.indexes.json` has many composites.
+  - Added composites for caregiver dashboard queries:
+    - `caregiverNotes(caregiverId, patientId, updatedAt desc)`
+    - `careTasks(patientId, caregiverId, createdAt desc)`
+    - `careTasks(patientId, caregiverId, status, createdAt desc)`
+  - Added composites for soft-delete query patterns:
+    - `visits(userId, deletedAt, createdAt desc/asc)`
+    - `medications(userId, deletedAt, name asc)`
+    - `actions(userId, deletedAt, createdAt desc)`
+    - `healthLogs(userId, deletedAt, createdAt desc/asc)`
+    - `healthLogs(userId, deletedAt, type, createdAt desc)`
+    - `careTasks(patientId, caregiverId, deletedAt, createdAt desc)`
+    - `careTasks(patientId, caregiverId, deletedAt, status, createdAt desc)`
+  - Added composite for visit post-commit recovery scheduling query:
+    - `visits(processingStatus, postCommitStatus, postCommitRetryEligible, postCommitLastAttemptAt asc)`
+  - Added composite for operator escalation reporting query:
+    - `visits(postCommitStatus, postCommitEscalatedAt desc)`
+  - Added composites for additional route patterns observed in Phase 1:
+    - `healthLogs(userId, sourceId, createdAt desc)`
+    - `medicationReminders(userId, enabled)`
+    - `medicationReminders(userId, medicationId)`
+    - `medicationLogs(userId, medicationId, loggedAt desc)`
+    - `medicationLogs(userId, medicationId, createdAt desc)`
+    - `actions(visitId, userId)`
+    - `actions(userId, completed, deletedAt)`
+    - `medications(userId, active)`
+- Evidence:
+  - `firestore.indexes.json`
+  - `functions/src/routes/care.ts`
+- Plan:
+  - Keep index inventory synchronized with new query patterns introduced in Phase 2.
+  - Add CI validation for query/index drift when introducing repository abstractions.
+- Priority: **P1**
+
+### 13) Soft Delete Strategy
+- Status: **Addressed (Closeout scope)**
+- Current code:
+  - Actions, visits, medications, health logs, care tasks, and medication reminders now use soft delete (`deletedAt`, `deletedBy`) instead of hard delete.
+  - List/read/update flows for those resources now exclude or reject soft-deleted records.
+  - Caregiver export summary aggregation (`GET /v1/care/:patientId/export/summary`) now excludes soft-deleted visits and actions from counts/detail sections.
+  - Medication delete flow now soft-disables dependent reminders and dismisses active medication nudges in the same batch.
+  - Medication reminder orphan cleanup and processor orphan handling now soft-disable reminders instead of deleting.
+  - Restore endpoints now exist for all soft-deleted route resources (actions, visits, medications, health logs, care tasks, medication reminders).
+  - Unified retention purge now runs daily across all soft-deleted collections (actions, visits, medications, healthLogs, medicationReminders, careTasks).
+  - Restore audit workflow now captures who restored what/when/why via `restoreAuditLogs`.
+  - Operator restore-audit API now available (`GET /v1/users/ops/restore-audit`) with pagination + owner/actor/resource filters.
+  - Restore-audit triage state is now persisted and operator-editable:
+    - `triageStatus`, `triageNote`, `triageUpdatedAt`, `triageUpdatedBy`
+    - `PATCH /v1/users/ops/restore-audit/:id/triage`
+  - Operator cross-user restore guardrail now requires explicit reason in restore request payload.
+  - Operator web UI for restore audit review/action is now integrated (`/ops/restore-audit`) with triage filters, triage editing, export, and escalation deep-links.
+  - Shares are revoked instead of deleted.
+- Evidence:
+  - `functions/src/routes/actions.ts`
+  - `functions/src/routes/__tests__/actions.softDelete.test.ts`
+  - `functions/src/routes/visits.ts`
+  - `functions/src/routes/medications.ts`
+  - `functions/src/routes/healthLogs.ts`
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/care/exportSummary.ts`
+  - `functions/src/routes/medicationReminders.ts`
+  - `functions/src/services/medicationReminderService.ts`
+  - `functions/src/services/softDeleteRetentionService.ts`
+  - `functions/src/index.ts`
+  - `functions/src/routes/users.ts`
+  - `functions/src/routes/__tests__/healthLogs.softDelete.test.ts`
+  - `functions/src/routes/__tests__/care.tasks.softDelete.test.ts`
+  - `functions/src/routes/__tests__/care.pagination.test.ts`
+  - `functions/src/routes/__tests__/medicationReminders.softDelete.test.ts`
+  - `functions/src/services/__tests__/medicationReminderService.process.test.ts`
+  - `functions/src/routes/__tests__/visits.restore.test.ts`
+  - `functions/src/routes/__tests__/medications.restore.test.ts`
+  - `functions/src/services/__tests__/softDeleteRetentionService.test.ts`
+  - `functions/src/services/restoreAuditService.ts`
+  - `functions/src/routes/users.ts`
+  - `functions/src/routes/__tests__/users.restoreAudit.test.ts`
+  - `web-portal/app/(protected)/ops/restore-audit/page.tsx`
+- Plan:
+  - Introduce shared soft-delete helpers/fields for remaining PHI-bearing resources.
+  - Extend operator restore tooling to additional admin surfaces as needed.
+  - Keep extending retention policy controls (per-collection windows, dry-run mode, metrics).
+  - Continue updating read queries to exclude deleted records by default.
+- Priority: **P1**
+
+### 14) Transaction Boundaries
+- Status: **Addressed for P0 scope**
+- Current code:
+  - Share invite acceptance/revocation now batches coupled writes (invite + canonical share) in the same commit.
+  - Legacy caregiver-id migration in invite acceptance now batches create-new-share + delete-old-share.
+  - Medication delete cascades now batch medication soft-delete + reminder soft-disable + nudge dismissal together.
+  - Medication stop flow now batches reminder soft-disable + nudge dismissal together.
+  - Reminder orphan cleanup route batches soft-delete updates for orphaned reminders.
+  - Visit and medication restore flows now batch parent/child restore updates atomically.
+  - Visit summarization now sets explicit post-commit lifecycle fields:
+    - `postCommitStatus: pending|completed|partial_failure`
+    - `postCommitFailedOperations`
+    - `postCommitLastAttemptAt`
+    - `postCommitCompletedAt`
+    - `postCommitCompletedOperations`
+    - `postCommitOperationAttempts`
+    - `postCommitOperationNextRetryAt`
+    - `postCommitEscalatedAt`
+    so post-commit side-effect failures are persisted, not just logged.
+  - Added scheduled retry/reconciliation service for post-commit failures:
+    - targets visits with `postCommitStatus=partial_failure` + `postCommitRetryEligible=true`
+    - retries `syncMedications`, `deleteTranscript`, `lumibotAnalysis`, `pushNotification`, and `caregiverEmails`
+    - marks visits `completed` when all retryable failures are recovered
+    - uses `postCommitCompletedOperations` dedupe markers to avoid re-running already-completed side effects
+    - enforces per-operation retry ceilings and exponential backoff windows
+    - emits escalation logs for repeated failures
+    - preserves/updates remaining failures and retry eligibility when unresolved
+  - Added operator-facing escalation reporting/ack workflow for incident handling:
+    - `GET /v1/visits/ops/post-commit-escalations` (paginated)
+    - `POST /v1/visits/ops/post-commit-escalations/:id/acknowledge`
+    - `POST /v1/visits/ops/post-commit-escalations/:id/resolve`
+    - `POST /v1/visits/ops/post-commit-escalations/:id/reopen`
+    - gated by operator access checks (`admin`/`operator`/`support` claims or `OPERATOR_UIDS` allowlist)
+    - captures operator ack/resolution metadata (`postCommitEscalationAcknowledged*`, `postCommitEscalationResolved*`)
+  - Added scheduled escalation reporting job for incident visibility:
+    - `reportVisitPostCommitEscalations` runs hourly
+    - emits alert-level logs when unacknowledged escalations exist
+    - emits informational logs when escalation queue is clear
+  - Added external incident destination dispatch for escalation reporting:
+    - sends structured escalation payloads to configured webhook destination when unacknowledged escalations exist
+    - uses optional bearer token authentication and configurable timeout
+    - logs delivery failures without failing the reporting run
+  - Added operator UI wiring for escalation lifecycle handling:
+    - protected web route `/ops/escalations`
+    - wired to list/acknowledge/resolve/reopen operator escalation APIs
+    - operator-aware nav entry in protected web shell
+  - Other multi-step workflows still need explicit atomicity boundaries.
+- Evidence:
+  - `functions/src/routes/shares.ts`
+  - `functions/src/routes/__tests__/shares.invites.test.ts`
+  - `functions/src/routes/medications.ts`
+  - `functions/src/routes/__tests__/medications.deleteCascade.test.ts`
+  - `functions/src/services/visitProcessor.ts:279`
+  - `functions/src/services/__tests__/visitProcessor.caregiverAutoShare.test.ts`
+  - `functions/src/services/visitPostCommitOperations.ts`
+  - `functions/src/services/visitPostCommitRecoveryService.ts`
+  - `functions/src/services/__tests__/visitPostCommitRecoveryService.test.ts`
+  - `functions/src/routes/visits.ts`
+  - `functions/src/routes/__tests__/visits.postCommitEscalations.test.ts`
+  - `functions/src/middlewares/auth.ts`
+  - `functions/src/services/postCommitEscalationReportingService.ts`
+  - `functions/src/services/__tests__/postCommitEscalationReportingService.test.ts`
+  - `functions/src/index.ts`
+  - `web-portal/app/(protected)/ops/escalations/page.tsx`
+  - `web-portal/lib/api/hooks.ts`
+  - `web-portal/lib/hooks/useOperatorAccess.ts`
+  - `web-portal/components/layout/TopNavigation.tsx`
+  - `web-portal/components/layout/Sidebar.tsx`
+  - `web-portal/components/layout/MobileSidebarDrawer.tsx`
+- Plan:
+  - Define atomicity boundaries for each workflow.
+  - Continue converting remaining coupled write sets to transactions/batches.
+  - Move external side effects (emails/push) after commit with retry/logging.
+- Priority: **P0**
+
+### 15) Clear Service Layer Separation
+- Status: **Addressed (Closeout scope)**
+- Current code:
+  - Service modules exist, and Phase 2 foundation now includes `services/domain/*` boundaries plus a composition container for visits/medications, now expanded in Phase 3 to include actions, health logs, users, caregiver patient-resource/upcoming-action read flows, care summary/export aggregate reads, quick-overview/trends dashboard aggregate reads, caregiver `care/health-logs` reads, caregiver med-change medication reads, and caregiver note/task/visit-metadata route flows.
+  - Medication and visit query/read route logic now consumes domain services instead of direct Firestore access.
+  - Action query/read/write/lifecycle route logic now consumes domain services instead of direct Firestore access.
+  - Health-log query/summary/export/lifecycle and create dedupe persistence paths now consume domain services instead of direct Firestore access.
+  - Medication lifecycle route ownership/read checks now also consume domain services.
+  - Medication core write route ownership/read checks now also consume domain services.
+  - Medication core medication-document create/update writes now also consume domain/repository mutation methods.
+  - Visit write/lifecycle route ownership/read checks now also consume domain services.
+  - Medication reminder timing-backfill state orchestration now resolves a dependency-injected infrastructure repository for `systemMaintenance` state persistence, reducing direct service-level Firestore coupling.
+  - Medication-safety AI cache orchestration now resolves a dependency-injected infrastructure repository for `medicationSafetyCache` persistence and purge operations.
+  - External drug-data cache orchestration now resolves a dependency-injected infrastructure repository for `medicationSafetyExternalCache` persistence operations.
+  - Soft-delete retention orchestration now resolves a dependency-injected infrastructure repository for collection purge scanning/deletion operations.
+  - Restore-audit event append orchestration now resolves a dependency-injected infrastructure repository for `restoreAuditLogs` event creation.
+  - Medication-sync lookup orchestration now resolves a dependency-injected infrastructure repository for medication canonical/nameLower and warm-cache list reads.
+  - Residual direct Firestore orchestration is constrained to intentional infrastructure/maintenance wrappers with explicit repository contract coverage.
+- Evidence:
+  - `functions/src/routes/care.ts`
+  - `functions/src/routes/medications.ts`
+  - `functions/src/routes/actions.ts`
+  - `functions/src/routes/healthLogs.ts`
+  - `functions/src/services/domain/serviceContainer.ts`
+  - `functions/src/services/domain/actions/ActionDomainService.ts`
+  - `functions/src/services/domain/caregiverNotes/CaregiverNoteDomainService.ts`
+  - `functions/src/services/domain/careTasks/CareTaskDomainService.ts`
+  - `functions/src/services/domain/healthLogs/HealthLogDomainService.ts`
+  - `functions/src/services/domain/users/UserDomainService.ts`
+  - `functions/src/services/domain/medications/MedicationDomainService.ts`
+  - `functions/src/services/domain/visits/VisitDomainService.ts`
+- Plan:
+  - Keep enforcing domain/repository boundary expectations in code review and architecture checks.
+  - Continue adding repository contract tests for any new infrastructure data flows.
+- Priority: **P2**
+
+### 16) Response Cache Headers
+- Status: **Addressed (Phase 1 scope)**
+- Current code:
+  - Caregiver read endpoints now set private cache headers:
+    - `/v1/care/overview` => `private, max-age=60`
+    - `/v1/care/:patientId/summary` => `private, max-age=30`
+    - `/v1/care/:patientId/quick-overview` => `private, max-age=30`
+    - `/v1/care/:patientId/alerts` => `private, max-age=30`
+    - `/v1/care/:patientId/medication-status` => `private, max-age=30`
+    - `/v1/care/:patientId/upcoming-actions` => `private, max-age=30`
+    - `/v1/care/:patientId/trends` => `private, max-age=60`
+    - `/v1/care/:patientId/med-changes` => `private, max-age=60`
+    - `/v1/care/:patientId/medications` => `private, max-age=30`
+    - `/v1/care/:patientId/actions` => `private, max-age=30`
+    - `/v1/care/:patientId/visits` => `private, max-age=30`
+    - `/v1/care/:patientId/visits/:visitId` => `private, max-age=30`
+    - `/v1/care/:patientId/notes` => `private, max-age=30`
+    - `/v1/care/:patientId/tasks` => `private, max-age=30`
+    - `/v1/care/:patientId/health-logs` => `private, max-age=30`
+    - `/v1/care/:patientId/medication-adherence` => `private, max-age=30`
+    - `/v1/care/:patientId/export/summary` => `private, max-age=30`
+  - Additional authenticated non-care read endpoints now set private cache headers:
+    - `/v1/shares` => `private, max-age=30`
+    - `/v1/shares/invites` => `private, max-age=30`
+    - `/v1/shares/:id` => `private, max-age=30`
+    - `/v1/shares/my-invites` => `private, max-age=30`
+    - `/v1/medication-reminders` => `private, max-age=30`
+    - `/v1/medication-logs` => `private, max-age=30`
+    - `/v1/medication-logs/summary` => `private, max-age=60`
+    - `/v1/nudges` => `private, max-age=30`
+    - `/v1/nudges/history` => `private, max-age=30`
+- Evidence:
+  - `functions/src/routes/care/overview.ts`
+  - `functions/src/routes/__tests__/care.overview.test.ts`
+  - `functions/src/routes/care/summary.ts`
+  - `functions/src/routes/__tests__/care.summary.test.ts`
+  - `functions/src/routes/care/quickOverview.ts`
+  - `functions/src/routes/care/alerts.ts`
+  - `functions/src/routes/care/medicationStatus.ts`
+  - `functions/src/routes/care/upcomingActions.ts`
+  - `functions/src/routes/care/trends.ts`
+  - `functions/src/routes/care/medicationChanges.ts`
+  - `functions/src/routes/care/patientResources.ts`
+  - `functions/src/routes/care/notes.ts`
+  - `functions/src/routes/care/tasks.ts`
+  - `functions/src/routes/care/healthLogs.ts`
+  - `functions/src/routes/care/medicationAdherence.ts`
+  - `functions/src/routes/care/exportSummary.ts`
+  - `functions/src/routes/shares.ts`
+  - `functions/src/routes/medicationReminders.ts`
+  - `functions/src/routes/medicationLogs.ts`
+  - `functions/src/routes/nudges.ts`
+  - `functions/src/routes/__tests__/care.alerts.test.ts`
+  - `functions/src/routes/__tests__/care.medicationStatus.test.ts`
+  - `functions/src/routes/__tests__/care.aggregateFilters.test.ts`
+  - `functions/src/routes/__tests__/care.pagination.test.ts`
+  - `functions/src/routes/__tests__/shares.invites.test.ts`
+  - `functions/src/routes/__tests__/medicationReminders.softDelete.test.ts`
+- Plan:
+  - Continue extending cache policy to remaining read-heavy authenticated endpoints as they are modularized/refactored.
+  - Continue centralizing authorization patterns on remaining non-care write-heavy surfaces.
+  - Reassess TTL values after production hit-rate telemetry is available.
+- Priority: **P2**
+
+## Proposed Execution Phases (Updated Sequencing)
+
+### Phase 0 (Immediate Safety + Consistency)
+- Status: **Completed (2026-02-20)**.
+- Completed scope:
+  - medication timezone policy support (`timingMode` + `anchorTimezone`) and travel-safe scheduling
+  - atomic share accept/revoke flows
+  - caregiver overview N+1 baseline reduction
+  - caregiver/owner read-access unification for visits
+  - post-commit escalation reporting + operator follow-through
+
+### Phase 1 (Remainder Focus: security/performance follow-through)
+- Status: **Completed (2026-02-21)**
+- Completed scope:
+  - centralized authorization extraction for high-risk caregiver/owner/operator flows (#5)
+  - caregiver query/performance guardrail follow-through across dashboard/detail endpoints (#11)
+  - safe read-endpoint cache-control rollout for caregiver surfaces (#16)
+  - proactive index inventory follow-through for current query shapes (#12)
+- Guardrail:
+  - Route modularization remained non-primary and was performed only when needed to complete the four target items.
+
+### Phase 2 (Vertical-Slice Architecture)
+- Status: **Completed (2026-02-21)**
+- Completed scope:
+  - shared repository contracts/adapters + domain services/container for medications and visits
+  - migration of medication and visit read endpoints to domain/repository boundaries
+  - migration of medication and visit write/lifecycle paths (including reminder/nudge side-effects and delete/restore cascades) to domain/repository boundaries
+
+### Phase 3 (Denormalization Sync + Broader Refactor)
+- Status: **Completed (2026-02-22)**
+- Staged chunks:
+  - Chunk 1 (complete): trigger-level denormalization sync for high-risk duplicated fields (`users` -> `shares/shareInvites`, `medications` -> `medicationReminders`) with service tests.
+  - Chunk 2 (complete): scheduled backfill/repair job for stale denormalized records with persisted cursor state + dry-run metrics.
+  - Chunk 3 (complete): CI guardrails for index/query drift and denormalization/repository contract coverage.
+  - Chunk 4 (complete): extended repository/domain boundaries and auth/cache hardening across prioritized high-churn surfaces (`actions`, `healthLogs`, caregiver patient-resource/upcoming-action reads, care summary/export/quick-overview/trends/alerts/medication-status/adherence paths, caregiver notes/tasks/visit-metadata flows, care user-profile/push-token reads), plus non-care auth/cache follow-through (`shares`, `medication-logs`, `nudgesDebug`).
+
+### Phase 4 (Long-Tail Service Boundary Expansion)
+- Status: **Completed (2026-02-23)**
+- Completed scope:
+  - users/auth/insights long-tail boundaries completed across route and service surfaces.
+  - nudges/helper-service boundary closeout for analyzer/notification/context services.
+  - post-commit helper-service boundary closeout for escalation reporting/recovery flows.
+  - medication-safety, caregiver-email, and provider-report helper-service read paths migrated to domain-backed dependencies.
+- Explicit exceptions moved out of Phase 4 scope:
+  - infrastructure/maintenance workflows that intentionally perform generic cross-collection maintenance/caching writes (for example: denormalization backfill orchestration, soft-delete retention sweeping, restore-audit append-only writes, and medication reminder cache/state maintenance).
+
+## Testing and Rollout Guardrails
+- Unit tests:
+  - Reminder scheduling across timezone changes.
+  - Access control matrix (owner/caregiver/revoked/unknown).
+  - Sanitization and max-length behavior.
+  - Transactional share flow integrity.
+- Integration tests (Firestore emulator):
+  - Care overview query count/perf smoke tests.
+  - Soft-delete read filtering and restore paths.
+  - Pagination cursor correctness.
+- Observability:
+  - Add structured logs for cache hit/miss, transaction retries, timing policy usage.
+  - Add Sentry breadcrumbs for denied-access and share acceptance failures.
+
+## Suggested Next Ticket Set (Current Sequencing)
+- [x] Start first Phase 2 vertical slice for service/repository extraction (recommended: `medications` domain).
+- [x] Define and scaffold shared repository interfaces/contracts for visits/medications (#4, #15).
+- [x] Migrate medications query endpoints (`GET /v1/meds`, `GET /v1/meds/:id`) to domain service + repository boundaries with parity tests.
+- [x] Migrate visits query/read endpoints to domain service + repository boundaries with parity tests.
+- [x] Continue migrating medication write/lifecycle endpoints to domain service + repository boundaries with parity tests.
+- [x] Continue migrating visit write/lifecycle endpoints to domain service + repository boundaries with parity tests.
+- [x] Implement denormalization sync trigger + backfill strategy for highest-risk duplicated fields (#9).
+- [x] Add CI guardrails for query/index drift and repository contract tests.
+- [x] Start Phase 3 chunk 4 expansion by migrating full `actions` route flow (read/write/lifecycle) to domain/repository boundaries with parity tests.
+- [x] Continue Phase 3 chunk 4 by migrating `healthLogs` read/summary/export/lifecycle flows and create dedupe persistence paths to domain/repository boundaries with parity tests.
+- [x] Continue Phase 3 chunk 4 by migrating caregiver patient-resource/upcoming-action read endpoints to domain/repository boundaries with parity tests.
+- [x] Continue Phase 3 chunk 4 by migrating care `summary` and `export/summary` aggregate reads to domain/repository boundaries with parity tests.
+- [x] Continue Phase 3 chunk 4 by migrating care `quick-overview` and `trends` aggregate reads to domain/repository boundaries with parity tests.
+- [x] Continue Phase 3 chunk 4 by migrating caregiver `care/health-logs` and `care/med-changes` read dependencies to domain/repository boundaries with parity tests.
+- [x] Expand cache/header patterns from caregiver routes to additional authenticated non-care read surfaces.
+- [x] Continue authorization-pattern centralization from caregiver routes to remaining non-care write-heavy surfaces.
+
+## Operational Follow-Up (Post-Remediation)
+- Continue operational tuning based on production telemetry:
+  - cache TTL/right-sizing and eviction instrumentation,
+  - index shape adjustments for emerging query patterns,
+  - incident/postmortem-driven authorization and observability refinements.

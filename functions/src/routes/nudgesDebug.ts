@@ -9,7 +9,12 @@ import { Router } from 'express';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
-import { requireAuth, AuthRequest } from '../middlewares/auth';
+import {
+    requireAuth,
+    AuthRequest,
+    ensureOperatorAccessOrReject,
+} from '../middlewares/auth';
+import { ensureResourceOwnerAccessOrReject } from '../middlewares/resourceAccess';
 import {
     analyzeVisitForNudges,
 } from '../services/lumibotAnalyzer';
@@ -18,17 +23,49 @@ import {
     diabetesProtocol,
 } from '../data/conditionProtocols';
 import type { NudgeActionType } from '../types/lumibot';
+import { sanitizePlainText } from '../utils/inputSanitization';
 
 export const nudgesDebugRouter = Router();
 
 const getDb = () => admin.firestore();
 const getNudgesCollection = () => getDb().collection('nudges');
+const DEBUG_MEDICATION_NAME_MAX_LENGTH = 120;
+
+const sanitizeDebugMedicationName = (value: unknown): string =>
+    sanitizePlainText(value, DEBUG_MEDICATION_NAME_MAX_LENGTH) || 'Test Medication';
 
 // Check if we're in development mode
 const isDevelopment = () => {
     return process.env.FUNCTIONS_EMULATOR === 'true' ||
         process.env.NODE_ENV !== 'production' ||
         process.env.LUMIBOT_DEBUG === 'true';
+};
+
+const ensureDebugWriteAccessOrReject = (
+    req: AuthRequest,
+    res: {
+        status: (statusCode: number) => {
+            json: (payload: { code: string; message: string }) => void;
+        };
+    },
+): boolean => {
+    if (!isDevelopment()) {
+        res.status(403).json({
+            code: 'forbidden',
+            message: 'Debug endpoints are only available in development',
+        });
+        return false;
+    }
+
+    if (process.env.FUNCTIONS_EMULATOR === 'true') {
+        return true;
+    }
+
+    return ensureOperatorAccessOrReject(
+        req.user,
+        res,
+        'Debug endpoint operator access required',
+    );
 };
 
 // =============================================================================
@@ -45,12 +82,7 @@ const createTestNudgeSchema = z.object({
 });
 
 nudgesDebugRouter.post('/debug/create', requireAuth, async (req: AuthRequest, res) => {
-    // Check development mode
-    if (!isDevelopment()) {
-        res.status(403).json({
-            code: 'forbidden',
-            message: 'Debug endpoints are only available in development',
-        });
+    if (!ensureDebugWriteAccessOrReject(req, res)) {
         return;
     }
 
@@ -104,7 +136,7 @@ nudgesDebugRouter.post('/debug/create', requireAuth, async (req: AuthRequest, re
             };
         } else {
             // Medication check-in
-            const medName = data.medicationName || 'Test Medication';
+            const medName = sanitizeDebugMedicationName(data.medicationName);
             nudgeData = {
                 userId,
                 visitId: 'debug-visit',
@@ -172,11 +204,7 @@ const createSequenceSchema = z.object({
 });
 
 nudgesDebugRouter.post('/debug/create-sequence', requireAuth, async (req: AuthRequest, res) => {
-    if (!isDevelopment()) {
-        res.status(403).json({
-            code: 'forbidden',
-            message: 'Debug endpoints are only available in development',
-        });
+    if (!ensureDebugWriteAccessOrReject(req, res)) {
         return;
     }
 
@@ -184,7 +212,7 @@ nudgesDebugRouter.post('/debug/create-sequence', requireAuth, async (req: AuthRe
         const userId = req.user!.uid;
         const data = createSequenceSchema.parse(req.body);
         const now = admin.firestore.Timestamp.now();
-        const medName = data.medicationName;
+        const medName = sanitizeDebugMedicationName(data.medicationName);
         const sequenceId = `debug_seq_${Date.now()}`;
         const interval = data.intervalSeconds * 1000; // Convert to ms
 
@@ -315,11 +343,7 @@ const testConditionSchema = z.object({
 });
 
 nudgesDebugRouter.post('/debug/test-condition', requireAuth, async (req: AuthRequest, res) => {
-    if (!isDevelopment()) {
-        res.status(403).json({
-            code: 'forbidden',
-            message: 'Debug endpoints are only available in development',
-        });
+    if (!ensureDebugWriteAccessOrReject(req, res)) {
         return;
     }
 
@@ -362,7 +386,7 @@ nudgesDebugRouter.post('/debug/test-condition', requireAuth, async (req: AuthReq
                 };
 
                 if (seq.type === 'medication_checkin') {
-                    nudgeData.medicationName = data.medicationName || 'Test Medication';
+                    nudgeData.medicationName = sanitizeDebugMedicationName(data.medicationName);
                 }
 
                 const docRef = await getNudgesCollection().add(nudgeData);
@@ -417,11 +441,7 @@ const analyzeVisitSchema = z.object({
 });
 
 nudgesDebugRouter.post('/debug/analyze-visit', requireAuth, async (req: AuthRequest, res) => {
-    if (!isDevelopment()) {
-        res.status(403).json({
-            code: 'forbidden',
-            message: 'Debug endpoints are only available in development',
-        });
+    if (!ensureDebugWriteAccessOrReject(req, res)) {
         return;
     }
 
@@ -442,12 +462,11 @@ nudgesDebugRouter.post('/debug/analyze-visit', requireAuth, async (req: AuthRequ
 
         const visitData = visitDoc.data()!;
 
-        // Verify ownership
-        if (visitData.userId !== userId) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'Not authorized to access this visit',
-            });
+        if (!ensureResourceOwnerAccessOrReject(userId, visitData, res, {
+            resourceName: 'visit',
+            message: 'Not authorized to access this visit',
+            notFoundMessage: 'Visit not found',
+        })) {
             return;
         }
 
@@ -505,11 +524,7 @@ nudgesDebugRouter.post('/debug/analyze-visit', requireAuth, async (req: AuthRequ
 // =============================================================================
 
 nudgesDebugRouter.delete('/debug/clear', requireAuth, async (req: AuthRequest, res) => {
-    if (!isDevelopment()) {
-        res.status(403).json({
-            code: 'forbidden',
-            message: 'Debug endpoints are only available in development',
-        });
+    if (!ensureDebugWriteAccessOrReject(req, res)) {
         return;
     }
 

@@ -73,7 +73,7 @@ export default function HomeScreen() {
     isRefetching: scheduleRefetching,
     refetch: refetchSchedule,
     error: scheduleError,
-  } = useMedicationSchedule(user?.uid, { enabled: isAuthenticated });
+  } = useMedicationSchedule(user?.uid, { enabled: isAuthenticated && Boolean(user?.uid) });
 
   // Web portal banner state - for placing "Need help?" button below cards
   const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();
@@ -222,13 +222,17 @@ export default function HomeScreen() {
     recentVisits: totalVisits,
     medications: Array.isArray(medications) ? medications.length : 0,
   };
+  const scheduleSummary = schedule?.summary;
+  const hasScheduleSummary = Boolean(scheduleSummary && typeof scheduleSummary.total === 'number');
+  const hasScheduledDoses = Boolean(scheduleSummary && scheduleSummary.total > 0);
+  const scheduleHardFailure = Boolean(scheduleError && !hasScheduleSummary);
 
   const handleRefresh = useCallback(async (source: RefreshSource = 'pull_to_refresh') => {
     const currentFailures = [
       actionsError ? 'Action Items' : null,
       visitsError ? 'Recent Visits' : null,
       medsError ? 'Medications' : null,
-      scheduleError ? "Today's Schedule" : null,
+      scheduleHardFailure ? "Today's Schedule" : null,
       profileError ? 'Profile' : null,
     ].filter(Boolean) as string[];
 
@@ -271,7 +275,7 @@ export default function HomeScreen() {
     refetchProfile,
     refetchSchedule,
     refetchVisits,
-    scheduleError,
+    scheduleHardFailure,
     visitsError,
   ]);
 
@@ -298,7 +302,7 @@ export default function HomeScreen() {
   if (actionsError) failedOverviewCards.push('Action Items');
   if (visitsError) failedOverviewCards.push('Recent Visits');
   if (medsError) failedOverviewCards.push('Medications');
-  if (scheduleError) failedOverviewCards.push("Today's Schedule");
+  if (scheduleHardFailure) failedOverviewCards.push("Today's Schedule");
 
   const failedCards = [...failedOverviewCards];
   if (profileError) failedCards.push('Profile');
@@ -490,28 +494,28 @@ export default function HomeScreen() {
                   />
 
                   {/* Today's Schedule - show when data exists or load failed */}
-                  {((schedule && schedule.summary && schedule.summary.total > 0) || scheduleError) && (
+                  {(hasScheduledDoses || scheduleHardFailure) && (
                     <GlanceableCard
                       title="Today's Schedule"
-                      count={scheduleError ? 0 : schedule?.summary?.taken ?? 0}
+                      count={scheduleHardFailure ? 0 : scheduleSummary?.taken ?? 0}
                       countLabel={
-                        scheduleError
+                        scheduleHardFailure
                           ? 'unavailable'
-                          : `of ${schedule?.summary?.total ?? 0} taken`
+                          : `of ${scheduleSummary?.total ?? 0} taken`
                       }
-                      emptyStateText={scheduleError ? 'Unable to load. Tap to retry.' : undefined}
+                      emptyStateText={scheduleHardFailure ? 'Unable to load. Tap to retry.' : undefined}
                       statusBadge={
-                        scheduleError
+                        scheduleHardFailure
                           ? undefined
-                          : schedule && schedule.summary.taken === schedule.summary.total
+                          : scheduleSummary && scheduleSummary.taken === scheduleSummary.total
                           ? { text: 'All done!', color: Colors.success }
-                          : schedule && schedule.summary.pending > 0
-                            ? { text: `${schedule.summary.pending} pending`, color: Colors.primary }
+                          : scheduleSummary && scheduleSummary.pending > 0
+                            ? { text: `${scheduleSummary.pending} pending`, color: Colors.primary }
                             : undefined
                       }
                       icon="today-outline"
                       onPress={
-                        scheduleError
+                        scheduleHardFailure
                           ? () => {
                               void handleRefresh('card_retry');
                             }

@@ -37,6 +37,58 @@ import { useCareVisitSummary, useUpdateVisitMetadata, useCareVisits } from '@/li
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+const trimText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const formatFollowUpAction = (entry: unknown): string | null => {
+  if (!entry || typeof entry !== 'object') return null;
+  const record = entry as Record<string, unknown>;
+  const task = trimText(record.task) || trimText(record.type) || 'Follow up';
+  const timeframe = trimText(record.timeframe);
+  const dueAt = trimText(record.dueAt);
+
+  if (timeframe) {
+    return `${task} — ${timeframe}`;
+  }
+
+  if (dueAt) {
+    const dateValue = new Date(dueAt);
+    const dueLabel = Number.isNaN(dateValue.getTime()) ? dueAt : format(dateValue, 'MMM d, yyyy');
+    return `${task} — by ${dueLabel}`;
+  }
+
+  return task;
+};
+
+const formatOrderedTest = (entry: unknown): string | null => {
+  if (!entry || typeof entry !== 'object') return null;
+  const record = entry as Record<string, unknown>;
+  const name = trimText(record.name);
+  if (!name) return null;
+  const category = trimText(record.category);
+  if (!category || category.toLowerCase() === 'other') {
+    return name;
+  }
+  return `${name} (${category})`;
+};
+
+const formatMedicationDisplay = (med: unknown): string => {
+  if (typeof med === 'string') return med;
+  if (med && typeof med === 'object') {
+    const record = med as Record<string, unknown>;
+    return (
+      (record.display as string) ||
+      (record.name as string) ||
+      (record.original as string) ||
+      'Medication'
+    );
+  }
+  return 'Medication';
+};
+
 export default function CareVisitDetailPage() {
   const params = useParams<{ patientId: string; visitId: string }>();
   const patientId = params.patientId;
@@ -233,10 +285,101 @@ export default function CareVisitDetailPage() {
   const hasMedChanges = startedMeds.length > 0 || stoppedMeds.length > 0 || changedMeds.length > 0;
 
   // Parse diagnoses
-  const diagnoses = Array.isArray(visit.diagnoses) ? visit.diagnoses.filter(Boolean) : [];
+  const diagnoses = Array.isArray(visit.diagnoses) && visit.diagnoses.length > 0
+    ? visit.diagnoses.filter(Boolean)
+    : Array.isArray((visit as any).diagnosesDetailed)
+      ? ((visit as any).diagnosesDetailed as Array<Record<string, unknown>>)
+        .map((item) => trimText(item?.name))
+        .filter((value): value is string => Boolean(value))
+      : [];
 
-  // Parse next steps
-  const nextSteps = Array.isArray(visit.nextSteps) ? visit.nextSteps.filter(Boolean) : [];
+  // Parse action items (prefer structured follow-ups, fallback to legacy nextSteps)
+  const nextSteps = Array.isArray((visit as any).followUps)
+    ? ((visit as any).followUps as unknown[])
+      .map(formatFollowUpAction)
+      .filter((value): value is string => Boolean(value))
+    : [];
+  const actionItems = nextSteps.length > 0
+    ? nextSteps
+    : Array.isArray(visit.nextSteps)
+      ? visit.nextSteps.filter(Boolean)
+      : [];
+
+  // Parse ordered tests (prefer structured testsOrdered, fallback to legacy imaging)
+  const orderedTests = Array.isArray((visit as any).testsOrdered)
+    ? ((visit as any).testsOrdered as unknown[])
+      .map(formatOrderedTest)
+      .filter((value): value is string => Boolean(value))
+    : [];
+  const orderedTestItems = orderedTests.length > 0
+    ? orderedTests
+    : Array.isArray((visit as any).imaging)
+      ? ((visit as any).imaging as string[]).filter(Boolean)
+      : [];
+
+  const medicationReview = React.useMemo(() => {
+    const review = (visit as any).medicationReview as Record<string, unknown> | undefined;
+    if (!review || typeof review !== 'object') {
+      return {
+        reviewed: false,
+        followUpNeeded: false,
+        continuedReviewed: [] as unknown[],
+        concerns: [] as string[],
+        sideEffects: [] as string[],
+        notes: [] as string[],
+      };
+    }
+
+    const continuedReviewed = Array.isArray(review.continuedReviewed)
+      ? (review.continuedReviewed as unknown[]).filter(Boolean)
+      : Array.isArray(review.continued)
+        ? (review.continued as unknown[]).filter(Boolean)
+        : [];
+    const adherenceConcerns = Array.isArray(review.adherenceConcerns)
+      ? (review.adherenceConcerns as unknown[])
+        .map(trimText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const reviewConcerns = Array.isArray(review.reviewConcerns)
+      ? (review.reviewConcerns as unknown[])
+        .map(trimText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const concerns = Array.from(new Set([...reviewConcerns, ...adherenceConcerns]));
+    const sideEffects = Array.isArray(review.sideEffectsDiscussed)
+      ? (review.sideEffectsDiscussed as unknown[])
+        .map(trimText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const notes = Array.isArray(review.notes)
+      ? (review.notes as unknown[])
+        .map(trimText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const reviewed = typeof review.reviewed === 'boolean'
+      ? review.reviewed
+      : continuedReviewed.length > 0 ||
+        concerns.length > 0 ||
+        sideEffects.length > 0 ||
+        notes.length > 0;
+
+    return {
+      reviewed,
+      followUpNeeded: Boolean(review.followUpNeeded),
+      continuedReviewed,
+      concerns,
+      sideEffects,
+      notes,
+    };
+  }, [visit]);
+
+  const hasMedicationReviewDetails =
+    medicationReview.reviewed ||
+    medicationReview.continuedReviewed.length > 0 ||
+    medicationReview.concerns.length > 0 ||
+    medicationReview.sideEffects.length > 0 ||
+    medicationReview.notes.length > 0 ||
+    medicationReview.followUpNeeded;
 
   // Format visit date
   const visitDate = visit.visitDate ? new Date(visit.visitDate) : null;
@@ -349,9 +492,9 @@ export default function CareVisitDetailPage() {
               </p>
             </div>
             <div className="p-5">
-              {nextSteps.length > 0 ? (
+              {actionItems.length > 0 ? (
                 <ul className="space-y-3">
-                  {nextSteps.map((step, idx) => (
+                  {actionItems.map((step, idx) => (
                     <li
                       key={`step-${idx}`}
                       className="flex items-start gap-3 rounded-2xl border border-border-light/60 bg-background-subtle/70 px-4 py-3 text-sm text-text-primary shadow-sm"
@@ -368,6 +511,24 @@ export default function CareVisitDetailPage() {
                   No action items recorded for this visit.
                 </p>
               )}
+
+              <div className="mt-5 border-t border-border-light/60 pt-4">
+                <h3 className="text-sm font-semibold text-text-primary mb-2">Ordered Tests</h3>
+                {orderedTestItems.length > 0 ? (
+                  <ul className="space-y-2">
+                    {orderedTestItems.map((item, idx) => (
+                      <li
+                        key={`test-${idx}`}
+                        className="rounded-xl border border-border-light/60 bg-background-subtle/70 px-3 py-2 text-sm text-text-primary"
+                      >
+                        {String(item)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-text-muted">No ordered tests recorded.</p>
+                )}
+              </div>
             </div>
           </Card>
 
@@ -444,6 +605,75 @@ export default function CareVisitDetailPage() {
                 No medication changes were recorded in this visit.
               </div>
             )}
+
+            {hasMedicationReviewDetails ? (
+              <div className="mt-5 border-t border-border-light/60 pt-4">
+                <h3 className="text-sm font-semibold text-text-primary mb-2">Medication Review</h3>
+
+                {medicationReview.continuedReviewed.length > 0 ? (
+                  <div className="mb-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                      Reviewed/continued
+                    </p>
+                    <ul className="space-y-2">
+                      {medicationReview.continuedReviewed.map((item, idx) => (
+                        <li
+                          key={`review-med-${idx}`}
+                          className="rounded-xl border border-border-light/60 bg-background-subtle/70 px-3 py-2 text-sm text-text-primary"
+                        >
+                          {formatMedicationDisplay(item)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {medicationReview.concerns.length > 0 ? (
+                  <div className="mb-3">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                      Review concerns
+                    </p>
+                    <ul className="ml-4 list-disc space-y-1 text-sm text-text-primary">
+                      {medicationReview.concerns.map((item, idx) => (
+                        <li key={`review-concern-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {medicationReview.sideEffects.length > 0 ? (
+                  <div className="mb-3">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                      Side effects discussed
+                    </p>
+                    <ul className="ml-4 list-disc space-y-1 text-sm text-text-primary">
+                      {medicationReview.sideEffects.map((item, idx) => (
+                        <li key={`review-side-effect-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {medicationReview.notes.length > 0 ? (
+                  <div className="mb-3">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                      Notes
+                    </p>
+                    <ul className="ml-4 list-disc space-y-1 text-sm text-text-primary">
+                      {medicationReview.notes.map((item, idx) => (
+                        <li key={`review-note-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {medicationReview.followUpNeeded ? (
+                  <p className="text-sm font-medium text-warning-dark">
+                    Medication follow-up is needed.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </Card>
       </div>
@@ -603,20 +833,6 @@ function MedicationSection({
 
   const styles = toneStyles[tone];
 
-  const formatMedication = (med: unknown): string => {
-    if (typeof med === 'string') return med;
-    if (med && typeof med === 'object') {
-      const record = med as Record<string, unknown>;
-      return (
-        (record.display as string) ||
-        (record.name as string) ||
-        (record.original as string) ||
-        'Medication'
-      );
-    }
-    return 'Medication';
-  };
-
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -639,7 +855,7 @@ function MedicationSection({
                 styles.bg
               )}
             >
-              {formatMedication(med)}
+              {formatMedicationDisplay(med)}
             </li>
           ))}
         </ul>

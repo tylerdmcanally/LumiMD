@@ -21,7 +21,6 @@ import {
     TrendingDown,
     Minus,
 } from 'lucide-react';
-import { useQueries } from '@tanstack/react-query';
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,11 +28,8 @@ import { Badge } from '@/components/ui/badge';
 import {
     useCareOverview,
     CarePatientOverview,
-    useCareAlerts,
     CareAlert,
-    CareAlertsResponse,
 } from '@/lib/api/hooks';
-import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 
 // =============================================================================
@@ -116,97 +112,34 @@ function EnhancedAlertItem({
     );
 }
 
-// Legacy alert item for backward compatibility
-function AlertItem({
-    alert,
-    patientName,
-    patientId,
-}: {
-    alert: { message: string; priority: 'high' | 'medium' | 'low' };
-    patientName: string;
-    patientId: string;
-}) {
-    const isHigh = alert.priority === 'high';
-
-    return (
-        <Link
-            href={`/care/${patientId}`}
-            className={cn(
-                'flex items-start gap-3 p-3 rounded-lg transition-colors',
-                isHigh
-                    ? 'bg-error/10 hover:bg-error/15'
-                    : 'bg-warning/10 hover:bg-warning/15'
-            )}
-        >
-            <AlertCircle
-                className={cn(
-                    'h-5 w-5 shrink-0 mt-0.5',
-                    isHigh ? 'text-error' : 'text-warning'
-                )}
-            />
-            <div className="flex-1 min-w-0">
-                <p className="font-medium text-text-primary truncate">{patientName}</p>
-                <p className="text-sm text-text-secondary">{alert.message}</p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-text-muted shrink-0" />
-        </Link>
-    );
-}
-
 // =============================================================================
 // Enhanced Needs Attention Panel (Right sidebar on desktop)
-// Uses unified alerts API for all patients
+// Uses already-batched overview alerts for all patients
 // =============================================================================
 
 function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) {
-    const alertsApiUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL ||
-        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
-
-    // Fetch unified alerts for each patient with one hook call.
-    const alertQueries = useQueries({
-        queries: patients.map((patient) => ({
-            queryKey: ['care-alerts', patient.userId, 7],
-            staleTime: 30_000,
-            enabled: Boolean(patient.userId),
-            queryFn: async (): Promise<CareAlertsResponse> => {
-                const user = auth.currentUser;
-                if (!user) {
-                    throw new Error('Not authenticated');
-                }
-
-                const token = await user.getIdToken();
-                const response = await fetch(
-                    `${alertsApiUrl}/v1/care/${patient.userId}/alerts?days=7`,
-                    {
-                        headers: { Authorization: `Bearer ${token}` },
-                    },
-                );
-
-                if (!response.ok) {
-                    throw new Error('Failed to fetch alerts');
-                }
-
-                return response.json() as Promise<CareAlertsResponse>;
-            },
-        })),
-    });
-    const isLoadingAlerts = alertQueries.some((q) => q.isLoading);
-
-    // Aggregate all alerts across patients
-    const allAlerts: Array<CareAlert & { patientName: string; patientId: string }> = [];
-    
-    alertQueries.forEach((query, idx) => {
-        if (query.data?.alerts) {
-            query.data.alerts.forEach((alert) => {
-                allAlerts.push({
-                    ...alert,
-                    patientName: patients[idx].name,
-                    patientId: patients[idx].userId,
-                });
-            });
-        }
-    });
+    const allAlerts: Array<CareAlert & { patientName: string; patientId: string }> = patients
+        .flatMap((patient) =>
+            patient.alerts
+                .filter((alert) => alert.priority === 'high' || alert.priority === 'medium')
+                .map((alert, idx) => ({
+                    id: `${patient.userId}-${alert.type}-${idx}`,
+                    type: alert.type,
+                    severity: alert.priority === 'high' ? 'high' : 'medium',
+                    title:
+                        alert.type === 'missed_dose'
+                            ? 'Missed Medications'
+                            : 'Overdue Action Item',
+                    description: alert.message,
+                    targetUrl:
+                        alert.type === 'missed_dose'
+                            ? `/care/${patient.userId}/medications`
+                            : `/care/${patient.userId}/actions`,
+                    timestamp: patient.lastActive || new Date(0).toISOString(),
+                    patientName: patient.name,
+                    patientId: patient.userId,
+                })),
+        );
 
     // Sort by severity
     const severityOrder: Record<string, number> = { emergency: 0, high: 1, medium: 2, low: 3 };
@@ -215,20 +148,7 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
     const emergencyCount = allAlerts.filter((a) => a.severity === 'emergency').length;
     const highCount = allAlerts.filter((a) => a.severity === 'high').length;
     const urgentCount = emergencyCount + highCount;
-
-    // Fallback to legacy alerts if new API not loaded yet
-    const legacyAlerts = patients.flatMap((patient) =>
-        patient.alerts
-            .filter((a) => a.priority === 'high' || a.priority === 'medium')
-            .map((alert) => ({
-                ...alert,
-                patientName: patient.name,
-                patientId: patient.userId,
-            }))
-    );
-
-    const displayAlerts = allAlerts.length > 0 ? allAlerts : [];
-    const hasAlerts = displayAlerts.length > 0 || legacyAlerts.length > 0;
+    const hasAlerts = allAlerts.length > 0;
 
     return (
         <Card variant="elevated" padding="none" className="h-fit">
@@ -248,7 +168,7 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
                     )}
                 </div>
                 {/* Summary badges */}
-                {displayAlerts.length > 0 && (
+                {allAlerts.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-3">
                         {emergencyCount > 0 && (
                             <Badge tone="danger" variant="soft" size="sm">
@@ -270,43 +190,23 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
             </div>
 
             <div className="p-3">
-                {isLoadingAlerts ? (
-                    <div className="flex items-center justify-center py-6">
-                        <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
-                    </div>
-                ) : !hasAlerts ? (
+                {!hasAlerts ? (
                     <div className="flex items-center gap-3 p-3 text-success">
                         <CheckCircle className="h-5 w-5" />
                         <span className="text-sm font-medium">All clear! No urgent items.</span>
                     </div>
-                ) : displayAlerts.length > 0 ? (
+                ) : (
                     <div className="space-y-2">
-                        {displayAlerts.slice(0, 6).map((alert) => (
+                        {allAlerts.slice(0, 6).map((alert) => (
                             <EnhancedAlertItem
                                 key={alert.id}
                                 alert={alert}
                                 patientName={patients.length > 1 ? alert.patientName : undefined}
                             />
                         ))}
-                        {displayAlerts.length > 6 && (
+                        {allAlerts.length > 6 && (
                             <p className="text-sm text-text-muted text-center pt-2">
-                                + {displayAlerts.length - 6} more alerts
-                            </p>
-                        )}
-                    </div>
-                ) : (
-                    <div className="space-y-2">
-                        {legacyAlerts.slice(0, 5).map((alert, idx) => (
-                            <AlertItem
-                                key={idx}
-                                alert={alert}
-                                patientName={alert.patientName}
-                                patientId={alert.patientId}
-                            />
-                        ))}
-                        {legacyAlerts.length > 5 && (
-                            <p className="text-sm text-text-muted text-center pt-2">
-                                + {legacyAlerts.length - 5} more alerts
+                                + {allAlerts.length - 6} more alerts
                             </p>
                         )}
                     </div>
@@ -350,11 +250,8 @@ function TrendIndicator({
 function PatientCard({ patient }: { patient: CarePatientOverview }) {
     const { medicationsToday, pendingActions, alerts } = patient;
     const hasHighPriorityAlerts = alerts.some((a) => a.priority === 'high');
-
-    // Fetch alerts count from new API
-    const { data: alertsData } = useCareAlerts(patient.userId, { days: 7 });
-    const alertCount = alertsData?.summary?.total ?? alerts.length;
-    const hasUrgent = (alertsData?.summary?.emergency ?? 0) + (alertsData?.summary?.high ?? 0) > 0 || hasHighPriorityAlerts;
+    const alertCount = alerts.length;
+    const hasUrgent = hasHighPriorityAlerts;
 
     const medProgress =
         medicationsToday.total > 0

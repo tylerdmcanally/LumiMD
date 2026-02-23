@@ -36,12 +36,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-    usePatientMedicationStatus,
     useCareQuickOverview,
     useCareTrends,
-    useUpcomingActions,
-    useRecentMedChanges,
-    useCareTasks,
+    useCareTasksPage,
     useCreateCareTask,
     useUpdateCareTask,
     useDeleteCareTask,
@@ -66,6 +63,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 
+const CARE_TASKS_PAGE_SIZE = 25;
+
 // =============================================================================
 // Patient Detail Page
 // =============================================================================
@@ -75,26 +74,78 @@ export default function PatientDetailPage() {
     const patientId = params.patientId;
 
     const {
-        data: medStatus,
-        isLoading: medLoading,
-        error: medError,
-    } = usePatientMedicationStatus(patientId);
-
-    const {
         data: quickOverview,
         isLoading: overviewLoading,
+        error: quickOverviewError,
     } = useCareQuickOverview(patientId);
 
     // New data hooks for enhanced features
     const { data: trendsData, isLoading: trendsLoading } = useCareTrends(patientId, { days: 30 });
-    const { data: upcomingActions, isLoading: actionsLoading } = useUpcomingActions(patientId, { limit: 5 });
-    const { data: medChanges, isLoading: medChangesLoading } = useRecentMedChanges(patientId, { days: 30 });
-    const { data: careTasks, isLoading: careTasksLoading, refetch: refetchTasks } = useCareTasks(patientId);
+    const [tasksCursor, setTasksCursor] = React.useState<string | null>(null);
+    const [taskItems, setTaskItems] = React.useState<CareTask[]>([]);
+    const [tasksHasMore, setTasksHasMore] = React.useState(false);
+    const [tasksNextCursor, setTasksNextCursor] = React.useState<string | null>(null);
+    const [taskSummary, setTaskSummary] = React.useState({
+        pending: 0,
+        inProgress: 0,
+        completed: 0,
+        overdue: 0,
+    });
+    const {
+        data: careTasksPage,
+        isLoading: careTasksLoading,
+        isFetching: careTasksFetching,
+    } = useCareTasksPage(patientId, {
+        limit: CARE_TASKS_PAGE_SIZE,
+        cursor: tasksCursor,
+    });
+    const careTasks = React.useMemo(
+        () => ({
+            tasks: taskItems,
+            summary: taskSummary,
+        }),
+        [taskItems, taskSummary],
+    );
+
+    const upcomingActions = quickOverview?.upcomingActions;
+    const actionsLoading = overviewLoading;
+    const medChanges = quickOverview?.recentMedicationChanges;
+    const medChangesLoading = overviewLoading;
 
     // Task mutations
     const createTask = useCreateCareTask();
     const updateTask = useUpdateCareTask();
     const deleteTask = useDeleteCareTask();
+
+    const resetTaskPagination = React.useCallback(() => {
+        setTasksCursor(null);
+        setTaskItems([]);
+        setTasksHasMore(false);
+        setTasksNextCursor(null);
+        setTaskSummary({
+            pending: 0,
+            inProgress: 0,
+            completed: 0,
+            overdue: 0,
+        });
+    }, []);
+
+    React.useEffect(() => {
+        resetTaskPagination();
+    }, [patientId, resetTaskPagination]);
+
+    React.useEffect(() => {
+        if (!careTasksPage) return;
+        setTaskItems((previous) => {
+            const byId = new Map<string, CareTask>();
+            previous.forEach((task) => byId.set(task.id, task));
+            careTasksPage.tasks.forEach((task) => byId.set(task.id, task));
+            return Array.from(byId.values());
+        });
+        setTasksHasMore(careTasksPage.hasMore);
+        setTasksNextCursor(careTasksPage.nextCursor);
+        setTaskSummary(careTasksPage.summary);
+    }, [careTasksPage]);
 
     // Task dialog state
     const [isTaskDialogOpen, setIsTaskDialogOpen] = React.useState(false);
@@ -148,7 +199,7 @@ export default function PatientDetailPage() {
             }
             setIsTaskDialogOpen(false);
             setEditingTask(null);
-            refetchTasks();
+            resetTaskPagination();
         } catch (error) {
             console.error('Failed to save task:', error);
         }
@@ -163,7 +214,7 @@ export default function PatientDetailPage() {
                     status: task.status === 'completed' ? 'pending' : 'completed',
                 },
             });
-            refetchTasks();
+            resetTaskPagination();
         } catch (error) {
             console.error('Failed to update task:', error);
         }
@@ -172,13 +223,13 @@ export default function PatientDetailPage() {
     const handleDeleteTask = async (taskId: string) => {
         try {
             await deleteTask.mutateAsync({ patientId, taskId });
-            refetchTasks();
+            resetTaskPagination();
         } catch (error) {
             console.error('Failed to delete task:', error);
         }
     };
 
-    const isLoading = medLoading || overviewLoading;
+    const isLoading = overviewLoading;
 
     if (isLoading) {
         return (
@@ -190,7 +241,7 @@ export default function PatientDetailPage() {
         );
     }
 
-    if (medError) {
+    if (quickOverviewError) {
         return (
             <PageContainer maxWidth="lg">
                 <Card variant="elevated" padding="lg" className="text-center py-12">
@@ -199,7 +250,7 @@ export default function PatientDetailPage() {
                         Unable to load patient data
                     </h2>
                     <p className="text-text-secondary mb-4">
-                        {medError.message || 'An error occurred while loading this patient.'}
+                        {quickOverviewError.message || 'An error occurred while loading this patient.'}
                     </p>
                     <Button variant="secondary" asChild>
                         <Link href="/care" className="inline-flex items-center gap-2">
@@ -218,7 +269,7 @@ export default function PatientDetailPage() {
     const hasHighPriority = needsAttention.some((a) => a.priority === 'high');
 
     // Calculate medication progress
-    const medSummary = medStatus?.summary || { total: 0, taken: 0, pending: 0, missed: 0, skipped: 0 };
+    const medSummary = quickOverview?.todaysMeds || { total: 0, taken: 0, pending: 0, missed: 0, skipped: 0 };
     const medProgress = medSummary.total > 0 
         ? Math.round((medSummary.taken / medSummary.total) * 100) 
         : 0;
@@ -246,7 +297,7 @@ export default function PatientDetailPage() {
                             Quick Summary
                         </h1>
                         <p className="text-sm text-text-secondary">
-                            Today's snapshot ({medStatus?.date})
+                            Today's snapshot ({quickOverview?.date || 'today'})
                         </p>
                     </div>
                 </div>
@@ -886,6 +937,27 @@ export default function PatientDetailPage() {
                                         );
                                     })}
                                 </div>
+                                {(tasksHasMore || careTasksFetching) && (
+                                    <div className="px-4 py-3 border-t border-border-light flex justify-center">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={!tasksHasMore || !tasksNextCursor || careTasksFetching}
+                                            className="flex items-center gap-2"
+                                            onClick={() => {
+                                                if (!tasksNextCursor) return;
+                                                setTasksCursor(tasksNextCursor);
+                                            }}
+                                        >
+                                            {careTasksFetching && (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            )}
+                                            <span>
+                                                {careTasksFetching ? 'Loading...' : 'Load more tasks'}
+                                            </span>
+                                        </Button>
+                                    </div>
+                                )}
                                 {/* Summary footer */}
                                 {careTasks.summary && (
                                     <div className="px-4 py-2 bg-background-subtle flex items-center justify-between text-xs border-t border-border-light">

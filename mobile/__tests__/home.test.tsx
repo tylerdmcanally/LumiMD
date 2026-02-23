@@ -210,4 +210,25 @@ describe('HomeScreen', () => {
       }),
     );
   });
+
+  it('keeps schedule card data visible when refresh fails but cached schedule exists', () => {
+    mockUseMedicationSchedule.mockReturnValue(
+      makeQueryResult(
+        {
+          scheduledDoses: [],
+          summary: { taken: 2, skipped: 0, pending: 1, overdue: 0, total: 3 },
+          nextDue: null,
+        },
+        {
+          error: new Error('temporary schedule refresh error'),
+        },
+      ),
+    );
+
+    const { getByText, queryByText } = render(<HomeScreen />);
+
+    expect(getByText("Today's Schedule")).toBeTruthy();
+    expect(getByText('of 3 taken')).toBeTruthy();
+    expect(queryByText('Some dashboard data could not refresh')).toBeNull();
+  });
 });

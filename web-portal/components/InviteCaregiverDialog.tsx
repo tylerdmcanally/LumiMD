@@ -49,7 +49,7 @@ export function InviteCaregiverDialog({ open, onOpenChange }: InviteCaregiverDia
         });
       }
       queryClient.invalidateQueries({ queryKey: ['shares'] });
-      queryClient.invalidateQueries({ queryKey: ['share-invites'] });
+      queryClient.invalidateQueries({ queryKey: ['shares', 'my-invites'] });
       setEmail('');
       setMessage('');
       onOpenChange(false);

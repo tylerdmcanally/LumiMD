@@ -90,3 +90,7 @@ jobs:
       - name: TypeScript check (functions)
         working-directory: ./functions
         run: npx tsc --noEmit
+
+      - name: Remediation guardrails (functions)
+        working-directory: ./functions
+        run: npm run test:remediation-guardrails

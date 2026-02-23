@@ -15,6 +15,9 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { PageContainer } from '@/components/layout/PageContainer';
 
+const LEGAL_TERMS_VERSION = '1.0-2026-02-17';
+const LEGAL_PRIVACY_VERSION = '1.0-2026-02-17';
+
 function CareSignUpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -34,6 +37,8 @@ function CareSignUpContent() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = React.useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = React.useState(false);
 
   React.useEffect(() => {
     if (inviteInfo?.caregiverEmail && !email) {
@@ -58,6 +63,11 @@ function CareSignUpContent() {
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
+      return;
+    }
+
+    if (!acceptedTerms || !acceptedPrivacy) {
+      setError('Please accept the Terms of Use and Privacy Policy to continue.');
       return;
     }
 
@@ -86,6 +96,20 @@ function CareSignUpContent() {
         });
       } catch (emailError) {
         console.error('Failed to send verification email:', emailError);
+      }
+
+      try {
+        await api.user.updateProfile({
+          legalAssent: {
+            accepted: true,
+            termsVersion: LEGAL_TERMS_VERSION,
+            privacyVersion: LEGAL_PRIVACY_VERSION,
+            source: 'signup_web',
+            platform: 'web',
+          },
+        });
+      } catch (legalAssentError) {
+        console.warn('[care-sign-up] Failed to persist legal assent metadata:', legalAssentError);
       }
 
       setSuccessMessage('Account created! Accepting invitation...');
@@ -232,6 +256,42 @@ function CareSignUpContent() {
                 />
               </div>
 
+              <div className="space-y-3 rounded-lg border border-border-light bg-background-subtle p-4">
+                <p className="text-xs text-text-secondary">
+                  Please review and accept both policies before creating your account.
+                </p>
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-text-secondary">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-border text-brand-primary focus:ring-brand-primary"
+                    checked={acceptedTerms}
+                    onChange={(event) => setAcceptedTerms(event.target.checked)}
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <Link href="/terms" className="font-medium text-brand-primary hover:underline">
+                      Terms of Use
+                    </Link>
+                    .
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 text-sm text-text-secondary">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-border text-brand-primary focus:ring-brand-primary"
+                    checked={acceptedPrivacy}
+                    onChange={(event) => setAcceptedPrivacy(event.target.checked)}
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <Link href="/privacy" className="font-medium text-brand-primary hover:underline">
+                      Privacy Policy
+                    </Link>
+                    .
+                  </span>
+                </label>
+              </div>
+
               {error && (
                 <div className="rounded-lg border border-error-light bg-error-light p-4 animate-fade-in-up">
                   <p className="text-sm font-medium text-error-dark">{error}</p>
@@ -250,11 +310,16 @@ function CareSignUpContent() {
                 size="lg"
                 fullWidth
                 loading={isSubmitting}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !acceptedTerms || !acceptedPrivacy}
                 rightIcon={<ArrowRight className="h-5 w-5" />}
               >
                 {isSubmitting ? 'Creating account...' : 'Create Caregiver Account'}
               </Button>
+
+              <p className="text-xs leading-5 text-text-muted">
+                By creating an account, you acknowledge the arbitration and class action waiver in
+                Section 10.2 of the Terms of Use.
+              </p>
             </form>
 
             <div className="relative">

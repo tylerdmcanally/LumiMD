@@ -19,6 +19,14 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   'https://us-central1-lumimd-dev.cloudfunctions.net/api';
 
+async function getAuthTokenOrThrow(): Promise<string> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+  return user.getIdToken();
+}
+
 // =============================================================================
 // Local Firestore helpers (mirrors @lumimd/sdk realtime exports)
 // =============================================================================
@@ -214,9 +222,15 @@ export type Visit = {
   notes?: string | null;
   visitDate?: string | null;
   diagnoses?: string[];
+  diagnosesDetailed?: Array<Record<string, unknown>>;
   medications?: Record<string, unknown>;
   nextSteps?: string[];
+  followUps?: Array<Record<string, unknown>>;
   imaging?: string[];
+  testsOrdered?: Array<Record<string, unknown>>;
+  medicationReview?: Record<string, unknown> | null;
+  extractionVersion?: string | null;
+  promptMeta?: Record<string, unknown> | null;
   tags?: string[];
   folders?: string[];
   education?: {
@@ -297,6 +311,40 @@ type QueryEnabledOptions<TData> = Omit<
 > & {
   enabled?: boolean;
 };
+
+type CursorPaginationParams = {
+  limit?: number;
+  cursor?: string | null;
+};
+
+type CursorPageQueryOptions<TData> = QueryEnabledOptions<TData> &
+  CursorPaginationParams;
+
+export type CursorPageResult<TItem> = {
+  items: TItem[];
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+function appendCursorPaginationParams(
+  params: URLSearchParams,
+  pagination?: CursorPaginationParams,
+) {
+  if (!pagination) return;
+  if (typeof pagination.limit === 'number' && Number.isFinite(pagination.limit)) {
+    params.set('limit', String(pagination.limit));
+  }
+  if (typeof pagination.cursor === 'string' && pagination.cursor.trim().length > 0) {
+    params.set('cursor', pagination.cursor.trim());
+  }
+}
+
+function parseCursorPaginationHeaders(response: Response): Pick<CursorPageResult<unknown>, 'hasMore' | 'nextCursor'> {
+  return {
+    hasMore: response.headers.get('X-Has-More') === 'true',
+    nextCursor: response.headers.get('X-Next-Cursor') || null,
+  };
+}
 
 const useRealtimeErrorHandler = () =>
   useCallback((error: FirestoreError) => {
@@ -553,6 +601,9 @@ export type MedicationReminder = {
   medicationDose?: string;
   times: string[]; // HH:MM format
   enabled: boolean;
+  timingMode?: 'local' | 'anchor';
+  anchorTimezone?: string | null;
+  criticality?: 'standard' | 'time_sensitive';
   lastSentAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -636,12 +687,13 @@ export function useMedicationCompliance(
         };
       }
 
+      const token = await getAuthTokenOrThrow();
       const response = await fetch(`${API_BASE_URL}/v1/meds/compliance?days=${days}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
-        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -684,12 +736,13 @@ export function useHealthInsights(
         return [];
       }
 
+      const token = await getAuthTokenOrThrow();
       const response = await fetch(`${API_BASE_URL}/v1/insights`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
-        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -733,12 +786,13 @@ export function usePatientConditions(
         return [];
       }
 
+      const token = await getAuthTokenOrThrow();
       const response = await fetch(`${API_BASE_URL}/v1/medical-context/conditions`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
-        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -760,14 +814,15 @@ export function useUpdateConditionStatus() {
 
   return useMutation({
     mutationFn: async ({ conditionId, status }: { conditionId: string; status: 'active' | 'resolved' | 'monitoring' }) => {
+      const token = await getAuthTokenOrThrow();
       const response = await fetch(
         `${API_BASE_URL}/v1/medical-context/conditions/${conditionId}`,
         {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
           },
-          credentials: 'include',
           body: JSON.stringify({ status }),
         }
       );
@@ -819,11 +874,14 @@ export function useSharedPatients(
     queryFn: async () => {
       if (!currentUserId) return [];
 
+      const token = await getAuthTokenOrThrow();
       // Fetch shares where current user is the recipient
       const sharesResponse = await fetch(`${API_BASE_URL}/v1/shares`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (!sharesResponse.ok) {
@@ -958,6 +1016,66 @@ export function useCareOverview(
 // Caregiver Patient Medications
 // =============================================================================
 
+export function useCareMedicationsPage(
+  patientId: string | undefined,
+  options?: CursorPageQueryOptions<CursorPageResult<Medication>>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+  const { limit, cursor, ...queryOptions } = options ?? {};
+
+  return useQuery<CursorPageResult<Medication>>({
+    queryKey: [
+      'care-medications-page',
+      currentUserId ?? 'anonymous',
+      patientId ?? 'unknown',
+      typeof limit === 'number' ? limit : 'all',
+      cursor ?? 'start',
+    ],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId),
+    ...queryOptions,
+    queryFn: async () => {
+      if (!patientId) {
+        return { items: [], hasMore: false, nextCursor: null };
+      }
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+      const params = new URLSearchParams();
+      appendCursorPaginationParams(params, { limit, cursor });
+      const query = params.toString();
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/medications${query ? `?${query}` : ''}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch medications');
+      }
+
+      const payload = await response.json();
+      const items = Array.isArray(payload) ? (payload as Medication[]) : [];
+      const { hasMore, nextCursor } = parseCursorPaginationHeaders(response);
+      return { items, hasMore, nextCursor };
+    },
+  });
+}
+
 export function useCareMedications(
   patientId: string | undefined,
   options?: QueryEnabledOptions<Medication[]>,
@@ -1002,6 +1120,66 @@ export function useCareMedications(
 // Caregiver Patient Actions
 // =============================================================================
 
+export function useCareActionsPage(
+  patientId: string | undefined,
+  options?: CursorPageQueryOptions<CursorPageResult<ActionItem>>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+  const { limit, cursor, ...queryOptions } = options ?? {};
+
+  return useQuery<CursorPageResult<ActionItem>>({
+    queryKey: [
+      'care-actions-page',
+      currentUserId ?? 'anonymous',
+      patientId ?? 'unknown',
+      typeof limit === 'number' ? limit : 'all',
+      cursor ?? 'start',
+    ],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId),
+    ...queryOptions,
+    queryFn: async () => {
+      if (!patientId) {
+        return { items: [], hasMore: false, nextCursor: null };
+      }
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+      const params = new URLSearchParams();
+      appendCursorPaginationParams(params, { limit, cursor });
+      const query = params.toString();
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/actions${query ? `?${query}` : ''}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch action items');
+      }
+
+      const payload = await response.json();
+      const items = Array.isArray(payload) ? (payload as ActionItem[]) : [];
+      const { hasMore, nextCursor } = parseCursorPaginationHeaders(response);
+      return { items, hasMore, nextCursor };
+    },
+  });
+}
+
 export function useCareActions(
   patientId: string | undefined,
   options?: QueryEnabledOptions<ActionItem[]>,
@@ -1045,6 +1223,66 @@ export function useCareActions(
 // =============================================================================
 // Caregiver Patient Visits
 // =============================================================================
+
+export function useCareVisitsPage(
+  patientId: string | undefined,
+  options?: CursorPageQueryOptions<CursorPageResult<Visit>>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+  const { limit, cursor, ...queryOptions } = options ?? {};
+
+  return useQuery<CursorPageResult<Visit>>({
+    queryKey: [
+      'care-visits-page',
+      currentUserId ?? 'anonymous',
+      patientId ?? 'unknown',
+      typeof limit === 'number' ? limit : 'all',
+      cursor ?? 'start',
+    ],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId),
+    ...queryOptions,
+    queryFn: async () => {
+      if (!patientId) {
+        return { items: [], hasMore: false, nextCursor: null };
+      }
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      const token = await user.getIdToken();
+      const params = new URLSearchParams();
+      appendCursorPaginationParams(params, { limit, cursor });
+      const query = params.toString();
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/visits${query ? `?${query}` : ''}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch visits');
+      }
+
+      const payload = await response.json();
+      const items = Array.isArray(payload) ? (payload as Visit[]) : [];
+      const { hasMore, nextCursor } = parseCursorPaginationHeaders(response);
+      return { items, hasMore, nextCursor };
+    },
+  });
+}
 
 export function useCareVisits(
   patientId: string | undefined,
@@ -1094,14 +1332,27 @@ export function useCareVisits(
 
 export type CareVisitSummary = {
   id: string;
+  status?: string;
+  processingStatus?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  processedAt?: string | null;
   visitDate?: string | null;
   provider?: string | null;
   specialty?: string | null;
   location?: string | null;
   summary?: string | null;
   diagnoses?: string[];
+  diagnosesDetailed?: Array<Record<string, unknown>>;
   medications?: Record<string, unknown>;
   nextSteps?: string[];
+  followUps?: Array<Record<string, unknown>>;
+  imaging?: string[];
+  testsOrdered?: Array<Record<string, unknown>>;
+  medicationReview?: Record<string, unknown> | null;
+  education?: Record<string, unknown> | null;
+  extractionVersion?: string | null;
+  promptMeta?: Record<string, unknown> | null;
   patientName?: string;
 };
 
@@ -1711,6 +1962,7 @@ export function useCareMedicationAdherence(
 // =============================================================================
 
 export type QuickOverviewData = {
+  date: string;
   needsAttention: Array<{
     type: string;
     priority: 'high' | 'medium' | 'low';
@@ -1733,6 +1985,38 @@ export type QuickOverviewData = {
     latestBp?: { value: string; alertLevel: string; date: string };
     latestGlucose?: { value: string; alertLevel: string; date: string };
     latestWeight?: { value: string; change?: string; date: string };
+  };
+  upcomingActions: {
+    actions: Array<{
+      id: string;
+      description: string;
+      dueAt: string | null;
+      isOverdue: boolean;
+      daysUntilDue: number | null;
+      visitId: string | null;
+      source: string;
+    }>;
+    summary: {
+      overdue: number;
+      dueToday: number;
+      dueThisWeek: number;
+      dueLater: number;
+    };
+  };
+  recentMedicationChanges: {
+    changes: Array<{
+      id: string;
+      name: string;
+      changeType: 'started' | 'stopped' | 'modified';
+      changeDate: string;
+      dose?: string | null;
+      previousDose?: string | null;
+    }>;
+    period: {
+      days: number;
+      from: string;
+      to: string;
+    };
   };
 };
 
@@ -1948,6 +2232,88 @@ export type CareTasksResponse = {
   };
 };
 
+export type CareTasksPageResponse = CareTasksResponse & {
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+type CareTasksPageOptions = QueryEnabledOptions<CareTasksPageResponse> & {
+  status?: string;
+  limit?: number;
+  cursor?: string | null;
+};
+
+export function useCareTasksPage(
+  patientId: string | undefined,
+  options?: CareTasksPageOptions,
+) {
+  const { status, limit, cursor, ...queryOptions } = options ?? {};
+
+  return useQuery<CareTasksPageResponse>({
+    queryKey: [
+      'care-tasks-page',
+      patientId ?? 'unknown',
+      status ?? 'all',
+      typeof limit === 'number' ? limit : 'all',
+      cursor ?? 'start',
+    ],
+    staleTime: 30_000,
+    enabled: Boolean(patientId),
+    ...queryOptions,
+    queryFn: async () => {
+      if (!patientId) {
+        return {
+          tasks: [],
+          summary: { pending: 0, inProgress: 0, completed: 0, overdue: 0 },
+          hasMore: false,
+          nextCursor: null,
+        };
+      }
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const params = new URLSearchParams();
+      if (status) params.set('status', status);
+      appendCursorPaginationParams(params, { limit, cursor });
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/tasks?${params.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch tasks');
+      }
+
+      const payload = await response.json();
+      const tasks = Array.isArray(payload?.tasks) ? (payload.tasks as CareTask[]) : [];
+      const summaryPayload =
+        payload?.summary && typeof payload.summary === 'object'
+          ? (payload.summary as Partial<CareTasksResponse['summary']>)
+          : {};
+      const summary = {
+        pending: typeof summaryPayload.pending === 'number' ? summaryPayload.pending : 0,
+        inProgress:
+          typeof summaryPayload.inProgress === 'number' ? summaryPayload.inProgress : 0,
+        completed: typeof summaryPayload.completed === 'number' ? summaryPayload.completed : 0,
+        overdue: typeof summaryPayload.overdue === 'number' ? summaryPayload.overdue : 0,
+      };
+      const { hasMore, nextCursor } = parseCursorPaginationHeaders(response);
+      return { tasks, summary, hasMore, nextCursor };
+    },
+  });
+}
+
 export function useCareTasks(
   patientId: string | undefined,
   options?: { status?: string }
@@ -2020,6 +2386,7 @@ export function useCreateCareTask() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['care-tasks', variables.patientId] });
+      queryClient.invalidateQueries({ queryKey: ['care-tasks-page', variables.patientId] });
     },
   });
 }
@@ -2058,6 +2425,7 @@ export function useUpdateCareTask() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['care-tasks', variables.patientId] });
+      queryClient.invalidateQueries({ queryKey: ['care-tasks-page', variables.patientId] });
     },
   });
 }
@@ -2090,6 +2458,7 @@ export function useDeleteCareTask() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['care-tasks', variables.patientId] });
+      queryClient.invalidateQueries({ queryKey: ['care-tasks-page', variables.patientId] });
     },
   });
 }
@@ -2202,6 +2571,481 @@ export function useUpcomingActions(
 
       if (!response.ok) throw new Error('Failed to fetch upcoming actions');
       return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Operator Escalations
+// =============================================================================
+
+const operatorReminderTimingBackfillStatusQueryKey = () =>
+  ['operator-reminder-timing-backfill-status'] as const;
+
+export type OperatorReminderTimingBackfillStatus = {
+  cursorDocId: string | null;
+  hasMore: boolean;
+  lastProcessedAt: string | null;
+  lastProcessedCount: number | null;
+  lastUpdatedCount: number | null;
+  completedAt: string | null;
+  lastRunStartedAt: string | null;
+  lastRunFinishedAt: string | null;
+  lastRunStatus: 'idle' | 'running' | 'success' | 'error';
+  lastRunErrorAt: string | null;
+  lastRunErrorMessage: string | null;
+  stale: boolean;
+  needsAttention: boolean;
+};
+
+export function useOperatorReminderTimingBackfillStatus(options?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number;
+}) {
+  const enabled = options?.enabled ?? true;
+  const refetchIntervalMs = options?.refetchIntervalMs ?? 30_000;
+
+  return useQuery<OperatorReminderTimingBackfillStatus>({
+    queryKey: operatorReminderTimingBackfillStatusQueryKey(),
+    staleTime: 15_000,
+    enabled,
+    refetchInterval: refetchIntervalMs,
+    queryFn: async () => {
+      const token = await getAuthTokenOrThrow();
+      const response = await fetch(
+        `${API_BASE_URL}/v1/medication-reminders/ops/timing-backfill-status`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const message = await parseApiErrorMessage(
+          response,
+          'Failed to fetch medication reminder timing backfill status',
+        );
+        throw new Error(message);
+      }
+
+      const payload = await response.json();
+
+      return {
+        cursorDocId: typeof payload?.cursorDocId === 'string' ? payload.cursorDocId : null,
+        hasMore: payload?.hasMore === true,
+        lastProcessedAt:
+          typeof payload?.lastProcessedAt === 'string' ? payload.lastProcessedAt : null,
+        lastProcessedCount:
+          typeof payload?.lastProcessedCount === 'number' ? payload.lastProcessedCount : null,
+        lastUpdatedCount:
+          typeof payload?.lastUpdatedCount === 'number' ? payload.lastUpdatedCount : null,
+        completedAt: typeof payload?.completedAt === 'string' ? payload.completedAt : null,
+        lastRunStartedAt:
+          typeof payload?.lastRunStartedAt === 'string' ? payload.lastRunStartedAt : null,
+        lastRunFinishedAt:
+          typeof payload?.lastRunFinishedAt === 'string' ? payload.lastRunFinishedAt : null,
+        lastRunStatus:
+          payload?.lastRunStatus === 'running' ||
+          payload?.lastRunStatus === 'success' ||
+          payload?.lastRunStatus === 'error'
+            ? payload.lastRunStatus
+            : 'idle',
+        lastRunErrorAt: typeof payload?.lastRunErrorAt === 'string' ? payload.lastRunErrorAt : null,
+        lastRunErrorMessage:
+          typeof payload?.lastRunErrorMessage === 'string'
+            ? payload.lastRunErrorMessage
+            : null,
+        stale: payload?.stale === true,
+        needsAttention: payload?.needsAttention === true,
+      };
+    },
+  });
+}
+
+const operatorEscalationsQueryKey = (
+  limit: number,
+  cursor?: string | null,
+) => ['operator-post-commit-escalations', limit, cursor ?? 'start'] as const;
+
+const parseApiErrorMessage = async (
+  response: Response,
+  fallback: string,
+): Promise<string> => {
+  try {
+    const payload = await response.json();
+    if (typeof payload?.message === 'string' && payload.message.trim().length > 0) {
+      return payload.message;
+    }
+  } catch {
+    // no-op
+  }
+  return fallback;
+};
+
+export type OperatorPostCommitEscalation = {
+  id: string;
+  userId: string | null;
+  processingStatus: string | null;
+  postCommitStatus: string | null;
+  postCommitRetryEligible: boolean | null;
+  postCommitFailedOperations: string[];
+  postCommitCompletedOperations: string[];
+  postCommitOperationAttempts: Record<string, number>;
+  postCommitOperationNextRetryAt: Record<string, string | null>;
+  postCommitLastAttemptAt: string | null;
+  postCommitCompletedAt: string | null;
+  postCommitEscalatedAt: string | null;
+  postCommitEscalationAcknowledgedAt: string | null;
+  postCommitEscalationAcknowledgedBy: string | null;
+  postCommitEscalationNote: string | null;
+  postCommitEscalationResolvedAt: string | null;
+  postCommitEscalationResolvedBy: string | null;
+  postCommitEscalationResolutionNote: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  visitDate: string | null;
+};
+
+export type OperatorPostCommitEscalationsResponse = {
+  escalations: OperatorPostCommitEscalation[];
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+export function useOperatorPostCommitEscalations(options?: {
+  limit?: number;
+  cursor?: string | null;
+  enabled?: boolean;
+  refetchIntervalMs?: number;
+}) {
+  const limit = options?.limit ?? 25;
+  const cursor = options?.cursor ?? null;
+  const enabled = options?.enabled ?? true;
+  const refetchIntervalMs = options?.refetchIntervalMs ?? 30_000;
+  const key = operatorEscalationsQueryKey(limit, cursor);
+
+  return useQuery<OperatorPostCommitEscalationsResponse>({
+    queryKey: key,
+    staleTime: 15_000,
+    enabled,
+    refetchInterval: refetchIntervalMs,
+    queryFn: async () => {
+      const token = await getAuthTokenOrThrow();
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      if (cursor) {
+        params.set('cursor', cursor);
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/v1/visits/ops/post-commit-escalations?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const message = await parseApiErrorMessage(
+          response,
+          'Failed to fetch escalated post-commit visits',
+        );
+        throw new Error(message);
+      }
+
+      const payload = await response.json();
+      const escalations = Array.isArray(payload?.escalations)
+        ? payload.escalations as OperatorPostCommitEscalation[]
+        : [];
+
+      return {
+        escalations,
+        hasMore: response.headers.get('X-Has-More') === 'true',
+        nextCursor: response.headers.get('X-Next-Cursor') || null,
+      };
+    },
+  });
+}
+
+type OperatorEscalationMutationVariables = {
+  visitId: string;
+  note?: string;
+};
+
+const postEscalationMutation = async (
+  path: string,
+  variables: OperatorEscalationMutationVariables,
+) => {
+  const token = await getAuthTokenOrThrow();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(variables.note ? { note: variables.note } : {}),
+  });
+
+  if (!response.ok) {
+    const message = await parseApiErrorMessage(response, 'Failed to update escalation state');
+    throw new Error(message);
+  }
+
+  return response.json();
+};
+
+export function useAcknowledgePostCommitEscalation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ visitId, note }: OperatorEscalationMutationVariables) =>
+      postEscalationMutation(`/v1/visits/ops/post-commit-escalations/${visitId}/acknowledge`, {
+        visitId,
+        note,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['operator-post-commit-escalations'] });
+      toast.success('Escalation acknowledged');
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to acknowledge escalation');
+    },
+  });
+}
+
+export function useResolvePostCommitEscalation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ visitId, note }: OperatorEscalationMutationVariables) =>
+      postEscalationMutation(`/v1/visits/ops/post-commit-escalations/${visitId}/resolve`, {
+        visitId,
+        note,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['operator-post-commit-escalations'] });
+      toast.success('Escalation resolved');
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to resolve escalation');
+    },
+  });
+}
+
+export function useReopenPostCommitEscalation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ visitId }: OperatorEscalationMutationVariables) =>
+      postEscalationMutation(`/v1/visits/ops/post-commit-escalations/${visitId}/reopen`, {
+        visitId,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['operator-post-commit-escalations'] });
+      toast.success('Escalation reopened');
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to reopen escalation');
+    },
+  });
+}
+
+// =============================================================================
+// Operator Restore Audit
+// =============================================================================
+
+export type RestoreAuditResourceType =
+  | 'action'
+  | 'visit'
+  | 'medication'
+  | 'health_log'
+  | 'medication_reminder'
+  | 'care_task';
+
+export type RestoreAuditTriageStatus = 'unreviewed' | 'in_review' | 'resolved';
+
+export type OperatorRestoreAuditEvent = {
+  id: string;
+  resourceType: RestoreAuditResourceType | null;
+  resourceId: string | null;
+  ownerUserId: string | null;
+  actorUserId: string | null;
+  actorCategory: 'owner' | 'operator' | 'delegate' | null;
+  reason: string | null;
+  metadata: Record<string, unknown> | null;
+  triageStatus: RestoreAuditTriageStatus | null;
+  triageNote: string | null;
+  triageUpdatedAt: string | null;
+  triageUpdatedBy: string | null;
+  createdAt: string | null;
+};
+
+export type OperatorRestoreAuditResponse = {
+  events: OperatorRestoreAuditEvent[];
+  count: number;
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+  scanned: number;
+};
+
+const operatorRestoreAuditQueryKey = (
+  limit: number,
+  cursor: string | null,
+  resourceType: RestoreAuditResourceType | null,
+  ownerUserId: string | null,
+  actorUserId: string | null,
+  triageStatus: RestoreAuditTriageStatus | null,
+) =>
+  [
+    'operator-restore-audit',
+    limit,
+    cursor ?? 'start',
+    resourceType ?? 'all',
+    ownerUserId ?? 'any-owner',
+    actorUserId ?? 'any-actor',
+    triageStatus ?? 'any-triage',
+  ] as const;
+
+export function useOperatorRestoreAudit(options?: {
+  limit?: number;
+  cursor?: string | null;
+  resourceType?: RestoreAuditResourceType | null;
+  ownerUserId?: string | null;
+  actorUserId?: string | null;
+  triageStatus?: RestoreAuditTriageStatus | null;
+  enabled?: boolean;
+  refetchIntervalMs?: number;
+}) {
+  const limit = options?.limit ?? 25;
+  const cursor = options?.cursor ?? null;
+  const resourceType = options?.resourceType ?? null;
+  const ownerUserId =
+    typeof options?.ownerUserId === 'string' && options.ownerUserId.trim().length > 0
+      ? options.ownerUserId.trim()
+      : null;
+  const actorUserId =
+    typeof options?.actorUserId === 'string' && options.actorUserId.trim().length > 0
+      ? options.actorUserId.trim()
+      : null;
+  const triageStatus = options?.triageStatus ?? null;
+  const enabled = options?.enabled ?? true;
+  const refetchIntervalMs = options?.refetchIntervalMs ?? 30_000;
+
+  return useQuery<OperatorRestoreAuditResponse>({
+    queryKey: operatorRestoreAuditQueryKey(
+      limit,
+      cursor,
+      resourceType,
+      ownerUserId,
+      actorUserId,
+      triageStatus,
+    ),
+    staleTime: 15_000,
+    enabled,
+    refetchInterval: refetchIntervalMs,
+    queryFn: async () => {
+      const token = await getAuthTokenOrThrow();
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      if (cursor) {
+        params.set('cursor', cursor);
+      }
+      if (resourceType) {
+        params.set('resourceType', resourceType);
+      }
+      if (ownerUserId) {
+        params.set('ownerUserId', ownerUserId);
+      }
+      if (actorUserId) {
+        params.set('actorUserId', actorUserId);
+      }
+      if (triageStatus) {
+        params.set('triageStatus', triageStatus);
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/v1/users/ops/restore-audit?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const message = await parseApiErrorMessage(response, 'Failed to fetch restore audit trail');
+        throw new Error(message);
+      }
+
+      const payload = await response.json();
+      const events = Array.isArray(payload?.events)
+        ? (payload.events as OperatorRestoreAuditEvent[])
+        : [];
+
+      return {
+        events,
+        count: typeof payload?.count === 'number' ? payload.count : events.length,
+        limit: typeof payload?.limit === 'number' ? payload.limit : limit,
+        hasMore: response.headers.get('X-Has-More') === 'true',
+        nextCursor: response.headers.get('X-Next-Cursor') || null,
+        scanned: typeof payload?.scanned === 'number' ? payload.scanned : events.length,
+      };
+    },
+  });
+}
+
+type UpdateRestoreAuditTriageVariables = {
+  eventId: string;
+  triageStatus?: RestoreAuditTriageStatus;
+  triageNote?: string;
+  clearTriageNote?: boolean;
+};
+
+export function useUpdateRestoreAuditTriage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (variables: UpdateRestoreAuditTriageVariables) => {
+      const token = await getAuthTokenOrThrow();
+      const response = await fetch(
+        `${API_BASE_URL}/v1/users/ops/restore-audit/${variables.eventId}/triage`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            triageStatus: variables.triageStatus,
+            triageNote: variables.triageNote,
+            clearTriageNote: variables.clearTriageNote,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const message = await parseApiErrorMessage(
+          response,
+          'Failed to update restore audit triage state',
+        );
+        throw new Error(message);
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['operator-restore-audit'] });
+      toast.success('Restore audit triage updated');
+    },
+    onError: (error: unknown) => {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update restore audit triage state',
+      );
     },
   });
 }

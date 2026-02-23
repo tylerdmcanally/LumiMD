@@ -305,4 +305,40 @@ describe('medications schedule mark idempotency routes', () => {
     expect(secondRes.body.results.every((result: any) => result.idempotent === true)).toBe(true);
     expect(Object.keys(harness.state.medicationLogs)).toHaveLength(2);
   });
+
+  it('returns forbidden errors for doses that do not belong to the caller', async () => {
+    const harness = buildHarness({
+      users: {
+        'user-1': { timezone: 'America/Chicago' },
+      },
+      medications: {
+        'med-1': { userId: 'user-1', name: 'Metformin' },
+        'med-2': { userId: 'user-2', name: 'Other User Med' },
+      },
+    });
+    firestoreMock.mockImplementation(() => harness.db);
+
+    const handler = getRouteHandler('post', '/schedule/mark-batch');
+    const req = createRequest({
+      user: { uid: 'user-1' },
+      body: {
+        doses: [
+          { medicationId: 'med-1', scheduledTime: '08:00' },
+          { medicationId: 'med-2', scheduledTime: '09:00' },
+        ],
+        action: 'taken',
+      },
+    });
+    const res = createResponse();
+    await handler(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.results).toHaveLength(1);
+    expect(res.body.results[0].medicationId).toBe('med-1');
+    expect(res.body.errors).toContainEqual({
+      medicationId: 'med-2',
+      scheduledTime: '09:00',
+      error: 'forbidden',
+    });
+  });
 });

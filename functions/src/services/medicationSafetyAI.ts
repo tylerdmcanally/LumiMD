@@ -17,9 +17,37 @@ import OpenAI from 'openai';
 import { openAIConfig } from '../config';
 import { MedicationChangeEntry } from './openai';
 import { MedicationSafetyWarning, normalizeMedicationName } from './medicationSafety';
+import { MedicationDomainService } from './domain/medications/MedicationDomainService';
+import { UserDomainService } from './domain/users/UserDomainService';
+import { FirestoreMedicationSafetyCacheRepository } from './repositories/medicationSafetyCache/FirestoreMedicationSafetyCacheRepository';
+import { MedicationSafetyCacheRepository } from './repositories/medicationSafetyCache/MedicationSafetyCacheRepository';
+import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
+import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
 
 const db = () => admin.firestore();
-const cacheCollection = () => db().collection('medicationSafetyCache');
+
+type MedicationSafetyAIDependencies = {
+  medicationService?: Pick<MedicationDomainService, 'listAllForUser'>;
+  userService?: Pick<UserDomainService, 'getById'>;
+  cacheRepository?: Pick<
+    MedicationSafetyCacheRepository,
+    'getByUserAndCacheKey' | 'setByUserAndCacheKey' | 'listByUser' | 'deleteByIds'
+  >;
+};
+
+function resolveDependencies(
+  overrides: MedicationSafetyAIDependencies = {},
+): Required<MedicationSafetyAIDependencies> {
+  return {
+    medicationService:
+      overrides.medicationService ??
+      new MedicationDomainService(new FirestoreMedicationRepository(db())),
+    userService:
+      overrides.userService ?? new UserDomainService(new FirestoreUserRepository(db())),
+    cacheRepository:
+      overrides.cacheRepository ?? new FirestoreMedicationSafetyCacheRepository(db()),
+  };
+}
 
 let openAIClient: OpenAI | null = null;
 let openAIWarningLogged = false;
@@ -111,27 +139,23 @@ function formatMedication(med: { name: string; dose?: string; frequency?: string
  * Check cache for previous AI safety check results
  * Cache key: hash of (new med name + current med names + allergies)
  */
-const buildCacheDocId = (userId: string, cacheKey: string) => `${userId}_${cacheKey}`;
-
 async function getCachedResult(
   userId: string,
-  cacheKey: string
+  cacheKey: string,
+  cacheRepository: Pick<MedicationSafetyCacheRepository, 'getByUserAndCacheKey'>,
 ): Promise<MedicationSafetyWarning[] | null> {
   try {
-    const docId = buildCacheDocId(userId, cacheKey);
-    let cacheDoc = await cacheCollection().doc(docId).get();
-
-    // Backwards compatibility: fall back to legacy doc ID if needed
-    if (!cacheDoc.exists) {
-      cacheDoc = await cacheCollection().doc(cacheKey).get();
-    }
-
-    if (!cacheDoc.exists) {
+    const cacheDoc = await cacheRepository.getByUserAndCacheKey(userId, cacheKey);
+    if (!cacheDoc) {
       return null;
     }
 
-    const data = cacheDoc.data()!;
-    const cacheAge = Date.now() - data.createdAt.toMillis();
+    const createdAt = cacheDoc.createdAt;
+    if (!createdAt || typeof createdAt.toMillis !== 'function') {
+      return null;
+    }
+
+    const cacheAge = Date.now() - createdAt.toMillis();
     const MAX_CACHE_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
     if (cacheAge > MAX_CACHE_AGE) {
@@ -140,7 +164,9 @@ async function getCachedResult(
     }
 
     functions.logger.info('[medicationSafetyAI] Cache hit', { cacheKey });
-    return data.warnings as MedicationSafetyWarning[];
+    return Array.isArray(cacheDoc.warnings)
+      ? (cacheDoc.warnings as MedicationSafetyWarning[])
+      : null;
   } catch (error) {
     functions.logger.warn('[medicationSafetyAI] Cache check failed:', error);
     return null;
@@ -154,12 +180,11 @@ async function cacheResult(
   userId: string,
   cacheKey: string,
   warnings: MedicationSafetyWarning[],
-  metadata: { newMedication: string; currentMedications: string[]; allergies: string[] }
+  metadata: { newMedication: string; currentMedications: string[]; allergies: string[] },
+  cacheRepository: Pick<MedicationSafetyCacheRepository, 'setByUserAndCacheKey'>,
 ): Promise<void> {
   try {
-    await cacheCollection()
-      .doc(buildCacheDocId(userId, cacheKey))
-      .set({
+    await cacheRepository.setByUserAndCacheKey(userId, cacheKey, {
         warnings,
         createdAt: admin.firestore.Timestamp.now(),
         userId,
@@ -226,26 +251,23 @@ function convertAIWarning(aiWarning: AIWarningResponse['warnings'][0]): Medicati
 /**
  * Run AI-based medication safety checks
  */
-export async function clearMedicationSafetyCacheForUser(userId: string): Promise<void> {
+export async function clearMedicationSafetyCacheForUser(
+  userId: string,
+  dependencies: MedicationSafetyAIDependencies = {},
+): Promise<void> {
+  const resolvedDependencies = resolveDependencies(dependencies);
   try {
-    const snapshot = await cacheCollection().where('userId', '==', userId).get();
-    if (snapshot.empty) {
+    const cachedRecords = await resolvedDependencies.cacheRepository.listByUser(userId);
+    if (cachedRecords.length === 0) {
       return;
     }
 
-    let batch = db().batch();
-    snapshot.docs.forEach((doc, index) => {
-      batch.delete(doc.ref);
-      if ((index + 1) % 450 === 0) {
-        batch.commit();
-        batch = db().batch();
-      }
-    });
-
-    await batch.commit();
+    const deletedDocs = await resolvedDependencies.cacheRepository.deleteByIds(
+      cachedRecords.map((record) => record.id),
+    );
     functions.logger.info('[medicationSafetyAI] Cleared medication safety cache for user', {
       userId,
-      deletedDocs: snapshot.size,
+      deletedDocs,
     });
   } catch (error) {
     functions.logger.error('[medicationSafetyAI] Failed to clear cache for user', {
@@ -258,38 +280,43 @@ export async function clearMedicationSafetyCacheForUser(userId: string): Promise
 export async function runAIBasedSafetyChecks(
   userId: string,
   newMedication: MedicationChangeEntry,
-  excludeMedicationId?: string
+  excludeMedicationId?: string,
+  dependencies: MedicationSafetyAIDependencies = {},
 ): Promise<MedicationSafetyWarning[]> {
+  const resolvedDependencies = resolveDependencies(dependencies);
+  const medicationService = resolvedDependencies.medicationService;
+  const userService = resolvedDependencies.userService;
+  const cacheRepository = resolvedDependencies.cacheRepository;
+
   try {
     // Fetch current medications and allergies
-    const [medsSnapshot, userDoc] = await Promise.all([
-      db().collection('medications').where('userId', '==', userId).get(),
-      db().collection('users').doc(userId).get(),
+    const [medications, user] = await Promise.all([
+      medicationService.listAllForUser(userId, { includeDeleted: true }),
+      userService.getById(userId),
     ]);
 
     const newMedNormalized = normalizeMedicationName(newMedication.name);
 
-    const activeMedicationDocs = medsSnapshot.docs
-      .filter((doc) => {
-        if (excludeMedicationId && doc.id === excludeMedicationId) {
+    const activeMedications = medications
+      .filter((record) => {
+        if (excludeMedicationId && record.id === excludeMedicationId) {
           return false;
         }
 
-        const data = doc.data();
-        const active = data?.active === true;
+        const active = record.active === true;
         const stopped = Boolean(
-          data?.stoppedAt &&
-            typeof data.stoppedAt === 'object' &&
-            typeof data.stoppedAt.toDate === 'function',
+          record.stoppedAt &&
+            typeof record.stoppedAt === 'object' &&
+            typeof (record.stoppedAt as { toDate?: unknown }).toDate === 'function',
         );
-        const deleted = data?.deleted === true || data?.archived === true;
+        const deleted = record.deleted === true || record.archived === true;
         if (!active || stopped || deleted) {
           return false;
         }
 
         const medCanonical =
-          (typeof data?.canonicalName === 'string' && data.canonicalName) ||
-          (typeof data?.name === 'string' ? normalizeMedicationName(data.name) : '');
+          (typeof record.canonicalName === 'string' && record.canonicalName) ||
+          (typeof record.name === 'string' ? normalizeMedicationName(record.name) : '');
 
         if (medCanonical && medCanonical === newMedNormalized) {
           return false;
@@ -298,26 +325,24 @@ export async function runAIBasedSafetyChecks(
         return true;
       });
 
-    const currentMedications = activeMedicationDocs.map((doc) => {
-      const data = doc.data();
+    const currentMedications = activeMedications.map((record) => {
       return formatMedication({
-        name: data.name,
-        dose: data.dose,
-        frequency: data.frequency,
+        name: record.name,
+        dose: record.dose,
+        frequency: record.frequency,
       });
     });
-    const currentMedCanonicalNames = activeMedicationDocs
-      .map((doc) => {
-        const data = doc.data();
-        if (typeof data?.canonicalName === 'string' && data.canonicalName) {
-          return data.canonicalName;
+    const currentMedCanonicalNames = activeMedications
+      .map((record) => {
+        if (typeof record.canonicalName === 'string' && record.canonicalName) {
+          return record.canonicalName;
         }
-        const medName = typeof data?.name === 'string' ? data.name : '';
+        const medName = typeof record.name === 'string' ? record.name : '';
         return medName ? normalizeMedicationName(medName) : null;
       })
       .filter((value): value is string => Boolean(value));
 
-    const allergies = userDoc.exists ? (userDoc.data()?.allergies || []) : [];
+    const allergies = Array.isArray(user?.allergies) ? user.allergies : [];
 
     // Generate cache key
     const cacheKey = generateCacheKey(
@@ -331,7 +356,7 @@ export async function runAIBasedSafetyChecks(
     );
 
     // Check cache first
-    const cachedResult = await getCachedResult(userId, cacheKey);
+    const cachedResult = await getCachedResult(userId, cacheKey, cacheRepository);
     if (cachedResult) {
       return cachedResult;
     }
@@ -402,11 +427,17 @@ export async function runAIBasedSafetyChecks(
     const warnings = aiResponse.warnings.map(convertAIWarning);
 
     // Cache result
-    await cacheResult(userId, cacheKey, warnings, {
-      newMedication: formatMedication(newMedication),
-      currentMedications,
-      allergies,
-    });
+    await cacheResult(
+      userId,
+      cacheKey,
+      warnings,
+      {
+        newMedication: formatMedication(newMedication),
+        currentMedications,
+        allergies,
+      },
+      cacheRepository,
+    );
 
     // Log warnings for monitoring
     if (warnings.length > 0) {

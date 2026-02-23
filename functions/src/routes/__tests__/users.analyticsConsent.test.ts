@@ -261,7 +261,7 @@ function createResponse() {
   return res;
 }
 
-function getRouteHandler(method: 'get' | 'post', path: string) {
+function getRouteHandler(method: 'get' | 'post' | 'patch', path: string) {
   const layer = usersRouter.stack.find(
     (stackLayer: any) =>
       stackLayer.route &&
@@ -327,6 +327,55 @@ describe('users analytics consent routes', () => {
       policyVersion: '2026-02-10',
       platform: 'ios',
       appVersion: '1.4.0',
+    });
+  });
+
+  it('records legal assent metadata and writes an audit event via profile patch', async () => {
+    const harness = buildHarness();
+    firestoreMock.mockImplementation(() => harness.db);
+
+    const handler = getRouteHandler('patch', '/me');
+    const req = createRequest({
+      body: {
+        firstName: 'Taylor',
+        legalAssent: {
+          accepted: true,
+          termsVersion: '1.0-2026-02-17',
+          privacyVersion: '1.0-2026-02-17',
+          source: 'signup_web',
+          platform: 'web',
+          appVersion: 'portal-1.0.0',
+        },
+      },
+      headers: {
+        'x-cloud-trace-context': 'trace-id/123;o=1',
+        'user-agent': 'JestTest/1.0',
+        origin: 'https://lumimd.app',
+      },
+    });
+    const res = createResponse();
+
+    await handler(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.firstName).toBe('Taylor');
+    expect(res.body.legalAssent).toMatchObject({
+      accepted: true,
+      termsVersion: '1.0-2026-02-17',
+      privacyVersion: '1.0-2026-02-17',
+      source: 'signup_web',
+      platform: 'web',
+      appVersion: 'portal-1.0.0',
+    });
+    expect(harness.state.auditLogs).toHaveLength(1);
+    expect(harness.state.auditLogs[0].data).toMatchObject({
+      eventType: 'legal_documents_accepted',
+      accepted: true,
+      termsVersion: '1.0-2026-02-17',
+      privacyVersion: '1.0-2026-02-17',
+      source: 'signup_web',
+      platform: 'web',
+      appVersion: 'portal-1.0.0',
     });
   });
 
@@ -433,9 +482,32 @@ describe('users analytics consent routes', () => {
             policyVersion: '2026-02-10',
             updatedAt: makeTimestamp('2026-02-10T21:20:00.000Z'),
           },
+          legalAssent: {
+            accepted: true,
+            termsVersion: '1.0-2026-02-17',
+            privacyVersion: '1.0-2026-02-17',
+            source: 'signup_web',
+            platform: 'web',
+            appVersion: 'portal-1.0.0',
+            acceptedAt: makeTimestamp('2026-02-10T21:19:00.000Z'),
+            updatedAt: makeTimestamp('2026-02-10T21:19:00.000Z'),
+          },
         },
       },
       auditLogs: [
+        {
+          id: 'audit-2',
+          data: {
+            eventType: 'legal_documents_accepted',
+            accepted: true,
+            termsVersion: '1.0-2026-02-17',
+            privacyVersion: '1.0-2026-02-17',
+            source: 'signup_web',
+            platform: 'web',
+            appVersion: 'portal-1.0.0',
+            occurredAt: makeTimestamp('2026-02-10T21:19:00.000Z'),
+          },
+        },
         {
           id: 'audit-1',
           data: {
@@ -471,6 +543,22 @@ describe('users analytics consent routes', () => {
       eventType: 'analytics_consent_changed',
       granted: false,
       previousGranted: true,
+    });
+    expect(res.body.privacy.legalAssent).toMatchObject({
+      accepted: true,
+      termsVersion: '1.0-2026-02-17',
+      privacyVersion: '1.0-2026-02-17',
+      source: 'signup_web',
+      platform: 'web',
+      appVersion: 'portal-1.0.0',
+    });
+    expect(res.body.privacy.legalAssentAudit).toHaveLength(1);
+    expect(res.body.privacy.legalAssentAudit[0]).toMatchObject({
+      id: 'audit-2',
+      eventType: 'legal_documents_accepted',
+      accepted: true,
+      termsVersion: '1.0-2026-02-17',
+      privacyVersion: '1.0-2026-02-17',
     });
   });
 });

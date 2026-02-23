@@ -8,6 +8,17 @@ function toDate(value: unknown): Date | null {
   }
 
   if (typeof value === 'string') {
+    const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1]);
+      const month = Number(dateOnlyMatch[2]) - 1;
+      const day = Number(dateOnlyMatch[3]);
+      const localDate = new Date(year, month, day, 12, 0, 0, 0);
+      if (!Number.isNaN(localDate.getTime())) {
+        return localDate;
+      }
+    }
+
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) {
       return parsed;
@@ -59,6 +70,43 @@ export function parseActionDueDate(
   return normalizeToNoon(due);
 }
 
+interface ResolveActionDueDateInput {
+  description?: string | null;
+  timeframe?: string | null;
+  dueAt?: unknown;
+  referenceDate: Date;
+}
+
+/**
+ * Resolves due dates using model-structured data first, then natural-language fallbacks.
+ * Priority:
+ *  1) explicit dueAt from model output
+ *  2) structured timeframe text from follow-up payload
+ *  3) legacy free-text action description parsing
+ */
+export function resolveActionDueDate({
+  description,
+  timeframe,
+  dueAt,
+  referenceDate,
+}: ResolveActionDueDateInput): Date | null {
+  const structuredDueDate = toDate(dueAt);
+  if (structuredDueDate) {
+    return normalizeToNoon(structuredDueDate);
+  }
+
+  if (typeof timeframe === 'string' && timeframe.trim().length > 0) {
+    const parsedTimeframe = parseDate(timeframe, referenceDate, {
+      forwardDate: true,
+    });
+    if (parsedTimeframe) {
+      return normalizeToNoon(new Date(parsedTimeframe));
+    }
+  }
+
+  return parseActionDueDate(description, referenceDate);
+}
+
 /**
  * Determines the most appropriate reference date for interpreting follow-up timelines.
  */
@@ -81,4 +129,3 @@ export function resolveVisitReferenceDate(
 
   return normalizeToNoon(fallback);
 }
-

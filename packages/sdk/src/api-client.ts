@@ -38,6 +38,23 @@ interface RequestOptions extends RequestInit {
   retry?: number;
 }
 
+export interface CursorListParams {
+  limit?: number;
+  cursor?: string;
+}
+
+export interface VisitListParams extends CursorListParams {
+  sort?: 'asc' | 'desc';
+}
+
+export interface CursorPage<T> {
+  items: T[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  count: number;
+  limit: number;
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function normalizeHeaders(headersInit?: HeadersInit): Record<string, string> {
@@ -179,6 +196,24 @@ async function fetchWithTimeout(
   }
 }
 
+function appendQueryParams(
+  searchParams: URLSearchParams,
+  params?: Record<string, string | number | undefined>,
+) {
+  if (!params) return;
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined) return;
+    searchParams.append(key, String(value));
+  });
+}
+
+function parseCursorHeaders(headers: Headers): Pick<CursorPage<unknown>, 'hasMore' | 'nextCursor'> {
+  const hasMore = headers.get('X-Has-More') === 'true';
+  const nextCursorValue = headers.get('X-Next-Cursor');
+  const nextCursor = nextCursorValue && nextCursorValue.length > 0 ? nextCursorValue : null;
+  return { hasMore, nextCursor };
+}
+
 export function createApiClient(config: ApiClientConfig) {
   const { baseUrl, getAuthToken, enableLogging = false } = config;
 
@@ -290,6 +325,131 @@ export function createApiClient(config: ApiClientConfig) {
     throw lastError ?? new Error('Request failed unexpectedly');
   }
 
+  async function apiRequestWithHeaders<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<{ data: T; headers: Headers }> {
+    const {
+      requireAuth = true,
+      timeoutMs = DEFAULT_TIMEOUT_MS,
+      retry: retryOption,
+      headers: providedHeaders,
+      ...restOptions
+    } = options;
+
+    const method = (restOptions.method ?? 'GET').toString().toUpperCase();
+    const headers = normalizeHeaders(providedHeaders);
+
+    if (!headers['Content-Type'] && restOptions.body) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    if (requireAuth) {
+      const token = await getAuthToken();
+      if (!token) {
+        const error = new Error('Authentication required') as ApiError;
+        error.code = 'auth_required';
+        error.userMessage = UNAUTHORIZED_MESSAGE;
+        error.status = 401;
+        throw error;
+      }
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${baseUrl}${endpoint}`;
+    const maxRetries =
+      retryOption ?? (['GET', 'HEAD', 'OPTIONS'].includes(method) ? 2 : 0);
+
+    let attempt = 0;
+    let lastError: ApiError | undefined;
+
+    while (attempt <= maxRetries) {
+      const requestInit: RequestInit = {
+        ...restOptions,
+        method,
+        headers,
+      };
+
+      try {
+        if (enableLogging) {
+          console.log(`[API] ${method} ${url} (attempt ${attempt + 1})`);
+        }
+        const response = await fetchWithTimeout(url, requestInit, timeoutMs);
+
+        if (!response.ok) {
+          const error = await buildApiError(response);
+          if (attempt < maxRetries && isRetryable(error, method)) {
+            lastError = error;
+            attempt += 1;
+            await sleep(250 * attempt);
+            continue;
+          }
+          throw error;
+        }
+
+        if (response.status === 204) {
+          return { data: undefined as unknown as T, headers: response.headers };
+        }
+
+        const rawBody = await response.text();
+        if (!rawBody) {
+          return { data: undefined as unknown as T, headers: response.headers };
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          return { data: rawBody as unknown as T, headers: response.headers };
+        }
+
+        try {
+          return { data: JSON.parse(rawBody) as T, headers: response.headers };
+        } catch (parseError) {
+          const error = buildParseError(parseError);
+          if (attempt < maxRetries && isRetryable(error, method)) {
+            lastError = error;
+            attempt += 1;
+            await sleep(250 * attempt);
+            continue;
+          }
+          throw error;
+        }
+      } catch (err) {
+        const error =
+          (err as ApiError)?.userMessage || (err as ApiError)?.status !== undefined
+            ? (err as ApiError)
+            : buildNetworkError(err);
+
+        if (attempt < maxRetries && isRetryable(error, method)) {
+          lastError = error;
+          attempt += 1;
+          await sleep(250 * attempt);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw lastError ?? new Error('Request failed unexpectedly');
+  }
+
+  async function requestCursorPage<T>(
+    endpoint: string,
+    limit?: number,
+  ): Promise<CursorPage<T>> {
+    const { data, headers } = await apiRequestWithHeaders<T[]>(endpoint);
+    const items = Array.isArray(data) ? data : [];
+    const { hasMore, nextCursor } = parseCursorHeaders(headers);
+
+    return {
+      items,
+      hasMore,
+      nextCursor,
+      count: items.length,
+      limit: typeof limit === 'number' ? limit : items.length,
+    };
+  }
+
   return {
     // Health check
     health: () =>
@@ -297,15 +457,28 @@ export function createApiClient(config: ApiClientConfig) {
 
     // Visits
     visits: {
-      list: (params?: { limit?: number; sort?: 'asc' | 'desc' }) => {
-        if (params) {
-          const searchParams = new URLSearchParams();
-          Object.entries(params).forEach(([k, v]) => {
-            searchParams.append(k, String(v));
-          });
-          return apiRequest<Visit[]>(`/v1/visits?${searchParams.toString()}`);
-        }
-        return apiRequest<Visit[]>('/v1/visits');
+      list: async (params?: VisitListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          sort: params?.sort,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/visits${query ? `?${query}` : ''}`;
+        const page = await requestCursorPage<Visit>(endpoint, params?.limit);
+        return page.items;
+      },
+      listPage: (params?: VisitListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          sort: params?.sort,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/visits${query ? `?${query}` : ''}`;
+        return requestCursorPage<Visit>(endpoint, params?.limit);
       },
       get: (id: string) => apiRequest<Visit>(`/v1/visits/${id}`),
       create: (data: Partial<Visit>) =>
@@ -330,7 +503,27 @@ export function createApiClient(config: ApiClientConfig) {
 
     // Action Items
     actions: {
-      list: () => apiRequest<ActionItem[]>('/v1/actions'),
+      list: async (params?: CursorListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/actions${query ? `?${query}` : ''}`;
+        const page = await requestCursorPage<ActionItem>(endpoint, params?.limit);
+        return page.items;
+      },
+      listPage: (params?: CursorListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/actions${query ? `?${query}` : ''}`;
+        return requestCursorPage<ActionItem>(endpoint, params?.limit);
+      },
       get: (id: string) => apiRequest<ActionItem>(`/v1/actions/${id}`),
       create: (data: Partial<ActionItem>) =>
         apiRequest<ActionItem>('/v1/actions', {
@@ -350,7 +543,27 @@ export function createApiClient(config: ApiClientConfig) {
 
     // Medications
     medications: {
-      list: () => apiRequest<Medication[]>('/v1/meds'),
+      list: async (params?: CursorListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/meds${query ? `?${query}` : ''}`;
+        const page = await requestCursorPage<Medication>(endpoint, params?.limit);
+        return page.items;
+      },
+      listPage: (params?: CursorListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/meds${query ? `?${query}` : ''}`;
+        return requestCursorPage<Medication>(endpoint, params?.limit);
+      },
       get: (id: string) => apiRequest<Medication>(`/v1/meds/${id}`),
       create: (data: Partial<Medication>) =>
         apiRequest<Medication>('/v1/meds', {
@@ -408,9 +621,11 @@ export function createApiClient(config: ApiClientConfig) {
       listCaregivers: () =>
         apiRequest<{ caregivers: any[]; autoShareWithCaregivers: boolean }>('/v1/users/me/caregivers'),
       addCaregiver: (data: { name: string; email: string; relationship?: string }) =>
-        apiRequest<any>('/v1/users/me/caregivers', {
+        apiRequest<any>('/v1/shares/invite', {
           method: 'POST',
-          body: JSON.stringify(data),
+          body: JSON.stringify({
+            caregiverEmail: data.email,
+          }),
         }),
       updateCaregiver: (id: string, data: { name?: string; relationship?: string }) =>
         apiRequest<any>(`/v1/users/me/caregivers/${id}`, {
@@ -549,4 +764,3 @@ export function createApiClient(config: ApiClientConfig) {
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;
-

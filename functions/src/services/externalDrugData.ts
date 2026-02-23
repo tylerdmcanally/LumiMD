@@ -4,9 +4,10 @@ import * as functions from 'firebase-functions';
 import { externalDrugDataConfig } from '../config';
 import type { MedicationChangeEntry } from './openai';
 import { MedicationSafetyWarning, normalizeMedicationName } from './medicationSafety';
+import { FirestoreExternalDrugSafetyCacheRepository } from './repositories/externalDrugSafetyCache/FirestoreExternalDrugSafetyCacheRepository';
+import { ExternalDrugSafetyCacheRepository } from './repositories/externalDrugSafetyCache/ExternalDrugSafetyCacheRepository';
 
 const db = () => admin.firestore();
-const cacheCollection = () => db().collection('medicationSafetyExternalCache');
 
 type ExternalInteraction = {
   description?: string;
@@ -40,7 +41,25 @@ type RxNavInteractionResponse = {
 
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-const buildCacheDocId = (userId: string, cacheKey: string) => `${userId}_${cacheKey}`;
+type ExternalDrugDataDependencies = {
+  cacheRepository?: Pick<
+    ExternalDrugSafetyCacheRepository,
+    'getByUserAndCacheKey' | 'setByUserAndCacheKey'
+  >;
+  fetchApproximateRxcui?: (term: string) => Promise<string | null>;
+  fetchInteractions?: (rxcuis: string[]) => Promise<ExternalInteraction[]>;
+};
+
+function resolveDependencies(
+  overrides: ExternalDrugDataDependencies = {},
+): Required<ExternalDrugDataDependencies> {
+  return {
+    cacheRepository:
+      overrides.cacheRepository ?? new FirestoreExternalDrugSafetyCacheRepository(db()),
+    fetchApproximateRxcui: overrides.fetchApproximateRxcui ?? fetchApproximateRxcui,
+    fetchInteractions: overrides.fetchInteractions ?? fetchInteractions,
+  };
+}
 
 const mapSeverity = (value?: string): MedicationSafetyWarning['severity'] => {
   const normalized = (value || '').toLowerCase();
@@ -56,25 +75,47 @@ const generateCacheKey = (newRxcui: string, currentRxcuis: string[]): string => 
   return crypto.createHash('md5').update(data).digest('hex');
 };
 
+const getTimestampNow = (): admin.firestore.Timestamp => {
+  const firestoreNamespace = admin.firestore as unknown as {
+    Timestamp?: { now?: () => admin.firestore.Timestamp };
+  };
+
+  if (typeof firestoreNamespace.Timestamp?.now === 'function') {
+    return firestoreNamespace.Timestamp.now();
+  }
+
+  const now = new Date();
+  return {
+    toDate: () => now,
+    toMillis: () => now.getTime(),
+  } as admin.firestore.Timestamp;
+};
+
 const getCachedResult = async (
   userId: string,
-  cacheKey: string
+  cacheKey: string,
+  cacheRepository: Pick<ExternalDrugSafetyCacheRepository, 'getByUserAndCacheKey'>,
 ): Promise<MedicationSafetyWarning[] | null> => {
   try {
-    const docId = buildCacheDocId(userId, cacheKey);
-    const cacheDoc = await cacheCollection().doc(docId).get();
-    if (!cacheDoc.exists) {
+    const cacheDoc = await cacheRepository.getByUserAndCacheKey(userId, cacheKey);
+    if (!cacheDoc) {
       return null;
     }
 
-    const data = cacheDoc.data()!;
-    const cacheAge = Date.now() - data.createdAt.toMillis();
+    const createdAt = cacheDoc.createdAt;
+    if (!createdAt || typeof createdAt.toMillis !== 'function') {
+      return null;
+    }
+
+    const cacheAge = Date.now() - createdAt.toMillis();
     if (cacheAge > CACHE_TTL_MS) {
       return null;
     }
 
     functions.logger.info('[externalDrugData] Cache hit', { cacheKey });
-    return data.warnings as MedicationSafetyWarning[];
+    return Array.isArray(cacheDoc.warnings)
+      ? (cacheDoc.warnings as MedicationSafetyWarning[])
+      : null;
   } catch (error) {
     functions.logger.warn('[externalDrugData] Cache check failed:', error);
     return null;
@@ -85,18 +126,17 @@ const cacheResult = async (
   userId: string,
   cacheKey: string,
   warnings: MedicationSafetyWarning[],
-  metadata: { newRxcui: string; currentRxcuis: string[] }
+  metadata: { newRxcui: string; currentRxcuis: string[] },
+  cacheRepository: Pick<ExternalDrugSafetyCacheRepository, 'setByUserAndCacheKey'>,
 ): Promise<void> => {
   try {
-    await cacheCollection()
-      .doc(buildCacheDocId(userId, cacheKey))
-      .set({
-        warnings,
-        createdAt: admin.firestore.Timestamp.now(),
-        userId,
-        newRxcui: metadata.newRxcui,
-        currentRxcuis: metadata.currentRxcuis,
-      });
+    await cacheRepository.setByUserAndCacheKey(userId, cacheKey, {
+      warnings,
+      createdAt: getTimestampNow(),
+      userId,
+      newRxcui: metadata.newRxcui,
+      currentRxcuis: metadata.currentRxcuis,
+    });
   } catch (error) {
     functions.logger.warn('[externalDrugData] Cache write failed:', error);
   }
@@ -183,21 +223,24 @@ const buildRxcuiPair = (interaction: ExternalInteraction): string[] => {
 export const runExternalSafetyChecks = async (
   userId: string,
   newMedication: MedicationChangeEntry,
-  currentMedications: Array<{ name: string }>
+  currentMedications: Array<{ name: string }>,
+  dependencyOverrides: ExternalDrugDataDependencies = {},
 ): Promise<MedicationSafetyWarning[]> => {
   if (!externalDrugDataConfig.enabled) {
     return [];
   }
 
+  const dependencies = resolveDependencies(dependencyOverrides);
+
   try {
-    const newRxcui = await fetchApproximateRxcui(newMedication.name);
+    const newRxcui = await dependencies.fetchApproximateRxcui(newMedication.name);
     if (!newRxcui) {
       return [];
     }
 
     const currentRxcuis = (
       await Promise.all(
-        currentMedications.map((med) => fetchApproximateRxcui(med.name))
+        currentMedications.map((med) => dependencies.fetchApproximateRxcui(med.name))
       )
     ).filter((value): value is string => Boolean(value));
 
@@ -206,12 +249,12 @@ export const runExternalSafetyChecks = async (
     }
 
     const cacheKey = generateCacheKey(newRxcui, currentRxcuis);
-    const cached = await getCachedResult(userId, cacheKey);
+    const cached = await getCachedResult(userId, cacheKey, dependencies.cacheRepository);
     if (cached) {
       return cached;
     }
 
-    const interactions = await fetchInteractions([newRxcui, ...currentRxcuis]);
+    const interactions = await dependencies.fetchInteractions([newRxcui, ...currentRxcuis]);
     const relevant = filterInteractionsForNewMedication(
       interactions,
       newRxcui,
@@ -241,10 +284,16 @@ export const runExternalSafetyChecks = async (
       return warning;
     });
 
-    await cacheResult(userId, cacheKey, warnings, {
-      newRxcui,
-      currentRxcuis,
-    });
+    await cacheResult(
+      userId,
+      cacheKey,
+      warnings,
+      {
+        newRxcui,
+        currentRxcuis,
+      },
+      dependencies.cacheRepository,
+    );
 
     return warnings;
   } catch (error) {

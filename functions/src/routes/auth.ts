@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
 import { authLimiter } from '../middlewares/rateLimit';
 import { randomBytes } from 'crypto';
+import { AuthHandoffDomainService } from '../services/domain/authHandoffs/AuthHandoffDomainService';
+import { FirestoreAuthHandoffRepository } from '../services/repositories/authHandoffs/FirestoreAuthHandoffRepository';
 
 export const authRouter = Router();
 
@@ -13,6 +15,8 @@ authRouter.use(authLimiter);
 
 // Getter function to access Firestore after initialization
 const getDb = () => admin.firestore();
+const getAuthHandoffDomainService = () =>
+  new AuthHandoffDomainService(new FirestoreAuthHandoffRepository(getDb()));
 
 // Validation schemas
 const exchangeHandoffSchema = z.object({
@@ -22,10 +26,6 @@ const exchangeHandoffSchema = z.object({
 // TTL: 5 minutes in milliseconds
 const HANDOFF_TTL_MS = 5 * 60 * 1000;
 
-type ExchangeHandoffResult =
-  | { status: 'ok'; userId: string }
-  | { status: 'invalid' | 'used' | 'expired' };
-
 /**
  * POST /v1/auth/create-handoff
  * Creates a one-time code for mobile → web authentication
@@ -33,6 +33,7 @@ type ExchangeHandoffResult =
 authRouter.post('/create-handoff', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const authHandoffService = getAuthHandoffDomainService();
     
     // Generate secure random code (32 bytes = 256 bits)
     const code = randomBytes(32).toString('base64url');
@@ -43,12 +44,10 @@ authRouter.post('/create-handoff', requireAuth, async (req: AuthRequest, res) =>
       now.toMillis() + HANDOFF_TTL_MS
     );
     
-    // Store in Firestore
-    await getDb().collection('auth_handoffs').doc(code).set({
+    await authHandoffService.createHandoff(code, {
       userId,
       createdAt: now,
-      expiresAt, // Firestore TTL will use this field
-      used: false,
+      expiresAt,
     });
     
     functions.logger.info(`[auth] Created handoff code for user ${userId}`);
@@ -69,36 +68,12 @@ authRouter.post('/create-handoff', requireAuth, async (req: AuthRequest, res) =>
  */
 authRouter.post('/exchange-handoff', async (req, res): Promise<void> => {
   try {
+    const authHandoffService = getAuthHandoffDomainService();
     // Validate request body
     const { code } = exchangeHandoffSchema.parse(req.body);
 
-    const handoffRef = getDb().collection('auth_handoffs').doc(code);
-    const result = await getDb().runTransaction<ExchangeHandoffResult>(async (tx) => {
-      const handoffDoc = await tx.get(handoffRef);
-
-      if (!handoffDoc.exists) {
-        return { status: 'invalid' };
-      }
-
-      const handoff = handoffDoc.data()!;
-
-      if (handoff.used) {
-        return { status: 'used' };
-      }
-
-      const now = Date.now();
-      const expiresAt = handoff.expiresAt?.toMillis?.() ?? 0;
-      if (now > expiresAt) {
-        tx.delete(handoffRef);
-        return { status: 'expired' };
-      }
-
-      tx.update(handoffRef, {
-        used: true,
-        usedAt: admin.firestore.Timestamp.now(),
-      });
-
-      return { status: 'ok', userId: handoff.userId };
+    const result = await authHandoffService.exchangeHandoff(code, {
+      usedAt: admin.firestore.Timestamp.now(),
     });
 
     if (result.status !== 'ok') {

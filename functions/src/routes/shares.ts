@@ -6,6 +6,17 @@ import { randomBytes } from 'crypto';
 import { Resend } from 'resend';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
 import { shareLimiter } from '../middlewares/rateLimit';
+import {
+  hasResourceOwnerAccess,
+  ensureResourceOwnerAccessOrReject,
+  ensureResourceParticipantAccessOrReject,
+} from '../middlewares/resourceAccess';
+import { invalidateCaregiverShareLookupCache } from '../services/shareAccess';
+import { escapeHtml, sanitizePlainText } from '../utils/inputSanitization';
+import { ShareDomainService } from '../services/domain/shares/ShareDomainService';
+import { FirestoreShareRepository } from '../services/repositories/shares/FirestoreShareRepository';
+import { UserDomainService } from '../services/domain/users/UserDomainService';
+import { FirestoreUserRepository } from '../services/repositories/users/FirestoreUserRepository';
 
 export const sharesRouter = Router();
 
@@ -27,6 +38,12 @@ function getResend(): Resend | null {
 const WEB_PORTAL_URL = process.env.WEB_PORTAL_URL || 'https://portal.lumimd.app';
 
 const getDb = () => admin.firestore();
+const getShareDomainService = () => new ShareDomainService(new FirestoreShareRepository(getDb()));
+const getUserDomainService = () => new UserDomainService(new FirestoreUserRepository(getDb()));
+const SHARE_MESSAGE_MAX_LENGTH = 1000;
+const OWNER_NAME_MAX_LENGTH = 120;
+const SHARES_PAGE_SIZE_DEFAULT = 50;
+const SHARES_PAGE_SIZE_MAX = 100;
 
 const normalizeEmail = (value: unknown): string => {
   if (typeof value !== 'string') return '';
@@ -62,6 +79,128 @@ const toISOStringSafe = (value: unknown): string | null => {
   return null;
 };
 
+const toMillisSafe = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    return Number.isFinite(millis) ? millis : 0;
+  }
+
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toMillis' in (value as Record<string, unknown>) &&
+    typeof (value as { toMillis?: unknown }).toMillis === 'function'
+  ) {
+    try {
+      const millis = (value as { toMillis: () => number }).toMillis();
+      return Number.isFinite(millis) ? millis : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  if (typeof value === 'string') {
+    const millis = Date.parse(value);
+    return Number.isFinite(millis) ? millis : 0;
+  }
+
+  return 0;
+};
+
+const compareByCreatedAtDescThenId = (
+  left: { id: string; createdAt?: unknown },
+  right: { id: string; createdAt?: unknown },
+): number => {
+  const millisDiff = toMillisSafe(right.createdAt) - toMillisSafe(left.createdAt);
+  if (millisDiff !== 0) {
+    return millisDiff;
+  }
+  return left.id.localeCompare(right.id);
+};
+
+type CursorPaginationParseResult =
+  | {
+      ok: true;
+      limit: number;
+      cursor: string | null;
+      paginationRequested: boolean;
+    }
+  | {
+      ok: false;
+      message: string;
+    };
+
+const parseCursorPagination = (query: Record<string, unknown>): CursorPaginationParseResult => {
+  const rawLimit = query.limit;
+  const rawCursor = query.cursor;
+  const cursor =
+    typeof rawCursor === 'string' && rawCursor.trim().length > 0 ? rawCursor.trim() : null;
+  const paginationRequested = rawLimit !== undefined || cursor !== null;
+
+  let limit = SHARES_PAGE_SIZE_DEFAULT;
+  if (rawLimit !== undefined) {
+    if (typeof rawLimit !== 'string') {
+      return { ok: false, message: 'limit must be a positive integer' };
+    }
+    const parsedLimit = parseInt(rawLimit, 10);
+    if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+      return { ok: false, message: 'limit must be a positive integer' };
+    }
+    limit = Math.min(parsedLimit, SHARES_PAGE_SIZE_MAX);
+  }
+
+  return {
+    ok: true,
+    limit,
+    cursor,
+    paginationRequested,
+  };
+};
+
+type CursorPageResult<TItem extends { id: string }> = {
+  items: TItem[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  invalidCursor: boolean;
+};
+
+const paginateByCursor = <TItem extends { id: string }>(
+  items: TItem[],
+  options: {
+    limit: number;
+    cursor: string | null;
+  },
+): CursorPageResult<TItem> => {
+  let startIndex = 0;
+  if (options.cursor) {
+    const cursorIndex = items.findIndex((item) => item.id === options.cursor);
+    if (cursorIndex === -1) {
+      return {
+        items: [],
+        hasMore: false,
+        nextCursor: null,
+        invalidCursor: true,
+      };
+    }
+    startIndex = cursorIndex + 1;
+  }
+
+  const remaining = items.slice(startIndex);
+  const pageItems = remaining.slice(0, options.limit);
+  const hasMore = remaining.length > options.limit;
+
+  return {
+    items: pageItems,
+    hasMore,
+    nextCursor: hasMore && pageItems.length > 0 ? pageItems[pageItems.length - 1].id : null,
+    invalidCursor: false,
+  };
+};
+
 const serializeSharePayload = (
   id: string,
   data: Record<string, unknown>,
@@ -78,23 +217,20 @@ const serializeSharePayload = (
 const getInviteCaregiverEmail = (invite: Record<string, unknown>): string =>
   normalizeEmail(invite.caregiverEmail ?? invite.inviteeEmail);
 
-const ensureCaregiverRole = async (userId: string) => {
-  const userRef = getDb().collection('users').doc(userId);
-  const userDoc = await userRef.get();
-  const data = userDoc.data() ?? {};
-  const existingRoles = Array.isArray(data.roles) ? data.roles : [];
-  const roles = Array.from(new Set([...existingRoles, 'caregiver']));
+const invalidateCaregiverShareCache = (
+  caregiverUserId: unknown,
+  ownerId: unknown,
+): void => {
+  const caregiverId =
+    typeof caregiverUserId === 'string' ? caregiverUserId.trim() : '';
+  const patientOwnerId =
+    typeof ownerId === 'string' ? ownerId.trim() : '';
 
-  const update: Record<string, unknown> = {
-    roles,
-    updatedAt: admin.firestore.Timestamp.now(),
-  };
-
-  if (!data.primaryRole) {
-    update.primaryRole = 'caregiver';
+  if (!caregiverId) {
+    return;
   }
 
-  await userRef.set(update, { merge: true });
+  invalidateCaregiverShareLookupCache(caregiverId, patientOwnerId || undefined);
 };
 
 // ============================================================================
@@ -104,12 +240,87 @@ const ensureCaregiverRole = async (userId: string) => {
 const createShareSchema = z.object({
   caregiverEmail: z.string().email(),
   role: z.enum(['viewer']).default('viewer'), // Only viewer role supported for now
-  message: z.string().optional(),
+  message: z.string().max(SHARE_MESSAGE_MAX_LENGTH).optional(),
 });
 
 const updateShareSchema = z.object({
   status: z.enum(['accepted', 'revoked']),
 });
+
+const sanitizeShareMessage = (value: unknown): string | null => {
+  const sanitized = sanitizePlainText(value, SHARE_MESSAGE_MAX_LENGTH);
+  return sanitized || null;
+};
+
+type SharesRouteResponse = {
+  status: (statusCode: number) => {
+    json: (payload: Record<string, unknown>) => void;
+  };
+};
+
+type InviteEmailMatchOptions = {
+  res: SharesRouteResponse;
+  currentUserEmail: string;
+  inviteEmail: string;
+  mismatchCode?: 'email_mismatch' | 'forbidden';
+  message: string;
+  userMessage: string;
+  logContext?: string;
+};
+
+const ensureInviteEmailMatchOrReject = ({
+  res,
+  currentUserEmail,
+  inviteEmail,
+  mismatchCode = 'email_mismatch',
+  message,
+  userMessage,
+  logContext,
+}: InviteEmailMatchOptions): boolean => {
+  if (currentUserEmail && inviteEmail && currentUserEmail === inviteEmail) {
+    return true;
+  }
+
+  if (logContext) {
+    functions.logger.warn(logContext);
+  }
+
+  res.status(403).json({
+    code: mismatchCode,
+    message,
+    userMessage,
+  });
+  return false;
+};
+
+type ShareAcceptAccessResult = {
+  allow: boolean;
+  requiresCaregiverMigration: boolean;
+  shareEmail: string;
+};
+
+const resolveShareAcceptAccess = (
+  viewerUserId: string,
+  share: Record<string, unknown>,
+  currentUserEmail: string,
+): ShareAcceptAccessResult => {
+  if (hasResourceOwnerAccess(viewerUserId, share, { ownerField: 'caregiverUserId' })) {
+    return {
+      allow: true,
+      requiresCaregiverMigration: false,
+      shareEmail: normalizeEmail(share.caregiverEmail),
+    };
+  }
+
+  const shareEmail = normalizeEmail(share.caregiverEmail);
+  const canMigrateByEmail = !!currentUserEmail && !!shareEmail && currentUserEmail === shareEmail;
+
+  return {
+    allow: canMigrateByEmail,
+    requiresCaregiverMigration: canMigrateByEmail,
+    shareEmail,
+  };
+};
 
 // ============================================================================
 // ROUTES
@@ -122,30 +333,57 @@ const updateShareSchema = z.object({
  */
 sharesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
+    const pagination = parseCursorPagination(req.query as Record<string, unknown>);
+    if (!pagination.ok) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: pagination.message,
+      });
+      return;
+    }
+
     const userId = req.user!.uid;
+    const shareService = getShareDomainService();
 
-    // Get shares where user is the owner
-    const ownedSharesSnapshot = await getDb()
-      .collection('shares')
-      .where('ownerId', '==', userId)
-      .get();
-
-    // Get shares where user is the caregiver
-    const caregiverSharesSnapshot = await getDb()
-      .collection('shares')
-      .where('caregiverUserId', '==', userId)
-      .get();
+    const [ownedShares, caregiverShares] = await Promise.all([
+      shareService.listByOwnerId(userId),
+      shareService.listByCaregiverUserId(userId),
+    ]);
 
     const shares = [
-      ...ownedSharesSnapshot.docs.map((doc) =>
-        serializeSharePayload(doc.id, doc.data(), 'outgoing'),
+      ...ownedShares.map((share) =>
+        serializeSharePayload(share.id, share as Record<string, unknown>, 'outgoing'),
       ),
-      ...caregiverSharesSnapshot.docs.map((doc) =>
-        serializeSharePayload(doc.id, doc.data(), 'incoming'),
+      ...caregiverShares.map((share) =>
+        serializeSharePayload(share.id, share as Record<string, unknown>, 'incoming'),
       ),
-    ];
+    ].sort(compareByCreatedAtDescThenId);
 
-    res.json(shares);
+    let responsePayload = shares;
+    let hasMore = false;
+    let nextCursor: string | null = null;
+    if (pagination.paginationRequested) {
+      const page = paginateByCursor(shares, {
+        limit: pagination.limit,
+        cursor: pagination.cursor,
+      });
+      if (page.invalidCursor) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'Invalid cursor',
+        });
+        return;
+      }
+
+      responsePayload = page.items;
+      hasMore = page.hasMore;
+      nextCursor = page.nextCursor;
+      res.set('X-Has-More', hasMore ? 'true' : 'false');
+      res.set('X-Next-Cursor', nextCursor || '');
+    }
+
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(responsePayload);
   } catch (error) {
     functions.logger.error('[shares] Error listing shares:', error);
     res.status(500).json({
@@ -164,19 +402,22 @@ sharesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
 sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) => {
   try {
     const ownerId = req.user!.uid;
+    const shareService = getShareDomainService();
+    const userService = getUserDomainService();
     const data = createShareSchema.parse(req.body);
     const caregiverEmail = normalizeEmail(data.caregiverEmail);
 
     // Get owner info for email
     const ownerUser = await admin.auth().getUser(ownerId);
     const ownerEmail = ownerUser.email || '';
-    const ownerProfile = await getDb().collection('users').doc(ownerId).get();
-    const ownerData = ownerProfile.data();
-    const ownerName =
+    const ownerData = await userService.getById(ownerId);
+    const ownerNameRaw =
       ownerData?.preferredName ||
       ownerData?.firstName ||
       ownerUser.displayName ||
       ownerEmail.split('@')[0];
+    const ownerName = sanitizePlainText(ownerNameRaw, OWNER_NAME_MAX_LENGTH) || ownerEmail.split('@')[0] || 'Someone';
+    const shareMessage = sanitizeShareMessage(data.message);
 
     // Prevent sharing with yourself
     if (normalizeEmail(ownerEmail) === caregiverEmail) {
@@ -189,23 +430,11 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
 
     // Check for existing share or invite
     const [existingInviteByLegacyEmail, existingInviteByCaregiverEmail] = await Promise.all([
-      getDb()
-        .collection('shareInvites')
-        .where('ownerId', '==', ownerId)
-        .where('inviteeEmail', '==', caregiverEmail)
-        .where('status', '==', 'pending')
-        .limit(1)
-        .get(),
-      getDb()
-        .collection('shareInvites')
-        .where('ownerId', '==', ownerId)
-        .where('caregiverEmail', '==', caregiverEmail)
-        .where('status', '==', 'pending')
-        .limit(1)
-        .get(),
+      shareService.hasPendingInviteByOwnerAndInviteeEmail(ownerId, caregiverEmail),
+      shareService.hasPendingInviteByOwnerAndCaregiverEmail(ownerId, caregiverEmail),
     ]);
 
-    if (!existingInviteByLegacyEmail.empty || !existingInviteByCaregiverEmail.empty) {
+    if (existingInviteByLegacyEmail || existingInviteByCaregiverEmail) {
       res.status(409).json({
         code: 'invite_exists',
         message: 'An invitation has already been sent to this email',
@@ -221,10 +450,9 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
 
       // Check if share already exists
       const shareId = `${ownerId}_${caregiverUserId}`;
-      const existingShare = await getDb().collection('shares').doc(shareId).get();
-
-      if (existingShare.exists) {
-        const existingStatus = existingShare.data()?.status;
+      const existingShare = await shareService.getById(shareId);
+      if (existingShare) {
+        const existingStatus = existingShare.status;
         if (existingStatus === 'accepted' || existingStatus === 'pending') {
           res.status(409).json({
             code: 'share_exists',
@@ -247,58 +475,46 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
     if (caregiverUserId) {
       // User exists - create share directly
       const shareId = `${ownerId}_${caregiverUserId}`;
+      const sharePayload = {
+        ownerId,
+        ownerName,
+        ownerEmail,
+        caregiverUserId,
+        caregiverEmail,
+        role: data.role,
+        status: 'pending',
+        message: shareMessage,
+        createdAt: now,
+        updatedAt: now,
+      };
 
-      await getDb()
-        .collection('shares')
-        .doc(shareId)
-        .set({
-          ownerId,
-          ownerName,
-          ownerEmail,
-          caregiverUserId,
-          caregiverEmail,
-          role: data.role,
-          status: 'pending',
-          message: data.message || null,
-          createdAt: now,
-          updatedAt: now,
-        });
+      await shareService.setShare(shareId, sharePayload);
 
       // Email will be sent by frontend via Vercel API route
       functions.logger.info(`[shares] Created share invitation from ${ownerId} to existing user ${caregiverUserId}. Email should be sent by frontend.`);
-
-      const shareDoc = await getDb().collection('shares').doc(shareId).get();
-      const share = shareDoc.data()!;
 
       functions.logger.info(
         `[shares] Created share invitation from ${ownerId} to existing user ${caregiverUserId}`,
       );
 
-      res.status(201).json({
-        id: shareDoc.id,
-        ...share,
-        createdAt: share.createdAt?.toDate().toISOString(),
-        updatedAt: share.updatedAt?.toDate().toISOString(),
-      });
+      res.status(201).json(serializeSharePayload(shareId, sharePayload));
     } else {
       // User doesn't exist - create invite
       const inviteToken = randomBytes(32).toString('base64url');
+      const invitePayload = {
+        ownerId,
+        ownerEmail,
+        ownerName,
+        inviteeEmail: caregiverEmail,
+        caregiverEmail,
+        status: 'pending',
+        message: shareMessage,
+        role: data.role,
+        createdAt: now,
+        expiresAt,
+      };
 
-      await getDb()
-        .collection('shareInvites')
-        .doc(inviteToken)
-        .set({
-          ownerId,
-          ownerEmail,
-          ownerName,
-          inviteeEmail: caregiverEmail,
-          caregiverEmail,
-          status: 'pending',
-          message: data.message || null,
-          role: data.role,
-          createdAt: now,
-          expiresAt,
-        });
+      await shareService.createInvite(inviteToken, invitePayload);
 
       // Email will be sent by frontend via Vercel API route
       functions.logger.info(`[shares] Created share invite from ${ownerId} to ${data.caregiverEmail} (no account yet). Email should be sent by frontend.`);
@@ -315,7 +531,7 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
         caregiverEmail,
         inviteeEmail: caregiverEmail,
         status: 'pending',
-        message: data.message || null,
+        message: shareMessage,
         role: data.role,
         createdAt: now.toDate().toISOString(),
         expiresAt: expiresAt.toDate().toISOString(),
@@ -346,9 +562,19 @@ sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) 
  */
 sharesRouter.get('/invites', requireAuth, async (req: AuthRequest, res) => {
   try {
+    const pagination = parseCursorPagination(req.query as Record<string, unknown>);
+    if (!pagination.ok) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: pagination.message,
+      });
+      return;
+    }
+
     const userId = req.user!.uid;
     const user = await admin.auth().getUser(userId);
     const userEmail = normalizeEmail(user.email);
+    const shareService = getShareDomainService();
 
     if (!userEmail) {
       res.status(400).json({
@@ -358,37 +584,45 @@ sharesRouter.get('/invites', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const [legacyInvitesSnapshot, currentInvitesSnapshot] = await Promise.all([
-      getDb()
-        .collection('shareInvites')
-        .where('inviteeEmail', '==', userEmail)
-        .where('status', '==', 'pending')
-        .get(),
-      getDb()
-        .collection('shareInvites')
-        .where('caregiverEmail', '==', userEmail)
-        .where('status', '==', 'pending')
-        .get(),
-    ]);
-
-    const invitesById = new Map<string, admin.firestore.QueryDocumentSnapshot>();
-    legacyInvitesSnapshot.docs.forEach((doc) => invitesById.set(doc.id, doc));
-    currentInvitesSnapshot.docs.forEach((doc) => invitesById.set(doc.id, doc));
-
-    const invites = Array.from(invitesById.values()).map((doc) => {
-      const data = doc.data();
+    const invites = await shareService.listPendingInvitesForCaregiverEmail(userEmail);
+    const payload = invites.map((invite) => {
+      const data = invite as Record<string, unknown>;
       const caregiverEmail = getInviteCaregiverEmail(data as Record<string, unknown>);
       return {
-        id: doc.id,
+        id: invite.id,
         ...data,
         caregiverEmail: caregiverEmail || null,
         inviteeEmail: normalizeEmail(data.inviteeEmail) || caregiverEmail || null,
-        createdAt: data.createdAt?.toDate().toISOString(),
-        expiresAt: data.expiresAt?.toDate().toISOString(),
+        createdAt: toISOStringSafe(data.createdAt),
+        expiresAt: toISOStringSafe(data.expiresAt),
       };
-    });
+    }).sort(compareByCreatedAtDescThenId);
 
-    res.json(invites);
+    let responsePayload = payload;
+    let hasMore = false;
+    let nextCursor: string | null = null;
+    if (pagination.paginationRequested) {
+      const page = paginateByCursor(payload, {
+        limit: pagination.limit,
+        cursor: pagination.cursor,
+      });
+      if (page.invalidCursor) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'Invalid cursor',
+        });
+        return;
+      }
+
+      responsePayload = page.items;
+      hasMore = page.hasMore;
+      nextCursor = page.nextCursor;
+      res.set('X-Has-More', hasMore ? 'true' : 'false');
+      res.set('X-Next-Cursor', nextCursor || '');
+    }
+
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(responsePayload);
   } catch (error) {
     functions.logger.error('[shares] Error fetching invites:', error);
     res.status(500).json({
@@ -406,28 +640,21 @@ sharesRouter.patch('/invites/:id', requireAuth, async (req: AuthRequest, res) =>
   try {
     const userId = req.user!.uid;
     const inviteId = req.params.id;
-
-    const inviteRef = getDb().collection('shareInvites').doc(inviteId);
-    const inviteDoc = await inviteRef.get();
-
-    if (!inviteDoc.exists) {
-      res.status(404).json({
-        code: 'not_found',
-        message: 'Invite not found',
-      });
-      return;
-    }
-
-    const invite = inviteDoc.data()!;
-    if (invite.ownerId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
+    const shareService = getShareDomainService();
+    const invite = await shareService.getInviteById(inviteId);
+    if (
+      !ensureResourceOwnerAccessOrReject(userId, invite, res, {
+        resourceName: 'invite',
+        ownerField: 'ownerId',
+        notFoundMessage: 'Invite not found',
         message: 'You are not authorized to modify this invite',
-      });
+      })
+    ) {
       return;
     }
+    const ownerInvite = invite!;
 
-    if (invite.status !== 'pending') {
+    if (ownerInvite.status !== 'pending') {
       res.status(400).json({
         code: 'invalid_status',
         message: 'Only pending invites can be cancelled',
@@ -435,20 +662,27 @@ sharesRouter.patch('/invites/:id', requireAuth, async (req: AuthRequest, res) =>
       return;
     }
 
-    await inviteRef.update({
+    const updatedInvite = await shareService.updateInviteRecord(inviteId, {
       status: 'revoked',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    const updatedDoc = await inviteRef.get();
-    const updatedInvite = updatedDoc.data()!;
+    if (!updatedInvite) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Invite not found',
+      });
+      return;
+    }
+
+    const { id: _inviteId, ...updatedInvitePayload } = updatedInvite;
 
     res.json({
+      ...updatedInvitePayload,
       id: inviteId,
-      ...updatedInvite,
-      createdAt: updatedInvite.createdAt?.toDate().toISOString(),
-      expiresAt: updatedInvite.expiresAt?.toDate().toISOString(),
-      updatedAt: updatedInvite.updatedAt?.toDate().toISOString(),
+      createdAt: toISOStringSafe(updatedInvite.createdAt),
+      expiresAt: toISOStringSafe(updatedInvite.expiresAt),
+      updatedAt: toISOStringSafe(updatedInvite.updatedAt),
     });
   } catch (error) {
     functions.logger.error('[shares] Error cancelling invite:', error);
@@ -468,6 +702,7 @@ sharesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.uid;
     const shareId = req.params.id;
+    const shareService = getShareDomainService();
 
     // Allow static routes registered later (e.g. /my-invites) to resolve correctly.
     if (shareId === 'my-invites') {
@@ -475,28 +710,21 @@ sharesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       return;
     }
 
-    const shareDoc = await getDb().collection('shares').doc(shareId).get();
-
-    if (!shareDoc.exists) {
-      res.status(404).json({
-        code: 'not_found',
-        message: 'Share not found',
-      });
-      return;
-    }
-
-    const share = shareDoc.data()!;
-
-    // Verify user is either owner or caregiver
-    if (share.ownerId !== userId && share.caregiverUserId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
+    const share = await shareService.getById(shareId);
+    if (
+      !ensureResourceParticipantAccessOrReject(userId, share, res, {
+        resourceName: 'share',
+        participantFields: ['ownerId', 'caregiverUserId'],
+        notFoundMessage: 'Share not found',
         message: 'You do not have access to this share',
-      });
+      })
+    ) {
       return;
     }
+    const participantShare = share!;
 
-    res.json(serializeSharePayload(shareDoc.id, share));
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(serializeSharePayload(shareId, participantShare));
   } catch (error) {
     functions.logger.error('[shares] Error getting share:', error);
     res.status(500).json({
@@ -516,13 +744,21 @@ sharesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const shareId = req.params.id;
+    const shareService = getShareDomainService();
 
     const data = updateShareSchema.parse(req.body);
 
-    const shareRef = getDb().collection('shares').doc(shareId);
-    const shareDoc = await shareRef.get();
+    const transitionResult = await shareService.transitionStatus(
+      shareId,
+      userId,
+      data.status,
+      {
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    );
 
-    if (!shareDoc.exists) {
+    if (transitionResult.outcome === 'not_found') {
       res.status(404).json({
         code: 'not_found',
         message: 'Share not found',
@@ -530,61 +766,21 @@ sharesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const share = shareDoc.data()!;
-
-    // Owner revoking access
-    if (userId === share.ownerId && data.status === 'revoked') {
-      await shareRef.update({
-        status: 'revoked',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      functions.logger.info(`[shares] Owner ${userId} revoked share ${shareId}`);
-
-      const updatedDoc = await shareRef.get();
-      const updatedShare = updatedDoc.data()!;
-
-      res.json({
-        id: shareId,
-        ...updatedShare,
-        createdAt: updatedShare.createdAt?.toDate().toISOString(),
-        updatedAt: updatedShare.updatedAt?.toDate().toISOString(),
+    if (transitionResult.outcome === 'invalid_transition') {
+      res.status(400).json({
+        code: 'invalid_transition',
+        message: 'Invalid status transition for your role',
       });
       return;
     }
 
-    // Caregiver accepting invitation
-    if (
-      userId === share.caregiverUserId &&
-      share.status === 'pending' &&
-      data.status === 'accepted'
-    ) {
-      await shareRef.update({
-        status: 'accepted',
-        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    const updatedShare = transitionResult.share;
+    invalidateCaregiverShareCache(updatedShare.caregiverUserId, updatedShare.ownerId);
+    functions.logger.info(
+      `[shares] ${userId} updated share ${shareId} to ${updatedShare.status}`,
+    );
 
-      functions.logger.info(`[shares] Caregiver ${userId} accepted share ${shareId}`);
-
-      const updatedDoc = await shareRef.get();
-      const updatedShare = updatedDoc.data()!;
-
-      res.json({
-        id: shareId,
-        ...updatedShare,
-        createdAt: updatedShare.createdAt?.toDate().toISOString(),
-        updatedAt: updatedShare.updatedAt?.toDate().toISOString(),
-        acceptedAt: updatedShare.acceptedAt?.toDate().toISOString(),
-      });
-      return;
-    }
-
-    // Invalid state transition
-    res.status(400).json({
-      code: 'invalid_transition',
-      message: 'Invalid status transition for your role',
-    });
+    res.json(serializeSharePayload(shareId, updatedShare as Record<string, unknown>));
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({
@@ -611,28 +807,28 @@ sharesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const shareService = getShareDomainService();
+    const userService = getUserDomainService();
     const { token } = z.object({ token: z.string().min(1) }).parse(req.body);
 
     // Check if it's a shareInvite (for users without accounts)
-    const inviteDoc = await getDb().collection('shareInvites').doc(token).get();
+    const invite = await shareService.getInviteById(token);
 
-    if (inviteDoc.exists) {
-      const invite = inviteDoc.data()!;
-
+    if (invite) {
       // Verify email matches (normalize both to lowercase for comparison)
       const user = await admin.auth().getUser(userId);
       const userEmail = normalizeEmail(user.email);
       const inviteEmail = getInviteCaregiverEmail(invite as Record<string, unknown>);
 
-      if (userEmail !== inviteEmail) {
-        functions.logger.warn(
-          `[shares] Email mismatch for invite ${token}: user email "${userEmail}" does not match invite email "${inviteEmail}"`,
-        );
-        res.status(403).json({
-          code: 'email_mismatch',
-          message: 'This invitation was sent to a different email address',
-          userMessage: `This invitation was sent to ${inviteEmail || 'a different email address'}, but you are signed in as ${user.email}. Please sign in with the email address that received the invitation.`,
-        });
+      if (!ensureInviteEmailMatchOrReject({
+        res,
+        currentUserEmail: userEmail,
+        inviteEmail,
+        mismatchCode: 'email_mismatch',
+        message: 'This invitation was sent to a different email address',
+        userMessage: `This invitation was sent to ${inviteEmail || 'a different email address'}, but you are signed in as ${user.email}. Please sign in with the email address that received the invitation.`,
+        logContext: `[shares] Email mismatch for invite ${token}: user email "${userEmail}" does not match invite email "${inviteEmail}"`,
+      })) {
         return;
       }
 
@@ -640,7 +836,7 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
       const currentTime = Date.now();
       const expiresAt = invite.expiresAt?.toMillis() || 0;
       if (currentTime > expiresAt) {
-        await inviteDoc.ref.update({ status: 'expired' });
+        await shareService.updateInviteRecord(token, { status: 'expired' });
         res.status(410).json({
           code: 'invite_expired',
           message: 'This invitation has expired',
@@ -660,55 +856,53 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
       // Create the share
       const shareId = `${invite.ownerId}_${userId}`;
       const now = admin.firestore.Timestamp.now();
-
-      await getDb()
-        .collection('shares')
-        .doc(shareId)
-        .set({
+      await shareService.acceptInviteAndSetShare({
+        inviteId: token,
+        inviteUpdates: {
+          status: 'accepted',
+          acceptedAt: now,
+          updatedAt: now,
+        },
+        shareId,
+        sharePayload: {
           ownerId: invite.ownerId,
-          ownerName: invite.ownerName,
+          ownerName: sanitizePlainText(invite.ownerName, OWNER_NAME_MAX_LENGTH) || 'Someone',
           ownerEmail: invite.ownerEmail,
           caregiverUserId: userId,
           caregiverEmail: inviteEmail,
           role: invite.role,
           status: 'accepted',
-          message: invite.message || null,
+          message: sanitizeShareMessage(invite.message),
           createdAt: now,
           updatedAt: now,
           acceptedAt: now,
-        });
-
-      // Mark invite as accepted
-      await inviteDoc.ref.update({
-        status: 'accepted',
-        acceptedAt: now,
-        updatedAt: now,
+        },
       });
+      invalidateCaregiverShareCache(userId, invite.ownerId);
 
-      await ensureCaregiverRole(userId);
+      await userService.ensureCaregiverRole(userId);
 
       functions.logger.info(
         `[shares] User ${userId} accepted invite ${token} from ${invite.ownerId}`,
       );
 
-      const shareDoc = await getDb().collection('shares').doc(shareId).get();
-      const share = shareDoc.data()!;
+      const share = await shareService.getById(shareId);
+      if (!share) {
+        res.status(500).json({
+          code: 'server_error',
+          message: 'Failed to fetch accepted share',
+        });
+        return;
+      }
 
-      res.json({
-        id: shareId,
-        ...share,
-        createdAt: share.createdAt?.toDate().toISOString(),
-        updatedAt: share.updatedAt?.toDate().toISOString(),
-        acceptedAt: share.acceptedAt?.toDate().toISOString(),
-      });
+      res.json(serializeSharePayload(shareId, share as Record<string, unknown>));
       return;
     }
 
     // Check if it's a direct share (for existing users)
     const shareId = token;
-    const shareDoc = await getDb().collection('shares').doc(shareId).get();
-
-    if (!shareDoc.exists) {
+    const share = await shareService.getById(shareId);
+    if (!share) {
       res.status(404).json({
         code: 'not_found',
         message: 'Invitation not found',
@@ -716,71 +910,70 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
       return;
     }
 
-    const share = shareDoc.data()!;
-
     // Debug logging for 403 issues
     functions.logger.info(`[shares] Accept invite attempt: userId=${userId}, shareId=${shareId}`);
     functions.logger.info(`[shares] Share data: caregiverUserId=${share.caregiverUserId}, ownerId=${share.ownerId}, status=${share.status}, caregiverEmail=${share.caregiverEmail}`);
 
     // Get current user's email for validation
     const currentUser = await admin.auth().getUser(userId);
-    const currentUserEmail = currentUser.email?.toLowerCase().trim();
+    const currentUserEmail = normalizeEmail(currentUser.email);
 
     // Validate access: either user ID matches OR email matches
     // If email matches but user ID doesn't, update the share with correct user ID
     // This handles cases where accounts were recreated or invite was resent
-    const shareEmail = share.caregiverEmail?.toLowerCase().trim();
+    const accessResult = resolveShareAcceptAccess(userId, share, currentUserEmail);
 
-    if (share.caregiverUserId !== userId) {
-      // User ID doesn't match - check if email matches
-      if (!currentUserEmail || !shareEmail || currentUserEmail !== shareEmail) {
-        functions.logger.warn(`[shares] 403: User ${userId} (email: ${currentUserEmail}) tried to accept share ${shareId} but caregiverEmail is ${shareEmail} and caregiverUserId is ${share.caregiverUserId}`);
+    if (!accessResult.allow) {
+        functions.logger.warn(`[shares] 403: User ${userId} (email: ${currentUserEmail}) tried to accept share ${shareId} but caregiverEmail is ${accessResult.shareEmail} and caregiverUserId is ${share.caregiverUserId}`);
         res.status(403).json({
           code: 'forbidden',
           message: 'You are not authorized to accept this invitation',
         });
         return;
-      }
+    }
 
+    if (accessResult.requiresCaregiverMigration) {
       // Email matches - update the caregiverUserId to this user and accept
       functions.logger.info(`[shares] Email match - updating caregiverUserId from ${share.caregiverUserId} to ${userId}`);
 
       // Also update the document ID to match new format
       const newShareId = `${share.ownerId}_${userId}`;
-
-      await getDb().collection('shares').doc(newShareId).set({
-        ...share,
-        caregiverUserId: userId,
-        status: 'accepted',
-        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      await shareService.migrateShareToCaregiver({
+        currentShareId: shareId,
+        newShareId,
+        newSharePayload: {
+          ...share,
+          caregiverUserId: userId,
+          status: 'accepted',
+          acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
       });
+      invalidateCaregiverShareCache(share.caregiverUserId, share.ownerId);
+      invalidateCaregiverShareCache(userId, share.ownerId);
 
-      // Delete the old share with wrong caregiver ID
-      await shareDoc.ref.delete();
-
-      await ensureCaregiverRole(userId);
+      await userService.ensureCaregiverRole(userId);
 
       functions.logger.info(`[shares] User ${userId} accepted share (migrated from ${shareId} to ${newShareId})`);
 
-      const newShareDoc = await getDb().collection('shares').doc(newShareId).get();
-      const newShare = newShareDoc.data()!;
+      const newShare = await shareService.getById(newShareId);
+      if (!newShare) {
+        res.status(500).json({
+          code: 'server_error',
+          message: 'Failed to fetch accepted share',
+        });
+        return;
+      }
 
-      res.json({
-        id: newShareId,
-        ...newShare,
-        createdAt: newShare.createdAt?.toDate().toISOString(),
-        updatedAt: newShare.updatedAt?.toDate().toISOString(),
-        acceptedAt: newShare.acceptedAt?.toDate().toISOString(),
-      });
+      res.json(serializeSharePayload(newShareId, newShare as Record<string, unknown>));
       return;
     }
 
     // Check if already accepted
     if (share.status === 'accepted') {
       res.json({
-        id: shareId,
         ...share,
+        id: shareId,
         createdAt: share.createdAt?.toDate().toISOString(),
         updatedAt: share.updatedAt?.toDate().toISOString(),
         acceptedAt: share.acceptedAt?.toDate().toISOString(),
@@ -790,26 +983,35 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
 
     // Accept the share
     if (share.status === 'pending') {
-      await shareDoc.ref.update({
-        status: 'accepted',
-        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+      const transitionResult = await shareService.transitionStatus(shareId, userId, 'accepted', {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      await ensureCaregiverRole(userId);
+      if (transitionResult.outcome !== 'updated') {
+        res.status(400).json({
+          code: 'invalid_status',
+          message: 'This invitation cannot be accepted',
+        });
+        return;
+      }
+
+      invalidateCaregiverShareCache(userId, share.ownerId);
+
+      await userService.ensureCaregiverRole(userId);
 
       functions.logger.info(`[shares] User ${userId} accepted share ${shareId}`);
 
-      const updatedDoc = await shareDoc.ref.get();
-      const updatedShare = updatedDoc.data()!;
+      const updatedShare = await shareService.getById(shareId);
+      if (!updatedShare) {
+        res.status(500).json({
+          code: 'server_error',
+          message: 'Failed to fetch accepted share',
+        });
+        return;
+      }
 
-      res.json({
-        id: shareId,
-        ...updatedShare,
-        createdAt: updatedShare.createdAt?.toDate().toISOString(),
-        updatedAt: updatedShare.updatedAt?.toDate().toISOString(),
-        acceptedAt: updatedShare.acceptedAt?.toDate().toISOString(),
-      });
+      res.json(serializeSharePayload(shareId, updatedShare as Record<string, unknown>));
       return;
     }
 
@@ -859,10 +1061,10 @@ sharesRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 sharesRouter.get('/invite-info/:token', async (req, res) => {
   try {
     const { token } = req.params;
+    const shareService = getShareDomainService();
+    const invite = await shareService.getInviteById(token);
 
-    const inviteDoc = await getDb().collection('shareInvites').doc(token).get();
-
-    if (!inviteDoc.exists) {
+    if (!invite) {
       res.status(404).json({
         code: 'not_found',
         message: 'Invitation not found',
@@ -870,11 +1072,14 @@ sharesRouter.get('/invite-info/:token', async (req, res) => {
       return;
     }
 
-    const invite = inviteDoc.data()!;
-
     // Check if expired
     const now = Date.now();
-    if (invite.expiresAt && invite.expiresAt.toMillis() < now) {
+    const expiresAtMillis =
+      invite.expiresAt &&
+      typeof (invite.expiresAt as { toMillis?: unknown }).toMillis === 'function'
+        ? (invite.expiresAt as { toMillis: () => number }).toMillis()
+        : null;
+    if (expiresAtMillis !== null && expiresAtMillis < now) {
       res.status(410).json({
         code: 'invite_expired',
         message: 'This invitation has expired',
@@ -896,10 +1101,10 @@ sharesRouter.get('/invite-info/:token', async (req, res) => {
 
     // Return only public info needed for sign-up flow
     res.json({
-      ownerName: invite.ownerName || 'Someone',
+      ownerName: sanitizePlainText(invite.ownerName, OWNER_NAME_MAX_LENGTH) || 'Someone',
       caregiverEmail: caregiverEmail || null,
       status: invite.status,
-      expiresAt: invite.expiresAt?.toDate().toISOString(),
+      expiresAt: toISOStringSafe(invite.expiresAt),
     });
   } catch (error) {
     functions.logger.error('[shares] Error fetching invite info:', error);
@@ -919,19 +1124,22 @@ sharesRouter.get('/invite-info/:token', async (req, res) => {
 sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest, res) => {
   try {
     const ownerId = req.user!.uid;
+    const shareService = getShareDomainService();
+    const userService = getUserDomainService();
     const data = createShareSchema.parse(req.body);
     const caregiverEmail = data.caregiverEmail.toLowerCase().trim();
 
     // Get owner info
     const ownerUser = await admin.auth().getUser(ownerId);
     const ownerEmail = ownerUser.email?.toLowerCase().trim() || '';
-    const ownerProfile = await getDb().collection('users').doc(ownerId).get();
-    const ownerData = ownerProfile.data();
-    const ownerName =
+    const ownerData = await userService.getById(ownerId);
+    const ownerNameRaw =
       ownerData?.preferredName ||
       ownerData?.firstName ||
       ownerUser.displayName ||
       ownerEmail.split('@')[0];
+    const ownerName = sanitizePlainText(ownerNameRaw, OWNER_NAME_MAX_LENGTH) || ownerEmail.split('@')[0] || 'Someone';
+    const inviteMessage = sanitizeShareMessage(data.message);
 
     // Edge case: Prevent sharing with yourself
     if (ownerEmail === caregiverEmail) {
@@ -943,15 +1151,11 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
     }
 
     // Check canonical shares collection for existing relationship
-    const existingShareQuery = await getDb()
-      .collection('shares')
-      .where('ownerId', '==', ownerId)
-      .where('caregiverEmail', '==', caregiverEmail)
-      .limit(1)
-      .get();
-
-    if (!existingShareQuery.empty) {
-      const existingShare = existingShareQuery.docs[0].data();
+    const existingShare = await shareService.findFirstByOwnerAndCaregiverEmail(
+      ownerId,
+      caregiverEmail,
+    );
+    if (existingShare) {
       if (existingShare.status === 'pending') {
         res.status(409).json({
           code: 'invite_exists',
@@ -970,23 +1174,12 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
     }
 
     // Also check for pending invites not yet in shares
-    const existingPendingInvite = await getDb()
-      .collection('shareInvites')
-      .where('ownerId', '==', ownerId)
-      .where('caregiverEmail', '==', caregiverEmail)
-      .where('status', '==', 'pending')
-      .limit(1)
-      .get();
+    const [existingPendingInvite, existingLegacyPendingInvite] = await Promise.all([
+      shareService.hasPendingInviteByOwnerAndCaregiverEmail(ownerId, caregiverEmail),
+      shareService.hasPendingInviteByOwnerAndInviteeEmail(ownerId, caregiverEmail),
+    ]);
 
-    const existingLegacyPendingInvite = await getDb()
-      .collection('shareInvites')
-      .where('ownerId', '==', ownerId)
-      .where('inviteeEmail', '==', caregiverEmail)
-      .where('status', '==', 'pending')
-      .limit(1)
-      .get();
-
-    if (!existingPendingInvite.empty || !existingLegacyPendingInvite.empty) {
+    if (existingPendingInvite || existingLegacyPendingInvite) {
       res.status(409).json({
         code: 'invite_exists',
         message: 'An invitation has already been sent to this email',
@@ -1002,7 +1195,7 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
     );
 
     // Create invite document
-    await getDb().collection('shareInvites').doc(inviteToken).set({
+    await shareService.createInvite(inviteToken, {
       ownerId,
       ownerEmail,
       ownerName,
@@ -1010,7 +1203,7 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       caregiverUserId: null, // Set on acceptance
       status: 'pending',
       role: 'viewer',
-      message: data.message || null,
+      message: inviteMessage,
       createdAt: now,
       expiresAt,
       acceptedAt: null,
@@ -1025,7 +1218,12 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
     try {
       const resend = getResend();
       if (resend) {
-        const hasMessage = !!data.message;
+        const hasMessage = !!inviteMessage;
+        const escapedOwnerName = escapeHtml(ownerName);
+        const escapedInviteLink = escapeHtml(inviteLink);
+        const escapedInviteMessage = inviteMessage
+          ? escapeHtml(inviteMessage).replace(/\n/g, '<br>')
+          : '';
 
         const emailHtml = `
 <!DOCTYPE html>
@@ -1038,21 +1236,21 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
   <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
     
     <h1 style="color: #078A94; margin: 0 0 16px 0; font-size: 22px; font-weight: 700;">
-      ${ownerName} wants to share health info with you
+      ${escapedOwnerName} wants to share health info with you
     </h1>
     
     <p style="font-size: 15px; color: #555; margin: 0 0 20px 0;">
-      You've been invited to view <strong>${ownerName}'s</strong> medical visits, medications, and care tasks on LumiMD.
+      You've been invited to view <strong>${escapedOwnerName}'s</strong> medical visits, medications, and care tasks on LumiMD.
     </p>
 
     <div style="text-align: center; margin: 24px 0;">
-      <a href="${inviteLink}" 
+      <a href="${escapedInviteLink}" 
          style="display: inline-block; background-color: #078A94; color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
         Accept Invitation
       </a>
     </div>
 
-    ${hasMessage ? `<div style="margin: 16px 0; padding: 12px; background-color: #f8f9fa; border-radius: 8px; border-left: 3px solid #078A94;"><p style="margin: 0; font-size: 14px; color: #555; font-style: italic;">"${data.message}"</p></div>` : ''}
+    ${hasMessage ? `<div style="margin: 16px 0; padding: 12px; background-color: #f8f9fa; border-radius: 8px; border-left: 3px solid #078A94;"><p style="margin: 0; font-size: 14px; color: #555; font-style: italic;">"${escapedInviteMessage}"</p></div>` : ''}
 
     <p style="font-size: 13px; color: #888; margin: 20px 0 0 0; padding-top: 16px; border-top: 1px solid #eee;">
       New to LumiMD? You'll create a free account when you accept. Questions? Reply to this email.
@@ -1066,7 +1264,7 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
 ${ownerName} wants to share health info with you
 
 You've been invited to view ${ownerName}'s medical visits, medications, and care tasks on LumiMD.
-${hasMessage ? `\n"${data.message}"\n` : ''}
+${hasMessage ? `\n"${inviteMessage}"\n` : ''}
 Accept the invitation: ${inviteLink}
 
 New to LumiMD? You'll create a free account when you accept.
@@ -1097,7 +1295,7 @@ New to LumiMD? You'll create a free account when you accept.
       caregiverEmail,
       status: 'pending',
       role: 'viewer',
-      message: data.message || null,
+      message: inviteMessage,
       createdAt: now.toDate().toISOString(),
       expiresAt: expiresAt.toDate().toISOString(),
       emailSent,
@@ -1130,11 +1328,12 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
   try {
     const userId = req.user!.uid;
     const { token } = req.params;
+    const shareService = getShareDomainService();
+    const userService = getUserDomainService();
 
     // Get invite document
-    const inviteDoc = await getDb().collection('shareInvites').doc(token).get();
-
-    if (!inviteDoc.exists) {
+    const invite = await shareService.getInviteById(token);
+    if (!invite) {
       res.status(404).json({
         code: 'not_found',
         message: 'Invitation not found',
@@ -1142,13 +1341,12 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
       return;
     }
 
-    const invite = inviteDoc.data()!;
     const inviteEmail = getInviteCaregiverEmail(invite);
 
     // Edge case: Check if expired
     const now = admin.firestore.Timestamp.now();
     if (invite.expiresAt && invite.expiresAt.toMillis() < now.toMillis()) {
-      await inviteDoc.ref.update({ status: 'expired' });
+      await shareService.updateInviteRecord(token, { status: 'expired' });
       res.status(410).json({
         code: 'invite_expired',
         message: 'This invitation has expired. Please ask for a new invitation.',
@@ -1163,20 +1361,23 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
     functions.logger.info(`[shares] Accept attempt: token=${token}, userId=${userId}, userEmail=${currentUserEmail}, inviteEmail=${inviteEmail}`);
 
     // Edge case: Validate email match
-    if (!currentUserEmail || !inviteEmail || currentUserEmail !== inviteEmail) {
-      res.status(403).json({
-        code: 'email_mismatch',
-        message: `This invitation was sent to ${inviteEmail || 'a different email address'}. Please sign in with that email address.`,
-        userMessage: `This invitation was sent to ${inviteEmail || 'a different email address'}. Please sign in with that email address.`,
-      });
+    if (!ensureInviteEmailMatchOrReject({
+      res,
+      currentUserEmail,
+      inviteEmail,
+      mismatchCode: 'email_mismatch',
+      message: `This invitation was sent to ${inviteEmail || 'a different email address'}. Please sign in with that email address.`,
+      userMessage: `This invitation was sent to ${inviteEmail || 'a different email address'}. Please sign in with that email address.`,
+      logContext: `[shares] Email mismatch for token ${token}: user email "${currentUserEmail}" does not match invite email "${inviteEmail}"`,
+    })) {
       return;
     }
 
     // Edge case: Check if already accepted
     if (invite.status === 'accepted') {
       res.json({
-        id: token,
         ...invite,
+        id: token,
         createdAt: invite.createdAt?.toDate().toISOString(),
         expiresAt: invite.expiresAt?.toDate().toISOString(),
         acceptedAt: invite.acceptedAt?.toDate().toISOString(),
@@ -1195,46 +1396,50 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
 
     // Accept the invite
     const acceptedAt = admin.firestore.Timestamp.now();
-    await inviteDoc.ref.update({
-      status: 'accepted',
-      caregiverUserId: userId,
-      caregiverEmail: inviteEmail,
-      acceptedAt,
+    const shareId = `${invite.ownerId}_${userId}`;
+    await shareService.acceptInviteAndSetShare({
+      inviteId: token,
+      inviteUpdates: {
+        status: 'accepted',
+        caregiverUserId: userId,
+        caregiverEmail: inviteEmail,
+        acceptedAt,
+      },
+      shareId,
+      sharePayload: {
+        ownerId: invite.ownerId,
+        ownerName: sanitizePlainText(invite.ownerName, OWNER_NAME_MAX_LENGTH) || 'Someone',
+        ownerEmail: invite.ownerEmail,
+        caregiverUserId: userId,
+        caregiverEmail: inviteEmail,
+        role: invite.role || 'viewer',
+        status: 'accepted',
+        message: sanitizeShareMessage(invite.message),
+        createdAt: acceptedAt,
+        updatedAt: acceptedAt,
+        acceptedAt,
+      },
+      mergeShare: true,
     });
+    invalidateCaregiverShareCache(userId, invite.ownerId);
 
     functions.logger.info(`[shares] User ${userId} accepted invite ${token}`);
 
-    // Create/Update canonical share record for caregiver access
-    const shareId = `${invite.ownerId}_${userId}`;
-    await getDb()
-      .collection('shares')
-      .doc(shareId)
-      .set(
-        {
-          ownerId: invite.ownerId,
-          ownerName: invite.ownerName,
-          ownerEmail: invite.ownerEmail,
-          caregiverUserId: userId,
-          caregiverEmail: inviteEmail,
-          role: invite.role || 'viewer',
-          status: 'accepted',
-          message: invite.message || null,
-          createdAt: acceptedAt,
-          updatedAt: acceptedAt,
-          acceptedAt,
-        },
-        { merge: true }
-      );
-
-    await ensureCaregiverRole(userId);
+    await userService.ensureCaregiverRole(userId);
 
     // Fetch updated document
-    const updatedDoc = await inviteDoc.ref.get();
-    const updatedInvite = updatedDoc.data()!;
+    const updatedInvite = await shareService.getInviteById(token);
+    if (!updatedInvite) {
+      res.status(500).json({
+        code: 'server_error',
+        message: 'Failed to fetch invitation',
+      });
+      return;
+    }
 
     res.json({
-      id: token,
       ...updatedInvite,
+      id: token,
       createdAt: updatedInvite.createdAt?.toDate().toISOString(),
       expiresAt: updatedInvite.expiresAt?.toDate().toISOString(),
       acceptedAt: updatedInvite.acceptedAt?.toDate().toISOString(),
@@ -1254,23 +1459,52 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
  */
 sharesRouter.get('/my-invites', requireAuth, async (req: AuthRequest, res) => {
   try {
+    const pagination = parseCursorPagination(req.query as Record<string, unknown>);
+    if (!pagination.ok) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: pagination.message,
+      });
+      return;
+    }
+
     const userId = req.user!.uid;
+    const shareService = getShareDomainService();
 
-    const invitesSnapshot = await getDb()
-      .collection('shareInvites')
-      .where('ownerId', '==', userId)
-      .orderBy('createdAt', 'desc')
-      .get();
+    const invites = await shareService.listInvitesByOwnerId(userId);
+    const payload = invites.map((invite) => ({
+      ...invite,
+      id: invite.id,
+      createdAt: toISOStringSafe(invite.createdAt),
+      expiresAt: toISOStringSafe(invite.expiresAt),
+      acceptedAt: toISOStringSafe(invite.acceptedAt),
+    })).sort(compareByCreatedAtDescThenId);
 
-    const invites = invitesSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate().toISOString(),
-      expiresAt: doc.data().expiresAt?.toDate().toISOString(),
-      acceptedAt: doc.data().acceptedAt?.toDate().toISOString(),
-    }));
+    let responsePayload = payload;
+    let hasMore = false;
+    let nextCursor: string | null = null;
+    if (pagination.paginationRequested) {
+      const page = paginateByCursor(payload, {
+        limit: pagination.limit,
+        cursor: pagination.cursor,
+      });
+      if (page.invalidCursor) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'Invalid cursor',
+        });
+        return;
+      }
 
-    res.json(invites);
+      responsePayload = page.items;
+      hasMore = page.hasMore;
+      nextCursor = page.nextCursor;
+      res.set('X-Has-More', hasMore ? 'true' : 'false');
+      res.set('X-Next-Cursor', nextCursor || '');
+    }
+
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(responsePayload);
   } catch (error) {
     functions.logger.error('[shares] Error fetching invites:', error);
     res.status(500).json({
@@ -1289,10 +1523,11 @@ sharesRouter.patch('/revoke/:token', requireAuth, async (req: AuthRequest, res) 
   try {
     const userId = req.user!.uid;
     const { token } = req.params;
+    const shareService = getShareDomainService();
 
-    const inviteDoc = await getDb().collection('shareInvites').doc(token).get();
+    const revokeResult = await shareService.revokeInviteByOwner(token, userId);
 
-    if (!inviteDoc.exists) {
+    if (revokeResult.outcome === 'not_found') {
       res.status(404).json({
         code: 'not_found',
         message: 'Invitation not found',
@@ -1300,10 +1535,7 @@ sharesRouter.patch('/revoke/:token', requireAuth, async (req: AuthRequest, res) 
       return;
     }
 
-    const invite = inviteDoc.data()!;
-
-    // Only owner can revoke
-    if (invite.ownerId !== userId) {
+    if (revokeResult.outcome === 'forbidden') {
       res.status(403).json({
         code: 'forbidden',
         message: 'Only the owner can revoke this invitation',
@@ -1311,26 +1543,8 @@ sharesRouter.patch('/revoke/:token', requireAuth, async (req: AuthRequest, res) 
       return;
     }
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
-    // Update invite status
-    await inviteDoc.ref.update({
-      status: 'revoked',
-      updatedAt: now,
-    });
-
-    // If invite was accepted, also revoke the canonical shares record
-    if (invite.caregiverUserId) {
-      const shareId = `${invite.ownerId}_${invite.caregiverUserId}`;
-      const shareDoc = await getDb().collection('shares').doc(shareId).get();
-      if (shareDoc.exists) {
-        await shareDoc.ref.update({
-          status: 'revoked',
-          updatedAt: now,
-        });
-        functions.logger.info(`[shares] Also revoked share record ${shareId}`);
-      }
-    }
+    const ownerInvite = revokeResult.invite;
+    invalidateCaregiverShareCache(ownerInvite.caregiverUserId, ownerInvite.ownerId);
 
     functions.logger.info(`[shares] Owner ${userId} revoked invite ${token}`);
 

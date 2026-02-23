@@ -18,7 +18,7 @@ import { EmptyState } from '../components/EmptyState';
 import { openWebMeds, openWebVisit } from '../lib/linking';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  useMedications,
+  usePaginatedMedications,
   useMedicationReminders,
   useCreateMedicationReminder,
   useUpdateMedicationReminder,
@@ -30,6 +30,17 @@ import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
 import { ReminderTimePickerModal } from '../components/ReminderTimePickerModal';
 import type { MedicationReminder } from '@lumimd/sdk';
 
+const resolveDeviceTimezone = (): string | null => {
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof timezone === 'string' && timezone.trim().length > 0) {
+      return timezone;
+    }
+  } catch {
+    // no-op
+  }
+  return null;
+};
 
 const formatDate = (value?: string | null) => {
   if (!value) return null;
@@ -73,12 +84,17 @@ export default function MedicationsScreen() {
   const [selectedMed, setSelectedMed] = useState<{ id: string; name: string } | null>(null);
 
   const {
-    data: medications,
+    items: medications,
     isLoading,
     isRefetching,
+    isFetchingNextPage,
+    hasMore,
+    fetchNextPage,
     error,
     refetch,
-  } = useMedications({
+  } = usePaginatedMedications({
+    limit: 25,
+  }, {
     enabled: isAuthenticated,
     staleTime: 0,
     gcTime: 0,
@@ -138,7 +154,7 @@ export default function MedicationsScreen() {
   const activeMeds = useMemo(
     () =>
       meds
-        .filter((med) => med.active !== false)
+        .filter((med) => med.active !== false && !med.stoppedAt)
         .sort((a, b) => {
           const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
           const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -150,7 +166,7 @@ export default function MedicationsScreen() {
   const inactiveMeds = useMemo(
     () =>
       meds
-        .filter((med) => med.active === false)
+        .filter((med) => med.active === false || Boolean(med.stoppedAt))
         .sort((a, b) => {
           const aTime = a.stoppedAt ? new Date(a.stoppedAt).getTime() : 0;
           const bTime = b.stoppedAt ? new Date(b.stoppedAt).getTime() : 0;
@@ -362,24 +378,77 @@ export default function MedicationsScreen() {
   };
 
   // Handle saving reminder from modal
-  const handleSaveReminder = useCallback(async (times: string[]) => {
+  const handleSaveReminder = useCallback(async (payload: {
+    times: string[];
+    timingPreference: 'auto' | 'local' | 'anchor';
+    anchorTimezone?: string | null;
+  }) => {
     if (!selectedMed) return;
+    const { times, timingPreference, anchorTimezone } = payload;
 
     const existingReminder = getReminderForMed(selectedMed.id);
+    const resolvedAnchorTimezone = anchorTimezone ?? resolveDeviceTimezone();
+
+    if (timingPreference === 'anchor' && !resolvedAnchorTimezone) {
+      Alert.alert('Error', 'Unable to detect timezone for anchored reminder mode.');
+      return;
+    }
 
     try {
       if (existingReminder) {
+        const updatePayload: {
+          times: string[];
+          enabled: boolean;
+          timingMode?: 'local' | 'anchor';
+          anchorTimezone?: string | null;
+        } = {
+          times,
+          enabled: true,
+        };
+
+        if (timingPreference !== 'auto') {
+          const desiredTimingMode: 'local' | 'anchor' = timingPreference;
+          const desiredAnchorTimezone =
+            desiredTimingMode === 'anchor' ? resolvedAnchorTimezone : null;
+          const existingTimingMode =
+            existingReminder.timingMode === 'anchor' || existingReminder.timingMode === 'local'
+              ? existingReminder.timingMode
+              : null;
+          const existingAnchorTimezone = existingReminder.anchorTimezone ?? null;
+          const shouldUpdateTimingPolicy =
+            existingTimingMode !== desiredTimingMode ||
+            existingAnchorTimezone !== desiredAnchorTimezone;
+
+          if (shouldUpdateTimingPolicy) {
+            updatePayload.timingMode = desiredTimingMode;
+            updatePayload.anchorTimezone = desiredAnchorTimezone;
+          }
+        }
+
         // Update existing reminder
         await updateReminder.mutateAsync({
           id: existingReminder.id,
-          data: { times, enabled: true },
+          data: updatePayload,
         });
       } else {
-        // Create new reminder
-        await createReminder.mutateAsync({
+        const createPayload: {
+          medicationId: string;
+          times: string[];
+          timingMode?: 'local' | 'anchor';
+          anchorTimezone?: string | null;
+        } = {
           medicationId: selectedMed.id,
           times,
-        });
+        };
+
+        if (timingPreference !== 'auto') {
+          createPayload.timingMode = timingPreference;
+          createPayload.anchorTimezone =
+            timingPreference === 'anchor' ? resolvedAnchorTimezone : null;
+        }
+
+        // Create new reminder
+        await createReminder.mutateAsync(createPayload);
       }
       setReminderModalVisible(false);
       setSelectedMed(null);
@@ -407,6 +476,15 @@ export default function MedicationsScreen() {
         visible={reminderModalVisible}
         medicationName={selectedMed?.name || ''}
         existingTimes={getExistingTimes()}
+        existingTimingMode={
+          selectedMed ? getReminderForMed(selectedMed.id)?.timingMode ?? null : null
+        }
+        existingAnchorTimezone={
+          selectedMed ? getReminderForMed(selectedMed.id)?.anchorTimezone ?? null : null
+        }
+        reminderCriticality={
+          selectedMed ? getReminderForMed(selectedMed.id)?.criticality ?? null : null
+        }
         onSave={handleSaveReminder}
         onCancel={handleCancelReminder}
         isLoading={createReminder.isPending || updateReminder.isPending}
@@ -498,6 +576,23 @@ export default function MedicationsScreen() {
                       {showInactive &&
                         inactiveMeds.map((med, index) => renderMedicationCard(med, index, false))}
                     </Card>
+                  )}
+                  {hasMore && (
+                    <View style={styles.loadMoreContainer}>
+                      <Pressable
+                        style={styles.loadMoreButton}
+                        onPress={() => {
+                          void fetchNextPage();
+                        }}
+                        disabled={isFetchingNextPage}
+                      >
+                        {isFetchingNextPage ? (
+                          <ActivityIndicator size="small" color={Colors.primary} />
+                        ) : (
+                          <Text style={styles.loadMoreText}>Load more medications</Text>
+                        )}
+                      </Pressable>
+                    </View>
                   )}
                 </>
               )}
@@ -831,5 +926,26 @@ const styles = StyleSheet.create({
   footerDate: {
     fontSize: 12,
     color: Colors.textMuted,
+  },
+  loadMoreContainer: {
+    marginTop: spacing(4),
+    marginBottom: spacing(4),
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    minWidth: 210,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(2),
+    backgroundColor: Colors.surface,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
   },
 });

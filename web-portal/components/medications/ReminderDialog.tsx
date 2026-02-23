@@ -36,6 +36,20 @@ interface ReminderDialogProps {
     existingReminder?: MedicationReminder | null;
 }
 
+type ReminderTimingPreference = 'auto' | 'local' | 'anchor';
+
+function resolveDeviceTimezone(): string | null {
+    try {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (typeof timezone === 'string' && timezone.trim().length > 0) {
+            return timezone;
+        }
+    } catch {
+        // Fall through to null.
+    }
+    return null;
+}
+
 function formatTimeDisplay(time: string): string {
     const [hours, minutes] = time.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
@@ -67,16 +81,31 @@ export function ReminderDialog({
 }: ReminderDialogProps) {
     const queryClient = useQueryClient();
     const [times, setTimes] = React.useState<string[]>(['08:00']);
+    const [timingPreference, setTimingPreference] = React.useState<ReminderTimingPreference>('auto');
+    const [anchorTimezone, setAnchorTimezone] = React.useState<string | null>(null);
 
     // Reset times when dialog opens
     React.useEffect(() => {
         if (open) {
             setTimes(existingReminder?.times?.length ? [...existingReminder.times] : ['08:00']);
+            setTimingPreference(
+                existingReminder?.timingMode === 'anchor'
+                    ? 'anchor'
+                    : existingReminder?.timingMode === 'local'
+                      ? 'local'
+                      : 'auto',
+            );
+            setAnchorTimezone(existingReminder?.anchorTimezone ?? resolveDeviceTimezone());
         }
     }, [open, existingReminder]);
 
     const createReminder = useMutation({
-        mutationFn: async (data: { medicationId: string; times: string[] }) => {
+        mutationFn: async (data: {
+            medicationId: string;
+            times: string[];
+            timingMode?: 'local' | 'anchor';
+            anchorTimezone?: string | null;
+        }) => {
             return api.medicationReminders.create(data);
         },
         onSuccess: () => {
@@ -90,7 +119,15 @@ export function ReminderDialog({
     });
 
     const updateReminder = useMutation({
-        mutationFn: async ({ id, data }: { id: string; data: { times: string[]; enabled: boolean } }) => {
+        mutationFn: async ({ id, data }: {
+            id: string;
+            data: {
+                times: string[];
+                enabled: boolean;
+                timingMode?: 'local' | 'anchor';
+                anchorTimezone?: string | null;
+            };
+        }) => {
             return api.medicationReminders.update(id, data);
         },
         onSuccess: () => {
@@ -146,10 +183,59 @@ export function ReminderDialog({
 
     const handleSave = () => {
         if (!medication) return;
+        const resolvedAnchorTimezone = anchorTimezone ?? resolveDeviceTimezone();
+
+        if (timingPreference === 'anchor' && !resolvedAnchorTimezone) {
+            toast.error('Unable to resolve timezone for anchored reminder mode');
+            return;
+        }
+
         if (existingReminder) {
-            updateReminder.mutate({ id: existingReminder.id, data: { times, enabled: true } });
+            const existingTimingMode =
+                existingReminder.timingMode === 'anchor' || existingReminder.timingMode === 'local'
+                    ? existingReminder.timingMode
+                    : null;
+            const existingAnchorTimezone = existingReminder.anchorTimezone ?? null;
+            const updatePayload: {
+                times: string[];
+                enabled: boolean;
+                timingMode?: 'local' | 'anchor';
+                anchorTimezone?: string | null;
+            } = { times, enabled: true };
+
+            if (timingPreference !== 'auto') {
+                const desiredTimingMode: 'local' | 'anchor' = timingPreference;
+                const desiredAnchorTimezone =
+                    desiredTimingMode === 'anchor' ? resolvedAnchorTimezone : null;
+                const shouldUpdateTimingPolicy =
+                    existingTimingMode !== desiredTimingMode ||
+                    existingAnchorTimezone !== desiredAnchorTimezone;
+
+                if (shouldUpdateTimingPolicy) {
+                    updatePayload.timingMode = desiredTimingMode;
+                    updatePayload.anchorTimezone = desiredAnchorTimezone;
+                }
+            }
+
+            updateReminder.mutate({ id: existingReminder.id, data: updatePayload });
         } else {
-            createReminder.mutate({ medicationId: medication.id, times });
+            const createPayload: {
+                medicationId: string;
+                times: string[];
+                timingMode?: 'local' | 'anchor';
+                anchorTimezone?: string | null;
+            } = {
+                medicationId: medication.id,
+                times,
+            };
+
+            if (timingPreference !== 'auto') {
+                createPayload.timingMode = timingPreference;
+                createPayload.anchorTimezone =
+                    timingPreference === 'anchor' ? resolvedAnchorTimezone : null;
+            }
+
+            createReminder.mutate(createPayload);
         }
     };
 
@@ -261,6 +347,41 @@ export function ReminderDialog({
                             <span>Add another time</span>
                         </button>
                     )}
+
+                    <div className="space-y-2">
+                        <Label className="text-sm font-medium text-text-secondary uppercase tracking-wide">
+                            Travel Timing
+                        </Label>
+                        <Select
+                            value={timingPreference}
+                            onValueChange={(value) => setTimingPreference(value as ReminderTimingPreference)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="auto">Automatic (recommended)</SelectItem>
+                                <SelectItem value="local">Follow my current timezone</SelectItem>
+                                <SelectItem value="anchor">Keep fixed to one timezone</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-text-tertiary">
+                            Automatic mode lets LumiMD apply safer defaults for time-sensitive medications.
+                        </p>
+                        {timingPreference === 'anchor' && (
+                            <div className="rounded-lg border border-border-light bg-background-subtle px-3 py-2 text-xs">
+                                <p className="font-semibold text-text-primary">Anchored timezone</p>
+                                <p className="mt-1 text-text-secondary">
+                                    {(anchorTimezone ?? resolveDeviceTimezone()) || 'Unable to detect timezone'}
+                                </p>
+                            </div>
+                        )}
+                        {existingReminder?.criticality === 'time_sensitive' && timingPreference !== 'anchor' && (
+                            <div className="rounded-lg border border-warning/30 bg-warning-light/20 px-3 py-2 text-xs text-warning-dark">
+                                This medication is marked time-sensitive. Anchored timing is usually safer during travel.
+                            </div>
+                        )}
+                    </div>
 
                     {/* Disclaimer */}
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-warning-light/20 text-warning-dark text-sm">

@@ -17,7 +17,7 @@ import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { Colors, spacing, Card } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
-import { useActionItems, queryKeys } from '../lib/api/hooks';
+import { usePaginatedActionItems, queryKeys } from '../lib/api/hooks';
 import { openWebActions } from '../lib/linking';
 import { useCompleteAction } from '../lib/api/mutations';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -50,12 +50,17 @@ export default function ActionsScreen() {
   const platformKey = Platform.OS === 'ios' ? 'ios' : 'android';
 
   const {
-    data: actions,
+    items: actions,
     isLoading,
     isRefetching,
+    isFetchingNextPage,
+    hasMore,
+    fetchNextPage,
     error,
     refetch,
-  } = useActionItems({
+  } = usePaginatedActionItems({
+    limit: 25,
+  }, {
     enabled: isAuthenticated,
     staleTime: 2 * 60 * 1000,
   });
@@ -110,18 +115,6 @@ export default function ActionsScreen() {
     });
   };
 
-  const updateCachedCalendarEvents = (actionId: string, calendarEvents: Record<string, any> | null) => {
-    const updater = (list: any[] | undefined) => {
-      if (!Array.isArray(list)) return list;
-      return list.map((item) =>
-        item.id === actionId ? { ...item, calendarEvents } : item,
-      );
-    };
-
-    queryClient.setQueryData(queryKeys.actions, updater);
-    queryClient.setQueryData([...queryKeys.actions, 'pending'], updater);
-  };
-
   const handleAddToCalendar = async (action: any) => {
     if (!action.dueAt) {
       Alert.alert(
@@ -147,7 +140,7 @@ export default function ActionsScreen() {
 
       try {
         await api.actions.update(action.id, { calendarEvents: updatedEvents });
-        updateCachedCalendarEvents(action.id, updatedEvents);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.actions });
       } catch (error) {
         console.error('Failed to sync calendar metadata:', error);
       }
@@ -204,7 +197,7 @@ export default function ActionsScreen() {
 
     try {
       await api.actions.update(action.id, { calendarEvents: payload });
-      updateCachedCalendarEvents(action.id, payload);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.actions });
     } catch (error) {
       console.error('Failed to sync calendar metadata after removal:', error);
     }
@@ -372,6 +365,23 @@ export default function ActionsScreen() {
                   <Text style={styles.updatingText}>Updating…</Text>
                 </View>
               )}
+              {hasMore && (
+                <View style={styles.loadMoreContainer}>
+                  <Pressable
+                    style={styles.loadMoreButton}
+                    onPress={() => {
+                      void fetchNextPage();
+                    }}
+                    disabled={isFetchingNextPage}
+                  >
+                    {isFetchingNextPage ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.loadMoreText}>Load older actions</Text>
+                    )}
+                  </Pressable>
+                </View>
+              )}
             </>
           )}
         </ScrollView>
@@ -522,7 +532,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textMuted,
   },
+  loadMoreContainer: {
+    marginTop: spacing(2),
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    minWidth: 190,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(2),
+    backgroundColor: Colors.surface,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
+  },
 });
-
 
 

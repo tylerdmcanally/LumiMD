@@ -4,104 +4,53 @@ import * as functions from 'firebase-functions';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 
-import { requireAuth, AuthRequest } from '../middlewares/auth';
+import {
+  requireAuth,
+  AuthRequest,
+  ensureOperatorAccessOrReject,
+} from '../middlewares/auth';
+import { hasResourceOwnerAccess } from '../middlewares/resourceAccess';
+import { sanitizePlainText } from '../utils/inputSanitization';
+import { UserDomainService } from '../services/domain/users/UserDomainService';
+import { ShareDomainService } from '../services/domain/shares/ShareDomainService';
+import { FirestoreUserRepository } from '../services/repositories/users/FirestoreUserRepository';
+import { FirestoreShareRepository } from '../services/repositories/shares/FirestoreShareRepository';
+import {
+  RESTORE_AUDIT_RESOURCE_TYPES,
+  RESTORE_AUDIT_TRIAGE_NOTE_MAX_LENGTH,
+  RESTORE_AUDIT_TRIAGE_STATUSES,
+} from '../services/restoreAuditService';
 
 export const usersRouter = Router();
 
 const getDb = () => admin.firestore();
-const FIRESTORE_DELETE_BATCH_SIZE = 450;
-const PUSH_TOKEN_FALLBACK_SCAN_LIMIT = 1000;
-const PUSH_TOKEN_FALLBACK_SCAN_CHUNK = 25;
-const ANALYTICS_AUDIT_COLLECTION = 'privacyAuditLogs';
+const getUserDomainService = () => new UserDomainService(new FirestoreUserRepository(getDb()));
+const getShareDomainService = () => new ShareDomainService(new FirestoreShareRepository(getDb()));
 const ANALYTICS_CONSENT_EVENT_TYPE = 'analytics_consent_changed';
+const LEGAL_ASSENT_EVENT_TYPE = 'legal_documents_accepted';
 const DEFAULT_AUDIT_QUERY_LIMIT = 50;
 const MAX_AUDIT_QUERY_LIMIT = 100;
+const DEFAULT_RESTORE_AUDIT_QUERY_LIMIT = 50;
+const MAX_RESTORE_AUDIT_QUERY_LIMIT = 100;
+const MAX_RESTORE_AUDIT_SCAN_LIMIT = 500;
 const AUDIT_LOG_HASH_SALT = process.env.AUDIT_LOG_HASH_SALT?.trim() ?? '';
-
-type DeletionQueryTarget = {
-  collection: string;
-  field: string;
-  value: string;
-};
-
-const buildDeletionTargets = (userId: string, userEmailCandidates: string[]): DeletionQueryTarget[] => {
-  const targets: DeletionQueryTarget[] = [
-    { collection: 'visits', field: 'userId', value: userId },
-    { collection: 'actions', field: 'userId', value: userId },
-    { collection: 'medications', field: 'userId', value: userId },
-    { collection: 'medicationReminders', field: 'userId', value: userId },
-    { collection: 'medicationLogs', field: 'userId', value: userId },
-    { collection: 'healthLogs', field: 'userId', value: userId },
-    { collection: 'nudges', field: 'userId', value: userId },
-    { collection: 'shares', field: 'ownerId', value: userId },
-    { collection: 'shares', field: 'caregiverUserId', value: userId },
-    { collection: 'shareInvites', field: 'ownerId', value: userId },
-    { collection: 'shareInvites', field: 'caregiverUserId', value: userId },
-    { collection: 'caregiverNotes', field: 'patientId', value: userId },
-    { collection: 'caregiverNotes', field: 'caregiverId', value: userId },
-    { collection: 'careTasks', field: 'patientId', value: userId },
-    { collection: 'careTasks', field: 'caregiverId', value: userId },
-    { collection: 'caregiverEmailLog', field: 'userId', value: userId },
-    { collection: 'medicationSafetyCache', field: 'userId', value: userId },
-    { collection: 'medicationSafetyExternalCache', field: 'userId', value: userId },
-    { collection: 'auth_handoffs', field: 'userId', value: userId },
-  ];
-
-  userEmailCandidates.forEach((email) => {
-    targets.push(
-      { collection: 'shares', field: 'ownerEmail', value: email },
-      { collection: 'shares', field: 'caregiverEmail', value: email },
-      { collection: 'shareInvites', field: 'ownerEmail', value: email },
-      { collection: 'shareInvites', field: 'caregiverEmail', value: email },
-      { collection: 'shareInvites', field: 'inviteeEmail', value: email },
-    );
-  });
-
-  return targets;
-};
-
-const fetchDocsForDeletion = async (targets: DeletionQueryTarget[]) => {
-  const snapshots = await Promise.all(
-    targets.map((target) =>
-      getDb().collection(target.collection).where(target.field, '==', target.value).get(),
-    ),
-  );
-  return snapshots.flatMap((snapshot) => snapshot.docs);
-};
-
-const fetchUserSubcollectionDocs = async (userId: string) => {
-  const userRef = getDb().collection('users').doc(userId);
-  const subcollections = await userRef.listCollections();
-  if (subcollections.length === 0) {
-    return [];
-  }
-
-  const snapshots = await Promise.all(subcollections.map((subcollectionRef) => subcollectionRef.get()));
-  return snapshots.flatMap((snapshot) => snapshot.docs);
-};
-
-const deleteDocsInBatches = async (docRefs: admin.firestore.DocumentReference[]): Promise<number> => {
-  const uniqueDocRefs = new Map<string, admin.firestore.DocumentReference>();
-  docRefs.forEach((ref) => uniqueDocRefs.set(ref.path, ref));
-
-  const refs = Array.from(uniqueDocRefs.values());
-  if (refs.length === 0) {
-    return 0;
-  }
-
-  let deletedCount = 0;
-  for (let start = 0; start < refs.length; start += FIRESTORE_DELETE_BATCH_SIZE) {
-    const batch = getDb().batch();
-    const chunk = refs.slice(start, start + FIRESTORE_DELETE_BATCH_SIZE);
-    chunk.forEach((ref) => batch.delete(ref));
-    await batch.commit();
-    deletedCount += chunk.length;
-  }
-
-  return deletedCount;
-};
+const PROFILE_NAME_MAX_LENGTH = 100;
+const PROFILE_DOB_MAX_LENGTH = 32;
+const PROFILE_LIST_ITEM_MAX_LENGTH = 200;
+const PROFILE_LIST_MAX_ITEMS = 100;
 
 const userRoleSchema = z.enum(['patient', 'caregiver']);
+
+const legalAssentSchema = z.object({
+  accepted: z.literal(true),
+  termsVersion: z.string().trim().min(1).max(80),
+  privacyVersion: z.string().trim().min(1).max(80),
+  source: z
+    .enum(['signup_web', 'signup_mobile', 'settings', 'migration', 'support'])
+    .default('signup_web'),
+  platform: z.enum(['ios', 'android', 'web']).optional(),
+  appVersion: z.string().trim().min(1).max(80).optional(),
+});
 
 const updateProfileSchema = z.object({
   firstName: z.string().max(100).optional(),
@@ -114,6 +63,7 @@ const updateProfileSchema = z.object({
   autoShareWithCaregivers: z.boolean().optional(),
   roles: z.array(userRoleSchema).optional(),
   primaryRole: userRoleSchema.optional(),
+  legalAssent: legalAssentSchema.optional(),
 });
 
 const registerPushTokenSchema = z.object({
@@ -144,19 +94,48 @@ const analyticsConsentAuditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_AUDIT_QUERY_LIMIT).optional(),
 });
 
+const restoreAuditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_RESTORE_AUDIT_QUERY_LIMIT).optional(),
+  cursor: z.string().trim().min(1).optional(),
+  resourceType: z.enum(RESTORE_AUDIT_RESOURCE_TYPES).optional(),
+  ownerUserId: z.string().trim().min(1).max(128).optional(),
+  actorUserId: z.string().trim().min(1).max(128).optional(),
+  triageStatus: z.enum(RESTORE_AUDIT_TRIAGE_STATUSES).optional(),
+});
+
+const updateRestoreAuditTriageSchema = z
+  .object({
+    triageStatus: z.enum(RESTORE_AUDIT_TRIAGE_STATUSES).optional(),
+    triageNote: z.string().max(RESTORE_AUDIT_TRIAGE_NOTE_MAX_LENGTH).optional(),
+    clearTriageNote: z.boolean().optional(),
+  })
+  .refine(
+    (data) =>
+      data.triageStatus !== undefined ||
+      data.triageNote !== undefined ||
+      data.clearTriageNote === true,
+    {
+      message: 'At least one triage field must be provided',
+      path: ['triageStatus'],
+    },
+  );
+
 // Legacy caregiver schemas removed - now using shares collection
 
-const sanitizeString = (value?: string | null) => {
+const sanitizeString = (value?: string | null, maxLength = 10000) => {
   if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  const sanitized = sanitizePlainText(value, maxLength);
+  return sanitized.length > 0 ? sanitized : undefined;
 };
 
 const sanitizeAuditString = (value?: string | null, maxLength = 200) => {
-  const sanitized = sanitizeString(value);
+  const sanitized = sanitizeString(value, maxLength);
   if (!sanitized) return undefined;
-  return sanitized.slice(0, maxLength);
+  return sanitized;
 };
+
+const resolveAutoShareWithCaregivers = (value: unknown): boolean =>
+  typeof value === 'boolean' ? value : true;
 
 const timestampToIso = (value: unknown): string | null => {
   return (value as admin.firestore.Timestamp | undefined)?.toDate?.().toISOString?.() ?? null;
@@ -189,12 +168,30 @@ const serializeAnalyticsConsent = (consentData: Record<string, unknown> | undefi
   updatedAt: timestampToIso(consentData?.updatedAt),
 });
 
-const sanitizeStringArray = (values?: string[]) => {
+const serializeLegalAssent = (assentData: Record<string, unknown> | undefined) => ({
+  accepted: typeof assentData?.accepted === 'boolean' ? assentData.accepted : false,
+  termsVersion:
+    typeof assentData?.termsVersion === 'string' ? assentData.termsVersion : null,
+  privacyVersion:
+    typeof assentData?.privacyVersion === 'string' ? assentData.privacyVersion : null,
+  source: typeof assentData?.source === 'string' ? assentData.source : null,
+  platform: typeof assentData?.platform === 'string' ? assentData.platform : null,
+  appVersion: typeof assentData?.appVersion === 'string' ? assentData.appVersion : null,
+  acceptedAt: timestampToIso(assentData?.acceptedAt),
+  updatedAt: timestampToIso(assentData?.updatedAt),
+});
+
+const sanitizeStringArray = (
+  values?: string[],
+  maxItemLength = PROFILE_LIST_ITEM_MAX_LENGTH,
+  maxItems = PROFILE_LIST_MAX_ITEMS,
+) => {
   if (!Array.isArray(values)) return undefined;
   return Array.from(
     new Set(
       values
-        .map((item) => sanitizeString(item) ?? '')
+        .slice(0, maxItems)
+        .map((item) => sanitizeString(item, maxItemLength) ?? '')
         .filter((item): item is string => item.length > 0),
     ),
   );
@@ -212,87 +209,18 @@ const isProfileComplete = (data: Record<string, unknown>): boolean => {
   return hasFirstName && hasDob;
 };
 
-async function findStalePushTokenRefsByUserScan(params: {
-  currentUserId: string;
-  tokensToClean: Set<string>;
-  deviceId?: string;
-}): Promise<Map<string, admin.firestore.DocumentReference>> {
-  const { currentUserId, tokensToClean, deviceId } = params;
-  const staleRefs = new Map<string, admin.firestore.DocumentReference>();
-
-  const usersSnapshot = await getDb()
-    .collection('users')
-    .limit(PUSH_TOKEN_FALLBACK_SCAN_LIMIT)
-    .get();
-
-  const candidateUsers = usersSnapshot.docs.filter((doc) => doc.id !== currentUserId);
-
-  for (let start = 0; start < candidateUsers.length; start += PUSH_TOKEN_FALLBACK_SCAN_CHUNK) {
-    const chunk = candidateUsers.slice(start, start + PUSH_TOKEN_FALLBACK_SCAN_CHUNK);
-    const tokenSnapshots = await Promise.all(
-      chunk.map(async (userDoc) => {
-        try {
-          return await userDoc.ref.collection('pushTokens').get();
-        } catch (error) {
-          functions.logger.warn(
-            `[users] Fallback push token scan failed for user ${userDoc.id}:`,
-            error,
-          );
-          return null;
-        }
-      }),
-    );
-
-    tokenSnapshots.forEach((snapshot) => {
-      if (!snapshot) return;
-      snapshot.docs.forEach((tokenDoc) => {
-        const tokenData = tokenDoc.data();
-        const tokenMatch =
-          typeof tokenData.token === 'string' && tokensToClean.has(tokenData.token);
-        const deviceMatch =
-          typeof deviceId === 'string' &&
-          deviceId.length > 0 &&
-          typeof tokenData.deviceId === 'string' &&
-          tokenData.deviceId === deviceId;
-
-        if (tokenMatch || deviceMatch) {
-          staleRefs.set(tokenDoc.ref.path, tokenDoc.ref);
-        }
-      });
-    });
-  }
-
-  if (usersSnapshot.size === PUSH_TOKEN_FALLBACK_SCAN_LIMIT) {
-    functions.logger.warn(
-      '[users] Fallback push token scan hit limit; some stale tokens may remain',
-      { scannedUsers: usersSnapshot.size, limit: PUSH_TOKEN_FALLBACK_SCAN_LIMIT },
-    );
-  }
-
-  return staleRefs;
-}
-
-
 usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    const userRef = getDb().collection('users').doc(userId);
-    let userDoc = await userRef.get();
+    const now = admin.firestore.Timestamp.now();
+    const userService = getUserDomainService();
+    const data = await userService.ensureExists(userId, {
+      createdAt: now,
+      updatedAt: now,
+    });
 
-    // Bootstrap profile on first fetch
-    if (!userDoc.exists) {
-      const now = admin.firestore.Timestamp.now();
-      await userRef.set(
-        {
-          createdAt: now,
-          updatedAt: now,
-        },
-        { merge: true },
-      );
-      userDoc = await userRef.get();
-    }
-
-    const data = userDoc.exists ? userDoc.data() ?? {} : {};
+    const privacy = (data.privacy as Record<string, unknown> | undefined) ?? {};
+    const legalAssent = (privacy.legalAssent as Record<string, unknown> | undefined) ?? {};
 
     const response = {
       id: userId,
@@ -303,10 +231,12 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
       medicalHistory: Array.isArray(data.medicalHistory) ? data.medicalHistory : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       folders: Array.isArray(data.folders) ? data.folders : [],
+      autoShareWithCaregivers: resolveAutoShareWithCaregivers(data.autoShareWithCaregivers),
       roles: Array.isArray(data.roles) ? data.roles : [],
       primaryRole: typeof data.primaryRole === 'string' ? data.primaryRole : null,
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
-      updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
+      createdAt: timestampToIso(data.createdAt),
+      updatedAt: timestampToIso(data.updatedAt),
+      legalAssent: serializeLegalAssent(legalAssent),
       complete: isProfileComplete(data),
     };
 
@@ -324,8 +254,7 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const payload = updateProfileSchema.parse(req.body);
-
-    const userRef = getDb().collection('users').doc(userId);
+    const userService = getUserDomainService();
     const now = admin.firestore.Timestamp.now();
 
     const updateData: Record<string, unknown> = {
@@ -333,15 +262,15 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
     };
 
     if (payload.firstName !== undefined) {
-      updateData.firstName = sanitizeString(payload.firstName) ?? '';
+      updateData.firstName = sanitizeString(payload.firstName, PROFILE_NAME_MAX_LENGTH) ?? '';
     }
 
     if (payload.lastName !== undefined) {
-      updateData.lastName = sanitizeString(payload.lastName) ?? '';
+      updateData.lastName = sanitizeString(payload.lastName, PROFILE_NAME_MAX_LENGTH) ?? '';
     }
 
     if (payload.dateOfBirth !== undefined) {
-      updateData.dateOfBirth = sanitizeString(payload.dateOfBirth) ?? '';
+      updateData.dateOfBirth = sanitizeString(payload.dateOfBirth, PROFILE_DOB_MAX_LENGTH) ?? '';
     }
 
     if (payload.allergies !== undefined) {
@@ -360,6 +289,10 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       updateData.folders = sanitizeStringArray(payload.folders) ?? [];
     }
 
+    if (payload.autoShareWithCaregivers !== undefined) {
+      updateData.autoShareWithCaregivers = payload.autoShareWithCaregivers;
+    }
+
     if (payload.roles !== undefined) {
       updateData.roles = normalizeRoles(payload.roles) ?? [];
     }
@@ -368,15 +301,36 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       updateData.primaryRole = payload.primaryRole;
     }
 
-    const userDoc = await userRef.get();
-    if (!userDoc.exists) {
-      updateData.createdAt = now;
+    if (payload.legalAssent !== undefined) {
+      const legalAssentPayload = payload.legalAssent;
+      const traceHeader = sanitizeAuditString(req.header('x-cloud-trace-context'), 256);
+      const traceId = traceHeader ? traceHeader.split('/')[0] : null;
+      const userAgent = sanitizeAuditString(req.get('user-agent'), 256) ?? null;
+      const origin = sanitizeAuditString(req.get('origin'), 256) ?? null;
+      const ipHash = getHashedAuditValue(getClientIp(req)) ?? null;
+
+      await userService.applyLegalAssent(userId, updateData, {
+        termsVersion: legalAssentPayload.termsVersion,
+        privacyVersion: legalAssentPayload.privacyVersion,
+        source: legalAssentPayload.source,
+        platform: legalAssentPayload.platform ?? null,
+        appVersion: legalAssentPayload.appVersion ?? null,
+        now,
+        traceId,
+        userAgent,
+        origin,
+        ipHash,
+        eventType: LEGAL_ASSENT_EVENT_TYPE,
+      });
+    } else {
+      await userService.upsertById(userId, updateData, {
+        createdAtOnInsert: now,
+      });
     }
 
-    await userRef.set(updateData, { merge: true });
-
-    const updatedDoc = await userRef.get();
-    const data = updatedDoc.data() ?? {};
+    const data = ((await userService.getById(userId)) ?? {}) as Record<string, unknown>;
+    const privacy = (data.privacy as Record<string, unknown> | undefined) ?? {};
+    const legalAssent = (privacy.legalAssent as Record<string, unknown> | undefined) ?? {};
 
     const response = {
       id: userId,
@@ -387,10 +341,12 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       medicalHistory: Array.isArray(data.medicalHistory) ? data.medicalHistory : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       folders: Array.isArray(data.folders) ? data.folders : [],
+      autoShareWithCaregivers: resolveAutoShareWithCaregivers(data.autoShareWithCaregivers),
       roles: Array.isArray(data.roles) ? data.roles : [],
       primaryRole: typeof data.primaryRole === 'string' ? data.primaryRole : null,
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
-      updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
+      createdAt: timestampToIso(data.createdAt),
+      updatedAt: timestampToIso(data.updatedAt),
+      legalAssent: serializeLegalAssent(legalAssent),
       complete: isProfileComplete(data),
     };
 
@@ -420,10 +376,8 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
 usersRouter.get('/privacy/analytics-consent', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    const userDoc = await getDb().collection('users').doc(userId).get();
-    const userData = userDoc.data() ?? {};
-    const privacy = (userData.privacy as Record<string, unknown> | undefined) ?? {};
-    const analyticsConsent = (privacy.analyticsConsent as Record<string, unknown> | undefined) ?? {};
+    const userService = getUserDomainService();
+    const analyticsConsent = await userService.getAnalyticsConsent(userId);
 
     res.json(serializeAnalyticsConsent(analyticsConsent));
   } catch (error) {
@@ -442,9 +396,9 @@ usersRouter.get('/privacy/analytics-consent', requireAuth, async (req: AuthReque
 usersRouter.post('/privacy/analytics-consent', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const userService = getUserDomainService();
     const payload = analyticsConsentSchema.parse(req.body);
     const now = admin.firestore.Timestamp.now();
-    const userRef = getDb().collection('users').doc(userId);
 
     const traceHeader = sanitizeAuditString(req.header('x-cloud-trace-context'), 256);
     const traceId = traceHeader ? traceHeader.split('/')[0] : null;
@@ -452,68 +406,18 @@ usersRouter.post('/privacy/analytics-consent', requireAuth, async (req: AuthRequ
     const origin = sanitizeAuditString(req.get('origin'), 256) ?? null;
     const ipHash = getHashedAuditValue(getClientIp(req)) ?? null;
 
-    const transactionResult = await getDb().runTransaction(async (transaction) => {
-      const userDoc = await transaction.get(userRef);
-      const userData = userDoc.data() ?? {};
-      const privacy = (userData.privacy as Record<string, unknown> | undefined) ?? {};
-      const existingConsent =
-        (privacy.analyticsConsent as Record<string, unknown> | undefined) ?? {};
-
-      const previousGranted =
-        typeof existingConsent.granted === 'boolean' ? existingConsent.granted : null;
-      const existingSource =
-        typeof existingConsent.source === 'string' ? existingConsent.source : null;
-      const existingPolicyVersion =
-        typeof existingConsent.policyVersion === 'string'
-          ? existingConsent.policyVersion
-          : null;
-
-      const hasChanged =
-        previousGranted === null ||
-        previousGranted !== payload.granted ||
-        existingSource !== payload.source ||
-        existingPolicyVersion !== (payload.policyVersion ?? null);
-
-      const nextConsent = {
-        granted: payload.granted,
-        source: payload.source,
-        policyVersion: payload.policyVersion ?? null,
-        updatedAt: now,
-      };
-
-      transaction.set(
-        userRef,
-        {
-          privacy: {
-            analyticsConsent: nextConsent,
-          },
-          updatedAt: now,
-        },
-        { merge: true },
-      );
-
-      if (hasChanged) {
-        const auditRef = userRef.collection(ANALYTICS_AUDIT_COLLECTION).doc();
-        transaction.set(auditRef, {
-          eventType: ANALYTICS_CONSENT_EVENT_TYPE,
-          granted: payload.granted,
-          previousGranted,
-          source: payload.source,
-          policyVersion: payload.policyVersion ?? null,
-          platform: payload.platform ?? null,
-          appVersion: payload.appVersion ?? null,
-          occurredAt: now,
-          traceId,
-          userAgent,
-          origin,
-          ipHash,
-        });
-      }
-
-      return {
-        hasChanged,
-        nextConsent,
-      };
+    const transactionResult = await userService.updateAnalyticsConsent(userId, {
+      granted: payload.granted,
+      source: payload.source,
+      policyVersion: payload.policyVersion ?? null,
+      platform: payload.platform ?? null,
+      appVersion: payload.appVersion ?? null,
+      now,
+      traceId,
+      userAgent,
+      origin,
+      ipHash,
+      eventType: ANALYTICS_CONSENT_EVENT_TYPE,
     });
 
     functions.logger.info('[users] Updated analytics consent state', {
@@ -552,21 +456,16 @@ usersRouter.post('/privacy/analytics-consent', requireAuth, async (req: AuthRequ
 usersRouter.get('/privacy/analytics-consent/audit', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const userService = getUserDomainService();
     const { limit } = analyticsConsentAuditQuerySchema.parse(req.query);
     const auditLimit = limit ?? DEFAULT_AUDIT_QUERY_LIMIT;
 
-    const auditSnapshot = await getDb()
-      .collection('users')
-      .doc(userId)
-      .collection(ANALYTICS_AUDIT_COLLECTION)
-      .orderBy('occurredAt', 'desc')
-      .limit(auditLimit)
-      .get();
+    const auditEvents = await userService.listAnalyticsConsentAudit(userId, auditLimit);
 
-    const events = auditSnapshot.docs.map((doc) => {
-      const data = doc.data() as Record<string, unknown>;
+    const events = auditEvents.map((event) => {
+      const data = event.data as Record<string, unknown>;
       return {
-        id: doc.id,
+        id: event.id,
         eventType: typeof data.eventType === 'string' ? data.eventType : null,
         granted: typeof data.granted === 'boolean' ? data.granted : null,
         previousGranted:
@@ -604,6 +503,171 @@ usersRouter.get('/privacy/analytics-consent/audit', requireAuth, async (req: Aut
 });
 
 /**
+ * GET /v1/users/ops/restore-audit
+ * Operator-facing restore audit trail across soft-deleted resources.
+ */
+usersRouter.get('/ops/restore-audit', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!ensureOperatorAccessOrReject(req.user, res)) {
+      return;
+    }
+
+    const userService = getUserDomainService();
+    const { limit, cursor, resourceType, ownerUserId, actorUserId, triageStatus } =
+      restoreAuditQuerySchema.parse(req.query);
+    const auditLimit = limit ?? DEFAULT_RESTORE_AUDIT_QUERY_LIMIT;
+    const scanLimit = Math.min(auditLimit * 2, MAX_RESTORE_AUDIT_SCAN_LIMIT);
+
+    const listResult = await userService.listRestoreAuditEvents({
+      limit: auditLimit,
+      scanLimit,
+      cursor,
+      resourceType,
+      ownerUserId,
+      actorUserId,
+      triageStatus,
+    });
+    if (!listResult) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid cursor',
+      });
+      return;
+    }
+
+    const filteredEvents = listResult.events.map((event) => {
+      const data = event.data as Record<string, unknown>;
+      return {
+        id: event.id,
+        resourceType: typeof data.resourceType === 'string' ? data.resourceType : null,
+        resourceId: typeof data.resourceId === 'string' ? data.resourceId : null,
+        ownerUserId: typeof data.ownerUserId === 'string' ? data.ownerUserId : null,
+        actorUserId: typeof data.actorUserId === 'string' ? data.actorUserId : null,
+        actorCategory: typeof data.actorCategory === 'string' ? data.actorCategory : null,
+        reason: typeof data.reason === 'string' ? data.reason : null,
+        metadata:
+          data.metadata && typeof data.metadata === 'object'
+            ? (data.metadata as Record<string, unknown>)
+            : null,
+        triageStatus:
+          typeof data.triageStatus === 'string' ? data.triageStatus : 'unreviewed',
+        triageNote: typeof data.triageNote === 'string' ? data.triageNote : null,
+        triageUpdatedAt: timestampToIso(data.triageUpdatedAt),
+        triageUpdatedBy:
+          typeof data.triageUpdatedBy === 'string' ? data.triageUpdatedBy : null,
+        createdAt: timestampToIso(data.createdAt),
+      };
+    });
+
+    res.set('X-Has-More', listResult.hasMore ? 'true' : 'false');
+    res.set('X-Next-Cursor', listResult.nextCursor || '');
+
+    res.json({
+      events: filteredEvents,
+      count: filteredEvents.length,
+      limit: auditLimit,
+      hasMore: listResult.hasMore,
+      nextCursor: listResult.nextCursor,
+      scanned: listResult.scanned,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid query parameters',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error fetching restore audit trail:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch restore audit trail',
+    });
+  }
+});
+
+/**
+ * PATCH /v1/users/ops/restore-audit/:id/triage
+ * Persist triage/review state for a restore-audit event.
+ */
+usersRouter.patch('/ops/restore-audit/:id/triage', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!ensureOperatorAccessOrReject(req.user, res)) {
+      return;
+    }
+
+    const eventId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+    if (eventId.length === 0) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Event ID is required',
+      });
+      return;
+    }
+
+    const payload = updateRestoreAuditTriageSchema.parse(req.body ?? {});
+    const triageNote =
+      payload.triageNote !== undefined
+        ? sanitizePlainText(payload.triageNote, RESTORE_AUDIT_TRIAGE_NOTE_MAX_LENGTH)
+        : undefined;
+    const userService = getUserDomainService();
+    const now = admin.firestore.Timestamp.now();
+    const updatedEvent = await userService.updateRestoreAuditTriage(eventId, {
+      triageStatus: payload.triageStatus,
+      triageNote:
+        payload.triageNote !== undefined ? (triageNote && triageNote.length > 0 ? triageNote : null) : undefined,
+      clearTriageNote: payload.clearTriageNote,
+      updatedBy: req.user!.uid,
+      updatedAt: now,
+    });
+    if (!updatedEvent) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Restore audit event not found',
+      });
+      return;
+    }
+    const data = updatedEvent.data as Record<string, unknown>;
+
+    res.json({
+      id: updatedEvent.id,
+      resourceType: typeof data.resourceType === 'string' ? data.resourceType : null,
+      resourceId: typeof data.resourceId === 'string' ? data.resourceId : null,
+      ownerUserId: typeof data.ownerUserId === 'string' ? data.ownerUserId : null,
+      actorUserId: typeof data.actorUserId === 'string' ? data.actorUserId : null,
+      actorCategory: typeof data.actorCategory === 'string' ? data.actorCategory : null,
+      reason: typeof data.reason === 'string' ? data.reason : null,
+      metadata:
+        data.metadata && typeof data.metadata === 'object'
+          ? (data.metadata as Record<string, unknown>)
+          : null,
+      triageStatus: typeof data.triageStatus === 'string' ? data.triageStatus : 'unreviewed',
+      triageNote: typeof data.triageNote === 'string' ? data.triageNote : null,
+      triageUpdatedAt: timestampToIso(data.triageUpdatedAt),
+      triageUpdatedBy: typeof data.triageUpdatedBy === 'string' ? data.triageUpdatedBy : null,
+      createdAt: timestampToIso(data.createdAt),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[users] Error updating restore audit triage state:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to update restore audit triage state',
+    });
+  }
+});
+
+/**
  * POST /v1/users/push-tokens
  * Register a push notification token for the authenticated user
  * 
@@ -614,130 +678,40 @@ usersRouter.get('/privacy/analytics-consent/audit', requireAuth, async (req: Aut
 usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const userService = getUserDomainService();
     const payload = registerPushTokenSchema.parse(req.body);
     const { token, platform, timezone, deviceId, previousToken } = payload;
 
     const now = admin.firestore.Timestamp.now();
-    const userRef = getDb().collection('users').doc(userId);
-    const tokensRef = userRef.collection('pushTokens');
-    let collectionGroupLookupFailed = false;
-    const tokensToClean = new Set<string>([token]);
-    if (previousToken && previousToken !== token) {
-      tokensToClean.add(previousToken);
-    }
+    const result = await userService.registerPushToken({
+      userId,
+      token,
+      platform,
+      timezone,
+      deviceId,
+      previousToken,
+      now,
+    });
 
-    // CRITICAL: Remove this device/token from ALL other users first.
-    // We clean by token and (when provided) by stable deviceId to handle token rotation.
-    const staleTokenRefs = new Map<string, admin.firestore.DocumentReference>();
-
-    try {
-      for (const tokenToClean of tokensToClean) {
-        const allTokensWithThisValue = await getDb()
-          .collectionGroup('pushTokens')
-          .where('token', '==', tokenToClean)
-          .get();
-
-        for (const tokenDoc of allTokensWithThisValue.docs) {
-          const pathParts = tokenDoc.ref.path.split('/');
-          const tokenOwnerId = pathParts[1];
-          if (tokenOwnerId !== userId) {
-            staleTokenRefs.set(tokenDoc.ref.path, tokenDoc.ref);
-          }
-        }
-      }
-    } catch (tokenCleanupError) {
-      functions.logger.warn('[users] Error cleaning stale tokens by token (non-fatal):', tokenCleanupError);
-      collectionGroupLookupFailed = true;
-    }
-
-    if (deviceId) {
-      try {
-        const allTokensForDevice = await getDb()
-          .collectionGroup('pushTokens')
-          .where('deviceId', '==', deviceId)
-          .get();
-
-        for (const tokenDoc of allTokensForDevice.docs) {
-          const pathParts = tokenDoc.ref.path.split('/');
-          const tokenOwnerId = pathParts[1];
-          if (tokenOwnerId !== userId) {
-            staleTokenRefs.set(tokenDoc.ref.path, tokenDoc.ref);
-          }
-        }
-      } catch (deviceCleanupError) {
-        functions.logger.warn('[users] Error cleaning stale tokens by deviceId (non-fatal):', deviceCleanupError);
-        collectionGroupLookupFailed = true;
-      }
-    }
-
-    if (collectionGroupLookupFailed) {
-      const fallbackRefs = await findStalePushTokenRefsByUserScan({
-        currentUserId: userId,
-        tokensToClean,
-        deviceId,
-      });
-      fallbackRefs.forEach((ref, path) => staleTokenRefs.set(path, ref));
+    if (result.fallbackUsed) {
       functions.logger.info(
-        `[users] Fallback scan identified ${fallbackRefs.size} stale push token(s)`,
+        `[users] Fallback scan identified ${result.staleRemovedCount} stale push token(s)`,
       );
     }
 
-    if (staleTokenRefs.size > 0) {
-      const batch = getDb().batch();
-      staleTokenRefs.forEach((ref) => batch.delete(ref));
-      await batch.commit();
+    if (result.staleRemovedCount > 0) {
       functions.logger.info(
-        `[users] Removed ${staleTokenRefs.size} stale push token(s) - device now belongs to user ${userId}`,
+        `[users] Removed ${result.staleRemovedCount} stale push token(s) - device now belongs to user ${userId}`,
       );
     }
 
-    // Check if token already exists for current user
-    const existingTokenQuery = await tokensRef.where('token', '==', token).limit(1).get();
-    let existingDoc = existingTokenQuery.empty ? null : existingTokenQuery.docs[0];
-
-    if (!existingDoc && deviceId) {
-      const existingByDeviceQuery = await tokensRef.where('deviceId', '==', deviceId).limit(1).get();
-      if (!existingByDeviceQuery.empty) {
-        existingDoc = existingByDeviceQuery.docs[0];
-      }
-    }
-
-    if (existingDoc) {
-      // Update existing token
-      const updateData: Record<string, unknown> = {
-        token,
-        platform,
-        timezone: timezone || null,
-        updatedAt: now,
-        lastActive: now,
-      };
-      if (deviceId) {
-        updateData.deviceId = deviceId;
-      }
-      await existingDoc.ref.update(updateData);
-
+    if (result.updatedExisting) {
       functions.logger.info(`[users] Updated push token for user ${userId}`);
     } else {
-      // Create new token document
-      const createData: Record<string, unknown> = {
-        token,
-        platform,
-        timezone: timezone || null,
-        createdAt: now,
-        updatedAt: now,
-        lastActive: now,
-      };
-      if (deviceId) {
-        createData.deviceId = deviceId;
-      }
-      await tokensRef.add(createData);
-
       functions.logger.info(`[users] Registered new push token for user ${userId}`);
     }
 
-    // Always update user's timezone on their profile (reflects current device location)
     if (timezone) {
-      await userRef.set({ timezone, updatedAt: now }, { merge: true });
       functions.logger.info(`[users] Updated timezone for user ${userId}: ${timezone}`);
     }
 
@@ -767,26 +741,18 @@ usersRouter.post('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
 usersRouter.delete('/push-tokens', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const userService = getUserDomainService();
     const payload = unregisterPushTokenSchema.parse(req.body);
     const { token } = payload;
 
-    const tokensRef = getDb().collection('users').doc(userId).collection('pushTokens');
-    const tokenQuery = await tokensRef.where('token', '==', token).get();
-
-    if (tokenQuery.empty) {
+    const result = await userService.unregisterPushToken(userId, token);
+    if (result.deletedCount === 0) {
       res.status(404).json({
         code: 'not_found',
         message: 'Push token not found',
       });
       return;
     }
-
-    // Delete all matching tokens (should only be one, but handle multiple just in case)
-    const batch = getDb().batch();
-    tokenQuery.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-    });
-    await batch.commit();
 
     functions.logger.info(`[users] Unregistered push token for user ${userId}`);
 
@@ -817,24 +783,18 @@ usersRouter.delete('/push-tokens', requireAuth, async (req: AuthRequest, res) =>
 usersRouter.delete('/push-tokens/all', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const userService = getUserDomainService();
 
-    const tokensRef = getDb().collection('users').doc(userId).collection('pushTokens');
-    const tokensSnapshot = await tokensRef.get();
-
-    if (tokensSnapshot.empty) {
+    const result = await userService.deleteAllPushTokens(userId);
+    if (result.deletedCount === 0) {
       functions.logger.info(`[users] No push tokens to delete for user ${userId}`);
       res.status(204).send();
       return;
     }
 
-    // Delete all tokens for this user
-    const batch = getDb().batch();
-    tokensSnapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-    });
-    await batch.commit();
-
-    functions.logger.info(`[users] Deleted ${tokensSnapshot.size} push token(s) for user ${userId} during logout`);
+    functions.logger.info(
+      `[users] Deleted ${result.deletedCount} push token(s) for user ${userId} during logout`,
+    );
 
     res.status(204).send();
   } catch (error) {
@@ -853,28 +813,37 @@ usersRouter.delete('/push-tokens/all', requireAuth, async (req: AuthRequest, res
 usersRouter.get('/me/export', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    const userRef = getDb().collection('users').doc(userId);
-
-    // Fetch all user data
-    const [
-      userDoc,
-      visitsSnapshot,
-      actionsSnapshot,
-      medicationsSnapshot,
-      sharesSnapshot,
-      consentAuditSnapshot,
-    ] = await Promise.all([
-      userRef.get(),
-      getDb().collection('visits').where('userId', '==', userId).get(),
-      getDb().collection('actions').where('userId', '==', userId).get(),
-      getDb().collection('medications').where('userId', '==', userId).get(),
-      getDb().collection('shares').where('ownerId', '==', userId).get(),
-      userRef.collection(ANALYTICS_AUDIT_COLLECTION).orderBy('occurredAt', 'desc').limit(1000).get(),
-    ]);
-
-    const userData = userDoc.exists ? userDoc.data() : {};
+    const userService = getUserDomainService();
+    const exportPayload = await userService.getExportData(userId, { auditLimit: 1000 });
+    const userData = exportPayload.user ?? {};
     const privacy = (userData?.privacy as Record<string, unknown> | undefined) ?? {};
     const analyticsConsent = (privacy.analyticsConsent as Record<string, unknown> | undefined) ?? {};
+    const legalAssent = (privacy.legalAssent as Record<string, unknown> | undefined) ?? {};
+    const auditEvents = exportPayload.auditEvents.map((event) => {
+      const data = event.data as Record<string, unknown>;
+      return {
+        id: event.id,
+        eventType: typeof data.eventType === 'string' ? data.eventType : null,
+        granted: typeof data.granted === 'boolean' ? data.granted : null,
+        previousGranted:
+          typeof data.previousGranted === 'boolean' ? data.previousGranted : null,
+        accepted: typeof data.accepted === 'boolean' ? data.accepted : null,
+        termsVersion:
+          typeof data.termsVersion === 'string' ? data.termsVersion : null,
+        privacyVersion:
+          typeof data.privacyVersion === 'string' ? data.privacyVersion : null,
+        previousTermsVersion:
+          typeof data.previousTermsVersion === 'string' ? data.previousTermsVersion : null,
+        previousPrivacyVersion:
+          typeof data.previousPrivacyVersion === 'string' ? data.previousPrivacyVersion : null,
+        source: typeof data.source === 'string' ? data.source : null,
+        policyVersion:
+          typeof data.policyVersion === 'string' ? data.policyVersion : null,
+        platform: typeof data.platform === 'string' ? data.platform : null,
+        appVersion: typeof data.appVersion === 'string' ? data.appVersion : null,
+        occurredAt: timestampToIso(data.occurredAt),
+      };
+    });
 
     const exportData = {
       user: {
@@ -883,55 +852,46 @@ usersRouter.get('/me/export', requireAuth, async (req: AuthRequest, res) => {
         createdAt: userData?.createdAt?.toDate?.().toISOString() ?? null,
         updatedAt: userData?.updatedAt?.toDate?.().toISOString() ?? null,
       },
-      visits: visitsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
-        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
-        visitDate: doc.data().visitDate?.toDate?.().toISOString() ?? null,
-        processedAt: doc.data().processedAt?.toDate?.().toISOString() ?? null,
+      visits: exportPayload.visits.map((visit) => ({
+        id: visit.id,
+        ...visit.data,
+        createdAt: visit.data.createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: visit.data.updatedAt?.toDate?.().toISOString() ?? null,
+        visitDate: visit.data.visitDate?.toDate?.().toISOString() ?? null,
+        processedAt: visit.data.processedAt?.toDate?.().toISOString() ?? null,
       })),
-      actions: actionsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
-        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
-        dueAt: doc.data().dueAt?.toDate?.().toISOString() ?? null,
-        completedAt: doc.data().completedAt?.toDate?.().toISOString() ?? null,
+      actions: exportPayload.actions.map((action) => ({
+        id: action.id,
+        ...action.data,
+        createdAt: action.data.createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: action.data.updatedAt?.toDate?.().toISOString() ?? null,
+        dueAt: action.data.dueAt?.toDate?.().toISOString() ?? null,
+        completedAt: action.data.completedAt?.toDate?.().toISOString() ?? null,
       })),
-      medications: medicationsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
-        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
-        startedAt: doc.data().startedAt?.toDate?.().toISOString() ?? null,
-        stoppedAt: doc.data().stoppedAt?.toDate?.().toISOString() ?? null,
+      medications: exportPayload.medications.map((medication) => ({
+        id: medication.id,
+        ...medication.data,
+        createdAt: medication.data.createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: medication.data.updatedAt?.toDate?.().toISOString() ?? null,
+        startedAt: medication.data.startedAt?.toDate?.().toISOString() ?? null,
+        stoppedAt: medication.data.stoppedAt?.toDate?.().toISOString() ?? null,
       })),
-      shares: sharesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.().toISOString() ?? null,
-        updatedAt: doc.data().updatedAt?.toDate?.().toISOString() ?? null,
-        acceptedAt: doc.data().acceptedAt?.toDate?.().toISOString() ?? null,
+      shares: exportPayload.shares.map((share) => ({
+        id: share.id,
+        ...share.data,
+        createdAt: share.data.createdAt?.toDate?.().toISOString() ?? null,
+        updatedAt: share.data.updatedAt?.toDate?.().toISOString() ?? null,
+        acceptedAt: share.data.acceptedAt?.toDate?.().toISOString() ?? null,
       })),
       privacy: {
         analyticsConsent: serializeAnalyticsConsent(analyticsConsent),
-        analyticsConsentAudit: consentAuditSnapshot.docs.map((doc) => {
-          const data = doc.data() as Record<string, unknown>;
-          return {
-            id: doc.id,
-            eventType: typeof data.eventType === 'string' ? data.eventType : null,
-            granted: typeof data.granted === 'boolean' ? data.granted : null,
-            previousGranted:
-              typeof data.previousGranted === 'boolean' ? data.previousGranted : null,
-            source: typeof data.source === 'string' ? data.source : null,
-            policyVersion:
-              typeof data.policyVersion === 'string' ? data.policyVersion : null,
-            platform: typeof data.platform === 'string' ? data.platform : null,
-            appVersion: typeof data.appVersion === 'string' ? data.appVersion : null,
-            occurredAt: timestampToIso(data.occurredAt),
-          };
-        }),
+        analyticsConsentAudit: auditEvents.filter(
+          (event) => event.eventType === ANALYTICS_CONSENT_EVENT_TYPE,
+        ),
+        legalAssent: serializeLegalAssent(legalAssent),
+        legalAssentAudit: auditEvents.filter(
+          (event) => event.eventType === LEGAL_ASSENT_EVENT_TYPE,
+        ),
       },
       exportedAt: new Date().toISOString(),
     };
@@ -956,6 +916,7 @@ usersRouter.get('/me/export', requireAuth, async (req: AuthRequest, res) => {
 usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const userService = getUserDomainService();
 
     functions.logger.info(`[users] Starting account deletion for user ${userId}`);
 
@@ -969,24 +930,7 @@ usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
       ),
     );
 
-    const deletionTargets = buildDeletionTargets(userId, emailCandidates);
-
-    const [queryDocs, userSubcollectionDocs] = await Promise.all([
-      fetchDocsForDeletion(deletionTargets),
-      fetchUserSubcollectionDocs(userId),
-    ]);
-
-    const directDocRefs: admin.firestore.DocumentReference[] = [
-      getDb().collection('users').doc(userId),
-      getDb().collection('patientContexts').doc(userId),
-      getDb().collection('patientEvaluations').doc(userId),
-    ];
-
-    const deleteCount = await deleteDocsInBatches([
-      ...queryDocs.map((doc) => doc.ref),
-      ...userSubcollectionDocs.map((doc) => doc.ref),
-      ...directDocRefs,
-    ]);
+    const deleteCount = await userService.deleteAccountData(userId, emailCandidates);
 
     // Delete Firebase Auth user
     await admin.auth().deleteUser(userId);
@@ -1019,28 +963,21 @@ usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
 usersRouter.get('/me/caregivers', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-
-    // Get caregivers from shares collection (outgoing shares where user is owner)
-    const sharesSnapshot = await getDb()
-      .collection('shares')
-      .where('ownerId', '==', userId)
-      .get();
-
-    // Also get pending invites
-    const invitesSnapshot = await getDb()
-      .collection('shareInvites')
-      .where('ownerId', '==', userId)
-      .where('status', '==', 'pending')
-      .get();
+    const userService = getUserDomainService();
+    const shareService = getShareDomainService();
+    const [userData, shares, invites] = await Promise.all([
+      userService.getById(userId),
+      shareService.listByOwnerId(userId),
+      shareService.listInvitesByOwnerId(userId),
+    ]);
 
     const caregivers = [];
 
     // Add accepted shares as active caregivers
-    for (const doc of sharesSnapshot.docs) {
-      const share = doc.data();
+    for (const share of shares) {
       if (share.status === 'accepted') {
         caregivers.push({
-          id: doc.id,
+          id: share.id,
           name: share.caregiverEmail?.split('@')[0] || 'Caregiver',
           email: share.caregiverEmail,
           relationship: share.role || 'viewer',
@@ -1052,11 +989,13 @@ usersRouter.get('/me/caregivers', requireAuth, async (req: AuthRequest, res) => 
     }
 
     // Add pending invites
-    for (const doc of invitesSnapshot.docs) {
-      const invite = doc.data();
+    for (const invite of invites) {
+      if (invite.status !== 'pending') {
+        continue;
+      }
       const email = invite.caregiverEmail || invite.inviteeEmail;
       caregivers.push({
-        id: doc.id,
+        id: invite.id,
         name: email?.split('@')[0] || 'Pending',
         email,
         relationship: invite.role || 'viewer',
@@ -1067,7 +1006,9 @@ usersRouter.get('/me/caregivers', requireAuth, async (req: AuthRequest, res) => 
 
     res.json({
       caregivers,
-      autoShareWithCaregivers: false, // Deprecated field
+      autoShareWithCaregivers: resolveAutoShareWithCaregivers(
+        userData?.autoShareWithCaregivers,
+      ),
     });
   } catch (error) {
     functions.logger.error('[users] Error listing caregivers:', error);
@@ -1112,28 +1053,27 @@ usersRouter.delete('/me/caregivers/:id', requireAuth, async (req: AuthRequest, r
     const userId = req.user!.uid;
     const caregiverId = req.params.id;
     const now = admin.firestore.Timestamp.now();
+    const shareService = getShareDomainService();
 
-    // Check if it's a share ID (new system)
-    const shareRef = getDb().collection('shares').doc(caregiverId);
-    const shareDoc = await shareRef.get();
-
-    if (shareDoc.exists && shareDoc.data()?.ownerId === userId) {
-      await shareRef.update({
-        status: 'revoked',
-        revokedAt: now,
-        updatedAt: now,
-      });
+    const share = await shareService.getById(caregiverId);
+    if (share && hasResourceOwnerAccess(userId, share, { ownerField: 'ownerId' })) {
+      await shareService.setShare(
+        caregiverId,
+        {
+          status: 'revoked',
+          revokedAt: now,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
       functions.logger.info(`[users] Revoked share ${caregiverId} for user ${userId}`);
       res.status(204).send();
       return;
     }
 
-    // Check if it's a pending invite
-    const inviteRef = getDb().collection('shareInvites').doc(caregiverId);
-    const inviteDoc = await inviteRef.get();
-
-    if (inviteDoc.exists && inviteDoc.data()?.ownerId === userId) {
-      await inviteRef.update({
+    const invite = await shareService.getInviteById(caregiverId);
+    if (invite && hasResourceOwnerAccess(userId, invite, { ownerField: 'ownerId' })) {
+      await shareService.updateInviteRecord(caregiverId, {
         status: 'revoked',
         updatedAt: now,
       });

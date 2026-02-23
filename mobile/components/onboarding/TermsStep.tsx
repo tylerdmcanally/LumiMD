@@ -1,6 +1,6 @@
 /**
  * Terms Step - Screen 4
- * Requires user to accept Privacy Policy and Terms of Service
+ * Requires user to accept Privacy Policy and Terms of Use
  */
 
 import React, { useState } from 'react';
@@ -51,7 +51,7 @@ export function TermsStep({ onNext, onBack }: Props) {
                 </View>
                 <Text style={styles.title}>Review Our Policies</Text>
                 <Text style={styles.subtitle}>
-                    Please review and accept our Privacy Policy and Terms of Service to continue
+                    Please review and accept our Privacy Policy and Terms of Use to continue
                 </Text>
             </View>
 
@@ -77,7 +77,7 @@ export function TermsStep({ onNext, onBack }: Props) {
 
                 <View style={styles.divider} />
 
-                {/* Terms of Service */}
+                {/* Terms of Use */}
                 <TouchableOpacity
                     style={styles.policyRow}
                     onPress={() => openLink(TERMS_OF_SERVICE_URL)}
@@ -87,7 +87,7 @@ export function TermsStep({ onNext, onBack }: Props) {
                         <Ionicons name="document-text-outline" size={22} color={Colors.primary} />
                     </View>
                     <View style={styles.policyContent}>
-                        <Text style={styles.policyTitle}>Terms of Service</Text>
+                        <Text style={styles.policyTitle}>Terms of Use</Text>
                         <Text style={styles.policyDescription}>
                             Terms and conditions for using LumiMD
                         </Text>
@@ -129,7 +129,7 @@ export function TermsStep({ onNext, onBack }: Props) {
                     <Text style={styles.checkboxLabel}>
                         I have read and agree to the{' '}
                         <Text style={styles.linkText} onPress={() => openLink(TERMS_OF_SERVICE_URL)}>
-                            Terms of Service
+                            Terms of Use
                         </Text>
                     </Text>
                 </TouchableOpacity>

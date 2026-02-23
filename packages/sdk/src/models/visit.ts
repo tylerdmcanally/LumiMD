@@ -19,9 +19,15 @@ export interface Visit {
   notes?: string | null;
   visitDate?: string | null;
   diagnoses?: string[];
+  diagnosesDetailed?: DiagnosisDetail[];
   medications?: MedicationChanges;
   nextSteps?: string[];
+  followUps?: FollowUpItem[];
   imaging?: string[];
+  testsOrdered?: OrderedTestItem[];
+  medicationReview?: MedicationReviewSummary;
+  extractionVersion?: VisitExtractionVersion;
+  promptMeta?: VisitPromptMeta;
   tags?: string[];
   folders?: string[];
   education?: VisitEducation;
@@ -73,3 +79,76 @@ export interface VisitEducation {
   }>;
 }
 
+export type VisitExtractionVersion = 'v1_legacy' | 'v2_structured';
+export type ExtractionConfidence = 'high' | 'medium' | 'low';
+export type OrderedTestCategory =
+  | 'imaging'
+  | 'lab'
+  | 'cardiac'
+  | 'pulmonary'
+  | 'gi'
+  | 'procedure'
+  | 'other';
+export type FollowUpCategory =
+  | 'clinic_follow_up'
+  | 'return_to_clinic'
+  | 'nurse_visit'
+  | 'lab_draw'
+  | 'imaging_appointment'
+  | 'stress_test'
+  | 'cardiac_testing'
+  | 'specialist_referral'
+  | 'medication_review'
+  | 'contact_clinic'
+  | 'procedure'
+  | 'other';
+
+export interface DiagnosisDetail {
+  name: string;
+  status?: 'new' | 'chronic' | 'resolved' | 'suspected' | 'history';
+  confidence?: ExtractionConfidence;
+  evidence?: string;
+}
+
+export interface OrderedTestItem {
+  name: string;
+  category: OrderedTestCategory;
+  status?: 'ordered' | 'recommended' | 'scheduled';
+  timeframe?: string;
+  reason?: string;
+  evidence?: string;
+  confidence?: ExtractionConfidence;
+}
+
+export interface FollowUpItem {
+  type: FollowUpCategory;
+  task: string;
+  timeframe?: string;
+  dueAt?: string;
+  details?: string;
+  evidence?: string;
+  confidence?: ExtractionConfidence;
+}
+
+export interface MedicationReviewSummary {
+  reviewed: boolean;
+  continued?: MedicationEntry[];
+  continuedReviewed?: MedicationEntry[];
+  adherenceConcerns?: string[];
+  reviewConcerns?: string[];
+  sideEffectsDiscussed?: string[];
+  followUpNeeded?: boolean;
+  notes?: string[];
+}
+
+export interface VisitPromptMeta {
+  promptVersion: string;
+  schemaVersion: string;
+  responseFormat: 'json_object';
+  model: string;
+  latencyMs?: number;
+  extractionLatencyMs?: number;
+  summaryLatencyMs?: number;
+  validationWarnings?: string[];
+  fallbackUsed?: boolean;
+}

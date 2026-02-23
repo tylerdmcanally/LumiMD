@@ -4,12 +4,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { QueryKey, UseQueryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  QueryKey,
+  UseQueryOptions,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import auth from '@react-native-firebase/auth';
 import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 
 import { createApiHooks, queryKeys, sortByTimestampDescending } from '@lumimd/sdk';
 import type {
+  CursorPage,
   Visit,
   Medication,
   ActionItem,
@@ -31,7 +37,33 @@ type ApiHookQueryOptions<TData> = Omit<
   'queryKey' | 'queryFn'
 >;
 
+type PaginatedHookOptions = {
+  enabled?: boolean;
+  staleTime?: number;
+  gcTime?: number;
+  refetchInterval?: number | false;
+};
+
 const getSessionKey = () => auth().currentUser?.uid ?? 'anonymous';
+
+function flattenCursorPages<T extends { id: string }>(pages?: CursorPage<T>[]): T[] {
+  if (!Array.isArray(pages) || pages.length === 0) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const flattened: T[] = [];
+  pages.forEach((page) => {
+    page.items.forEach((item) => {
+      if (seen.has(item.id)) {
+        return;
+      }
+      seen.add(item.id);
+      flattened.push(item);
+    });
+  });
+  return flattened;
+}
 
 // Session-scoped API hooks (prevents stale cached data across account switches)
 export function useVisits(options?: ApiHookQueryOptions<Visit[]>) {
@@ -39,6 +71,32 @@ export function useVisits(options?: ApiHookQueryOptions<Visit[]>) {
     ...options,
     queryKey: [...queryKeys.visits, getSessionKey()],
   });
+}
+
+export function usePaginatedVisits(
+  params?: { limit?: number; sort?: 'asc' | 'desc' },
+  options?: PaginatedHookOptions,
+) {
+  const pageSize = params?.limit ?? 25;
+  const sort = params?.sort ?? 'desc';
+  const query = hooks.useInfiniteVisits(
+    { limit: pageSize, sort },
+    {
+      queryKey: [...queryKeys.visits, 'cursor', getSessionKey(), pageSize, sort],
+      enabled: options?.enabled,
+      staleTime: options?.staleTime,
+      gcTime: options?.gcTime,
+      refetchInterval: options?.refetchInterval,
+    },
+  );
+
+  const items = useMemo(() => flattenCursorPages<Visit>(query.data?.pages), [query.data?.pages]);
+
+  return {
+    ...query,
+    items,
+    hasMore: Boolean(query.hasNextPage),
+  };
 }
 
 export function useVisit(
@@ -65,6 +123,33 @@ export function useActionItems(options?: ApiHookQueryOptions<ActionItem[]>) {
   });
 }
 
+export function usePaginatedActionItems(
+  params?: { limit?: number },
+  options?: PaginatedHookOptions,
+) {
+  const pageSize = params?.limit ?? 25;
+  const query = hooks.useInfiniteActionItems(
+    { limit: pageSize },
+    {
+      queryKey: [...queryKeys.actions, 'cursor', getSessionKey(), pageSize],
+      enabled: options?.enabled,
+      staleTime: options?.staleTime,
+      gcTime: options?.gcTime,
+      refetchInterval: options?.refetchInterval,
+    },
+  );
+  const items = useMemo(
+    () => flattenCursorPages<ActionItem>(query.data?.pages),
+    [query.data?.pages],
+  );
+
+  return {
+    ...query,
+    items,
+    hasMore: Boolean(query.hasNextPage),
+  };
+}
+
 export function usePendingActions(options?: ApiHookQueryOptions<ActionItem[]>) {
   return hooks.usePendingActions({
     ...options,
@@ -77,6 +162,33 @@ export function useMedications(options?: ApiHookQueryOptions<Medication[]>) {
     ...options,
     queryKey: [...queryKeys.medications, getSessionKey()],
   });
+}
+
+export function usePaginatedMedications(
+  params?: { limit?: number },
+  options?: PaginatedHookOptions,
+) {
+  const pageSize = params?.limit ?? 25;
+  const query = hooks.useInfiniteMedications(
+    { limit: pageSize },
+    {
+      queryKey: [...queryKeys.medications, 'cursor', getSessionKey(), pageSize],
+      enabled: options?.enabled,
+      staleTime: options?.staleTime,
+      gcTime: options?.gcTime,
+      refetchInterval: options?.refetchInterval,
+    },
+  );
+  const items = useMemo(
+    () => flattenCursorPages<Medication>(query.data?.pages),
+    [query.data?.pages],
+  );
+
+  return {
+    ...query,
+    items,
+    hasMore: Boolean(query.hasNextPage),
+  };
 }
 
 export function useActiveMedications(options?: ApiHookQueryOptions<Medication[]>) {
@@ -496,36 +608,142 @@ export interface MedicationScheduleResponse {
 export const medicationScheduleKey = (userId?: string | null) =>
   ['medicationSchedule', toSessionKey(userId)] as const;
 
+const API_REQUEST_TIMEOUT_MS = 12000;
+
+class ApiRequestError extends Error {
+  status: number | null;
+  code: string | null;
+  retriable: boolean;
+
+  constructor(params: {
+    message: string;
+    status?: number | null;
+    code?: string | null;
+    retriable?: boolean;
+  }) {
+    super(params.message);
+    this.name = 'ApiRequestError';
+    this.status = params.status ?? null;
+    this.code = params.code ?? null;
+    this.retriable = params.retriable ?? false;
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
+}
+
 // Helper to make API calls directly with auth
 async function fetchWithAuth<T>(path: string, options?: RequestInit): Promise<T> {
   const { getIdToken } = await import('../auth');
   const token = await getIdToken();
   const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    abortController.abort();
+  }, API_REQUEST_TIMEOUT_MS);
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
-    },
-  });
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      signal: abortController.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options?.headers,
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+    if (!response.ok) {
+      let message = `API error: ${response.status}`;
+      let code: string | null = null;
+
+      try {
+        const errorBody = await response.json();
+        if (errorBody && typeof errorBody === 'object') {
+          if (typeof (errorBody as { message?: unknown }).message === 'string') {
+            message = (errorBody as { message: string }).message;
+          }
+          if (typeof (errorBody as { code?: unknown }).code === 'string') {
+            code = (errorBody as { code: string }).code;
+          }
+        }
+      } catch {
+        // Ignore payload parse failures and keep status-based error.
+      }
+
+      throw new ApiRequestError({
+        message,
+        status: response.status,
+        code,
+        retriable: response.status >= 500 || response.status === 429,
+      });
+    }
+
+    try {
+      return await response.json();
+    } catch {
+      throw new ApiRequestError({
+        message: 'Invalid server response',
+        status: response.status,
+        retriable: false,
+      });
+    }
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      throw error;
+    }
+    if (isAbortError(error)) {
+      throw new ApiRequestError({
+        message: 'Request timed out',
+        code: 'timeout',
+        retriable: true,
+      });
+    }
+    throw new ApiRequestError({
+      message: error instanceof Error ? error.message : 'Network request failed',
+      code: 'network_error',
+      retriable: true,
+    });
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return response.json();
 }
 
 export function useMedicationSchedule(
   userId?: string | null,
   options?: QueryEnabledOptions<MedicationScheduleResponse>,
 ) {
+  const {
+    enabled: optionEnabled,
+    retry: optionRetry,
+    retryDelay: optionRetryDelay,
+    ...queryOptions
+  } = options ?? {};
+  const enabled = Boolean(userId) && (optionEnabled ?? true);
+
   return useQuery<MedicationScheduleResponse>({
     queryKey: medicationScheduleKey(userId),
     staleTime: 30_000,
-    ...options,
+    enabled,
+    refetchOnReconnect: true,
+    refetchOnMount: 'always',
+    retry:
+      optionRetry ??
+      ((failureCount, error) => {
+        if (failureCount >= 3) {
+          return false;
+        }
+        if (error instanceof ApiRequestError) {
+          return error.retriable;
+        }
+        return true;
+      }),
+    retryDelay: optionRetryDelay ?? ((attempt) => Math.min(1000 * 2 ** attempt, 5000)),
+    ...queryOptions,
     queryFn: async () => {
       return fetchWithAuth<MedicationScheduleResponse>('/v1/meds/schedule/today');
     },

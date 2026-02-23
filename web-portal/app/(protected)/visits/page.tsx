@@ -66,6 +66,32 @@ const VISIT_STATUS_STYLES: Record<
   failed: { tone: 'danger', variant: 'soft' },
 };
 
+function getVisitDateValue(visit: any): string | null {
+  return (visit?.visitDate as string | undefined) ?? (visit?.createdAt as string | undefined) ?? null;
+}
+
+function getVisitDateTimestamp(visit: any): number {
+  const value = getVisitDateValue(visit);
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getDiagnosisSearchValues(visit: any): string[] {
+  const legacy = Array.isArray(visit?.diagnoses)
+    ? visit.diagnoses
+      .filter((entry: unknown): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : [];
+
+  const detailed = Array.isArray(visit?.diagnosesDetailed)
+    ? visit.diagnosesDetailed
+      .map((entry: any) => (typeof entry?.name === 'string' ? entry.name.trim() : ''))
+      .filter((entry: string) => entry.length > 0)
+    : [];
+
+  return [...legacy, ...detailed];
+}
+
 export default function VisitsPage() {
   const router = useRouter();
   const user = useCurrentUser();
@@ -120,9 +146,15 @@ export default function VisitsPage() {
     if (filters.search) {
       const query = filters.search.toLowerCase();
       result = result.filter((visit: any) =>
-        [visit.provider, visit.specialty, visit.location, visit.summary]
+        [
+          visit.provider,
+          visit.specialty,
+          visit.location,
+          visit.summary,
+          ...getDiagnosisSearchValues(visit),
+        ]
           .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query))
+          .some((field) => String(field).toLowerCase().includes(query))
       );
     }
 
@@ -172,8 +204,8 @@ export default function VisitsPage() {
 
     // Sort
     result.sort((a, b) => {
-      const aTime = new Date(a.createdAt || 0).getTime();
-      const bTime = new Date(b.createdAt || 0).getTime();
+      const aTime = getVisitDateTimestamp(a);
+      const bTime = getVisitDateTimestamp(b);
       return filters.sortBy === 'date_desc' ? bTime - aTime : aTime - bTime;
     });
 
@@ -1000,9 +1032,8 @@ function VisitRow({
   onView: () => void;
 }) {
   const status = normalizeVisitStatus(visit);
-  const date = visit.createdAt
-    ? format(new Date(visit.createdAt), 'MMM d, yyyy')
-    : '—';
+  const dateValue = getVisitDateValue(visit);
+  const date = dateValue ? format(new Date(dateValue), 'MMM d, yyyy') : '—';
 
   const columnsClass = selectionMode
     ? 'grid grid-cols-[90px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px] lg:grid-cols-[120px_minmax(0,3fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_96px]'
@@ -1215,7 +1246,8 @@ function VisitCard({
   onView: () => void;
 }) {
   const status = normalizeVisitStatus(visit);
-  const visitDate = visit.createdAt ? new Date(visit.createdAt) : null;
+  const visitDateValue = getVisitDateValue(visit);
+  const visitDate = visitDateValue ? new Date(visitDateValue) : null;
   const formattedDate = visitDate ? format(visitDate, 'MMM d, yyyy') : '—';
   const formattedTime = visitDate ? format(visitDate, 'h:mm a') : null;
 

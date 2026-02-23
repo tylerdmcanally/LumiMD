@@ -10,6 +10,10 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import type { MedicationChangeEntry } from './openai';
+import { MedicationDomainService } from './domain/medications/MedicationDomainService';
+import { UserDomainService } from './domain/users/UserDomainService';
+import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
+import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
 import {
   CANONICAL_MEDICATIONS,
   ALIAS_TO_CANONICAL,
@@ -21,7 +25,20 @@ import {
 // Re-export for backward compatibility
 export { CANONICAL_MEDICATIONS };
 
-const db = () => admin.firestore();
+type MedicationSafetyDependencies = {
+  medicationService?: Pick<MedicationDomainService, 'listAllForUser'>;
+  userService?: Pick<UserDomainService, 'getById'>;
+};
+
+function buildDefaultDependencies(): Required<MedicationSafetyDependencies> {
+  const firestore = admin.firestore();
+  return {
+    medicationService: new MedicationDomainService(
+      new FirestoreMedicationRepository(firestore),
+    ),
+    userService: new UserDomainService(new FirestoreUserRepository(firestore)),
+  };
+}
 
 /**
  * Type guard to check if a value is a Firestore Timestamp.
@@ -136,28 +153,30 @@ const normalizeMedicationForHash = (medication: {
 
 export async function fetchActiveMedicationsForUser(
   userId: string,
-  options: FetchActiveMedicationsOptions = {}
+  options: FetchActiveMedicationsOptions = {},
+  dependencies: MedicationSafetyDependencies = {},
 ): Promise<ActiveMedicationForSafety[]> {
+  const defaultDependencies = buildDefaultDependencies();
+  const medicationService = dependencies.medicationService ?? defaultDependencies.medicationService;
   const { excludeMedicationId, excludeCanonicalName } = options;
   const normalizedExcludeCanonical = cleanOptionalString(excludeCanonicalName)
     ? normalizeMedicationName(excludeCanonicalName!)
     : null;
 
-  const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
+  const medications = await medicationService.listAllForUser(userId, { includeDeleted: true });
 
-  return medsSnapshot.docs
-    .filter((doc) => {
-      if (excludeMedicationId && doc.id === excludeMedicationId) {
+  return medications
+    .filter((record) => {
+      if (excludeMedicationId && record.id === excludeMedicationId) {
         return false;
       }
 
-      const data = doc.data();
-      if (!isMedicationCurrentlyActive(data)) {
+      if (!isMedicationCurrentlyActive(record)) {
         return false;
       }
 
       if (normalizedExcludeCanonical) {
-        const canonicalName = getCanonicalNameFromDocument(data);
+        const canonicalName = getCanonicalNameFromDocument(record);
         if (canonicalName === normalizedExcludeCanonical) {
           return false;
         }
@@ -165,15 +184,14 @@ export async function fetchActiveMedicationsForUser(
 
       return true;
     })
-    .map((doc) => {
-      const data = doc.data();
+    .map((record) => {
       return {
-        id: doc.id,
-        name: cleanOptionalString(data.name) || 'Unknown medication',
-        dose: cleanOptionalString(data.dose),
-        frequency: cleanOptionalString(data.frequency),
-        notes: cleanOptionalString(data.notes) || cleanOptionalString(data.note),
-        canonicalName: getCanonicalNameFromDocument(data) || undefined,
+        id: record.id,
+        name: cleanOptionalString(record.name) || 'Unknown medication',
+        dose: cleanOptionalString(record.dose),
+        frequency: cleanOptionalString(record.frequency),
+        notes: cleanOptionalString(record.notes) || cleanOptionalString(record.note),
+        canonicalName: getCanonicalNameFromDocument(record) || undefined,
       };
     });
 }
@@ -612,26 +630,30 @@ export async function checkAllergyConflicts(
 export async function runHardcodedSafetyChecks(
   userId: string,
   newMedication: MedicationChangeEntry,
-  excludeMedicationId?: string
+  excludeMedicationId?: string,
+  dependencies: MedicationSafetyDependencies = {},
 ): Promise<MedicationSafetyWarning[]> {
+  const defaultDependencies = buildDefaultDependencies();
+  const medicationService = dependencies.medicationService ?? defaultDependencies.medicationService;
+  const userService = dependencies.userService ?? defaultDependencies.userService;
+
   try {
     // Fetch medications once, then aggressively filter to currently active therapy
-    const medsSnapshot = await db().collection('medications').where('userId', '==', userId).get();
+    const medications = await medicationService.listAllForUser(userId, { includeDeleted: true });
 
     const newMedCanonical = normalizeMedicationName(newMedication.name);
 
-    const currentMedications = medsSnapshot.docs
-      .filter((doc) => {
-        if (excludeMedicationId && doc.id === excludeMedicationId) {
+    const currentMedications = medications
+      .filter((record) => {
+        if (excludeMedicationId && record.id === excludeMedicationId) {
           return false;
         }
 
-        const data = doc.data();
-        if (!isMedicationCurrentlyActive(data)) {
+        if (!isMedicationCurrentlyActive(record)) {
           return false;
         }
 
-        const medCanonical = getCanonicalNameFromDocument(data);
+        const medCanonical = getCanonicalNameFromDocument(record);
 
         if (medCanonical && medCanonical === newMedCanonical) {
           return false;
@@ -639,9 +661,9 @@ export async function runHardcodedSafetyChecks(
 
         return true;
       })
-      .map((doc) => ({
-        id: doc.id,
-        name: doc.data().name,
+      .map((record) => ({
+        id: record.id,
+        name: record.name,
         active: true,
       }));
 
@@ -653,10 +675,8 @@ export async function runHardcodedSafetyChecks(
     });
 
     // Fetch patient allergies
-    const userDoc = await db().collection('users').doc(userId).get();
-    const patientAllergies = userDoc.exists
-      ? (userDoc.data()?.allergies || [])
-      : [];
+    const user = await userService.getById(userId);
+    const patientAllergies = Array.isArray(user?.allergies) ? user.allergies : [];
 
     // Run all hardcoded checks
     const [duplicateWarnings, interactionWarnings, allergyWarnings] = await Promise.all([
@@ -696,7 +716,8 @@ export async function runHardcodedSafetyChecks(
 export async function runMedicationSafetyChecks(
   userId: string,
   newMedication: MedicationChangeEntry,
-  options: { useAI?: boolean; excludeMedicationId?: string } = {}
+  options: { useAI?: boolean; excludeMedicationId?: string } = {},
+  dependencies: MedicationSafetyDependencies = {},
 ): Promise<MedicationSafetyWarning[]> {
   try {
     const { useAI: useAIOption, excludeMedicationId } = options;
@@ -705,7 +726,8 @@ export async function runMedicationSafetyChecks(
     const hardcodedWarnings = await runHardcodedSafetyChecks(
       userId,
       newMedication,
-      excludeMedicationId
+      excludeMedicationId,
+      dependencies,
     );
 
     // If critical warnings found, return immediately (don't wait for AI)
@@ -748,7 +770,8 @@ export async function runMedicationSafetyChecks(
       const aiWarnings = await runAIBasedSafetyChecks(
         userId,
         newMedication,
-        excludeMedicationId
+        excludeMedicationId,
+        dependencies,
       );
 
       // Merge and deduplicate warnings

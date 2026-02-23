@@ -6,6 +6,8 @@
 import axios, { AxiosInstance } from 'axios';
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
+import { UserDomainService } from './domain/users/UserDomainService';
+import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
 
 const EXPO_PUSH_API_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -31,17 +33,28 @@ export interface PushNotificationResponse {
 
 export class NotificationService {
   private client: AxiosInstance;
+  private readonly userService: Pick<UserDomainService, 'listPushTokens' | 'unregisterPushToken'>;
 
-  constructor() {
-    this.client = axios.create({
-      baseURL: EXPO_PUSH_API_URL,
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-      },
-      timeout: 10000,
-    });
+  constructor(
+    dependencies: {
+      client?: AxiosInstance;
+      userService?: Pick<UserDomainService, 'listPushTokens' | 'unregisterPushToken'>;
+    } = {},
+  ) {
+    this.client =
+      dependencies.client ??
+      axios.create({
+        baseURL: EXPO_PUSH_API_URL,
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+        },
+        timeout: 10000,
+      });
+    this.userService =
+      dependencies.userService ??
+      new UserDomainService(new FirestoreUserRepository(admin.firestore()));
   }
 
   /**
@@ -102,16 +115,10 @@ export class NotificationService {
    */
   async getUserPushTokens(userId: string): Promise<Array<{ token: string; platform: string }>> {
     try {
-      const tokensRef = admin
-        .firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('pushTokens');
-      const snapshot = await tokensRef.get();
+      const records = await this.userService.listPushTokens(userId);
 
       const tokenMap = new Map<string, { token: string; platform: string }>();
-      snapshot.docs.forEach((doc) => {
-        const data = doc.data();
+      records.forEach((data) => {
         const token = data.token as string | undefined;
         if (!token) return;
         tokenMap.set(token, {
@@ -131,19 +138,8 @@ export class NotificationService {
    */
   async removeInvalidToken(userId: string, token: string): Promise<void> {
     try {
-      const tokensRef = admin
-        .firestore()
-        .collection('users')
-        .doc(userId)
-        .collection('pushTokens');
-      const tokenQuery = await tokensRef.where('token', '==', token).get();
-
-      if (!tokenQuery.empty) {
-        const batch = admin.firestore().batch();
-        tokenQuery.docs.forEach((doc) => {
-          batch.delete(doc.ref);
-        });
-        await batch.commit();
+      const result = await this.userService.unregisterPushToken(userId, token);
+      if (result.deletedCount > 0) {
         functions.logger.info(`[Notifications] Removed invalid token for user ${userId}`);
       }
     } catch (error) {

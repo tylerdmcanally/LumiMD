@@ -8,235 +8,452 @@
 import { Router } from 'express';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { requireAuth, AuthRequest } from '../middlewares/auth';
+import { registerCareAlertsRoutes } from './care/alerts';
+import { registerCareExportSummaryRoutes } from './care/exportSummary';
+import {
+    clearCaregiverShareLookupCacheForTests,
+    getAcceptedSharesForCaregiver,
+    invalidateCaregiverShareLookupCache,
+} from '../services/shareAccess';
+import { registerCareHealthLogRoutes } from './care/healthLogs';
+import { registerCareMedicationAdherenceRoutes } from './care/medicationAdherence';
+import { registerCareMedicationChangeRoutes } from './care/medicationChanges';
+import { registerCareMedicationStatusRoutes } from './care/medicationStatus';
+import { registerCareNotesRoutes } from './care/notes';
+import { registerCareOverviewRoutes } from './care/overview';
+import { registerCarePatientResourceRoutes } from './care/patientResources';
+import { registerCareQuickOverviewRoutes } from './care/quickOverview';
+import { registerCareSummaryRoutes } from './care/summary';
+import { registerCareTaskRoutes } from './care/tasks';
+import { registerCareTrendsRoutes } from './care/trends';
+import { registerCareUpcomingActionsRoutes } from './care/upcomingActions';
+import { registerCareVisitMetadataRoutes } from './care/visitMetadata';
+import { createDomainServiceContainer } from '../services/domain/serviceContainer';
 
 export const careRouter = Router();
 
 const getDb = () => admin.firestore();
+const getCareDomainServices = () => createDomainServiceContainer({ db: getDb() });
+const CARE_NOTE_MAX_LENGTH = 5000;
+const CARE_TASK_TITLE_MAX_LENGTH = 200;
+const CARE_TASK_DESCRIPTION_MAX_LENGTH = 5000;
+const CARE_VISIT_METADATA_MAX_LENGTH = 256;
+const CARE_PAGE_SIZE_DEFAULT = 50;
+const CARE_PAGE_SIZE_MAX = 100;
 
-// =============================================================================
-// HELPER: Get accepted incoming shares for caregiver
-// Canonical access source is the shares collection
-// =============================================================================
+export {
+    clearCaregiverShareLookupCacheForTests,
+    getAcceptedSharesForCaregiver,
+    invalidateCaregiverShareLookupCache,
+};
 
-export async function getAcceptedSharesForCaregiver(caregiverId: string) {
-    const sharesSnapshot = await getDb()
-        .collection('shares')
-        .where('caregiverUserId', '==', caregiverId)
-        .where('status', '==', 'accepted')
-        .get();
+type MedicationLogRecord = {
+    id: string;
+    action: string | null;
+    medicationId: string | null;
+    medicationName: string | null;
+    scheduledDate: string | null;
+    scheduledTime: string | null;
+    createdAt: Date | null;
+    loggedAt: Date | null;
+    timestamp: Date;
+};
 
-    const serializeShare = (doc: FirebaseFirestore.QueryDocumentSnapshot) => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ownerId: data.ownerId,
-            ownerName: data.ownerName,
-            ownerEmail: data.ownerEmail,
-        };
+type CareOverviewAlert = {
+    type: 'missed_dose' | 'overdue_action';
+    priority: 'high' | 'medium' | 'low';
+    message: string;
+};
+
+type MedicationStatusSummary = {
+    total: number;
+    taken: number;
+    skipped: number;
+    pending: number;
+    missed: number;
+};
+
+type MedicationStatusQueryOptions = {
+    timezone?: string;
+    medicationsSnapshot?: FirebaseFirestore.QuerySnapshot;
+    remindersSnapshot?: FirebaseFirestore.QuerySnapshot;
+    logsSnapshot?: FirebaseFirestore.QuerySnapshot;
+    now?: Date;
+};
+
+type DayWindow = {
+    timezone: string;
+    todayStr: string;
+    startOfDayUTC: Date;
+    endOfDayUTC: Date;
+    currentMinutes: number;
+};
+
+const DEFAULT_CARE_TIMEZONE = 'America/Chicago';
+const FIRESTORE_IN_QUERY_CHUNK_SIZE = 10;
+const MEDICATION_OVERDUE_GRACE_MINUTES = 120;
+const REMINDER_TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+type PatientDetailEndpoint =
+    | 'summary'
+    | 'quick-overview'
+    | 'alerts'
+    | 'medication-status'
+    | 'export-summary'
+    | 'trends'
+    | 'medication-adherence'
+    | 'med-changes'
+    | 'upcoming-actions';
+
+type PatientDetailPerfBudget = {
+    queryBudget: number;
+    latencyBudgetMs: number;
+};
+
+const PATIENT_DETAIL_PERF_BUDGETS: Record<PatientDetailEndpoint, PatientDetailPerfBudget> = {
+    summary: { queryBudget: 8, latencyBudgetMs: 900 },
+    'quick-overview': { queryBudget: 10, latencyBudgetMs: 1400 },
+    alerts: { queryBudget: 9, latencyBudgetMs: 1400 },
+    'medication-status': { queryBudget: 6, latencyBudgetMs: 1100 },
+    'export-summary': { queryBudget: 6, latencyBudgetMs: 1500 },
+    trends: { queryBudget: 6, latencyBudgetMs: 1200 },
+    'medication-adherence': { queryBudget: 5, latencyBudgetMs: 1400 },
+    'med-changes': { queryBudget: 4, latencyBudgetMs: 900 },
+    'upcoming-actions': { queryBudget: 4, latencyBudgetMs: 900 },
+};
+
+type PatientDetailPerfTracker = {
+    addQueries: (count?: number) => void;
+    finalize: (statusCode: number, extra?: Record<string, unknown>) => void;
+};
+
+function createPatientDetailPerfTracker(
+    endpoint: PatientDetailEndpoint,
+    caregiverId: string,
+    patientId: string,
+): PatientDetailPerfTracker {
+    const startedAtMs = Date.now();
+    const budget = PATIENT_DETAIL_PERF_BUDGETS[endpoint];
+    let queryCount = 0;
+
+    return {
+        addQueries(count = 1) {
+            queryCount += count;
+        },
+        finalize(statusCode, extra = {}) {
+            const elapsedMs = Date.now() - startedAtMs;
+            const payload = {
+                endpoint,
+                caregiverId,
+                patientId,
+                statusCode,
+                elapsedMs,
+                queryCount,
+                queryBudget: budget.queryBudget,
+                latencyBudgetMs: budget.latencyBudgetMs,
+                ...extra,
+            };
+
+            functions.logger.debug('[care][perf] patient detail metrics', payload);
+
+            if (statusCode < 500 && (queryCount > budget.queryBudget || elapsedMs > budget.latencyBudgetMs)) {
+                functions.logger.warn('[care][perf] patient detail guardrail exceeded', payload);
+            }
+        },
     };
-
-    const acceptedSharesMap = new Map<string, ReturnType<typeof serializeShare>>();
-    sharesSnapshot.docs.forEach((doc) => {
-        acceptedSharesMap.set(doc.id, serializeShare(doc));
-    });
-
-    let emailFallbackCount = 0;
-    try {
-        const caregiverAuth = await admin.auth().getUser(caregiverId);
-        const caregiverEmail = caregiverAuth.email?.toLowerCase().trim();
-        if (caregiverEmail) {
-            const emailSharesSnapshot = await getDb()
-                .collection('shares')
-                .where('caregiverEmail', '==', caregiverEmail)
-                .where('status', '==', 'accepted')
-                .get();
-            emailFallbackCount = emailSharesSnapshot.size;
-
-            await Promise.all(
-                emailSharesSnapshot.docs.map(async (doc) => {
-                    const data = doc.data();
-                    if (!data.caregiverUserId) {
-                        await doc.ref.update({
-                            caregiverUserId: caregiverId,
-                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                        });
-                    }
-                    acceptedSharesMap.set(doc.id, serializeShare(doc));
-                }),
-            );
-        }
-    } catch (error) {
-        functions.logger.warn('[care] Unable to apply caregiver email fallback in overview', error);
-    }
-
-    const acceptedShares = Array.from(acceptedSharesMap.values());
-
-    functions.logger.info(
-        `[care] Found ${acceptedShares.length} accepted shares for caregiver ${caregiverId} (uid matches=${sharesSnapshot.size}, email fallback=${emailFallbackCount})`
-    );
-    return acceptedShares;
 }
 
-// =============================================================================
-// HELPER: Validate caregiver has access to patient
-// =============================================================================
+function toDateSafe(raw: unknown): Date | null {
+    if (!raw) return null;
 
-async function validateCaregiverAccess(
-    caregiverId: string,
-    patientId: string
-): Promise<boolean> {
-    functions.logger.info(`[care] validateCaregiverAccess: caregiverId=${caregiverId}, patientId=${patientId}`);
-
-    // Method 1: Query by ownerId + caregiverUserId + status
-    const sharesSnapshot = await getDb()
-        .collection('shares')
-        .where('ownerId', '==', patientId)
-        .where('caregiverUserId', '==', caregiverId)
-        .where('status', '==', 'accepted')
-        .limit(1)
-        .get();
-
-    if (!sharesSnapshot.empty) {
-        functions.logger.info(`[care] Access granted via ownerId+caregiverUserId query`);
-        return true;
+    if (raw instanceof Date) {
+        return Number.isNaN(raw.getTime()) ? null : raw;
     }
-    functions.logger.info(`[care] Method 1 failed: no match for ownerId+caregiverUserId query`);
 
-    // Method 2: Check canonical share doc id
-    const shareDocId = `${patientId}_${caregiverId}`;
-    functions.logger.info(`[care] Trying doc id: ${shareDocId}`);
-    const shareDoc = await getDb().collection('shares').doc(shareDocId).get();
-    if (shareDoc.exists) {
-        const data = shareDoc.data();
-        functions.logger.info(`[care] Found doc ${shareDocId}: status=${data?.status}, ownerId=${data?.ownerId}, caregiverUserId=${data?.caregiverUserId}`);
-        if (data?.status === 'accepted') {
-            functions.logger.info(`[care] Access granted via doc id lookup`);
-            return true;
+    if (raw instanceof admin.firestore.Timestamp) {
+        const date = raw.toDate();
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    if (
+        typeof raw === 'object' &&
+        raw !== null &&
+        'toDate' in (raw as Record<string, unknown>) &&
+        typeof (raw as { toDate?: unknown }).toDate === 'function'
+    ) {
+        try {
+            const date = (raw as { toDate: () => Date }).toDate();
+            return Number.isNaN(date.getTime()) ? null : date;
+        } catch {
+            return null;
         }
-    } else {
-        functions.logger.info(`[care] Doc ${shareDocId} does not exist`);
     }
 
-    // Method 3: Find any shares for this caregiver and log them
-    const allCaregiverShares = await getDb()
-        .collection('shares')
-        .where('caregiverUserId', '==', caregiverId)
-        .get();
-    functions.logger.info(`[care] All shares for caregiver ${caregiverId}: ${allCaregiverShares.size} found`);
-    allCaregiverShares.docs.forEach((doc) => {
-        const d = doc.data();
-        functions.logger.info(`[care]   Share ${doc.id}: ownerId=${d.ownerId}, status=${d.status}`);
+    if (typeof raw === 'string' || typeof raw === 'number') {
+        const date = new Date(raw);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    return null;
+}
+
+async function getPatientTimezone(patientId: string): Promise<string> {
+    const { userService } = getCareDomainServices();
+    const userDoc = await userService.getById(patientId);
+    return resolveCareTimezone(userDoc?.timezone);
+}
+
+function resolveCareTimezone(rawTimezone: unknown): string {
+    if (typeof rawTimezone !== 'string' || rawTimezone.trim().length === 0) {
+        return DEFAULT_CARE_TIMEZONE;
+    }
+
+    const candidate = rawTimezone.trim();
+    try {
+        Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(new Date());
+        return candidate;
+    } catch {
+        return DEFAULT_CARE_TIMEZONE;
+    }
+}
+
+function getDayWindowForTimezone(timezone: string, now: Date = new Date()): DayWindow {
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: timezone });
+    const [year, month, day] = todayStr.split('-').map(Number);
+
+    const testUTC = new Date(
+        `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`,
+    );
+    const tzFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+    const tzParts = tzFormatter.formatToParts(testUTC);
+    const tzHour = parseInt(tzParts.find((p) => p.type === 'hour')!.value, 10);
+    const tzMinute = parseInt(tzParts.find((p) => p.type === 'minute')!.value, 10);
+    const offsetMinutes = (tzHour - 12) * 60 + tzMinute;
+
+    const midnightUTC = new Date(
+        `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`,
+    );
+    const startOfDayUTC = new Date(midnightUTC.getTime() - offsetMinutes * 60 * 1000);
+    const endOfDayUTC = new Date(startOfDayUTC.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+    const currentTimeStr = now.toLocaleTimeString('en-US', {
+        timeZone: timezone,
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
     });
 
-    // Method 4: Match on caregiver email if userId missing
-    try {
-        const caregiverAuth = await admin.auth().getUser(caregiverId);
-        const caregiverEmail = caregiverAuth.email?.toLowerCase().trim();
-        functions.logger.info(`[care] Trying email fallback: ${caregiverEmail}`);
-        if (caregiverEmail) {
-            const emailMatchSnapshot = await getDb()
-                .collection('shares')
-                .where('ownerId', '==', patientId)
-                .where('caregiverEmail', '==', caregiverEmail)
-                .where('status', '==', 'accepted')
-                .limit(1)
-                .get();
+    return {
+        timezone,
+        todayStr,
+        startOfDayUTC,
+        endOfDayUTC,
+        currentMinutes: toMinutesFromHHMM(currentTimeStr) ?? 0,
+    };
+}
 
-            if (!emailMatchSnapshot.empty) {
-                const matchDoc = emailMatchSnapshot.docs[0];
-                const data = matchDoc.data();
-                functions.logger.info(`[care] Found email match: ${matchDoc.id}`);
-                if (!data.caregiverUserId) {
-                    await matchDoc.ref.update({
-                        caregiverUserId: caregiverId,
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    });
-                    functions.logger.info(`[care] Backfilled caregiverUserId`);
-                }
-                return true;
-            }
-        }
-    } catch (error) {
-        functions.logger.warn('[care] Unable to validate caregiver email fallback', error);
+function toMinutesFromHHMM(value: string): number | null {
+    if (!REMINDER_TIME_REGEX.test(value)) return null;
+    const [hour, minute] = value.split(':').map(Number);
+    return hour * 60 + minute;
+}
+
+function chunkValues<T>(values: T[], chunkSize: number): T[][] {
+    if (values.length === 0) {
+        return [];
     }
 
-    functions.logger.warn(
-        `[care] Access denied. No accepted share found for owner ${patientId} and caregiver ${caregiverId}`
+    const chunks: T[][] = [];
+    for (let i = 0; i < values.length; i += chunkSize) {
+        chunks.push(values.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
+
+function emptyMedicationStatus(): MedicationStatusSummary {
+    return {
+        total: 0,
+        taken: 0,
+        skipped: 0,
+        pending: 0,
+        missed: 0,
+    };
+}
+
+function resolveMedicationLogTimestamp(
+    data: FirebaseFirestore.DocumentData,
+    queriedField: 'createdAt' | 'loggedAt',
+): Date | null {
+    const createdAt = toDateSafe(data.createdAt);
+    const loggedAt = toDateSafe(data.loggedAt);
+    return queriedField === 'createdAt'
+        ? (createdAt || loggedAt)
+        : (loggedAt || createdAt);
+}
+
+async function queryMedicationLogsByDateField(
+    patientId: string,
+    startDate: Date,
+    endDate: Date,
+    dateField: 'createdAt' | 'loggedAt',
+): Promise<MedicationLogRecord[]> {
+    const { medicationLogService } = getCareDomainServices();
+    const logRecords = await medicationLogService.listForUser(patientId, {
+        startDate,
+        endDate,
+        dateField,
+    });
+
+    return logRecords.map((data) => {
+        const timestamp = resolveMedicationLogTimestamp(data, dateField) || new Date(0);
+        return {
+            id: data.id,
+            action: typeof data.action === 'string' ? data.action : null,
+            medicationId:
+                typeof data.medicationId === 'string' && data.medicationId.trim().length > 0
+                    ? data.medicationId
+                    : null,
+            medicationName:
+                typeof data.medicationName === 'string' && data.medicationName.trim().length > 0
+                    ? data.medicationName
+                    : null,
+            scheduledDate:
+                typeof data.scheduledDate === 'string' && data.scheduledDate.trim().length > 0
+                    ? data.scheduledDate
+                    : null,
+            scheduledTime:
+                typeof data.scheduledTime === 'string' && data.scheduledTime.trim().length > 0
+                    ? data.scheduledTime
+                    : null,
+            createdAt: toDateSafe(data.createdAt),
+            loggedAt: toDateSafe(data.loggedAt),
+            timestamp,
+        };
+    });
+}
+
+export async function getMedicationLogsForRange(
+    patientId: string,
+    startDate: Date,
+    endDate: Date,
+    options?: { limit?: number },
+): Promise<MedicationLogRecord[]> {
+    const byId = new Map<string, MedicationLogRecord>();
+    const errors: unknown[] = [];
+
+    for (const dateField of ['createdAt', 'loggedAt'] as const) {
+        try {
+            const logs = await queryMedicationLogsByDateField(
+                patientId,
+                startDate,
+                endDate,
+                dateField,
+            );
+            logs.forEach((log) => {
+                const existing = byId.get(log.id);
+                if (!existing || log.timestamp.getTime() >= existing.timestamp.getTime()) {
+                    byId.set(log.id, log);
+                }
+            });
+        } catch (error) {
+            errors.push(error);
+            functions.logger.warn(
+                `[care] Failed medicationLogs query for ${patientId} using ${dateField}`,
+                error,
+            );
+        }
+    }
+
+    if (byId.size === 0 && errors.length >= 2) {
+        throw errors[0];
+    }
+
+    const logs = Array.from(byId.values()).sort(
+        (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
     );
-    return false;
+
+    const limit = options?.limit;
+    if (typeof limit === 'number' && limit > 0) {
+        return logs.slice(0, limit);
+    }
+
+    return logs;
 }
 
 // =============================================================================
 // HELPER: Get today's medication schedule for a user
 // =============================================================================
 
-async function getTodaysMedicationStatus(patientId: string) {
-    const overdueGraceMinutes = 120;
+async function getTodaysMedicationStatus(
+    patientId: string,
+    options: MedicationStatusQueryOptions = {},
+) {
+    const {
+        medicationLogService,
+        medicationReminderService,
+    } = getCareDomainServices();
+    const userTimezone = resolveCareTimezone(
+        options.timezone ?? (await getPatientTimezone(patientId)),
+    );
+    const dayWindow = getDayWindowForTimezone(userTimezone, options.now);
 
-    const userDoc = await getDb().collection('users').doc(patientId).get();
-    const userTimezone =
-        typeof userDoc.data()?.timezone === 'string'
-            ? (userDoc.data()?.timezone as string)
-            : 'America/Chicago';
-
-    const now = new Date();
-    const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone }); // YYYY-MM-DD
-
-    const dayBoundaries = (() => {
-        const dateStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
-        const [year, month, day] = dateStr.split('-').map(Number);
-        const testUTC = new Date(
-            `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`
-        );
-        const tzFormatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: userTimezone,
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        });
-        const tzParts = tzFormatter.formatToParts(testUTC);
-        const tzHour = parseInt(tzParts.find((p) => p.type === 'hour')!.value, 10);
-        const tzMinute = parseInt(tzParts.find((p) => p.type === 'minute')!.value, 10);
-        const offsetMinutes = (tzHour - 12) * 60 + tzMinute;
-        const midnightUTC = new Date(
-            `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`
-        );
-        const startOfDayUTC = new Date(midnightUTC.getTime() - offsetMinutes * 60 * 1000);
-        const endOfDayUTC = new Date(startOfDayUTC.getTime() + 24 * 60 * 60 * 1000 - 1);
-        return { startOfDayUTC, endOfDayUTC };
-    })();
-
-    // Get active medications with reminders
-    const medsSnapshot = await getDb()
-        .collection('medications')
-        .where('userId', '==', patientId)
-        .where('active', '==', true)
-        .get();
-
-    const remindersSnapshot = await getDb()
-        .collection('medicationReminders')
-        .where('userId', '==', patientId)
-        .where('enabled', '==', true)
-        .get();
-
-    // Get today's dose logs
-    const logsSnapshot = await getDb()
-        .collection('medicationLogs')
-        .where('userId', '==', patientId)
-        .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(dayBoundaries.startOfDayUTC))
-        .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(dayBoundaries.endOfDayUTC))
-        .get();
+    const [medsSnapshot, remindersSnapshot, logsSnapshot] = await Promise.all([
+        options.medicationsSnapshot
+            ? Promise.resolve(options.medicationsSnapshot)
+            : getDb()
+                .collection('medications')
+                .where('userId', '==', patientId)
+                .where('active', '==', true)
+                .get(),
+        options.remindersSnapshot
+            ? Promise.resolve(options.remindersSnapshot)
+            : medicationReminderService.listForUser(patientId, {
+                enabled: true,
+            }).then((reminders) => {
+                return {
+                    docs: reminders.map((reminder) => ({
+                        id: reminder.id,
+                        data: () => reminder,
+                    })),
+                } as unknown as FirebaseFirestore.QuerySnapshot;
+            }),
+        options.logsSnapshot
+            ? Promise.resolve(options.logsSnapshot)
+            : medicationLogService.listForUser(patientId, {
+                startDate: dayWindow.startOfDayUTC,
+                endDate: dayWindow.endOfDayUTC,
+                dateField: 'loggedAt',
+            }).then((logs) => {
+                return {
+                    docs: logs.map((log) => ({
+                        id: log.id,
+                        data: () => log,
+                    })),
+                } as unknown as FirebaseFirestore.QuerySnapshot;
+            }),
+    ]);
 
     const logs = logsSnapshot.docs
         .map((doc) => doc.data())
         .filter((log) => {
+            const loggedAtDate = toDateSafe(log.loggedAt) ?? toDateSafe(log.createdAt);
+            if (
+                loggedAtDate &&
+                (loggedAtDate < dayWindow.startOfDayUTC || loggedAtDate > dayWindow.endOfDayUTC)
+            ) {
+                return false;
+            }
             const logDateStr =
                 log.scheduledDate ||
                 (log.loggedAt?.toDate
                     ? log.loggedAt.toDate().toLocaleDateString('en-CA', { timeZone: userTimezone })
                     : null);
-            return logDateStr === todayStr;
+            return logDateStr === dayWindow.todayStr;
         });
 
     // Build reminder map: medicationId -> times
@@ -253,16 +470,11 @@ async function getTodaysMedicationStatus(patientId: string) {
     let pending = 0;
     let missed = 0;
 
-    const currentTimeStr = now.toLocaleTimeString('en-US', {
-        timeZone: userTimezone,
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-    const currentHour = parseInt(currentTimeStr.slice(0, 2), 10);
-    const currentMinute = parseInt(currentTimeStr.slice(3, 5), 10);
-
     medsSnapshot.docs.forEach((doc) => {
+        const medData = doc.data();
+        if (medData.active === false || medData.deletedAt) {
+            return;
+        }
         const medId = doc.id;
         const times = reminderMap.get(medId) || [];
 
@@ -283,9 +495,7 @@ async function getTodaysMedicationStatus(patientId: string) {
             } else {
                 // Not logged - check if missed (past time by grace window)
                 const scheduledMins = scheduledHour * 60 + scheduledMin;
-                const currentMins = currentHour * 60 + currentMinute;
-
-                if (currentMins > scheduledMins + overdueGraceMinutes) {
+                if (dayWindow.currentMinutes > scheduledMins + MEDICATION_OVERDUE_GRACE_MINUTES) {
                     missed++;
                 } else {
                     pending++;
@@ -301,14 +511,324 @@ async function getTodaysMedicationStatus(patientId: string) {
 // HELPER: Get pending actions count for a user
 // =============================================================================
 
-async function getPendingActionsCount(patientId: string): Promise<number> {
-    const actionsSnapshot = await getDb()
-        .collection('actions')
-        .where('userId', '==', patientId)
-        .where('completed', '==', false)
-        .get();
+async function getPatientProfilesById(
+    patientIds: string[],
+): Promise<Map<string, Record<string, unknown>>> {
+    const { userService } = getCareDomainServices();
+    const profilesById = new Map<string, Record<string, unknown>>();
+    const userRecords = await userService.listByIds(patientIds);
+    userRecords.forEach((userRecord) => {
+        profilesById.set(userRecord.id, userRecord as unknown as Record<string, unknown>);
+    });
 
-    return actionsSnapshot.size;
+    return profilesById;
+}
+
+async function getPendingActionsAndOverdueAlertsForPatients(patientIds: string[]): Promise<{
+    pendingActionsByPatient: Map<string, number>;
+    overdueAlertsByPatient: Map<string, CareOverviewAlert[]>;
+}> {
+    const pendingActionsByPatient = new Map<string, number>();
+    const overdueAlertsByPatient = new Map<string, CareOverviewAlert[]>();
+    const patientIdSet = new Set(patientIds);
+    const now = new Date();
+
+    patientIds.forEach((patientId) => {
+        pendingActionsByPatient.set(patientId, 0);
+        overdueAlertsByPatient.set(patientId, []);
+    });
+
+    const chunks = chunkValues(patientIds, FIRESTORE_IN_QUERY_CHUNK_SIZE);
+    for (const patientChunk of chunks) {
+        const snapshot = await getDb()
+            .collection('actions')
+            .where('userId', 'in', patientChunk)
+            .get();
+
+        snapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            const userId = typeof data.userId === 'string' ? data.userId : null;
+
+            if (!userId || !patientIdSet.has(userId) || data.completed === true) {
+                return;
+            }
+
+            pendingActionsByPatient.set(userId, (pendingActionsByPatient.get(userId) ?? 0) + 1);
+
+            const dueDate = parseActionDueAt(data.dueAt);
+            if (!dueDate || dueDate >= now) {
+                return;
+            }
+
+            const daysOverdue = Math.floor(
+                (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24),
+            );
+            const alerts = overdueAlertsByPatient.get(userId) ?? [];
+            alerts.push({
+                type: 'overdue_action',
+                priority: daysOverdue >= 7 ? 'high' : 'medium',
+                message: `Action "${data.description?.substring(0, 50)}..." overdue by ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}`,
+            });
+            overdueAlertsByPatient.set(userId, alerts);
+        });
+    }
+
+    return { pendingActionsByPatient, overdueAlertsByPatient };
+}
+
+async function getTodaysMedicationStatusForPatients(
+    patientIds: string[],
+    timezoneByPatient: Map<string, string>,
+): Promise<Map<string, MedicationStatusSummary>> {
+    const {
+        medicationLogService,
+        medicationReminderService,
+    } = getCareDomainServices();
+    const patientIdSet = new Set(patientIds);
+    const statusByPatient = new Map<string, MedicationStatusSummary>();
+    const medicationIdsByPatient = new Map<string, Set<string>>();
+    const reminderTimesByMedicationId = new Map<string, string[]>();
+    const dayWindowByPatient = new Map<string, DayWindow>();
+
+    patientIds.forEach((patientId) => {
+        statusByPatient.set(patientId, emptyMedicationStatus());
+        medicationIdsByPatient.set(patientId, new Set<string>());
+        dayWindowByPatient.set(
+            patientId,
+            getDayWindowForTimezone(timezoneByPatient.get(patientId) ?? DEFAULT_CARE_TIMEZONE),
+        );
+    });
+
+    const patientChunks = chunkValues(patientIds, FIRESTORE_IN_QUERY_CHUNK_SIZE);
+
+    for (const patientChunk of patientChunks) {
+        const medicationsSnapshot = await getDb()
+            .collection('medications')
+            .where('userId', 'in', patientChunk)
+            .get();
+
+        medicationsSnapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            const userId = typeof data.userId === 'string' ? data.userId : null;
+            if (!userId || !patientIdSet.has(userId) || data.active === false) {
+                return;
+            }
+            medicationIdsByPatient.get(userId)?.add(doc.id);
+        });
+    }
+
+    for (const patientChunk of patientChunks) {
+        const reminderRecords = await medicationReminderService.listForUsers(patientChunk, {
+            includeDeleted: true,
+        });
+
+        reminderRecords.forEach((data) => {
+            if (data.enabled === false || typeof data.medicationId !== 'string') {
+                return;
+            }
+
+            const validTimes = Array.isArray(data.times)
+                ? data.times.filter(
+                      (rawTime): rawTime is string =>
+                          typeof rawTime === 'string' && REMINDER_TIME_REGEX.test(rawTime),
+                  )
+                : [];
+
+            if (validTimes.length === 0) {
+                return;
+            }
+
+            const existingTimes = reminderTimesByMedicationId.get(data.medicationId) ?? [];
+            validTimes.forEach((time) => {
+                if (!existingTimes.includes(time)) {
+                    existingTimes.push(time);
+                }
+            });
+            reminderTimesByMedicationId.set(data.medicationId, existingTimes);
+        });
+    }
+
+    const loggedDoseStatusByPatient = new Map<
+        string,
+        Map<string, { action: 'taken' | 'skipped'; timestampMs: number }>
+    >();
+    patientIds.forEach((patientId) => loggedDoseStatusByPatient.set(patientId, new Map()));
+
+    const processLogRecords = (
+        logRecords: Array<FirebaseFirestore.DocumentData & { id: string }>,
+    ) => {
+        logRecords.forEach((data) => {
+            const userId = typeof data.userId === 'string' ? data.userId : null;
+            const medicationId = typeof data.medicationId === 'string' ? data.medicationId : null;
+            const scheduledTime =
+                typeof data.scheduledTime === 'string' ? data.scheduledTime : null;
+            const action = data.action === 'taken' || data.action === 'skipped' ? data.action : null;
+
+            if (!userId || !medicationId || !scheduledTime || !action || !REMINDER_TIME_REGEX.test(scheduledTime)) {
+                return;
+            }
+
+            const dayWindow = dayWindowByPatient.get(userId);
+            if (!dayWindow) {
+                return;
+            }
+
+            const loggedAtDate = toDateSafe(data.loggedAt) ?? toDateSafe(data.createdAt);
+            if (!loggedAtDate) {
+                return;
+            }
+
+            if (loggedAtDate < dayWindow.startOfDayUTC || loggedAtDate > dayWindow.endOfDayUTC) {
+                return;
+            }
+
+            const logDateStr =
+                typeof data.scheduledDate === 'string'
+                    ? data.scheduledDate
+                    : loggedAtDate.toLocaleDateString('en-CA', {
+                          timeZone: dayWindow.timezone,
+                      });
+            if (logDateStr !== dayWindow.todayStr) {
+                return;
+            }
+
+            const doseKey = `${medicationId}_${scheduledTime}`;
+            const existing = loggedDoseStatusByPatient.get(userId)?.get(doseKey);
+            const timestampMs = loggedAtDate.getTime();
+
+            if (!existing || timestampMs >= existing.timestampMs) {
+                loggedDoseStatusByPatient.get(userId)?.set(doseKey, {
+                    action,
+                    timestampMs,
+                });
+            }
+        });
+    };
+
+    for (const patientChunk of patientChunks) {
+        const chunkDayWindows = patientChunk
+            .map((patientId) => dayWindowByPatient.get(patientId))
+            .filter((window): window is DayWindow => !!window);
+
+        if (chunkDayWindows.length === 0) {
+            continue;
+        }
+
+        const chunkStart = new Date(
+            Math.min(...chunkDayWindows.map((window) => window.startOfDayUTC.getTime())),
+        );
+        const chunkEnd = new Date(
+            Math.max(...chunkDayWindows.map((window) => window.endOfDayUTC.getTime())),
+        );
+
+        try {
+            const logRecords = await medicationLogService.listForUsers(patientChunk, {
+                startDate: chunkStart,
+                endDate: chunkEnd,
+                dateField: 'loggedAt',
+            });
+            processLogRecords(logRecords);
+        } catch (error) {
+            functions.logger.warn(
+                `[care] Falling back to per-patient medication log queries for ${patientChunk.length} patient(s)`,
+                error,
+            );
+
+            for (const patientId of patientChunk) {
+                const dayWindow = dayWindowByPatient.get(patientId);
+                if (!dayWindow) {
+                    continue;
+                }
+
+                const logRecords = await medicationLogService.listForUser(patientId, {
+                    startDate: dayWindow.startOfDayUTC,
+                    endDate: dayWindow.endOfDayUTC,
+                    dateField: 'loggedAt',
+                });
+                processLogRecords(logRecords);
+            }
+        }
+    }
+
+    patientIds.forEach((patientId) => {
+        const dayWindow = dayWindowByPatient.get(patientId);
+        const status = statusByPatient.get(patientId);
+        if (!status || !dayWindow) {
+            return;
+        }
+
+        const doseStatusByKey = loggedDoseStatusByPatient.get(patientId) ?? new Map();
+        const medicationIds = medicationIdsByPatient.get(patientId) ?? new Set<string>();
+
+        medicationIds.forEach((medicationId) => {
+            const reminderTimes = reminderTimesByMedicationId.get(medicationId) ?? [];
+
+            reminderTimes.forEach((scheduledTime) => {
+                const scheduledMinutes = toMinutesFromHHMM(scheduledTime);
+                if (scheduledMinutes === null) {
+                    return;
+                }
+
+                status.total += 1;
+                const doseKey = `${medicationId}_${scheduledTime}`;
+                const loggedDose = doseStatusByKey.get(doseKey);
+
+                if (loggedDose?.action === 'taken') {
+                    status.taken += 1;
+                    return;
+                }
+                if (loggedDose?.action === 'skipped') {
+                    status.skipped += 1;
+                    return;
+                }
+
+                if (dayWindow.currentMinutes > scheduledMinutes + MEDICATION_OVERDUE_GRACE_MINUTES) {
+                    status.missed += 1;
+                } else {
+                    status.pending += 1;
+                }
+            });
+        });
+    });
+
+    return statusByPatient;
+}
+
+async function getLastActiveByPatient(
+    patientIds: string[],
+    profilesById: Map<string, Record<string, unknown>>,
+): Promise<Map<string, string | null>> {
+    const { userService } = getCareDomainServices();
+    const lastActiveByPatient = new Map<string, string | null>();
+    const lookupIds: string[] = [];
+
+    patientIds.forEach((patientId) => {
+        const profile = profilesById.get(patientId);
+        const lastActiveDate = toDateSafe(profile?.lastActive);
+        if (lastActiveDate) {
+            lastActiveByPatient.set(patientId, lastActiveDate.toISOString());
+            return;
+        }
+
+        lookupIds.push(patientId);
+        lastActiveByPatient.set(patientId, null);
+    });
+
+    await Promise.all(
+        lookupIds.map(async (patientId) => {
+            try {
+                const latestPushToken = await userService.getLatestPushToken(patientId);
+                const lastActiveDate = toDateSafe(latestPushToken?.lastActive);
+                if (lastActiveDate) {
+                    lastActiveByPatient.set(patientId, lastActiveDate.toISOString());
+                }
+            } catch (error) {
+                functions.logger.debug(`[care] Could not fetch lastActive for ${patientId}:`, error);
+            }
+        }),
+    );
+
+    return lastActiveByPatient;
 }
 
 function parseActionDueAt(rawDueAt: unknown): Date | null {
@@ -318,8 +838,14 @@ function parseActionDueAt(rawDueAt: unknown): Date | null {
         return Number.isNaN(rawDueAt.getTime()) ? null : rawDueAt;
     }
 
-    if (rawDueAt instanceof admin.firestore.Timestamp) {
-        const date = rawDueAt.toDate();
+    const FirestoreTimestamp = (admin.firestore as unknown as {
+        Timestamp?: unknown;
+    }).Timestamp;
+    if (
+        typeof FirestoreTimestamp === 'function' &&
+        rawDueAt instanceof (FirestoreTimestamp as new (...args: unknown[]) => unknown)
+    ) {
+        const date = (rawDueAt as { toDate: () => Date }).toDate();
         return Number.isNaN(date.getTime()) ? null : date;
     }
 
@@ -346,373 +872,29 @@ function parseActionDueAt(rawDueAt: unknown): Date | null {
 }
 
 // =============================================================================
-// HELPER: Get alerts for a patient (missed doses, overdue actions)
-// =============================================================================
-
-async function getPatientAlerts(patientId: string) {
-    const alerts: Array<{
-        type: 'missed_dose' | 'overdue_action';
-        priority: 'high' | 'medium' | 'low';
-        message: string;
-    }> = [];
-
-    // Check for missed doses today
-    const medStatus = await getTodaysMedicationStatus(patientId);
-    if (medStatus.missed > 0) {
-        alerts.push({
-            type: 'missed_dose',
-            priority: 'high',
-            message: `${medStatus.missed} missed dose${medStatus.missed > 1 ? 's' : ''} today`,
-        });
-    }
-
-    // Check for overdue actions (past due date)
-    const now = new Date();
-    const actionsSnapshot = await getDb()
-        .collection('actions')
-        .where('userId', '==', patientId)
-        .where('completed', '==', false)
-        .get();
-
-    actionsSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const dueDate = parseActionDueAt(data.dueAt);
-        if (!dueDate || dueDate >= now) {
-            return;
-        }
-
-        const daysOverdue = Math.floor(
-            (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
-        );
-        alerts.push({
-            type: 'overdue_action',
-            priority: daysOverdue >= 7 ? 'high' : 'medium',
-            message: `Action "${data.description?.substring(0, 50)}..." overdue by ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}`,
-        });
-    });
-
-    return alerts;
-}
-
-// =============================================================================
 // GET /v1/care/overview
 // Aggregated data for all shared patients
 // =============================================================================
 
-careRouter.get('/overview', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-
-        // Get all accepted shares where current user is caregiver
-        const shares = await getAcceptedSharesForCaregiver(caregiverId);
-
-        if (shares.length === 0) {
-            res.json({ patients: [] });
-            return;
-        }
-
-        // Fetch data for each patient in parallel
-        const patientsData = await Promise.all(
-            shares.map(async (share) => {
-                const patientId = share.ownerId;
-
-                // Get patient profile
-                const profileDoc = await getDb().collection('users').doc(patientId).get();
-                const profile = profileDoc.data();
-
-                // Get aggregated data
-                const [medicationsToday, pendingActions, alerts] = await Promise.all([
-                    getTodaysMedicationStatus(patientId),
-                    getPendingActionsCount(patientId),
-                    getPatientAlerts(patientId),
-                ]);
-
-                // Get last active timestamp from push tokens
-                let lastActive: string | null = null;
-                try {
-                    const pushTokensSnapshot = await getDb()
-                        .collection('users')
-                        .doc(patientId)
-                        .collection('pushTokens')
-                        .orderBy('lastActive', 'desc')
-                        .limit(1)
-                        .get();
-
-                    if (!pushTokensSnapshot.empty) {
-                        const tokenData = pushTokensSnapshot.docs[0].data();
-                        lastActive = tokenData.lastActive?.toDate?.()?.toISOString() || null;
-                    }
-                } catch (e) {
-                    // Push token collection may not exist yet
-                    functions.logger.debug(`[care] Could not fetch lastActive for ${patientId}:`, e);
-                }
-
-                // Get owner auth info for name/email
-                let name = profile?.preferredName || profile?.firstName;
-                let email = share.ownerEmail;
-
-                if (!name) {
-                    try {
-                        const ownerAuth = await admin.auth().getUser(patientId);
-                        name = ownerAuth.displayName || ownerAuth.email?.split('@')[0] || 'Unknown';
-                        email = email || ownerAuth.email;
-                    } catch {
-                        name = 'Unknown';
-                    }
-                }
-
-                return {
-                    userId: patientId,
-                    name,
-                    email,
-                    medicationsToday,
-                    pendingActions,
-                    alerts,
-                    lastActive,
-                };
-            })
-        );
-
-        res.json({ patients: patientsData });
-
-    } catch (error) {
-        functions.logger.error('[care] Error fetching overview:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch care overview',
-        });
-    }
+registerCareOverviewRoutes(careRouter, {
+    getAcceptedSharesForCaregiver,
+    getPatientProfilesById,
+    resolveTimezone: resolveCareTimezone,
+    getTodaysMedicationStatusForPatients,
+    getPendingActionsAndOverdueAlertsForPatients,
+    getLastActiveByPatient,
+    emptyMedicationStatus,
 });
 
 // =============================================================================
 // GET /v1/care/:patientId/medications
-// List medications for a shared patient
+// List medications/actions/visits for a shared patient (+ single visit detail)
 // =============================================================================
 
-careRouter.get('/:patientId/medications', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const medsSnapshot = await getDb()
-            .collection('medications')
-            .where('userId', '==', patientId)
-            .orderBy('name', 'asc')
-            .get();
-
-        const medications = medsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate().toISOString(),
-                updatedAt: data.updatedAt?.toDate().toISOString(),
-                startedAt: data.startedAt?.toDate()?.toISOString() || null,
-                stoppedAt: data.stoppedAt?.toDate()?.toISOString() || null,
-                changedAt: data.changedAt?.toDate()?.toISOString() || null,
-                lastSyncedAt: data.lastSyncedAt?.toDate()?.toISOString() || null,
-                medicationWarning: data.medicationWarning || null,
-                needsConfirmation: data.needsConfirmation || false,
-                medicationStatus: data.medicationStatus || null,
-            };
-        });
-
-        res.json(medications);
-    } catch (error) {
-        functions.logger.error('[care] Error fetching patient medications:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch medications',
-        });
-    }
-});
-
-// =============================================================================
-// GET /v1/care/:patientId/actions
-// List action items for a shared patient
-// =============================================================================
-
-careRouter.get('/:patientId/actions', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const actionsSnapshot = await getDb()
-            .collection('actions')
-            .where('userId', '==', patientId)
-            .get();
-
-        const actions = actionsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-
-            // Safe date conversion helper
-            const toISOStringSafe = (val: any): string | null => {
-                if (!val) return null;
-                try {
-                    // Handle Firestore Timestamp
-                    if (val?.toDate) {
-                        return val.toDate().toISOString();
-                    }
-                    // Handle string or number
-                    const date = new Date(val);
-                    if (isNaN(date.getTime())) return null;
-                    return date.toISOString();
-                } catch {
-                    return null;
-                }
-            };
-
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: toISOStringSafe(data.createdAt),
-                updatedAt: toISOStringSafe(data.updatedAt),
-                completedAt: toISOStringSafe(data.completedAt),
-                dueAt: toISOStringSafe(data.dueAt),
-            };
-        });
-
-        res.json(actions);
-    } catch (error) {
-        functions.logger.error('[care] Error fetching patient actions:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch action items',
-        });
-    }
-});
-
-// =============================================================================
-// GET /v1/care/:patientId/visits
-// List visits for a shared patient
-// =============================================================================
-
-careRouter.get('/:patientId/visits', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const visitsSnapshot = await getDb()
-            .collection('visits')
-            .where('userId', '==', patientId)
-            .orderBy('createdAt', 'desc')
-            .get();
-
-        const visits = visitsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
-                updatedAt: data.updatedAt?.toDate?.().toISOString() ?? null,
-                processedAt: data.processedAt?.toDate?.().toISOString() ?? null,
-                visitDate: data.visitDate?.toDate?.()
-                    ? data.visitDate.toDate().toISOString()
-                    : data.visitDate ?? null,
-            };
-        });
-
-        res.json(visits);
-    } catch (error) {
-        functions.logger.error('[care] Error fetching patient visits:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch visits',
-        });
-    }
-});
-
-// =============================================================================
-// GET /v1/care/:patientId/visits/:visitId
-// Get a single visit summary for a shared patient
-// =============================================================================
-
-careRouter.get('/:patientId/visits/:visitId', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const { patientId, visitId } = req.params;
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const visitDoc = await getDb().collection('visits').doc(visitId).get();
-        if (!visitDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Visit not found',
-            });
-            return;
-        }
-
-        const visit = visitDoc.data()!;
-        if (visit.userId !== patientId) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Visit not found',
-            });
-            return;
-        }
-
-        const userDoc = await getDb().collection('users').doc(patientId).get();
-        const userData = userDoc.exists ? userDoc.data() : {};
-        const patientName = userData?.firstName
-            ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
-            : undefined;
-
-        res.json({
-            id: visitId,
-            visitDate: visit.visitDate?.toDate?.()?.toISOString() ||
-                visit.createdAt?.toDate?.()?.toISOString() ||
-                null,
-            provider: visit.provider || undefined,
-            specialty: visit.specialty || undefined,
-            location: visit.location || undefined,
-            summary: visit.summary || undefined,
-            diagnoses: Array.isArray(visit.diagnoses) ? visit.diagnoses : [],
-            medications: visit.medications || {},
-            nextSteps: Array.isArray(visit.nextSteps) ? visit.nextSteps : [],
-            patientName,
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching patient visit summary:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch visit summary',
-        });
-    }
+registerCarePatientResourceRoutes(careRouter, {
+    getDb,
+    pageSizeDefault: CARE_PAGE_SIZE_DEFAULT,
+    pageSizeMax: CARE_PAGE_SIZE_MAX,
 });
 
 // =============================================================================
@@ -720,441 +902,36 @@ careRouter.get('/:patientId/visits/:visitId', requireAuth, async (req: AuthReque
 // Today's medication doses for a specific patient
 // =============================================================================
 
-careRouter.get(
-    '/:patientId/medication-status',
-    requireAuth,
-    async (req: AuthRequest, res) => {
-        try {
-            const caregiverId = req.user!.uid;
-            const patientId = req.params.patientId;
-
-            // Validate caregiver has access
-            const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-            if (!hasAccess) {
-                res.status(403).json({
-                    code: 'forbidden',
-                    message: 'You do not have access to this patient\'s data',
-                });
-                return;
-            }
-
-            const overdueGraceMinutes = 120;
-
-            const userDoc = await getDb().collection('users').doc(patientId).get();
-            const userTimezone =
-                typeof userDoc.data()?.timezone === 'string'
-                    ? (userDoc.data()?.timezone as string)
-                    : 'America/Chicago';
-
-            const now = new Date();
-            const todayStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
-
-            const dayBoundaries = (() => {
-                const dateStr = now.toLocaleDateString('en-CA', { timeZone: userTimezone });
-                const [year, month, day] = dateStr.split('-').map(Number);
-                const testUTC = new Date(
-                    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`
-                );
-                const tzFormatter = new Intl.DateTimeFormat('en-US', {
-                    timeZone: userTimezone,
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false,
-                });
-                const tzParts = tzFormatter.formatToParts(testUTC);
-                const tzHour = parseInt(tzParts.find((p) => p.type === 'hour')!.value, 10);
-                const tzMinute = parseInt(tzParts.find((p) => p.type === 'minute')!.value, 10);
-                const offsetMinutes = (tzHour - 12) * 60 + tzMinute;
-                const midnightUTC = new Date(
-                    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`
-                );
-                const startOfDayUTC = new Date(midnightUTC.getTime() - offsetMinutes * 60 * 1000);
-                const endOfDayUTC = new Date(startOfDayUTC.getTime() + 24 * 60 * 60 * 1000 - 1);
-                return { startOfDayUTC, endOfDayUTC };
-            })();
-
-            // Get active medications
-            const medsSnapshot = await getDb()
-                .collection('medications')
-                .where('userId', '==', patientId)
-                .where('active', '==', true)
-                .get();
-
-            // Get reminders
-            const remindersSnapshot = await getDb()
-                .collection('medicationReminders')
-                .where('userId', '==', patientId)
-                .where('enabled', '==', true)
-                .get();
-
-            // Get today's logs
-            const logsSnapshot = await getDb()
-                .collection('medicationLogs')
-                .where('userId', '==', patientId)
-                .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(dayBoundaries.startOfDayUTC))
-                .where('loggedAt', '<=', admin.firestore.Timestamp.fromDate(dayBoundaries.endOfDayUTC))
-                .get();
-
-            const medications = medsSnapshot.docs.map((doc) => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    name: data.name as string,
-                    dose: data.dose as string | undefined,
-                    ...data,
-                };
-            });
-
-            const reminderMap = new Map<string, string[]>();
-            remindersSnapshot.docs.forEach((doc) => {
-                const data = doc.data();
-                reminderMap.set(data.medicationId, data.times || []);
-            });
-
-            // Build schedule
-            const logs = logsSnapshot.docs
-                .map((doc) => doc.data())
-                .filter((log) => {
-                    const logDateStr =
-                        log.scheduledDate ||
-                        (log.loggedAt?.toDate
-                            ? log.loggedAt.toDate().toLocaleDateString('en-CA', { timeZone: userTimezone })
-                            : null);
-                    return logDateStr === todayStr;
-                });
-
-            const schedule = medications.flatMap((med) => {
-                const times = reminderMap.get(med.id) || [];
-                return times.map((time) => {
-                    const log = logs.find(
-                        (l) => l.medicationId === med.id && l.scheduledTime === time
-                    );
-
-                    let status: 'taken' | 'skipped' | 'pending' | 'missed' = 'pending';
-                    let actionAt: string | undefined;
-
-                    if (log) {
-                        if (log.action === 'taken' || log.action === 'skipped') {
-                            status = log.action;
-                        } else {
-                            status = 'pending';
-                        }
-                        actionAt = log.loggedAt?.toDate?.().toISOString();
-                    } else {
-                        // Check if missed
-                        const [hourStr, minStr] = time.split(':');
-                        const scheduledMins =
-                            parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
-                        const currentTimeStr = now.toLocaleTimeString('en-US', {
-                            timeZone: userTimezone,
-                            hour12: false,
-                            hour: '2-digit',
-                            minute: '2-digit',
-                        });
-                        const currentMins =
-                            parseInt(currentTimeStr.slice(0, 2), 10) * 60 +
-                            parseInt(currentTimeStr.slice(3, 5), 10);
-
-                        if (currentMins > scheduledMins + overdueGraceMinutes) {
-                            status = 'missed';
-                        }
-                    }
-
-                    return {
-                        medicationId: med.id,
-                        medicationName: med.name,
-                        dose: med.dose,
-                        scheduledTime: time,
-                        status,
-                        actionAt,
-                    };
-                });
-            });
-
-            // Sort by time
-            schedule.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
-
-            res.json({
-                date: todayStr,
-                schedule,
-                summary: await getTodaysMedicationStatus(patientId),
-            });
-        } catch (error) {
-            functions.logger.error('[care] Error fetching medication status:', error);
-            res.status(500).json({
-                code: 'server_error',
-                message: 'Failed to fetch medication status',
-            });
-        }
-    }
-);
+registerCareMedicationStatusRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('medication-status', caregiverId, patientId),
+    getTodaysMedicationStatus,
+});
 
 // =============================================================================
 // GET /v1/care/:patientId/summary
 // Quick summary for a patient (used in patient detail view)
 // =============================================================================
 
-careRouter.get(
-    '/:patientId/summary',
-    requireAuth,
-    async (req: AuthRequest, res) => {
-        try {
-            const caregiverId = req.user!.uid;
-            const patientId = req.params.patientId;
-
-            // Validate caregiver has access
-            const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-            if (!hasAccess) {
-                res.status(403).json({
-                    code: 'forbidden',
-                    message: 'You do not have access to this patient\'s data',
-                });
-                return;
-            }
-
-            // Get patient profile
-            const profileDoc = await getDb().collection('users').doc(patientId).get();
-            const profile = profileDoc.data();
-
-            // Try to get name
-            let name = profile?.preferredName || profile?.firstName;
-            if (!name) {
-                try {
-                    const authUser = await admin.auth().getUser(patientId);
-                    name = authUser.displayName || authUser.email?.split('@')[0] || 'Unknown';
-                } catch {
-                    name = 'Unknown';
-                }
-            }
-
-            // Get counts
-            const [medsSnapshot, visitsSnapshot, actionsSnapshot] = await Promise.all([
-                getDb()
-                    .collection('medications')
-                    .where('userId', '==', patientId)
-                    .where('active', '==', true)
-                    .get(),
-                getDb()
-                    .collection('visits')
-                    .where('userId', '==', patientId)
-                    .orderBy('createdAt', 'desc')
-                    .limit(1)
-                    .get(),
-                getDb()
-                    .collection('actions')
-                    .where('userId', '==', patientId)
-                    .where('completed', '==', false)
-                    .get(),
-            ]);
-
-            const lastVisit = visitsSnapshot.docs[0]?.data();
-
-            res.json({
-                userId: patientId,
-                name,
-                activeMedications: medsSnapshot.size,
-                pendingActions: actionsSnapshot.size,
-                lastVisit: lastVisit
-                    ? {
-                        id: visitsSnapshot.docs[0].id,
-                        provider: lastVisit.provider,
-                        specialty: lastVisit.specialty,
-                        visitDate: lastVisit.visitDate,
-                        summary: lastVisit.summary?.substring(0, 200),
-                    }
-                    : null,
-                medicationsToday: await getTodaysMedicationStatus(patientId),
-                alerts: await getPatientAlerts(patientId),
-            });
-        } catch (error) {
-            functions.logger.error('[care] Error fetching patient summary:', error);
-            res.status(500).json({
-                code: 'server_error',
-                message: 'Failed to fetch patient summary',
-            });
-        }
-    }
-);
+registerCareSummaryRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('summary', caregiverId, patientId),
+    getTodaysMedicationStatus,
+    parseActionDueAt,
+});
 
 // =============================================================================
 // CAREGIVER NOTES API
 // Private notes that caregivers can add to visits
 // =============================================================================
 
-// GET /v1/care/:patientId/notes
-// List all caregiver notes for a patient
-careRouter.get('/:patientId/notes', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-
-        // Validate caregiver has access to this patient
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        // Fetch all notes for this caregiver + patient combination
-        const notesSnapshot = await getDb()
-            .collection('caregiverNotes')
-            .where('caregiverId', '==', caregiverId)
-            .where('patientId', '==', patientId)
-            .orderBy('updatedAt', 'desc')
-            .get();
-
-        const notes = notesSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                visitId: data.visitId,
-                note: data.note || null,
-                pinned: data.pinned || false,
-                createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
-                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
-            };
-        });
-
-        res.json(notes);
-    } catch (error) {
-        functions.logger.error('[care] Error fetching caregiver notes:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch notes',
-        });
-    }
-});
-
-// PUT /v1/care/:patientId/visits/:visitId/note
-// Create or update a caregiver note for a specific visit
-careRouter.put('/:patientId/visits/:visitId/note', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const { patientId, visitId } = req.params;
-        const { note, pinned } = req.body;
-
-        // Validate caregiver has access to this patient
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        // Verify the visit exists and belongs to the patient
-        const visitDoc = await getDb().collection('visits').doc(visitId).get();
-        if (!visitDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Visit not found',
-            });
-            return;
-        }
-
-        const visitData = visitDoc.data();
-        if (visitData?.userId !== patientId) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'Visit does not belong to this patient',
-            });
-            return;
-        }
-
-        // Use a deterministic document ID for upsert behavior
-        const noteDocId = `${caregiverId}_${patientId}_${visitId}`;
-        const now = admin.firestore.FieldValue.serverTimestamp();
-
-        // Check if note already exists
-        const existingDoc = await getDb().collection('caregiverNotes').doc(noteDocId).get();
-
-        const noteData: Record<string, any> = {
-            caregiverId,
-            patientId,
-            visitId,
-            updatedAt: now,
-        };
-
-        // Only update fields that are provided
-        if (typeof note === 'string') {
-            noteData.note = note.trim();
-        }
-        if (typeof pinned === 'boolean') {
-            noteData.pinned = pinned;
-        }
-
-        if (!existingDoc.exists) {
-            // Create new note
-            noteData.createdAt = now;
-            noteData.pinned = noteData.pinned ?? false;
-            noteData.note = noteData.note ?? '';
-        }
-
-        await getDb().collection('caregiverNotes').doc(noteDocId).set(noteData, { merge: true });
-
-        // Fetch the updated document to return
-        const updatedDoc = await getDb().collection('caregiverNotes').doc(noteDocId).get();
-        const updatedData = updatedDoc.data();
-
-        res.json({
-            id: noteDocId,
-            visitId,
-            note: updatedData?.note || null,
-            pinned: updatedData?.pinned || false,
-            createdAt: updatedData?.createdAt?.toDate?.()?.toISOString() || null,
-            updatedAt: updatedData?.updatedAt?.toDate?.()?.toISOString() || null,
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error saving caregiver note:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to save note',
-        });
-    }
-});
-
-// DELETE /v1/care/:patientId/visits/:visitId/note
-// Delete a caregiver note for a specific visit
-careRouter.delete('/:patientId/visits/:visitId/note', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const { patientId, visitId } = req.params;
-
-        // Validate caregiver has access to this patient
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const noteDocId = `${caregiverId}_${patientId}_${visitId}`;
-        const noteDoc = await getDb().collection('caregiverNotes').doc(noteDocId).get();
-
-        if (!noteDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Note not found',
-            });
-            return;
-        }
-
-        await getDb().collection('caregiverNotes').doc(noteDocId).delete();
-
-        res.json({ success: true });
-    } catch (error) {
-        functions.logger.error('[care] Error deleting caregiver note:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to delete note',
-        });
-    }
+registerCareNotesRoutes(careRouter, {
+    getDb,
+    noteMaxLength: CARE_NOTE_MAX_LENGTH,
+    pageSizeDefault: CARE_PAGE_SIZE_DEFAULT,
+    pageSizeMax: CARE_PAGE_SIZE_MAX,
 });
 
 // =============================================================================
@@ -1162,146 +939,11 @@ careRouter.delete('/:patientId/visits/:visitId/note', requireAuth, async (req: A
 // Generate a text/JSON summary of patient care for export
 // =============================================================================
 
-// GET /v1/care/:patientId/export/summary
-// Generate a care summary for a patient
-careRouter.get('/:patientId/export/summary', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-
-        // Validate caregiver has access
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        // Get patient profile
-        let patientName = 'Unknown Patient';
-        try {
-            const profileDoc = await getDb().collection('users').doc(patientId).get();
-            const profile = profileDoc.data();
-            patientName = profile?.preferredName || profile?.firstName || 'Unknown';
-            if (!patientName || patientName === 'Unknown') {
-                const authUser = await admin.auth().getUser(patientId);
-                patientName = authUser.displayName || authUser.email?.split('@')[0] || 'Unknown';
-            }
-        } catch {
-            // Keep default name
-        }
-
-        // Fetch all visits
-        const visitsSnapshot = await getDb()
-            .collection('visits')
-            .where('userId', '==', patientId)
-            .orderBy('createdAt', 'desc')
-            .get();
-
-        const visits = visitsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                visitDate: data.visitDate?.toDate?.()?.toISOString() || data.createdAt?.toDate?.()?.toISOString() || null,
-                provider: data.provider || null,
-                specialty: data.specialty || null,
-                location: data.location || null,
-                summary: data.summary || null,
-                diagnoses: Array.isArray(data.diagnoses) ? data.diagnoses.filter(Boolean) : [],
-                nextSteps: Array.isArray(data.nextSteps) ? data.nextSteps.filter(Boolean) : [],
-                medications: data.medications || null,
-            };
-        });
-
-        // Fetch active medications
-        const medsSnapshot = await getDb()
-            .collection('medications')
-            .where('userId', '==', patientId)
-            .where('active', '==', true)
-            .get();
-
-        const medications = medsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                name: data.name || 'Unknown',
-                dosage: data.dosage || data.dose || null,
-                frequency: data.frequency || null,
-                instructions: data.instructions || null,
-            };
-        });
-
-        // Fetch pending actions
-        const actionsSnapshot = await getDb()
-            .collection('actions')
-            .where('userId', '==', patientId)
-            .where('completed', '==', false)
-            .get();
-
-        const pendingActions = actionsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            const dueDate = parseActionDueAt(data.dueAt);
-            return {
-                title: data.title || data.text || 'Unknown',
-                dueDate: dueDate?.toISOString() || null,
-                priority: data.priority || 'normal',
-            };
-        });
-
-        // Extract unique conditions from all visits
-        const conditionSet = new Set<string>();
-        visits.forEach((visit) => {
-            visit.diagnoses.forEach((dx: string) => {
-                if (dx?.trim()) conditionSet.add(dx.trim());
-            });
-        });
-        const conditions = Array.from(conditionSet).sort();
-
-        // Extract unique providers
-        const providerSet = new Set<string>();
-        visits.forEach((visit) => {
-            if (visit.provider?.trim()) {
-                providerSet.add(visit.provider.trim());
-            }
-        });
-        const providers = Array.from(providerSet).sort();
-
-        // Build summary
-        const summary = {
-            generatedAt: new Date().toISOString(),
-            patient: {
-                name: patientName,
-                id: patientId,
-            },
-            overview: {
-                totalVisits: visits.length,
-                totalConditions: conditions.length,
-                totalProviders: providers.length,
-                activeMedications: medications.length,
-                pendingActions: pendingActions.length,
-            },
-            conditions,
-            providers,
-            currentMedications: medications,
-            pendingActions,
-            recentVisits: visits.slice(0, 10).map((v) => ({
-                date: v.visitDate,
-                provider: v.provider,
-                specialty: v.specialty,
-                summary: v.summary?.substring(0, 300),
-                diagnoses: v.diagnoses,
-            })),
-        };
-
-        res.json(summary);
-    } catch (error) {
-        functions.logger.error('[care] Error generating care summary:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to generate care summary',
-        });
-    }
+registerCareExportSummaryRoutes(careRouter, {
+    getDb,
+    parseActionDueAt,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('export-summary', caregiverId, patientId),
 });
 
 // =============================================================================
@@ -1309,95 +951,9 @@ careRouter.get('/:patientId/export/summary', requireAuth, async (req: AuthReques
 // Allow caregivers to update visit metadata (provider, specialty, location, date)
 // =============================================================================
 
-// PATCH /v1/care/:patientId/visits/:visitId
-// Update visit metadata
-careRouter.patch('/:patientId/visits/:visitId', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const { patientId, visitId } = req.params;
-        const { provider, specialty, location, visitDate } = req.body;
-
-        // Validate caregiver has access to this patient
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        // Verify the visit exists and belongs to the patient
-        const visitRef = getDb().collection('visits').doc(visitId);
-        const visitDoc = await visitRef.get();
-
-        if (!visitDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Visit not found',
-            });
-            return;
-        }
-
-        const visitData = visitDoc.data();
-        if (visitData?.userId !== patientId) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'Visit does not belong to this patient',
-            });
-            return;
-        }
-
-        // Build update object - only include fields that are provided
-        const updateData: Record<string, any> = {
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            lastEditedBy: caregiverId,
-            lastEditedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-
-        if (typeof provider === 'string') {
-            updateData.provider = provider.trim() || null;
-        }
-        if (typeof specialty === 'string') {
-            updateData.specialty = specialty.trim() || null;
-        }
-        if (typeof location === 'string') {
-            updateData.location = location.trim() || null;
-        }
-        if (visitDate !== undefined) {
-            // Accept ISO string or null
-            if (visitDate === null) {
-                updateData.visitDate = null;
-            } else if (typeof visitDate === 'string') {
-                const parsedDate = new Date(visitDate);
-                if (!isNaN(parsedDate.getTime())) {
-                    updateData.visitDate = admin.firestore.Timestamp.fromDate(parsedDate);
-                }
-            }
-        }
-
-        // Update the visit
-        await visitRef.update(updateData);
-
-        // Fetch the updated document
-        const updatedDoc = await visitRef.get();
-        const updated = updatedDoc.data();
-
-        res.json({
-            id: visitId,
-            provider: updated?.provider || null,
-            specialty: updated?.specialty || null,
-            location: updated?.location || null,
-            visitDate: updated?.visitDate?.toDate?.()?.toISOString() || null,
-            updatedAt: updated?.updatedAt?.toDate?.()?.toISOString() || null,
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error updating visit metadata:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to update visit',
-        });
-    }
+registerCareVisitMetadataRoutes(careRouter, {
+    getDb,
+    visitMetadataMaxLength: CARE_VISIT_METADATA_MAX_LENGTH,
 });
 
 // =============================================================================
@@ -1405,496 +961,21 @@ careRouter.patch('/:patientId/visits/:visitId', requireAuth, async (req: AuthReq
 // View patient health metrics (BP, glucose, weight)
 // =============================================================================
 
-// GET /v1/care/:patientId/health-logs
-// Fetch health logs for a patient with summary statistics
-careRouter.get('/:patientId/health-logs', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const { type = 'all', days = '30', limit: limitParam } = req.query;
-
-        // Validate caregiver has access
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const daysNum = Math.min(Math.max(parseInt(days as string) || 30, 1), 365);
-        const limitNum = limitParam ? Math.min(parseInt(limitParam as string), 500) : undefined;
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - daysNum);
-
-        // Build query
-        let query = getDb()
-            .collection('healthLogs')
-            .where('userId', '==', patientId)
-            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-            .orderBy('createdAt', 'desc');
-
-        // Filter by type if specified
-        if (type !== 'all' && ['bp', 'glucose', 'weight'].includes(type as string)) {
-            query = query.where('type', '==', type);
-        }
-
-        if (limitNum) {
-            query = query.limit(limitNum);
-        }
-
-        const snapshot = await query.get();
-
-        const logs = snapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                type: data.type,
-                value: data.value,
-                alertLevel: data.alertLevel || 'normal',
-                createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
-                source: data.source || 'manual',
-            };
-        });
-
-        // Calculate summaries
-        const bpLogs = logs.filter((l) => l.type === 'bp');
-        const glucoseLogs = logs.filter((l) => l.type === 'glucose');
-        const weightLogs = logs.filter((l) => l.type === 'weight');
-
-        // BP Summary
-        const bpSummary = {
-            count: bpLogs.length,
-            latest: bpLogs[0]?.value || null,
-            latestDate: bpLogs[0]?.createdAt || null,
-            latestAlertLevel: bpLogs[0]?.alertLevel || null,
-            avgSystolic: bpLogs.length > 0
-                ? Math.round(bpLogs.reduce((sum, l) => sum + ((l.value as any)?.systolic || 0), 0) / bpLogs.length)
-                : null,
-            avgDiastolic: bpLogs.length > 0
-                ? Math.round(bpLogs.reduce((sum, l) => sum + ((l.value as any)?.diastolic || 0), 0) / bpLogs.length)
-                : null,
-            trend: calculateTrend(bpLogs.map((l) => (l.value as any)?.systolic).filter(Boolean)),
-        };
-
-        // Glucose Summary
-        const glucoseSummary = {
-            count: glucoseLogs.length,
-            latest: glucoseLogs[0]?.value || null,
-            latestDate: glucoseLogs[0]?.createdAt || null,
-            latestAlertLevel: glucoseLogs[0]?.alertLevel || null,
-            avg: glucoseLogs.length > 0
-                ? Math.round(glucoseLogs.reduce((sum, l) => sum + ((l.value as any)?.reading || 0), 0) / glucoseLogs.length)
-                : null,
-            min: glucoseLogs.length > 0
-                ? Math.min(...glucoseLogs.map((l) => (l.value as any)?.reading || 999))
-                : null,
-            max: glucoseLogs.length > 0
-                ? Math.max(...glucoseLogs.map((l) => (l.value as any)?.reading || 0))
-                : null,
-            trend: calculateTrend(glucoseLogs.map((l) => (l.value as any)?.reading).filter(Boolean)),
-        };
-
-        // Weight Summary
-        const weightValues = weightLogs.map((l) => (l.value as any)?.weight).filter(Boolean);
-        const weightSummary = {
-            count: weightLogs.length,
-            latest: weightLogs[0]?.value || null,
-            latestDate: weightLogs[0]?.createdAt || null,
-            oldest: weightLogs[weightLogs.length - 1]?.value || null,
-            change: weightValues.length >= 2
-                ? Math.round((weightValues[0] - weightValues[weightValues.length - 1]) * 10) / 10
-                : null,
-            trend: calculateTrend(weightValues),
-        };
-
-        // Count alerts
-        const alertCounts = {
-            emergency: logs.filter((l) => l.alertLevel === 'emergency').length,
-            warning: logs.filter((l) => l.alertLevel === 'warning').length,
-            caution: logs.filter((l) => l.alertLevel === 'caution').length,
-        };
-
-        res.json({
-            logs,
-            summary: {
-                bp: bpSummary,
-                glucose: glucoseSummary,
-                weight: weightSummary,
-            },
-            alerts: alertCounts,
-            period: {
-                days: daysNum,
-                from: startDate.toISOString(),
-                to: new Date().toISOString(),
-            },
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching health logs:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch health logs',
-        });
-    }
+registerCareHealthLogRoutes(careRouter, {
+    getDb,
+    pageSizeDefault: CARE_PAGE_SIZE_DEFAULT,
+    pageSizeMax: 500,
 });
-
-/**
- * Calculate trend direction from an array of values (newest first)
- */
-function calculateTrend(values: number[]): 'up' | 'down' | 'stable' | null {
-    if (values.length < 3) return null;
-
-    // Compare average of first half vs second half
-    const midpoint = Math.floor(values.length / 2);
-    const recentAvg = values.slice(0, midpoint).reduce((a, b) => a + b, 0) / midpoint;
-    const olderAvg = values.slice(midpoint).reduce((a, b) => a + b, 0) / (values.length - midpoint);
-
-    const percentChange = ((recentAvg - olderAvg) / olderAvg) * 100;
-
-    if (percentChange > 5) return 'up';
-    if (percentChange < -5) return 'down';
-    return 'stable';
-}
 
 // =============================================================================
 // MEDICATION ADHERENCE API FOR CAREGIVERS
 // Track medication compliance over time
 // =============================================================================
 
-// GET /v1/care/:patientId/medication-adherence
-// Fetch medication adherence statistics for a patient
-careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const { days = '30', medicationId } = req.query;
-
-        // Validate caregiver has access
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const daysNum = Math.min(Math.max(parseInt(days as string) || 30, 1), 365);
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - daysNum);
-        startDate.setHours(0, 0, 0, 0);
-
-        // Fetch medication logs - try both createdAt and loggedAt fields
-        let logsSnapshot;
-        try {
-            let logsQuery = getDb()
-                .collection('medicationLogs')
-                .where('userId', '==', patientId)
-                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-                .orderBy('createdAt', 'desc');
-
-            if (medicationId) {
-                logsQuery = logsQuery.where('medicationId', '==', medicationId);
-            }
-
-            logsSnapshot = await logsQuery.get();
-        } catch (indexError) {
-            // Fallback: try with loggedAt field if createdAt index doesn't exist
-            functions.logger.warn('[care] createdAt query failed, trying loggedAt:', indexError);
-            let logsQuery = getDb()
-                .collection('medicationLogs')
-                .where('userId', '==', patientId)
-                .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-                .orderBy('loggedAt', 'desc');
-
-            if (medicationId) {
-                logsQuery = logsQuery.where('medicationId', '==', medicationId);
-            }
-
-            logsSnapshot = await logsQuery.get();
-        }
-
-        // Fetch active medications
-        const medsSnapshot = await getDb()
-            .collection('medications')
-            .where('userId', '==', patientId)
-            .where('active', '==', true)
-            .get();
-
-        // Fetch medication reminders (contains the schedule times)
-        const remindersSnapshot = await getDb()
-            .collection('medicationReminders')
-            .where('userId', '==', patientId)
-            .where('enabled', '==', true)
-            .get();
-
-        // Build a map of medication ID -> reminder times
-        const remindersByMedId = new Map<string, string[]>();
-        remindersSnapshot.docs.forEach((doc) => {
-            const data = doc.data();
-            if (data.medicationId && Array.isArray(data.times)) {
-                remindersByMedId.set(data.medicationId, data.times);
-            }
-        });
-
-        // Build medications map with schedule info from reminders
-        const medications = new Map<string, { name: string; times: string[] }>();
-        medsSnapshot.docs.forEach((doc) => {
-            const data = doc.data();
-            const times = remindersByMedId.get(doc.id) || [];
-            medications.set(doc.id, {
-                name: data.name || 'Unknown',
-                times,
-            });
-        });
-
-        // Process logs
-        const logs = logsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            const timestamp = data.createdAt?.toDate?.() || data.loggedAt?.toDate?.() || new Date();
-            return {
-                medicationId: data.medicationId,
-                medicationName: data.medicationName || null,
-                action: data.action, // 'taken', 'skipped', 'snoozed'
-                scheduledDate: data.scheduledDate || null,
-                createdAt: timestamp,
-            };
-        });
-
-        // Calculate overall stats
-        const takenCount = logs.filter((l) => l.action === 'taken').length;
-        const skippedCount = logs.filter((l) => l.action === 'skipped').length;
-        const totalLogged = takenCount + skippedCount;
-
-        // Calculate expected doses based on reminders with scheduled times
-        let expectedDoses = 0;
-        medications.forEach((med) => {
-            if (med.times.length > 0) {
-                expectedDoses += med.times.length * daysNum;
-            }
-        });
-
-        // If no reminders are set up, use the logs as the denominator
-        // This handles the case where patient takes meds but hasn't set up reminders
-        const effectiveExpected = expectedDoses > 0 ? expectedDoses : totalLogged;
-        const missedCount = Math.max(0, effectiveExpected - totalLogged);
-        const adherenceRate = effectiveExpected > 0
-            ? Math.round((takenCount / effectiveExpected) * 100)
-            : (takenCount > 0 ? 100 : 0);
-
-        // Per-medication breakdown
-        const byMedication: Array<{
-            medicationId: string;
-            medicationName: string;
-            totalDoses: number;
-            takenDoses: number;
-            skippedDoses: number;
-            adherenceRate: number;
-            streak: number;
-        }> = [];
-
-        // Track medications that have logs but aren't in the active meds list
-        const loggedMedIds = new Set(logs.map((l) => l.medicationId));
-
-        medications.forEach((med, medId) => {
-            const medLogs = logs.filter((l) => l.medicationId === medId);
-            const taken = medLogs.filter((l) => l.action === 'taken').length;
-            const skipped = medLogs.filter((l) => l.action === 'skipped').length;
-
-            // Expected = scheduled times * days, or fallback to logged count if no schedule
-            const expected = med.times.length > 0
-                ? med.times.length * daysNum
-                : (taken + skipped);
-
-            // Calculate current streak using scheduledDate (patient's local date)
-            // This ensures timezone-correct streak tracking
-            let streak = 0;
-            const takenLogs = medLogs.filter((l) => l.action === 'taken');
-
-            if (takenLogs.length > 0) {
-                // Get unique dates where medication was taken (using scheduledDate)
-                const takenDates = new Set<string>();
-                takenLogs.forEach((l) => {
-                    // Prefer scheduledDate (patient's local date), fallback to createdAt date
-                    const logDate = l.scheduledDate || l.createdAt.toISOString().split('T')[0];
-                    takenDates.add(logDate);
-                });
-
-                // Check consecutive days starting from today
-                const today = new Date();
-                for (let i = 0; i < daysNum; i++) {
-                    const checkDate = new Date(today);
-                    checkDate.setDate(checkDate.getDate() - i);
-                    const dateStr = checkDate.toISOString().split('T')[0];
-
-                    if (takenDates.has(dateStr)) {
-                        streak++;
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            byMedication.push({
-                medicationId: medId,
-                medicationName: med.name,
-                totalDoses: expected,
-                takenDoses: taken,
-                skippedDoses: skipped,
-                adherenceRate: expected > 0 ? Math.round((taken / expected) * 100) : 100,
-                streak,
-            });
-
-            loggedMedIds.delete(medId);
-        });
-
-        // Add medications that have logs but aren't in active meds (might be discontinued)
-        for (const medId of loggedMedIds) {
-            const medLogs = logs.filter((l) => l.medicationId === medId);
-            const taken = medLogs.filter((l) => l.action === 'taken').length;
-            const skipped = medLogs.filter((l) => l.action === 'skipped').length;
-            const total = taken + skipped;
-
-            // Get name from logs
-            const medName = medLogs.find((l) => l.medicationName)?.medicationName || 'Unknown Medication';
-
-            byMedication.push({
-                medicationId: medId,
-                medicationName: medName,
-                totalDoses: total,
-                takenDoses: taken,
-                skippedDoses: skipped,
-                adherenceRate: total > 0 ? Math.round((taken / total) * 100) : 100,
-                streak: 0,
-            });
-        }
-
-        // Sort by adherence rate (lowest first for attention)
-        byMedication.sort((a, b) => a.adherenceRate - b.adherenceRate);
-
-        // Build calendar data (last N days)
-        const calendar: Array<{
-            date: string;
-            scheduled: number;
-            taken: number;
-            skipped: number;
-            missed: number;
-        }> = [];
-
-        for (let i = 0; i < daysNum; i++) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            date.setHours(0, 0, 0, 0);
-            const dateStr = date.toISOString().split('T')[0];
-
-            // Filter logs for this day using scheduledDate (patient's local date)
-            // Falls back to createdAt UTC date for older logs without scheduledDate
-            const dayLogs = logs.filter((l) => {
-                const logDate = l.scheduledDate || l.createdAt.toISOString().split('T')[0];
-                return logDate === dateStr;
-            });
-
-            // Calculate scheduled count from reminders
-            let scheduledCount = 0;
-            medications.forEach((med) => {
-                scheduledCount += med.times.length;
-            });
-
-            const taken = dayLogs.filter((l) => l.action === 'taken').length;
-            const skipped = dayLogs.filter((l) => l.action === 'skipped').length;
-
-            // For calendar, use actual logs if no schedule exists
-            const effectiveScheduled = scheduledCount > 0 ? scheduledCount : (taken + skipped);
-            const missed = Math.max(0, effectiveScheduled - taken - skipped);
-
-            calendar.push({
-                date: dateStr,
-                scheduled: effectiveScheduled,
-                taken,
-                skipped,
-                missed,
-            });
-        }
-
-        // Detect patterns
-        const patterns: {
-            bestTimeOfDay: string | null;
-            worstTimeOfDay: string | null;
-            insights: string[];
-        } = {
-            bestTimeOfDay: null,
-            worstTimeOfDay: null,
-            insights: [],
-        };
-
-        // Check for weekend pattern (only if we have scheduled data)
-        const weekendDays = calendar.filter((c) => {
-            const day = new Date(c.date).getDay();
-            return day === 0 || day === 6;
-        });
-        const weekdayDays = calendar.filter((c) => {
-            const day = new Date(c.date).getDay();
-            return day !== 0 && day !== 6;
-        });
-
-        const weekendScheduled = weekendDays.reduce((sum, d) => sum + d.scheduled, 0);
-        const weekdayScheduled = weekdayDays.reduce((sum, d) => sum + d.scheduled, 0);
-
-        if (weekendScheduled > 0 && weekdayScheduled > 0) {
-            const weekendRate = (weekendDays.reduce((sum, d) => sum + d.taken, 0) / weekendScheduled) * 100;
-            const weekdayRate = (weekdayDays.reduce((sum, d) => sum + d.taken, 0) / weekdayScheduled) * 100;
-
-            if (!isNaN(weekdayRate) && !isNaN(weekendRate)) {
-                if (weekdayRate - weekendRate > 15) {
-                    patterns.insights.push('Lower adherence on weekends');
-                } else if (weekendRate - weekdayRate > 15) {
-                    patterns.insights.push('Better adherence on weekends');
-                }
-            }
-        }
-
-        // Add streak insight
-        const maxStreak = Math.max(...byMedication.map((m) => m.streak), 0);
-        if (maxStreak >= 7) {
-            patterns.insights.push(`${maxStreak}-day streak active`);
-        }
-
-        // Add low adherence warning
-        const lowAdherenceMeds = byMedication.filter((m) => m.adherenceRate < 70 && m.totalDoses > 0);
-        if (lowAdherenceMeds.length > 0) {
-            patterns.insights.push(`${lowAdherenceMeds.length} medication(s) below 70% adherence`);
-        }
-
-        // Add insight if no reminders are set up
-        if (expectedDoses === 0 && totalLogged > 0) {
-            patterns.insights.push('No medication schedules set up - showing logged data only');
-        }
-
-        res.json({
-            overall: {
-                totalDoses: effectiveExpected,
-                takenDoses: takenCount,
-                skippedDoses: skippedCount,
-                missedDoses: missedCount,
-                adherenceRate,
-            },
-            byMedication,
-            calendar,
-            patterns,
-            period: {
-                days: daysNum,
-                from: startDate.toISOString(),
-                to: new Date().toISOString(),
-            },
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching medication adherence:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch medication adherence',
-        });
-    }
+registerCareMedicationAdherenceRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('medication-adherence', caregiverId, patientId),
 });
 
 // =============================================================================
@@ -1902,222 +983,17 @@ careRouter.get('/:patientId/medication-adherence', requireAuth, async (req: Auth
 // At-a-glance dashboard data
 // =============================================================================
 
-// GET /v1/care/:patientId/quick-overview
-// Fetch quick overview data for enhanced patient dashboard
-careRouter.get('/:patientId/quick-overview', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-
-        // Validate caregiver has access
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this patient\'s data',
-            });
-            return;
-        }
-
-        const now = new Date();
-        const todayStart = new Date(now);
-        todayStart.setHours(0, 0, 0, 0);
-        const weekAgo = new Date(now);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-
-        // Parallel fetch all data
-        const [
-            todayMedStatus,
-            healthLogsSnapshot,
-            recentActionsSnapshot,
-            recentVisitsSnapshot,
-            recentMedLogsSnapshot,
-        ] = await Promise.all([
-            // Today's medication status
-            getTodaysMedicationStatus(patientId),
-            // Recent health logs (last 7 days)
-            getDb()
-                .collection('healthLogs')
-                .where('userId', '==', patientId)
-                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(weekAgo))
-                .orderBy('createdAt', 'desc')
-                .limit(10)
-                .get(),
-            // Overdue actions
-            getDb()
-                .collection('actions')
-                .where('userId', '==', patientId)
-                .where('completed', '==', false)
-                .get(),
-            // Recent visits
-            getDb()
-                .collection('visits')
-                .where('userId', '==', patientId)
-                .orderBy('createdAt', 'desc')
-                .limit(5)
-                .get(),
-            // Recent medication logs
-            getDb()
-                .collection('medicationLogs')
-                .where('userId', '==', patientId)
-                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(weekAgo))
-                .orderBy('createdAt', 'desc')
-                .limit(10)
-                .get(),
-        ]);
-
-        // Build needs attention items
-        const needsAttention: Array<{
-            type: string;
-            priority: 'high' | 'medium' | 'low';
-            message: string;
-            actionUrl?: string;
-        }> = [];
-
-        // Check for missed medications today
-        if (todayMedStatus.missed > 0) {
-            needsAttention.push({
-                type: 'missed_med',
-                priority: 'high',
-                message: `${todayMedStatus.missed} missed medication${todayMedStatus.missed > 1 ? 's' : ''} today`,
-                actionUrl: `/care/${patientId}/medications`,
-            });
-        }
-
-        // Check for overdue actions
-        const overdueActions = recentActionsSnapshot.docs.filter((doc) => {
-            const data = doc.data();
-            const dueDate = parseActionDueAt(data.dueAt);
-            return dueDate && dueDate < now;
-        });
-        if (overdueActions.length > 0) {
-            needsAttention.push({
-                type: 'overdue_action',
-                priority: 'medium',
-                message: `${overdueActions.length} overdue action item${overdueActions.length > 1 ? 's' : ''}`,
-                actionUrl: `/care/${patientId}/actions`,
-            });
-        }
-
-        // Check for health alerts
-        const healthAlerts = healthLogsSnapshot.docs.filter((doc) => {
-            const data = doc.data();
-            return data.alertLevel === 'warning' || data.alertLevel === 'emergency';
-        });
-        if (healthAlerts.length > 0) {
-            const latest = healthAlerts[0].data();
-            needsAttention.push({
-                type: 'health_alert',
-                priority: latest.alertLevel === 'emergency' ? 'high' : 'medium',
-                message: `Health reading flagged: ${formatHealthValue(latest.type, latest.value)}`,
-                actionUrl: `/care/${patientId}/health`,
-            });
-        }
-
-        // Check for no recent logs
-        if (healthLogsSnapshot.empty) {
-            needsAttention.push({
-                type: 'no_recent_logs',
-                priority: 'low',
-                message: 'No health readings in the past week',
-                actionUrl: `/care/${patientId}/health`,
-            });
-        }
-
-        // Sort by priority
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        needsAttention.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-
-        // Build health snapshot
-        const healthSnapshot: {
-            latestBp?: { value: string; alertLevel: string; date: string };
-            latestGlucose?: { value: string; alertLevel: string; date: string };
-            latestWeight?: { value: string; change?: string; date: string };
-        } = {};
-
-        healthLogsSnapshot.docs.forEach((doc) => {
-            const data = doc.data();
-            const date = data.createdAt?.toDate?.()?.toISOString() || '';
-
-            if (data.type === 'bp' && !healthSnapshot.latestBp) {
-                healthSnapshot.latestBp = {
-                    value: `${data.value?.systolic}/${data.value?.diastolic}`,
-                    alertLevel: data.alertLevel || 'normal',
-                    date,
-                };
-            }
-            if (data.type === 'glucose' && !healthSnapshot.latestGlucose) {
-                healthSnapshot.latestGlucose = {
-                    value: `${data.value?.reading} mg/dL`,
-                    alertLevel: data.alertLevel || 'normal',
-                    date,
-                };
-            }
-            if (data.type === 'weight' && !healthSnapshot.latestWeight) {
-                healthSnapshot.latestWeight = {
-                    value: `${data.value?.weight} ${data.value?.unit || 'lbs'}`,
-                    date,
-                };
-            }
-        });
-
-        // Build recent activity
-        const recentActivity: Array<{
-            type: string;
-            description: string;
-            timestamp: string;
-        }> = [];
-
-        // Add medication logs to activity
-        recentMedLogsSnapshot.docs.slice(0, 5).forEach((doc) => {
-            const data = doc.data();
-            recentActivity.push({
-                type: data.action === 'taken' ? 'med_taken' : 'med_skipped',
-                description: `${data.action === 'taken' ? 'Took' : 'Skipped'} ${data.medicationName || 'medication'}`,
-                timestamp: data.createdAt?.toDate?.()?.toISOString() || '',
-            });
-        });
-
-        // Add health logs to activity
-        healthLogsSnapshot.docs.slice(0, 3).forEach((doc) => {
-            const data = doc.data();
-            recentActivity.push({
-                type: 'health_log',
-                description: `Logged ${getHealthLogTypeLabel(data.type)}: ${formatHealthValue(data.type, data.value)}`,
-                timestamp: data.createdAt?.toDate?.()?.toISOString() || '',
-            });
-        });
-
-        // Add recent visits to activity
-        recentVisitsSnapshot.docs.slice(0, 2).forEach((doc) => {
-            const data = doc.data();
-            if (data.processingStatus === 'completed' || data.status === 'completed') {
-                recentActivity.push({
-                    type: 'visit',
-                    description: `Visit with ${data.provider || 'provider'}`,
-                    timestamp: data.visitDate?.toDate?.()?.toISOString() || data.createdAt?.toDate?.()?.toISOString() || '',
-                });
-            }
-        });
-
-        // Sort by timestamp (newest first)
-        recentActivity.sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-
-        res.json({
-            needsAttention,
-            todaysMeds: todayMedStatus,
-            recentActivity: recentActivity.slice(0, 5),
-            healthSnapshot,
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching quick overview:', error);
-        res.status(500).json({
-            code: 'server_error',
-            message: 'Failed to fetch quick overview',
-        });
-    }
+registerCareQuickOverviewRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('quick-overview', caregiverId, patientId),
+    resolveTimezone: resolveCareTimezone,
+    getDayWindow: getDayWindowForTimezone,
+    getTodaysMedicationStatus,
+    parseActionDueAt,
+    formatHealthValue,
+    getHealthLogTypeLabel,
+    toDateSafe,
 });
 
 /**
@@ -2159,296 +1035,14 @@ function getHealthLogTypeLabel(type: string): string {
 // Aggregated, prioritized alerts with 7-day default window
 // =============================================================================
 
-type CareAlert = {
-    id: string;
-    type: 'missed_dose' | 'overdue_action' | 'health_warning' | 'no_data' | 'med_change';
-    severity: 'emergency' | 'high' | 'medium' | 'low';
-    title: string;
-    description: string;
-    targetUrl?: string;
-    timestamp: string;
-    metadata?: Record<string, unknown>;
-};
-
-careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const days = Math.min(Math.max(parseInt(req.query.days as string) || 7, 1), 30);
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        const now = new Date();
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - days);
-
-        const alerts: CareAlert[] = [];
-
-        // 1. Check for missed doses today
-        const todayMedStatus = await getTodaysMedicationStatus(patientId);
-        if (todayMedStatus.missed > 0) {
-            alerts.push({
-                id: `missed-dose-${now.toISOString().split('T')[0]}`,
-                type: 'missed_dose',
-                severity: todayMedStatus.missed >= 3 ? 'high' : 'medium',
-                title: 'Missed Medications',
-                description: `${todayMedStatus.missed} medication dose${todayMedStatus.missed > 1 ? 's' : ''} missed today`,
-                targetUrl: `/care/${patientId}/medications`,
-                timestamp: now.toISOString(),
-                metadata: { missedCount: todayMedStatus.missed },
-            });
-        }
-
-        // 1b. Check 7-day adherence rate for declining compliance
-        const adherenceWindowStart = new Date(now);
-        adherenceWindowStart.setDate(adherenceWindowStart.getDate() - 7);
-
-        const recentLogsSnapshot = await getDb()
-            .collection('medicationLogs')
-            .where('userId', '==', patientId)
-            .where('loggedAt', '>=', admin.firestore.Timestamp.fromDate(adherenceWindowStart))
-            .get();
-
-        const recentLogs = recentLogsSnapshot.docs.map(doc => doc.data());
-        const takenCount = recentLogs.filter(l => l.action === 'taken').length;
-        // skippedCount available for future use in adherence calculations
-        void recentLogs.filter(l => l.action === 'skipped').length;
-
-        // Get expected doses from reminders
-        const remindersSnapshot = await getDb()
-            .collection('medicationReminders')
-            .where('userId', '==', patientId)
-            .where('enabled', '==', true)
-            .get();
-
-        let expectedDoses = 0;
-        remindersSnapshot.docs.forEach(doc => {
-            const times = doc.data().times || [];
-            expectedDoses += times.length * 7; // 7 days
-        });
-
-        if (expectedDoses > 0) {
-            const adherenceRate = Math.round((takenCount / expectedDoses) * 100);
-            if (adherenceRate < 50) {
-                alerts.push({
-                    id: `low-adherence-7d`,
-                    type: 'health_warning',
-                    severity: 'high',
-                    title: 'Critical: Low Medication Adherence',
-                    description: `Only ${adherenceRate}% adherence over the past 7 days`,
-                    targetUrl: `/care/${patientId}/adherence`,
-                    timestamp: now.toISOString(),
-                    metadata: { adherenceRate, takenCount, expectedDoses },
-                });
-            } else if (adherenceRate < 70) {
-                alerts.push({
-                    id: `declining-adherence-7d`,
-                    type: 'health_warning',
-                    severity: 'medium',
-                    title: 'Declining Medication Adherence',
-                    description: `${adherenceRate}% adherence over the past 7 days`,
-                    targetUrl: `/care/${patientId}/adherence`,
-                    timestamp: now.toISOString(),
-                    metadata: { adherenceRate, takenCount, expectedDoses },
-                });
-            }
-        }
-
-        // 2. Check for overdue actions
-        const actionsSnapshot = await getDb()
-            .collection('actions')
-            .where('userId', '==', patientId)
-            .where('completed', '==', false)
-            .get();
-
-        const overdueActions = actionsSnapshot.docs.filter((doc) => {
-            const data = doc.data();
-            if (!data.dueAt) return false;
-            const dueDate = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? new Date(data.dueAt);
-            return dueDate < now;
-        });
-
-        overdueActions.forEach((doc) => {
-            const data = doc.data();
-            const dueDate = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? new Date(data.dueAt);
-            const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-
-            alerts.push({
-                id: `overdue-action-${doc.id}`,
-                type: 'overdue_action',
-                severity: daysOverdue >= 7 ? 'high' : daysOverdue >= 3 ? 'medium' : 'low',
-                title: 'Overdue Action Item',
-                description: `"${(data.description || 'Task').substring(0, 50)}" is ${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`,
-                targetUrl: `/care/${patientId}/actions`,
-                timestamp: dueDate.toISOString(),
-                metadata: { actionId: doc.id, daysOverdue },
-            });
-        });
-
-        // 3. Check for health warnings in the period
-        const healthLogsSnapshot = await getDb()
-            .collection('healthLogs')
-            .where('userId', '==', patientId)
-            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-            .orderBy('createdAt', 'desc')
-            .limit(50)
-            .get();
-
-        healthLogsSnapshot.docs.forEach((doc) => {
-            const data = doc.data();
-            if (data.alertLevel === 'emergency' || data.alertLevel === 'warning') {
-                const createdAt = data.createdAt?.toDate?.()?.toISOString() || now.toISOString();
-                alerts.push({
-                    id: `health-warning-${doc.id}`,
-                    type: 'health_warning',
-                    severity: data.alertLevel === 'emergency' ? 'emergency' : 'high',
-                    title: `${data.alertLevel === 'emergency' ? 'Critical' : 'Concerning'} Health Reading`,
-                    description: `${getHealthLogTypeLabel(data.type)}: ${formatHealthValue(data.type, data.value)}`,
-                    targetUrl: `/care/${patientId}/health`,
-                    timestamp: createdAt,
-                    metadata: { logId: doc.id, type: data.type, value: data.value },
-                });
-            }
-        });
-
-        // 4. Check for data staleness (no vitals in 10+ days)
-        const lastHealthLog = healthLogsSnapshot.docs[0];
-        if (!lastHealthLog) {
-            alerts.push({
-                id: `no-data-vitals`,
-                type: 'no_data',
-                severity: 'low',
-                title: 'No Recent Health Data',
-                description: `No health readings recorded in the last ${days} days`,
-                targetUrl: `/care/${patientId}/health`,
-                timestamp: now.toISOString(),
-            });
-        } else {
-            const lastDate = lastHealthLog.data().createdAt?.toDate?.() || now;
-            const daysSinceVitals = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-            if (daysSinceVitals >= 10) {
-                alerts.push({
-                    id: `stale-vitals`,
-                    type: 'no_data',
-                    severity: daysSinceVitals >= 14 ? 'medium' : 'low',
-                    title: 'Health Data Getting Stale',
-                    description: `No health readings in ${daysSinceVitals} days`,
-                    targetUrl: `/care/${patientId}/health`,
-                    timestamp: lastDate.toISOString(),
-                    metadata: { daysSinceVitals },
-                });
-            }
-        }
-
-        // 4b. Check if patient hasn't opened app recently
-        try {
-            const pushTokensSnapshot = await getDb()
-                .collection('users')
-                .doc(patientId)
-                .collection('pushTokens')
-                .orderBy('lastActive', 'desc')
-                .limit(1)
-                .get();
-
-            if (!pushTokensSnapshot.empty) {
-                const tokenData = pushTokensSnapshot.docs[0].data();
-                const lastActive = tokenData.lastActive?.toDate?.();
-                if (lastActive) {
-                    const daysSinceActive = Math.floor((now.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24));
-                    if (daysSinceActive >= 7) {
-                        alerts.push({
-                            id: `patient-inactive`,
-                            type: 'no_data',
-                            severity: daysSinceActive >= 14 ? 'high' : 'medium',
-                            title: 'Patient App Inactive',
-                            description: `Patient hasn't opened the app in ${daysSinceActive} days`,
-                            targetUrl: `/care/${patientId}`,
-                            timestamp: lastActive.toISOString(),
-                            metadata: { daysSinceActive },
-                        });
-                    }
-                }
-            }
-        } catch (e) {
-            // Push token collection may not exist
-            functions.logger.debug(`[care] Could not check lastActive for alerts:`, e);
-        }
-
-        // 5. Check for recent medication changes (started/stopped in last 7 days)
-        const medsSnapshot = await getDb()
-            .collection('medications')
-            .where('userId', '==', patientId)
-            .get();
-
-        const medChangeWindowStart = new Date(now);
-        medChangeWindowStart.setDate(medChangeWindowStart.getDate() - 7);
-
-        medsSnapshot.docs.forEach((doc) => {
-            const data = doc.data();
-            const startedAt = data.startedAt?.toDate?.();
-            const stoppedAt = data.stoppedAt?.toDate?.();
-
-            if (startedAt && startedAt >= medChangeWindowStart) {
-                alerts.push({
-                    id: `med-started-${doc.id}`,
-                    type: 'med_change',
-                    severity: 'low',
-                    title: 'New Medication Started',
-                    description: `${data.name} was started${data.dose ? ` (${data.dose})` : ''}`,
-                    targetUrl: `/care/${patientId}/medications`,
-                    timestamp: startedAt.toISOString(),
-                    metadata: { medicationId: doc.id, changeType: 'started' },
-                });
-            }
-
-            if (stoppedAt && stoppedAt >= medChangeWindowStart) {
-                alerts.push({
-                    id: `med-stopped-${doc.id}`,
-                    type: 'med_change',
-                    severity: 'medium',
-                    title: 'Medication Discontinued',
-                    description: `${data.name} was stopped`,
-                    targetUrl: `/care/${patientId}/medications`,
-                    timestamp: stoppedAt.toISOString(),
-                    metadata: { medicationId: doc.id, changeType: 'stopped' },
-                });
-            }
-        });
-
-        // Sort by severity then timestamp
-        const severityOrder: Record<string, number> = { emergency: 0, high: 1, medium: 2, low: 3 };
-        alerts.sort((a, b) => {
-            const sevDiff = severityOrder[a.severity] - severityOrder[b.severity];
-            if (sevDiff !== 0) return sevDiff;
-            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        });
-
-        // Build summary
-        const summary = {
-            emergency: alerts.filter((a) => a.severity === 'emergency').length,
-            high: alerts.filter((a) => a.severity === 'high').length,
-            medium: alerts.filter((a) => a.severity === 'medium').length,
-            low: alerts.filter((a) => a.severity === 'low').length,
-            total: alerts.length,
-        };
-
-        res.json({
-            alerts,
-            summary,
-            period: {
-                days,
-                from: startDate.toISOString(),
-                to: now.toISOString(),
-            },
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching alerts:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to fetch alerts' });
-    }
+registerCareAlertsRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('alerts', caregiverId, patientId),
+    resolveTimezone: resolveCareTimezone,
+    getTodaysMedicationStatus,
+    formatHealthValue,
+    getHealthLogTypeLabel,
 });
 
 // =============================================================================
@@ -2456,343 +1050,22 @@ careRouter.get('/:patientId/alerts', requireAuth, async (req: AuthRequest, res) 
 // 30-day trends for vitals, adherence, actions + data coverage metrics
 // =============================================================================
 
-careRouter.get('/:patientId/trends', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 7), 90);
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        const now = new Date();
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - days);
-        const midDate = new Date(now);
-        midDate.setDate(midDate.getDate() - Math.floor(days / 2));
-
-        // Fetch health logs
-        const healthLogsSnapshot = await getDb()
-            .collection('healthLogs')
-            .where('userId', '==', patientId)
-            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-            .orderBy('createdAt', 'desc')
-            .get();
-
-        const healthLogs = healthLogsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                type: data.type,
-                value: data.value,
-                alertLevel: data.alertLevel,
-                createdAt: data.createdAt?.toDate?.() || now,
-            };
-        });
-
-        // Split into recent and older halves
-        const recentLogs = healthLogs.filter((l) => l.createdAt >= midDate);
-        const olderLogs = healthLogs.filter((l) => l.createdAt < midDate);
-
-        // Calculate BP trends
-        const recentBpSystolic = recentLogs.filter((l) => l.type === 'bp').map((l) => l.value?.systolic).filter(Boolean);
-        const olderBpSystolic = olderLogs.filter((l) => l.type === 'bp').map((l) => l.value?.systolic).filter(Boolean);
-        const recentBpDiastolic = recentLogs.filter((l) => l.type === 'bp').map((l) => l.value?.diastolic).filter(Boolean);
-        const olderBpDiastolic = olderLogs.filter((l) => l.type === 'bp').map((l) => l.value?.diastolic).filter(Boolean);
-
-        const latestBp = healthLogs.find((l) => l.type === 'bp');
-
-        const bpTrend = {
-            systolic: calculateVitalTrend(recentBpSystolic, olderBpSystolic),
-            diastolic: calculateVitalTrend(recentBpDiastolic, olderBpDiastolic),
-            latestReading: latestBp ? `${latestBp.value?.systolic}/${latestBp.value?.diastolic}` : null,
-            latestDate: latestBp?.createdAt.toISOString() || null,
-        };
-
-        // Calculate glucose trends
-        const recentGlucose = recentLogs.filter((l) => l.type === 'glucose').map((l) => l.value?.reading).filter(Boolean);
-        const olderGlucose = olderLogs.filter((l) => l.type === 'glucose').map((l) => l.value?.reading).filter(Boolean);
-        const latestGlucose = healthLogs.find((l) => l.type === 'glucose');
-
-        const glucoseTrend = {
-            ...calculateVitalTrend(recentGlucose, olderGlucose),
-            latestReading: latestGlucose ? `${latestGlucose.value?.reading} mg/dL` : null,
-            latestDate: latestGlucose?.createdAt.toISOString() || null,
-        };
-
-        // Calculate weight trends
-        const recentWeight = recentLogs.filter((l) => l.type === 'weight').map((l) => l.value?.weight).filter(Boolean);
-        const olderWeight = olderLogs.filter((l) => l.type === 'weight').map((l) => l.value?.weight).filter(Boolean);
-        const latestWeight = healthLogs.find((l) => l.type === 'weight');
-
-        const weightTrend = {
-            ...calculateVitalTrend(recentWeight, olderWeight),
-            latestReading: latestWeight ? `${latestWeight.value?.weight} ${latestWeight.value?.unit || 'lbs'}` : null,
-            latestDate: latestWeight?.createdAt.toISOString() || null,
-        };
-
-        // Fetch medication adherence data
-        let adherenceData = {
-            current: 0,
-            previous: 0,
-            change: 0,
-            direction: 'stable' as 'up' | 'down' | 'stable',
-            streak: 0,
-        };
-
-        try {
-            const medLogsSnapshot = await getDb()
-                .collection('medicationLogs')
-                .where('userId', '==', patientId)
-                .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-                .orderBy('createdAt', 'desc')
-                .get();
-
-            const medLogs = medLogsSnapshot.docs.map((doc) => ({
-                action: doc.data().action,
-                createdAt: doc.data().createdAt?.toDate?.() || now,
-            }));
-
-            const recentMedLogs = medLogs.filter((l) => l.createdAt >= midDate);
-            const olderMedLogs = medLogs.filter((l) => l.createdAt < midDate);
-
-            const recentTaken = recentMedLogs.filter((l) => l.action === 'taken').length;
-            const recentTotal = recentMedLogs.length;
-            const olderTaken = olderMedLogs.filter((l) => l.action === 'taken').length;
-            const olderTotal = olderMedLogs.length;
-
-            const currentRate = recentTotal > 0 ? Math.round((recentTaken / recentTotal) * 100) : 0;
-            const previousRate = olderTotal > 0 ? Math.round((olderTaken / olderTotal) * 100) : 0;
-
-            // Calculate streak
-            let streak = 0;
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            for (let i = 0; i < days; i++) {
-                const checkDate = new Date(today);
-                checkDate.setDate(checkDate.getDate() - i);
-                const dateStr = checkDate.toISOString().split('T')[0];
-                const dayLogs = medLogs.filter((l) => l.createdAt.toISOString().split('T')[0] === dateStr);
-                const dayTaken = dayLogs.filter((l) => l.action === 'taken').length;
-                if (dayTaken > 0 && dayLogs.length > 0 && dayTaken === dayLogs.length) {
-                    streak++;
-                } else if (dayLogs.length > 0) {
-                    break;
-                }
-            }
-
-            adherenceData = {
-                current: currentRate,
-                previous: previousRate,
-                change: currentRate - previousRate,
-                direction: currentRate > previousRate ? 'up' : currentRate < previousRate ? 'down' : 'stable',
-                streak,
-            };
-        } catch (err) {
-            functions.logger.warn('[care] Error fetching adherence data:', err);
-        }
-
-        // Fetch actions data
-        const actionsSnapshot = await getDb()
-            .collection('actions')
-            .where('userId', '==', patientId)
-            .get();
-
-        const actions = actionsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                completed: data.completed,
-                completedAt: data.completedAt?.toDate?.(),
-                dueAt: data.dueAt ? (typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.()) : null,
-            };
-        });
-
-        const completedInPeriod = actions.filter((a) => a.completed && a.completedAt && a.completedAt >= startDate).length;
-        const pending = actions.filter((a) => !a.completed).length;
-        const overdue = actions.filter((a) => !a.completed && a.dueAt && a.dueAt < now).length;
-        const totalActions = actions.length;
-        const completionRate = totalActions > 0 ? Math.round((actions.filter((a) => a.completed).length / totalActions) * 100) : 0;
-
-        const actionsData = {
-            completed: completedInPeriod,
-            pending,
-            overdue,
-            completionRate,
-        };
-
-        // Calculate coverage metrics
-        const uniqueVitalDays = new Set(healthLogs.map((l) => l.createdAt.toISOString().split('T')[0])).size;
-        const expectedVitalDays = days;
-        const vitalsCoveragePercent = Math.round((uniqueVitalDays / expectedVitalDays) * 100);
-
-        // Get last visit date
-        const lastVisitSnapshot = await getDb()
-            .collection('visits')
-            .where('userId', '==', patientId)
-            .orderBy('createdAt', 'desc')
-            .limit(1)
-            .get();
-
-        const lastVisit = lastVisitSnapshot.docs[0]?.data();
-        const lastVisitDate = lastVisit?.visitDate?.toDate?.() || lastVisit?.createdAt?.toDate?.() || null;
-
-        const lastVitalDate = healthLogs[0]?.createdAt || null;
-        const daysWithoutVitals = lastVitalDate ? Math.floor((now.getTime() - lastVitalDate.getTime()) / (1000 * 60 * 60 * 24)) : days;
-        const daysWithoutVisit = lastVisitDate ? Math.floor((now.getTime() - lastVisitDate.getTime()) / (1000 * 60 * 60 * 24)) : 999;
-
-        const coverage = {
-            vitalsLogged: uniqueVitalDays,
-            vitalsExpected: expectedVitalDays,
-            vitalsCoveragePercent,
-            lastVitalDate: lastVitalDate?.toISOString() || null,
-            lastVisitDate: lastVisitDate?.toISOString() || null,
-            daysWithoutVitals,
-            daysWithoutVisit,
-            isStale: daysWithoutVitals >= 10,
-        };
-
-        res.json({
-            vitals: {
-                bp: bpTrend,
-                glucose: glucoseTrend,
-                weight: weightTrend,
-            },
-            adherence: adherenceData,
-            actions: actionsData,
-            coverage,
-            period: {
-                days,
-                from: startDate.toISOString(),
-                to: now.toISOString(),
-            },
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching trends:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to fetch trends' });
-    }
+registerCareTrendsRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('trends', caregiverId, patientId),
+    toDateSafe,
 });
-
-/**
- * Calculate vital trend from recent and older values
- */
-function calculateVitalTrend(recent: number[], older: number[]): {
-    current: number | null;
-    previous: number | null;
-    change: number | null;
-    changePercent: number | null;
-    direction: 'up' | 'down' | 'stable' | null;
-    alertLevel: string | null;
-} {
-    const currentAvg = recent.length > 0 ? Math.round(recent.reduce((a, b) => a + b, 0) / recent.length) : null;
-    const previousAvg = older.length > 0 ? Math.round(older.reduce((a, b) => a + b, 0) / older.length) : null;
-
-    if (currentAvg === null) {
-        return { current: null, previous: previousAvg, change: null, changePercent: null, direction: null, alertLevel: null };
-    }
-
-    const change = previousAvg !== null ? currentAvg - previousAvg : null;
-    const changePercent = previousAvg !== null && previousAvg > 0 ? Math.round((change! / previousAvg) * 100) : null;
-
-    let direction: 'up' | 'down' | 'stable' | null = null;
-    if (changePercent !== null) {
-        if (changePercent > 5) direction = 'up';
-        else if (changePercent < -5) direction = 'down';
-        else direction = 'stable';
-    }
-
-    return { current: currentAvg, previous: previousAvg, change, changePercent, direction, alertLevel: null };
-}
 
 // =============================================================================
 // RECENT MEDICATION CHANGES API
 // Started/stopped/modified medications in the last N days
 // =============================================================================
 
-careRouter.get('/:patientId/med-changes', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const days = Math.min(Math.max(parseInt(req.query.days as string) || 30, 1), 90);
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        const now = new Date();
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - days);
-
-        const medsSnapshot = await getDb()
-            .collection('medications')
-            .where('userId', '==', patientId)
-            .get();
-
-        const changes: Array<{
-            id: string;
-            name: string;
-            changeType: 'started' | 'stopped' | 'modified';
-            changeDate: string;
-            dose?: string | null;
-            previousDose?: string | null;
-        }> = [];
-
-        medsSnapshot.docs.forEach((doc) => {
-            const data = doc.data();
-            const startedAt = data.startedAt?.toDate?.();
-            const stoppedAt = data.stoppedAt?.toDate?.();
-            const changedAt = data.changedAt?.toDate?.();
-
-            if (startedAt && startedAt >= startDate) {
-                changes.push({
-                    id: doc.id,
-                    name: data.name || 'Unknown',
-                    changeType: 'started',
-                    changeDate: startedAt.toISOString(),
-                    dose: data.dose || null,
-                });
-            }
-
-            if (stoppedAt && stoppedAt >= startDate) {
-                changes.push({
-                    id: doc.id,
-                    name: data.name || 'Unknown',
-                    changeType: 'stopped',
-                    changeDate: stoppedAt.toISOString(),
-                    dose: data.dose || null,
-                });
-            }
-
-            if (changedAt && changedAt >= startDate && !startedAt?.getTime?.() && !stoppedAt?.getTime?.()) {
-                changes.push({
-                    id: doc.id,
-                    name: data.name || 'Unknown',
-                    changeType: 'modified',
-                    changeDate: changedAt.toISOString(),
-                    dose: data.dose || null,
-                    previousDose: data.previousDose || null,
-                });
-            }
-        });
-
-        // Sort by date (most recent first)
-        changes.sort((a, b) => new Date(b.changeDate).getTime() - new Date(a.changeDate).getTime());
-
-        res.json({
-            changes,
-            period: {
-                days,
-                from: startDate.toISOString(),
-                to: now.toISOString(),
-            },
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching med changes:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to fetch medication changes' });
-    }
+registerCareMedicationChangeRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('med-changes', caregiverId, patientId),
 });
 
 // =============================================================================
@@ -2800,76 +1073,10 @@ careRouter.get('/:patientId/med-changes', requireAuth, async (req: AuthRequest, 
 // Pending actions sorted by due date with overdue highlighting
 // =============================================================================
 
-careRouter.get('/:patientId/upcoming-actions', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 5, 1), 20);
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        const now = new Date();
-        const today = new Date(now);
-        today.setHours(0, 0, 0, 0);
-        const endOfWeek = new Date(today);
-        endOfWeek.setDate(endOfWeek.getDate() + 7);
-
-        const actionsSnapshot = await getDb()
-            .collection('actions')
-            .where('userId', '==', patientId)
-            .where('completed', '==', false)
-            .get();
-
-        const actions = actionsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            let dueAt: Date | null = null;
-            if (data.dueAt) {
-                dueAt = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? null;
-            }
-
-            const isOverdue = dueAt ? dueAt < now : false;
-            const daysUntilDue = dueAt ? Math.ceil((dueAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
-
-            return {
-                id: doc.id,
-                description: data.description || data.text || 'Unknown task',
-                dueAt: dueAt?.toISOString() || null,
-                isOverdue,
-                daysUntilDue,
-                visitId: data.visitId || null,
-                source: data.source || 'manual',
-            };
-        });
-
-        // Sort: overdue first (by how overdue), then upcoming (by soonest)
-        actions.sort((a, b) => {
-            if (a.isOverdue && !b.isOverdue) return -1;
-            if (!a.isOverdue && b.isOverdue) return 1;
-            if (a.daysUntilDue === null && b.daysUntilDue !== null) return 1;
-            if (a.daysUntilDue !== null && b.daysUntilDue === null) return -1;
-            return (a.daysUntilDue || 0) - (b.daysUntilDue || 0);
-        });
-
-        // Calculate summary
-        const summary = {
-            overdue: actions.filter((a) => a.isOverdue).length,
-            dueToday: actions.filter((a) => !a.isOverdue && a.daysUntilDue !== null && a.daysUntilDue <= 0).length,
-            dueThisWeek: actions.filter((a) => !a.isOverdue && a.daysUntilDue !== null && a.daysUntilDue > 0 && a.daysUntilDue <= 7).length,
-            dueLater: actions.filter((a) => !a.isOverdue && (a.daysUntilDue === null || a.daysUntilDue > 7)).length,
-        };
-
-        res.json({
-            actions: actions.slice(0, limit),
-            summary,
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching upcoming actions:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to fetch upcoming actions' });
-    }
+registerCareUpcomingActionsRoutes(careRouter, {
+    getDb,
+    createPerfTracker: (caregiverId, patientId) =>
+        createPatientDetailPerfTracker('upcoming-actions', caregiverId, patientId),
 });
 
 // =============================================================================
@@ -2877,217 +1084,10 @@ careRouter.get('/:patientId/upcoming-actions', requireAuth, async (req: AuthRequ
 // CRUD for caregiver-created tasks
 // =============================================================================
 
-// GET /v1/care/:patientId/tasks
-careRouter.get('/:patientId/tasks', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const statusFilter = req.query.status as string | undefined;
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        let query = getDb()
-            .collection('careTasks')
-            .where('patientId', '==', patientId)
-            .where('caregiverId', '==', caregiverId);
-
-        if (statusFilter && ['pending', 'in_progress', 'completed', 'cancelled'].includes(statusFilter)) {
-            query = query.where('status', '==', statusFilter);
-        }
-
-        const snapshot = await query.orderBy('createdAt', 'desc').get();
-
-        const now = new Date();
-        const tasks = snapshot.docs.map((doc) => {
-            const data = doc.data();
-            const dueDate = data.dueDate?.toDate?.();
-            return {
-                id: doc.id,
-                patientId: data.patientId,
-                caregiverId: data.caregiverId,
-                title: data.title,
-                description: data.description || null,
-                dueDate: dueDate?.toISOString() || null,
-                priority: data.priority || 'medium',
-                status: data.status || 'pending',
-                completedAt: data.completedAt?.toDate?.()?.toISOString() || null,
-                createdAt: data.createdAt?.toDate?.()?.toISOString() || now.toISOString(),
-                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || now.toISOString(),
-            };
-        });
-
-        // Calculate summary
-        const summary = {
-            pending: tasks.filter((t) => t.status === 'pending').length,
-            inProgress: tasks.filter((t) => t.status === 'in_progress').length,
-            completed: tasks.filter((t) => t.status === 'completed').length,
-            overdue: tasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled' && t.dueDate && new Date(t.dueDate) < now).length,
-        };
-
-        res.json({ tasks, summary });
-    } catch (error) {
-        functions.logger.error('[care] Error fetching tasks:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to fetch tasks' });
-    }
-});
-
-// POST /v1/care/:patientId/tasks
-careRouter.post('/:patientId/tasks', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const patientId = req.params.patientId;
-        const { title, description, dueDate, priority } = req.body;
-
-        if (!title || typeof title !== 'string' || title.trim().length === 0) {
-            res.status(400).json({ code: 'invalid_request', message: 'Title is required' });
-            return;
-        }
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        const now = admin.firestore.FieldValue.serverTimestamp();
-        const taskData: Record<string, unknown> = {
-            patientId,
-            caregiverId,
-            title: title.trim(),
-            description: description?.trim() || null,
-            dueDate: dueDate ? admin.firestore.Timestamp.fromDate(new Date(dueDate)) : null,
-            priority: ['high', 'medium', 'low'].includes(priority) ? priority : 'medium',
-            status: 'pending',
-            createdAt: now,
-            updatedAt: now,
-        };
-
-        const docRef = await getDb().collection('careTasks').add(taskData);
-        const createdDoc = await docRef.get();
-        const data = createdDoc.data();
-
-        res.status(201).json({
-            id: docRef.id,
-            patientId: data?.patientId,
-            caregiverId: data?.caregiverId,
-            title: data?.title,
-            description: data?.description,
-            dueDate: data?.dueDate?.toDate?.()?.toISOString() || null,
-            priority: data?.priority,
-            status: data?.status,
-            completedAt: null,
-            createdAt: data?.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-            updatedAt: data?.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error creating task:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to create task' });
-    }
-});
-
-// PATCH /v1/care/:patientId/tasks/:taskId
-careRouter.patch('/:patientId/tasks/:taskId', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const { patientId, taskId } = req.params;
-        const { title, description, dueDate, priority, status } = req.body;
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        const taskRef = getDb().collection('careTasks').doc(taskId);
-        const taskDoc = await taskRef.get();
-
-        if (!taskDoc.exists) {
-            res.status(404).json({ code: 'not_found', message: 'Task not found' });
-            return;
-        }
-
-        const taskData = taskDoc.data();
-        if (taskData?.caregiverId !== caregiverId || taskData?.patientId !== patientId) {
-            res.status(403).json({ code: 'forbidden', message: 'Not authorized to modify this task' });
-            return;
-        }
-
-        const updateData: Record<string, unknown> = {
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-
-        if (typeof title === 'string') updateData.title = title.trim();
-        if (typeof description === 'string') updateData.description = description.trim() || null;
-        if (dueDate !== undefined) {
-            updateData.dueDate = dueDate ? admin.firestore.Timestamp.fromDate(new Date(dueDate)) : null;
-        }
-        if (['high', 'medium', 'low'].includes(priority)) updateData.priority = priority;
-        if (['pending', 'in_progress', 'completed', 'cancelled'].includes(status)) {
-            updateData.status = status;
-            if (status === 'completed') {
-                updateData.completedAt = admin.firestore.FieldValue.serverTimestamp();
-            } else {
-                updateData.completedAt = null;
-            }
-        }
-
-        await taskRef.update(updateData);
-        const updatedDoc = await taskRef.get();
-        const data = updatedDoc.data();
-
-        res.json({
-            id: taskId,
-            patientId: data?.patientId,
-            caregiverId: data?.caregiverId,
-            title: data?.title,
-            description: data?.description,
-            dueDate: data?.dueDate?.toDate?.()?.toISOString() || null,
-            priority: data?.priority,
-            status: data?.status,
-            completedAt: data?.completedAt?.toDate?.()?.toISOString() || null,
-            createdAt: data?.createdAt?.toDate?.()?.toISOString() || null,
-            updatedAt: data?.updatedAt?.toDate?.()?.toISOString() || null,
-        });
-    } catch (error) {
-        functions.logger.error('[care] Error updating task:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to update task' });
-    }
-});
-
-// DELETE /v1/care/:patientId/tasks/:taskId
-careRouter.delete('/:patientId/tasks/:taskId', requireAuth, async (req: AuthRequest, res) => {
-    try {
-        const caregiverId = req.user!.uid;
-        const { patientId, taskId } = req.params;
-
-        const hasAccess = await validateCaregiverAccess(caregiverId, patientId);
-        if (!hasAccess) {
-            res.status(403).json({ code: 'forbidden', message: 'Access denied' });
-            return;
-        }
-
-        const taskRef = getDb().collection('careTasks').doc(taskId);
-        const taskDoc = await taskRef.get();
-
-        if (!taskDoc.exists) {
-            res.status(404).json({ code: 'not_found', message: 'Task not found' });
-            return;
-        }
-
-        const taskData = taskDoc.data();
-        if (taskData?.caregiverId !== caregiverId || taskData?.patientId !== patientId) {
-            res.status(403).json({ code: 'forbidden', message: 'Not authorized to delete this task' });
-            return;
-        }
-
-        await taskRef.delete();
-        res.json({ success: true });
-    } catch (error) {
-        functions.logger.error('[care] Error deleting task:', error);
-        res.status(500).json({ code: 'server_error', message: 'Failed to delete task' });
-    }
+registerCareTaskRoutes(careRouter, {
+    getDb,
+    pageSizeDefault: CARE_PAGE_SIZE_DEFAULT,
+    pageSizeMax: CARE_PAGE_SIZE_MAX,
+    taskTitleMaxLength: CARE_TASK_TITLE_MAX_LENGTH,
+    taskDescriptionMaxLength: CARE_TASK_DESCRIPTION_MAX_LENGTH,
 });

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ActionsScreen from '../app/actions';
 
 const mockUseAuth = jest.fn();
-const mockUseActionItems = jest.fn();
+const mockUsePaginatedActionItems = jest.fn();
 const mockToggleAction = jest.fn();
 
 jest.mock('../contexts/AuthContext', () => ({
@@ -12,7 +12,8 @@ jest.mock('../contexts/AuthContext', () => ({
 }));
 
 jest.mock('../lib/api/hooks', () => ({
-  useActionItems: (options: any) => mockUseActionItems(options),
+  usePaginatedActionItems: (params: any, options: any) =>
+    mockUsePaginatedActionItems(params, options),
   queryKeys: { actions: ['actions'] },
 }));
 
@@ -46,7 +47,7 @@ const renderWithClient = (ui: React.ReactElement) => {
 describe('ActionsScreen', () => {
   beforeEach(() => {
     mockUseAuth.mockReset();
-    mockUseActionItems.mockReset();
+    mockUsePaginatedActionItems.mockReset();
     mockToggleAction.mockReset();
     const { __mockRouter } = jest.requireMock('expo-router');
     __mockRouter.replace.mockClear();
@@ -54,10 +55,13 @@ describe('ActionsScreen', () => {
 
   it('redirects to sign-in when unauthenticated', async () => {
     mockUseAuth.mockReturnValue({ isAuthenticated: false, loading: false });
-    mockUseActionItems.mockReturnValue({
-      data: [],
+    mockUsePaginatedActionItems.mockReturnValue({
+      items: [],
       isLoading: false,
       isRefetching: false,
+      isFetchingNextPage: false,
+      hasMore: false,
+      fetchNextPage: jest.fn(),
       error: null,
       refetch: jest.fn(),
     });
@@ -72,8 +76,8 @@ describe('ActionsScreen', () => {
 
   it('toggles action completion', () => {
     mockUseAuth.mockReturnValue({ isAuthenticated: true, loading: false });
-    mockUseActionItems.mockReturnValue({
-      data: [
+    mockUsePaginatedActionItems.mockReturnValue({
+      items: [
         {
           id: 'action-1',
           description: 'Schedule follow-up',
@@ -83,6 +87,9 @@ describe('ActionsScreen', () => {
       ],
       isLoading: false,
       isRefetching: false,
+      isFetchingNextPage: false,
+      hasMore: false,
+      fetchNextPage: jest.fn(),
       error: null,
       refetch: jest.fn(),
     });

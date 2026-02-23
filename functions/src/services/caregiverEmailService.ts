@@ -9,6 +9,14 @@ import * as functions from 'firebase-functions';
 import { Resend } from 'resend';
 import PdfPrinter from 'pdfmake';
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
+import { ShareDomainService } from './domain/shares/ShareDomainService';
+import { UserDomainService } from './domain/users/UserDomainService';
+import { VisitDomainService } from './domain/visits/VisitDomainService';
+import { CaregiverEmailLogRepository } from './repositories/caregiverEmailLogs/CaregiverEmailLogRepository';
+import { FirestoreCaregiverEmailLogRepository } from './repositories/caregiverEmailLogs/FirestoreCaregiverEmailLogRepository';
+import { FirestoreShareRepository } from './repositories/shares/FirestoreShareRepository';
+import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
+import { FirestoreVisitRepository } from './repositories/visits/FirestoreVisitRepository';
 
 const getDb = () => admin.firestore();
 
@@ -200,14 +208,43 @@ interface ShareResult {
   error?: string;
 }
 
+type CaregiverEmailDependencies = {
+  visitService?: Pick<VisitDomainService, 'getById'>;
+  userService?: Pick<UserDomainService, 'getById'>;
+  shareService?: Pick<ShareDomainService, 'listByOwnerId'>;
+  caregiverEmailLogRepository?: Pick<CaregiverEmailLogRepository, 'create'>;
+};
+
+function buildDefaultDependencies(): Required<CaregiverEmailDependencies> {
+  const firestore = getDb();
+  return {
+    visitService: new VisitDomainService(new FirestoreVisitRepository(firestore)),
+    userService: new UserDomainService(new FirestoreUserRepository(firestore)),
+    shareService: new ShareDomainService(new FirestoreShareRepository(firestore)),
+    caregiverEmailLogRepository: new FirestoreCaregiverEmailLogRepository(firestore),
+  };
+}
+
+const toPatientName = (user: Record<string, unknown> | null | undefined, fallback: string): string =>
+  typeof user?.firstName === 'string' && user.firstName.trim()
+    ? `${user.firstName}${typeof user.lastName === 'string' && user.lastName.trim() ? ` ${user.lastName}` : ''}`
+    : fallback;
+
 /**
  * Send a visit summary PDF to a single caregiver
  */
 export async function sendVisitPdfToCaregiver(
   userId: string,
   visitId: string,
-  caregiver: Caregiver
+  caregiver: Caregiver,
+  dependencies: CaregiverEmailDependencies = {},
 ): Promise<ShareResult> {
+  const defaultDependencies = buildDefaultDependencies();
+  const visitService = dependencies.visitService ?? defaultDependencies.visitService;
+  const userService = dependencies.userService ?? defaultDependencies.userService;
+  const caregiverEmailLogRepository =
+    dependencies.caregiverEmailLogRepository ?? defaultDependencies.caregiverEmailLogRepository;
+
   const result: ShareResult = {
     caregiverId: caregiver.id,
     email: caregiver.email,
@@ -222,24 +259,20 @@ export async function sendVisitPdfToCaregiver(
 
   try {
     // Get visit data
-    const visitDoc = await getDb().collection('visits').doc(visitId).get();
-    if (!visitDoc.exists) {
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
       result.error = 'Visit not found';
       return result;
     }
 
-    const visit = visitDoc.data()!;
     if (visit.userId !== userId) {
       result.error = 'Visit does not belong to user';
       return result;
     }
 
     // Get patient info
-    const userDoc = await getDb().collection('users').doc(userId).get();
-    const userData = userDoc.exists ? userDoc.data() : {};
-    const patientName = userData?.firstName
-      ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
-      : 'Your Patient';
+    const userData = await userService.getById(userId);
+    const patientName = toPatientName(userData, 'Your Patient');
 
     // Generate PDF
     const pdfBuffer = await generateVisitPDF({
@@ -264,7 +297,7 @@ export async function sendVisitPdfToCaregiver(
 
     // Generate portal link
     const portalBaseUrl = process.env.WEB_PORTAL_URL || 'https://portal.lumimd.app';
-    const portalLink = `${portalBaseUrl}/shared/${userId}/visits/${visitId}`;
+    const portalLink = `${portalBaseUrl}/care/${userId}/visits/${visitId}`;
 
     // Build email content
     const emailHtml = buildCaregiverEmailHtml({
@@ -295,7 +328,7 @@ export async function sendVisitPdfToCaregiver(
     });
 
     // Log the email
-    await getDb().collection('caregiverEmailLog').add({
+    await caregiverEmailLogRepository.create({
       userId,
       caregiverId: caregiver.id,
       caregiverEmail: caregiver.email,
@@ -318,7 +351,7 @@ export async function sendVisitPdfToCaregiver(
     result.error = error instanceof Error ? error.message : 'Unknown error';
 
     // Log failed attempt
-    await getDb().collection('caregiverEmailLog').add({
+    await caregiverEmailLogRepository.create({
       userId,
       caregiverId: caregiver.id,
       caregiverEmail: caregiver.email,
@@ -346,23 +379,23 @@ export async function sendVisitPdfToCaregiver(
 export async function sendVisitPdfToAllCaregivers(
   userId: string,
   visitId: string,
-  caregiverIds?: string[] // If provided, only send to these caregivers
+  caregiverIds?: string[], // If provided, only send to these caregivers
+  dependencies: CaregiverEmailDependencies = {},
 ): Promise<{
   sent: number;
   failed: number;
   results: ShareResult[];
 }> {
+  const defaultDependencies = buildDefaultDependencies();
+  const shareService = dependencies.shareService ?? defaultDependencies.shareService;
+  const userService = dependencies.userService ?? defaultDependencies.userService;
   const caregivers: Caregiver[] = [];
 
   // Get caregivers from shares collection
-  const sharesSnapshot = await getDb()
-    .collection('shares')
-    .where('ownerId', '==', userId)
-    .where('status', '==', 'accepted')
-    .get();
+  const shares = await shareService.listByOwnerId(userId);
+  const acceptedShares = shares.filter((share) => share.status === 'accepted');
 
-  for (const shareDoc of sharesSnapshot.docs) {
-    const share = shareDoc.data();
+  for (const share of acceptedShares) {
     const email = share.caregiverEmail?.toLowerCase();
     
     if (!email) {
@@ -373,20 +406,18 @@ export async function sendVisitPdfToAllCaregivers(
     let caregiverName = 'Caregiver';
     if (share.caregiverUserId) {
       try {
-        const caregiverUserDoc = await getDb().collection('users').doc(share.caregiverUserId).get();
-        if (caregiverUserDoc.exists) {
-          const caregiverData = caregiverUserDoc.data() || {};
-          caregiverName = caregiverData.firstName 
-            ? `${caregiverData.firstName}${caregiverData.lastName ? ' ' + caregiverData.lastName : ''}`
-            : caregiverData.preferredName || 'Caregiver';
-        }
+        const caregiverData = await userService.getById(share.caregiverUserId);
+        caregiverName =
+          toPatientName(caregiverData, '') ||
+          (typeof caregiverData?.preferredName === 'string' && caregiverData.preferredName.trim()) ||
+          'Caregiver';
       } catch (e) {
         functions.logger.warn('[caregiverEmail] Failed to fetch caregiver user info', { caregiverUserId: share.caregiverUserId });
       }
     }
 
     caregivers.push({
-      id: shareDoc.id,
+      id: share.id,
       name: caregiverName,
       email,
       relationship: share.role || 'viewer',
@@ -397,7 +428,7 @@ export async function sendVisitPdfToAllCaregivers(
 
   functions.logger.info('[caregiverEmail] Found caregivers from shares', {
     userId,
-    sharesCount: sharesSnapshot.size,
+    sharesCount: acceptedShares.length,
   });
 
   // Filter to specific caregivers if provided
@@ -414,7 +445,7 @@ export async function sendVisitPdfToAllCaregivers(
   // Send to each caregiver
   const results: ShareResult[] = [];
   for (const caregiver of activeCaregivers) {
-    const result = await sendVisitPdfToCaregiver(userId, visitId, caregiver);
+    const result = await sendVisitPdfToCaregiver(userId, visitId, caregiver, dependencies);
     results.push(result);
   }
 
@@ -437,14 +468,15 @@ export async function sendVisitPdfToAllCaregivers(
  */
 export async function sendCaregiverInviteEmail(
   userId: string,
-  caregiver: Caregiver
+  caregiver: Caregiver,
+  dependencies: CaregiverEmailDependencies = {},
 ): Promise<boolean> {
+  const defaultDependencies = buildDefaultDependencies();
+  const userService = dependencies.userService ?? defaultDependencies.userService;
+
   try {
-    const userDoc = await getDb().collection('users').doc(userId).get();
-    const userData = userDoc.exists ? userDoc.data() : {};
-    const patientName = userData?.firstName
-      ? `${userData.firstName}${userData.lastName ? ' ' + userData.lastName : ''}`
-      : 'Your patient';
+    const userData = await userService.getById(userId);
+    const patientName = toPatientName(userData, 'Your patient');
 
     const portalBaseUrl = process.env.WEB_PORTAL_URL || 'https://portal.lumimd.app';
     const signupLink = `${portalBaseUrl}/signup?invite=caregiver&from=${encodeURIComponent(patientName)}`;

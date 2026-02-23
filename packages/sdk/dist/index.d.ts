@@ -1,5 +1,5 @@
 import * as _tanstack_react_query from '@tanstack/react-query';
-import { UseQueryOptions, QueryKey } from '@tanstack/react-query';
+import { UseQueryOptions, QueryKey, UseInfiniteQueryOptions, InfiniteData } from '@tanstack/react-query';
 import * as _tanstack_query_core from '@tanstack/query-core';
 import * as firebase_firestore from 'firebase/firestore';
 import { FirestoreError, QueryDocumentSnapshot, DocumentData, Query, DocumentReference } from 'firebase/firestore';
@@ -24,9 +24,15 @@ interface Visit {
     notes?: string | null;
     visitDate?: string | null;
     diagnoses?: string[];
+    diagnosesDetailed?: DiagnosisDetail[];
     medications?: MedicationChanges;
     nextSteps?: string[];
+    followUps?: FollowUpItem[];
     imaging?: string[];
+    testsOrdered?: OrderedTestItem[];
+    medicationReview?: MedicationReviewSummary;
+    extractionVersion?: VisitExtractionVersion;
+    promptMeta?: VisitPromptMeta;
     tags?: string[];
     folders?: string[];
     education?: VisitEducation;
@@ -72,6 +78,55 @@ interface VisitEducation {
         sideEffects?: string;
         whenToCallDoctor?: string;
     }>;
+}
+type VisitExtractionVersion = 'v1_legacy' | 'v2_structured';
+type ExtractionConfidence = 'high' | 'medium' | 'low';
+type OrderedTestCategory = 'imaging' | 'lab' | 'cardiac' | 'pulmonary' | 'gi' | 'procedure' | 'other';
+type FollowUpCategory = 'clinic_follow_up' | 'return_to_clinic' | 'nurse_visit' | 'lab_draw' | 'imaging_appointment' | 'stress_test' | 'cardiac_testing' | 'specialist_referral' | 'medication_review' | 'contact_clinic' | 'procedure' | 'other';
+interface DiagnosisDetail {
+    name: string;
+    status?: 'new' | 'chronic' | 'resolved' | 'suspected' | 'history';
+    confidence?: ExtractionConfidence;
+    evidence?: string;
+}
+interface OrderedTestItem {
+    name: string;
+    category: OrderedTestCategory;
+    status?: 'ordered' | 'recommended' | 'scheduled';
+    timeframe?: string;
+    reason?: string;
+    evidence?: string;
+    confidence?: ExtractionConfidence;
+}
+interface FollowUpItem {
+    type: FollowUpCategory;
+    task: string;
+    timeframe?: string;
+    dueAt?: string;
+    details?: string;
+    evidence?: string;
+    confidence?: ExtractionConfidence;
+}
+interface MedicationReviewSummary {
+    reviewed: boolean;
+    continued?: MedicationEntry[];
+    continuedReviewed?: MedicationEntry[];
+    adherenceConcerns?: string[];
+    reviewConcerns?: string[];
+    sideEffectsDiscussed?: string[];
+    followUpNeeded?: boolean;
+    notes?: string[];
+}
+interface VisitPromptMeta {
+    promptVersion: string;
+    schemaVersion: string;
+    responseFormat: 'json_object';
+    model: string;
+    latencyMs?: number;
+    extractionLatencyMs?: number;
+    summaryLatencyMs?: number;
+    validationWarnings?: string[];
+    fallbackUsed?: boolean;
 }
 
 /**
@@ -143,6 +198,7 @@ interface UserProfile {
     allergies?: string[];
     tags?: string[];
     folders?: string[];
+    autoShareWithCaregivers?: boolean;
     roles?: Array<'patient' | 'caregiver'>;
     primaryRole?: 'patient' | 'caregiver' | null;
     createdAt?: string | null;
@@ -328,6 +384,8 @@ interface NudgeUpdateResponse {
     status: string;
     message: string;
 }
+type ReminderTimingMode = 'local' | 'anchor';
+type ReminderCriticality = 'standard' | 'time_sensitive';
 interface MedicationReminder {
     id: string;
     userId: string;
@@ -336,6 +394,9 @@ interface MedicationReminder {
     medicationDose?: string;
     times: string[];
     enabled: boolean;
+    timingMode?: ReminderTimingMode;
+    anchorTimezone?: string | null;
+    criticality?: ReminderCriticality;
     lastSentAt?: string;
     createdAt: string;
     updatedAt: string;
@@ -343,10 +404,14 @@ interface MedicationReminder {
 interface CreateMedicationReminderRequest {
     medicationId: string;
     times: string[];
+    timingMode?: ReminderTimingMode;
+    anchorTimezone?: string | null;
 }
 interface UpdateMedicationReminderRequest {
     times?: string[];
     enabled?: boolean;
+    timingMode?: ReminderTimingMode;
+    anchorTimezone?: string | null;
 }
 interface MedicationRemindersResponse {
     reminders: MedicationReminder[];
@@ -362,15 +427,27 @@ interface ApiClientConfig {
     getAuthToken: () => Promise<string | null>;
     enableLogging?: boolean;
 }
+interface CursorListParams {
+    limit?: number;
+    cursor?: string;
+}
+interface VisitListParams extends CursorListParams {
+    sort?: 'asc' | 'desc';
+}
+interface CursorPage<T> {
+    items: T[];
+    hasMore: boolean;
+    nextCursor: string | null;
+    count: number;
+    limit: number;
+}
 declare function createApiClient(config: ApiClientConfig): {
     health: () => Promise<{
         status: string;
     }>;
     visits: {
-        list: (params?: {
-            limit?: number;
-            sort?: "asc" | "desc";
-        }) => Promise<Visit[]>;
+        list: (params?: VisitListParams) => Promise<Visit[]>;
+        listPage: (params?: VisitListParams) => Promise<CursorPage<Visit>>;
         get: (id: string) => Promise<Visit>;
         create: (data: Partial<Visit>) => Promise<Visit>;
         update: (id: string, data: Partial<Visit>) => Promise<Visit>;
@@ -378,14 +455,16 @@ declare function createApiClient(config: ApiClientConfig): {
         retry: (id: string) => Promise<Visit>;
     };
     actions: {
-        list: () => Promise<ActionItem[]>;
+        list: (params?: CursorListParams) => Promise<ActionItem[]>;
+        listPage: (params?: CursorListParams) => Promise<CursorPage<ActionItem>>;
         get: (id: string) => Promise<ActionItem>;
         create: (data: Partial<ActionItem>) => Promise<ActionItem>;
         update: (id: string, data: Partial<ActionItem>) => Promise<ActionItem>;
         delete: (id: string) => Promise<void>;
     };
     medications: {
-        list: () => Promise<Medication[]>;
+        list: (params?: CursorListParams) => Promise<Medication[]>;
+        listPage: (params?: CursorListParams) => Promise<CursorPage<Medication>>;
         get: (id: string) => Promise<Medication>;
         create: (data: Partial<Medication>) => Promise<Medication>;
         update: (id: string, data: Partial<Medication>) => Promise<Medication>;
@@ -503,13 +582,26 @@ declare const queryKeys: {
 type ApiQueryOptions<TData> = Omit<UseQueryOptions<TData, Error, TData, QueryKey>, 'queryFn' | 'queryKey'> & {
     queryKey?: QueryKey;
 };
+type ApiInfiniteQueryOptions<TData, TPageParam> = Omit<UseInfiniteQueryOptions<TData, Error, InfiniteData<TData>, QueryKey, TPageParam>, 'queryFn' | 'queryKey' | 'initialPageParam' | 'getNextPageParam'> & {
+    queryKey?: QueryKey;
+};
 declare function createApiHooks(api: ApiClient): {
     useVisits: (options?: ApiQueryOptions<Visit[]>) => _tanstack_react_query.UseQueryResult<Visit[], Error>;
+    useInfiniteVisits: (params?: {
+        limit?: number;
+        sort?: "asc" | "desc";
+    }, options?: ApiInfiniteQueryOptions<CursorPage<Visit>, string | null>) => _tanstack_react_query.UseInfiniteQueryResult<InfiniteData<CursorPage<Visit>, unknown>, Error>;
     useVisit: (id: string, options?: ApiQueryOptions<Visit>) => _tanstack_react_query.UseQueryResult<Visit, Error>;
     useLatestVisit: (options?: ApiQueryOptions<Visit | null>) => _tanstack_react_query.UseQueryResult<Visit | null, Error>;
     useActionItems: (options?: ApiQueryOptions<ActionItem[]>) => _tanstack_react_query.UseQueryResult<ActionItem[], Error>;
+    useInfiniteActionItems: (params?: {
+        limit?: number;
+    }, options?: ApiInfiniteQueryOptions<CursorPage<ActionItem>, string | null>) => _tanstack_react_query.UseInfiniteQueryResult<InfiniteData<CursorPage<ActionItem>, unknown>, Error>;
     usePendingActions: (options?: ApiQueryOptions<ActionItem[]>) => _tanstack_react_query.UseQueryResult<ActionItem[], Error>;
     useMedications: (options?: ApiQueryOptions<Medication[]>) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
+    useInfiniteMedications: (params?: {
+        limit?: number;
+    }, options?: ApiInfiniteQueryOptions<CursorPage<Medication>, string | null>) => _tanstack_react_query.UseInfiniteQueryResult<InfiniteData<CursorPage<Medication>, unknown>, Error>;
     useActiveMedications: (options?: ApiQueryOptions<Medication[]>) => _tanstack_react_query.UseQueryResult<Medication[], Error>;
     useUserProfile: (options?: ApiQueryOptions<UserProfile>) => _tanstack_react_query.UseQueryResult<UserProfile, Error>;
     useNudges: (options?: ApiQueryOptions<Nudge[]>) => _tanstack_react_query.UseQueryResult<Nudge[], Error>;
@@ -559,4 +651,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OxygenSaturationValue, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

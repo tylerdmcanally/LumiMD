@@ -9,6 +9,15 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { findMedicationClass } from '../data/medicationClasses';
+import { HealthLogDomainService } from './domain/healthLogs/HealthLogDomainService';
+import { MedicationDomainService } from './domain/medications/MedicationDomainService';
+import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
+import { UserDomainService } from './domain/users/UserDomainService';
+import { FirestoreHealthLogRepository } from './repositories/healthLogs/FirestoreHealthLogRepository';
+import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
+import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
+import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
+import { resolveTimezoneOrDefault } from '../utils/medicationReminderTiming';
 
 // =============================================================================
 // Configuration
@@ -20,20 +29,36 @@ const TARGET_LOCAL_HOUR = 9; // 9 AM local
 const TARGET_LOCAL_MINUTE = 0;
 const WINDOW_MINUTES = 30; // Allow for scheduler drift
 
-const getUserTimezone = async (
+type ConditionReminderDependencies = {
+    medicationService?: Pick<MedicationDomainService, 'listActive'>;
+    healthLogService?: Pick<HealthLogDomainService, 'listForUser'>;
+    nudgeService?: Pick<NudgeDomainService, 'createRecord' | 'listByUserAndStatuses'>;
+    userService?: Pick<UserDomainService, 'getById'>;
+    isWithinReminderWindow?: (timezone: string) => boolean;
+};
+
+function buildDefaultDependencies(
     db: admin.firestore.Firestore,
+): Required<Omit<ConditionReminderDependencies, 'isWithinReminderWindow'>> {
+    return {
+        medicationService: new MedicationDomainService(new FirestoreMedicationRepository(db)),
+        healthLogService: new HealthLogDomainService(new FirestoreHealthLogRepository(db)),
+        nudgeService: new NudgeDomainService(new FirestoreNudgeRepository(db)),
+        userService: new UserDomainService(new FirestoreUserRepository(db)),
+    };
+}
+
+const getUserTimezone = async (
+    userService: Pick<UserDomainService, 'getById'>,
     userId: string,
 ): Promise<string> => {
     try {
-        const userDoc = await db.collection('users').doc(userId).get();
-        const timezone = userDoc.data()?.timezone;
-        if (timezone && typeof timezone === 'string') {
-            return timezone;
-        }
+        const user = await userService.getById(userId);
+        return resolveTimezoneOrDefault(user?.timezone, DEFAULT_TIMEZONE);
     } catch (error) {
         functions.logger.warn(`[ConditionReminder] Could not fetch timezone for user ${userId}:`, error);
     }
-    return DEFAULT_TIMEZONE;
+    return resolveTimezoneOrDefault(null, DEFAULT_TIMEZONE);
 };
 
 const getCurrentTimeInTimezone = (timezone: string): { hour: number; minute: number } => {
@@ -85,8 +110,16 @@ interface ProcessingResult {
 /**
  * Process all users and create condition reminders where needed.
  */
-export async function processConditionReminders(): Promise<ProcessingResult> {
-    const db = admin.firestore();
+export async function processConditionReminders(
+    dependencies: ConditionReminderDependencies = {},
+): Promise<ProcessingResult> {
+    const defaultDependencies = buildDefaultDependencies(admin.firestore());
+    const medicationService = dependencies.medicationService ?? defaultDependencies.medicationService;
+    const healthLogService = dependencies.healthLogService ?? defaultDependencies.healthLogService;
+    const nudgeService = dependencies.nudgeService ?? defaultDependencies.nudgeService;
+    const userService = dependencies.userService ?? defaultDependencies.userService;
+    const withinReminderWindow = dependencies.isWithinReminderWindow ?? isWithinLocalReminderWindow;
+
     const result: ProcessingResult = {
         usersChecked: 0,
         nudgesCreated: 0,
@@ -96,7 +129,11 @@ export async function processConditionReminders(): Promise<ProcessingResult> {
 
     try {
         // Get all users with active medications
-        const usersWithMeds = await findUsersWithTrackableMeds(db);
+        const usersWithMeds = await findUsersWithTrackableMeds({
+            medicationService,
+            healthLogService,
+            nudgeService,
+        });
         result.usersChecked = usersWithMeds.length;
 
         functions.logger.info(`[ConditionReminder] Checking ${usersWithMeds.length} users with trackable medications`);
@@ -106,11 +143,11 @@ export async function processConditionReminders(): Promise<ProcessingResult> {
         for (const userData of usersWithMeds) {
             let userTimezone = timezoneCache.get(userData.userId);
             if (!userTimezone) {
-                userTimezone = await getUserTimezone(db, userData.userId);
+                userTimezone = await getUserTimezone(userService, userData.userId);
                 timezoneCache.set(userData.userId, userTimezone);
             }
 
-            if (!isWithinLocalReminderWindow(userTimezone)) {
+            if (!withinReminderWindow(userTimezone)) {
                 continue;
             }
 
@@ -127,7 +164,7 @@ export async function processConditionReminders(): Promise<ProcessingResult> {
             }
 
             // Create a reminder nudge
-            await createConditionReminderNudge(db, userData);
+            await createConditionReminderNudge(nudgeService, userData);
             result.nudgesCreated++;
         }
 
@@ -146,35 +183,42 @@ export async function processConditionReminders(): Promise<ProcessingResult> {
 /**
  * Find all users with active medications that have trackable conditions.
  */
-async function findUsersWithTrackableMeds(db: admin.firestore.Firestore): Promise<UserConditionData[]> {
+async function findUsersWithTrackableMeds(dependencies: {
+    medicationService: Pick<MedicationDomainService, 'listActive'>;
+    healthLogService: Pick<HealthLogDomainService, 'listForUser'>;
+    nudgeService: Pick<NudgeDomainService, 'listByUserAndStatuses'>;
+}): Promise<UserConditionData[]> {
     // Get all active medications
-    const medsSnapshot = await db.collection('medications')
-        .where('active', '==', true)
-        .get();
+    const activeMeds = await dependencies.medicationService.listActive();
 
     // Group by user and find trackable conditions
     const userConditions = new Map<string, UserConditionData>();
 
-    for (const doc of medsSnapshot.docs) {
-        const med = doc.data();
-        const medClass = findMedicationClass(med.name);
+    for (const med of activeMeds) {
+        const userId = typeof med.userId === 'string' ? med.userId : null;
+        const medicationName = typeof med.name === 'string' ? med.name : null;
+        if (!userId || !medicationName) {
+            continue;
+        }
+
+        const medClass = findMedicationClass(medicationName);
 
         if (!medClass || !medClass.trackingType) continue;
 
-        const key = `${med.userId}_${medClass.trackingType}`;
+        const key = `${userId}_${medClass.trackingType}`;
 
         if (!userConditions.has(key)) {
             userConditions.set(key, {
-                userId: med.userId,
+                userId,
                 trackingType: medClass.trackingType as 'bp' | 'glucose',
                 conditionName: medClass.name,
-                medicationNames: [med.name],
+                medicationNames: [medicationName],
                 lastLogDate: null,
                 daysSinceLastLog: null,
                 hasPendingNudge: false,
             });
         } else {
-            userConditions.get(key)!.medicationNames.push(med.name);
+            userConditions.get(key)!.medicationNames.push(medicationName);
         }
     }
 
@@ -183,33 +227,29 @@ async function findUsersWithTrackableMeds(db: admin.firestore.Firestore): Promis
 
     for (const userData of userDataArray) {
         // Check last health log
-        const lastLog = await db.collection('healthLogs')
-            .where('userId', '==', userData.userId)
-            .where('type', '==', userData.trackingType)
-            .orderBy('createdAt', 'desc')
-            .limit(1)
-            .get();
+        const lastLogs = await dependencies.healthLogService.listForUser(userData.userId, {
+            type: userData.trackingType,
+            sortDirection: 'desc',
+            limit: 1,
+        });
 
-        if (!lastLog.empty) {
-            const logData = lastLog.docs[0].data();
-            const logDate = logData.createdAt?.toDate();
-            if (logDate) {
-                userData.lastLogDate = logDate;
-                userData.daysSinceLastLog = Math.floor(
-                    (Date.now() - logDate.getTime()) / (1000 * 60 * 60 * 24)
-                );
-            }
+        const latestLog = lastLogs[0];
+        const logDate = latestLog?.createdAt?.toDate?.();
+        if (logDate instanceof Date && !Number.isNaN(logDate.getTime())) {
+            userData.lastLogDate = logDate;
+            userData.daysSinceLastLog = Math.floor(
+                (Date.now() - logDate.getTime()) / (1000 * 60 * 60 * 24),
+            );
         }
 
         // Check for pending condition nudge
-        const pendingNudge = await db.collection('nudges')
-            .where('userId', '==', userData.userId)
-            .where('type', '==', 'condition_tracking')
-            .where('status', 'in', ['pending', 'active', 'snoozed'])
-            .limit(1)
-            .get();
-
-        userData.hasPendingNudge = !pendingNudge.empty;
+        const pendingNudges = await dependencies.nudgeService.listByUserAndStatuses(
+            userData.userId,
+            ['pending', 'active', 'snoozed'],
+        );
+        userData.hasPendingNudge = pendingNudges.some(
+            (nudge) => nudge.type === 'condition_tracking',
+        );
     }
 
     return userDataArray;
@@ -219,7 +259,7 @@ async function findUsersWithTrackableMeds(db: admin.firestore.Firestore): Promis
  * Create a condition reminder nudge for a user.
  */
 async function createConditionReminderNudge(
-    db: admin.firestore.Firestore,
+    nudgeService: Pick<NudgeDomainService, 'createRecord'>,
     userData: UserConditionData
 ): Promise<void> {
     const now = admin.firestore.Timestamp.now();
@@ -273,7 +313,7 @@ async function createConditionReminderNudge(
         updatedAt: now,
     };
 
-    await db.collection('nudges').add(nudgeData);
+    await nudgeService.createRecord(nudgeData);
 
     functions.logger.info(
         `[ConditionReminder] Created ${userData.trackingType} reminder for user ${userData.userId}`,

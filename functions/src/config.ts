@@ -22,6 +22,7 @@ export const assemblyAIConfig = {
 export const openAIConfig = {
   apiKey: process.env.OPENAI_API_KEY || '',
   model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
+  visitShadowCompare: process.env.OPENAI_VISIT_SHADOW_COMPARE === 'true',
 };
 
 export const storageConfig = {
@@ -44,6 +45,12 @@ export const externalDrugDataConfig = {
   enabled: process.env.EXTERNAL_DRUG_DATA_ENABLED === 'true',
   baseUrl: process.env.EXTERNAL_DRUG_DATA_BASE_URL || 'https://rxnav.nlm.nih.gov/REST',
   timeoutMs: parseTimeoutMs(process.env.EXTERNAL_DRUG_DATA_TIMEOUT_MS, 8000),
+};
+
+export const escalationIncidentConfig = {
+  webhookUrl: process.env.POST_COMMIT_ESCALATION_WEBHOOK_URL || '',
+  webhookToken: process.env.POST_COMMIT_ESCALATION_WEBHOOK_TOKEN || '',
+  timeoutMs: parseTimeoutMs(process.env.POST_COMMIT_ESCALATION_WEBHOOK_TIMEOUT_MS, 8000),
 };
 
 export const corsConfig = {

@@ -168,6 +168,9 @@ export interface NudgeUpdateResponse {
 // Medication Reminder Types
 // =============================================================================
 
+export type ReminderTimingMode = 'local' | 'anchor';
+export type ReminderCriticality = 'standard' | 'time_sensitive';
+
 export interface MedicationReminder {
     id: string;
     userId: string;
@@ -176,6 +179,9 @@ export interface MedicationReminder {
     medicationDose?: string;
     times: string[];  // HH:MM format in 24-hour
     enabled: boolean;
+    timingMode?: ReminderTimingMode;
+    anchorTimezone?: string | null;
+    criticality?: ReminderCriticality;
     lastSentAt?: string;
     createdAt: string;
     updatedAt: string;
@@ -184,11 +190,15 @@ export interface MedicationReminder {
 export interface CreateMedicationReminderRequest {
     medicationId: string;
     times: string[];  // HH:MM format
+    timingMode?: ReminderTimingMode;
+    anchorTimezone?: string | null;
 }
 
 export interface UpdateMedicationReminderRequest {
     times?: string[];
     enabled?: boolean;
+    timingMode?: ReminderTimingMode;
+    anchorTimezone?: string | null;
 }
 
 export interface MedicationRemindersResponse {

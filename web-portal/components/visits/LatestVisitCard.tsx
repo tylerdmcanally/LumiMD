@@ -17,15 +17,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { VISIT_STATUS_META, normalizeVisitStatus } from '@/lib/visits/status';
 
 interface LatestVisitCardProps {
     visit: {
         id: string;
         provider?: string | null;
         specialty?: string | null;
+        visitDate?: string | null;
         createdAt?: string | null;
         summary?: string | null;
         status?: string | null;
+        processingStatus?: string | null;
     } | null;
     medicationChanges?: number;
     actionItems?: number;
@@ -83,15 +86,13 @@ export function LatestVisitCard({
         );
     }
 
-    const formattedDate = visit.createdAt
-        ? format(new Date(visit.createdAt), 'MMMM d, yyyy')
+    const effectiveVisitDate = visit.visitDate || visit.createdAt;
+    const formattedDate = effectiveVisitDate
+        ? format(new Date(effectiveVisitDate), 'MMMM d, yyyy')
         : 'Unknown date';
-
-    const statusColor = {
-        processing: 'warning',
-        completed: 'success',
-        error: 'danger',
-    }[visit.status || 'completed'] as 'warning' | 'success' | 'danger';
+    const normalizedStatus = normalizeVisitStatus(visit as any);
+    const statusMeta = VISIT_STATUS_META[normalizedStatus];
+    const showStatusBadge = normalizedStatus !== 'completed';
 
     // Truncate summary for preview
     const summaryPreview = visit.summary
@@ -131,9 +132,9 @@ export function LatestVisitCard({
                             <Calendar className="h-4 w-4" />
                             <span>{formattedDate}</span>
                         </div>
-                        {visit.status && visit.status !== 'completed' && (
-                            <Badge tone={statusColor} size="sm">
-                                {visit.status === 'processing' ? 'Processing' : visit.status}
+                        {showStatusBadge && (
+                            <Badge tone={statusMeta.tone} variant={statusMeta.variant} size="sm">
+                                {statusMeta.label}
                             </Badge>
                         )}
                     </div>

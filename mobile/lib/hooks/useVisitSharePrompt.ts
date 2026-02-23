@@ -21,6 +21,7 @@ export function useVisitSharePrompt() {
     const lastCompletedRef = useRef<Set<string>>(new Set());
     const caregiverCountRef = useRef<number>(0);
     const hasActiveCaregiversRef = useRef<boolean>(false);
+    const autoShareEnabledRef = useRef<boolean>(true);
 
     // Check for active caregivers on mount
     const checkCaregivers = useCallback(async () => {
@@ -32,9 +33,11 @@ export function useVisitSharePrompt() {
             );
             caregiverCountRef.current = activeCaregivers.length;
             hasActiveCaregiversRef.current = activeCaregivers.length > 0;
+            autoShareEnabledRef.current = response.autoShareWithCaregivers !== false;
         } catch (error) {
             console.error('[useVisitSharePrompt] Failed to check caregivers:', error);
             hasActiveCaregiversRef.current = false;
+            autoShareEnabledRef.current = true;
         }
     }, [user]);
 
@@ -67,7 +70,10 @@ export function useVisitSharePrompt() {
                                 lastCompletedRef.current.add(visitId);
 
                                 // Only prompt if user has active caregivers
-                                if (hasActiveCaregiversRef.current) {
+                                if (
+                                    hasActiveCaregiversRef.current &&
+                                    !autoShareEnabledRef.current
+                                ) {
                                     console.log('[useVisitSharePrompt] Visit completed, prompting share:', visitId);
                                     setPendingShare({
                                         visitId,

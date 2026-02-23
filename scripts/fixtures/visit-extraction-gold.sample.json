@@ -1,0 +1,35 @@
+{
+  "cases": [
+    {
+      "id": "case_hypertension_followup",
+      "transcript": "Blood pressure is still elevated. Start amlodipine 5 milligrams daily, continue lisinopril, and return to clinic in 3 months. We'll order a lipid panel.",
+      "expected": {
+        "diagnoses": ["Hypertension", "Hyperlipidemia"],
+        "medications": {
+          "started": ["Amlodipine"],
+          "stopped": [],
+          "changed": []
+        },
+        "followUps": [
+          { "task": "Return to clinic" },
+          { "task": "Lab draw" }
+        ]
+      }
+    },
+    {
+      "id": "case_medication_adjustment",
+      "transcript": "We reduced metoprolol to 25 mg daily, stopped ibuprofen, and reviewed adherence concerns for metformin. Follow up with nurse visit next week.",
+      "expected": {
+        "diagnoses": ["Medication management"],
+        "medications": {
+          "started": [],
+          "stopped": ["Ibuprofen"],
+          "changed": ["Metoprolol"]
+        },
+        "followUps": [
+          { "task": "Nurse visit" }
+        ]
+      }
+    }
+  ]
+}

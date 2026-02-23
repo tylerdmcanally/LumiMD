@@ -7,13 +7,14 @@
 import { Router } from 'express';
 import * as functions from 'firebase-functions';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
-import {
-    getPatientMedicalContext,
-    ConditionStatus,
-} from '../services/patientMedicalContext';
 import * as admin from 'firebase-admin';
+import { createDomainServiceContainer } from '../services/domain/serviceContainer';
+import type { PatientContextConditionStatus } from '../services/repositories/patientContexts/PatientContextRepository';
 
 export const medicalContextRouter = Router();
+const getDb = () => admin.firestore();
+const getPatientContextDomainService = () =>
+    createDomainServiceContainer({ db: getDb() }).patientContextService;
 
 // =============================================================================
 // GET /v1/medical-context/conditions - Get user's conditions
@@ -22,7 +23,8 @@ export const medicalContextRouter = Router();
 medicalContextRouter.get('/conditions', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
-        const context = await getPatientMedicalContext(userId);
+        const patientContextService = getPatientContextDomainService();
+        const context = await patientContextService.getForUser(userId);
 
         if (!context || !context.conditions) {
             res.json({ conditions: [] });
@@ -53,13 +55,13 @@ medicalContextRouter.get('/conditions', requireAuth, async (req: AuthRequest, re
 // PATCH /v1/medical-context/conditions/:id - Update condition status
 // =============================================================================
 
-const validStatuses: ConditionStatus[] = ['active', 'resolved', 'monitoring'];
+const validStatuses: PatientContextConditionStatus[] = ['active', 'resolved', 'monitoring'];
 
 medicalContextRouter.patch('/conditions/:id', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
         const conditionId = req.params.id;
-        const { status } = req.body as { status?: ConditionStatus };
+        const { status } = req.body as { status?: PatientContextConditionStatus };
 
         if (!status || !validStatuses.includes(status)) {
             res.status(400).json({
@@ -68,12 +70,14 @@ medicalContextRouter.patch('/conditions/:id', requireAuth, async (req: AuthReque
             });
             return;
         }
+        const patientContextService = getPatientContextDomainService();
+        const result = await patientContextService.updateConditionStatusForUser(
+            userId,
+            conditionId,
+            status,
+        );
 
-        // Get current context
-        const contextRef = admin.firestore().collection('patientContexts').doc(userId);
-        const contextDoc = await contextRef.get();
-
-        if (!contextDoc.exists) {
+        if (result.outcome === 'context_not_found') {
             res.status(404).json({
                 code: 'not_found',
                 message: 'Patient context not found',
@@ -81,11 +85,7 @@ medicalContextRouter.patch('/conditions/:id', requireAuth, async (req: AuthReque
             return;
         }
 
-        const context = contextDoc.data();
-        const conditions = context?.conditions || [];
-        const conditionIndex = conditions.findIndex((c: { id: string }) => c.id === conditionId);
-
-        if (conditionIndex === -1) {
+        if (result.outcome === 'condition_not_found') {
             res.status(404).json({
                 code: 'not_found',
                 message: 'Condition not found',
@@ -93,22 +93,11 @@ medicalContextRouter.patch('/conditions/:id', requireAuth, async (req: AuthReque
             return;
         }
 
-        // Update the condition status
-        conditions[conditionIndex].status = status;
-
-        await contextRef.update({
-            conditions,
-            updatedAt: new Date(),
-        });
-
         functions.logger.info(`[medicalContext] Updated condition ${conditionId} to ${status}`, { userId });
 
         res.json({
             success: true,
-            condition: {
-                id: conditionId,
-                status,
-            },
+            condition: result.condition,
         });
     } catch (error) {
         functions.logger.error('[medicalContext] Error updating condition:', error);

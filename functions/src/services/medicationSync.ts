@@ -7,10 +7,35 @@ import {
   normalizeMedicationName,
 } from './medicationSafety';
 import { clearMedicationSafetyCacheForUser } from './medicationSafetyAI';
+import {
+  FirestoreMedicationSyncRepository,
+  MedicationSyncRepository,
+} from './repositories';
 
-const db = () => admin.firestore();
-const getMedicationsCollection = () => db().collection('medications');
-const getRemindersCollection = () => db().collection('medicationReminders');
+type MedicationSyncDependencies = {
+  medicationSyncRepository?: Pick<
+    MedicationSyncRepository,
+    | 'create'
+    | 'updateById'
+    | 'listByUser'
+    | 'findByUserAndCanonicalName'
+    | 'findByUserAndNameLower'
+    | 'listPendingNudgesByMedication'
+    | 'listRemindersByMedication'
+    | 'createReminder'
+    | 'deleteByRefs'
+  >;
+};
+
+function resolveDependencies(
+  overrides: MedicationSyncDependencies = {},
+): Required<MedicationSyncDependencies> {
+  return {
+    medicationSyncRepository:
+      overrides.medicationSyncRepository ??
+      new FirestoreMedicationSyncRepository(admin.firestore()),
+  };
+}
 
 /**
  * Map medication frequency string to default reminder times.
@@ -436,9 +461,11 @@ const getMedicationDoc = async (
   userId: string,
   canonicalName: string,
   nameLower: string,
+  medicationSyncRepository: Pick<
+    MedicationSyncRepository,
+    'findByUserAndCanonicalName' | 'findByUserAndNameLower'
+  >,
 ): Promise<FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null> => {
-  const medsCollection = getMedicationsCollection();
-
   // Check cache first for canonical name
   const cachedByCanonical = getCachedDoc(userId, `canonical:${canonicalName}`);
   if (cachedByCanonical !== undefined) {
@@ -451,29 +478,23 @@ const getMedicationDoc = async (
     return cachedByNameLower;
   }
 
-  // Query by canonical name (indexed)
-  const canonicalSnapshot = await medsCollection
-    .where('userId', '==', userId)
-    .where('canonicalName', '==', canonicalName)
-    .limit(1)
-    .get();
-
-  if (!canonicalSnapshot.empty) {
-    const doc = canonicalSnapshot.docs[0];
+  const canonicalDoc = await medicationSyncRepository.findByUserAndCanonicalName(
+    userId,
+    canonicalName,
+  );
+  if (canonicalDoc) {
+    const doc = canonicalDoc;
     setCachedDoc(userId, `canonical:${canonicalName}`, doc);
     setCachedDoc(userId, `nameLower:${nameLower}`, doc);
     return doc;
   }
 
-  // Query by nameLower (indexed)
-  const exactSnapshot = await medsCollection
-    .where('userId', '==', userId)
-    .where('nameLower', '==', nameLower)
-    .limit(1)
-    .get();
-
-  if (!exactSnapshot.empty) {
-    const doc = exactSnapshot.docs[0];
+  const nameLowerDoc = await medicationSyncRepository.findByUserAndNameLower(
+    userId,
+    nameLower,
+  );
+  if (nameLowerDoc) {
+    const doc = nameLowerDoc;
     setCachedDoc(userId, `canonical:${canonicalName}`, doc);
     setCachedDoc(userId, `nameLower:${nameLower}`, doc);
     return doc;
@@ -491,17 +512,23 @@ const upsertMedication = async ({
   entry,
   status,
   processedAt,
+  dependencies,
 }: {
   userId: string;
   visitId: string;
   entry: MedicationChangeEntry;
   status: 'started' | 'stopped' | 'changed';
   processedAt: admin.firestore.Timestamp;
+  dependencies: Required<MedicationSyncDependencies>;
 }) => {
   const nameLower = entry.name.toLowerCase();
   const canonicalName = normalizeMedicationName(entry.name);
-  const medsCollection = getMedicationsCollection();
-  const existingDoc = await getMedicationDoc(userId, canonicalName, nameLower);
+  const existingDoc = await getMedicationDoc(
+    userId,
+    canonicalName,
+    nameLower,
+    dependencies.medicationSyncRepository,
+  );
 
   const note = entry.note ?? entry.display ?? entry.original ?? null;
   const display = entry.display ?? (note && note !== entry.note ? note : null);
@@ -550,19 +577,17 @@ const upsertMedication = async ({
       // Clear pending nudges for stopped medication
       if (existingDoc.get('active') !== false) {
         try {
-          const nudgesSnapshot = await db()
-            .collection('nudges')
-            .where('userId', '==', userId)
-            .where('medicationId', '==', existingDoc.id)
-            .where('status', 'in', ['pending', 'active', 'snoozed'])
-            .get();
+          const pendingNudges = await dependencies.medicationSyncRepository.listPendingNudgesByMedication(
+            userId,
+            existingDoc.id,
+          );
 
-          if (!nudgesSnapshot.empty) {
-            const batch = db().batch();
-            nudgesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-            await batch.commit();
+          if (pendingNudges.length > 0) {
+            await dependencies.medicationSyncRepository.deleteByRefs(
+              pendingNudges.map((doc) => doc.ref),
+            );
             functions.logger.info(
-              `[medicationSync] Cleared ${nudgesSnapshot.size} pending nudge(s) for stopped ${entry.name}`
+              `[medicationSync] Cleared ${pendingNudges.length} pending nudge(s) for stopped ${entry.name}`
             );
           }
         } catch (nudgeError) {
@@ -571,17 +596,17 @@ const upsertMedication = async ({
 
         // Also delete medication reminders for stopped medication
         try {
-          const remindersSnapshot = await getRemindersCollection()
-            .where('userId', '==', userId)
-            .where('medicationId', '==', existingDoc.id)
-            .get();
+          const reminders = await dependencies.medicationSyncRepository.listRemindersByMedication(
+            userId,
+            existingDoc.id,
+          );
 
-          if (!remindersSnapshot.empty) {
-            const batch = db().batch();
-            remindersSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-            await batch.commit();
+          if (reminders.length > 0) {
+            await dependencies.medicationSyncRepository.deleteByRefs(
+              reminders.map((doc) => doc.ref),
+            );
             functions.logger.info(
-              `[medicationSync] Deleted ${remindersSnapshot.size} reminder(s) for stopped ${entry.name}`
+              `[medicationSync] Deleted ${reminders.length} reminder(s) for stopped ${entry.name}`
             );
           }
         } catch (reminderError) {
@@ -608,22 +633,22 @@ const upsertMedication = async ({
     updates.medicationStatus = entry.status ?? null;
     updates.medicationWarning = entry.warning ?? null;
 
-    await existingDoc.ref.update(updates);
+    await dependencies.medicationSyncRepository.updateById(existingDoc.id, updates);
 
     // For started/changed meds that become active, ensure a reminder exists
     if ((status === 'started' || status === 'changed') && updates.active !== false) {
       try {
         // Check if reminder already exists
-        const existingReminder = await getRemindersCollection()
-          .where('userId', '==', userId)
-          .where('medicationId', '==', existingDoc.id)
-          .limit(1)
-          .get();
+        const existingReminder = await dependencies.medicationSyncRepository.listRemindersByMedication(
+          userId,
+          existingDoc.id,
+          { limit: 1 },
+        );
 
-        if (existingReminder.empty) {
+        if (existingReminder.length === 0) {
           const defaultTimes = getDefaultReminderTimes(entry.frequency);
           if (defaultTimes) {
-            await getRemindersCollection().add({
+            await dependencies.medicationSyncRepository.createReminder({
               userId,
               medicationId: existingDoc.id,
               medicationName: entry.name,
@@ -650,8 +675,6 @@ const upsertMedication = async ({
     return;
   }
 
-  const docRef = medsCollection.doc();
-
   const newDoc: FirebaseFirestore.DocumentData = {
     ...baseData,
     active: status !== 'stopped',
@@ -661,16 +684,16 @@ const upsertMedication = async ({
     changedAt: status === 'changed' ? processedAt : null,
   };
 
-  await docRef.set(newDoc);
+  const medicationId = await dependencies.medicationSyncRepository.create(newDoc);
 
   // Auto-create medication reminder for new active medications
   if (status !== 'stopped') {
     const defaultTimes = getDefaultReminderTimes(entry.frequency);
     if (defaultTimes) {
       try {
-        await getRemindersCollection().add({
+        await dependencies.medicationSyncRepository.createReminder({
           userId,
-          medicationId: docRef.id,
+          medicationId,
           medicationName: entry.name,
           medicationDose: entry.dose || undefined,
           times: defaultTimes,
@@ -699,19 +722,17 @@ export const syncMedicationsFromSummary = async ({
   visitId,
   medications,
   processedAt,
-}: SyncMedicationsOptions): Promise<void> => {
+}: SyncMedicationsOptions, dependencyOverrides: MedicationSyncDependencies = {}): Promise<void> => {
+  const dependencies = resolveDependencies(dependencyOverrides);
   if (!medications) {
     return;
   }
 
   const normalized = normalizeMedicationSummary(medications);
 
-  // Batch fetch all user medications once to warm the cache
-  const medsCollection = getMedicationsCollection();
-  const userMedsSnapshot = await medsCollection.where('userId', '==', userId).get();
-
   // Warm the cache with all user medications
-  userMedsSnapshot.docs.forEach((doc) => {
+  const existingMeds = await dependencies.medicationSyncRepository.listByUser(userId);
+  existingMeds.forEach((doc) => {
     const data = doc.data();
     const canonical = data?.canonicalName;
     const nameLower = data?.nameLower;
@@ -730,19 +751,46 @@ export const syncMedicationsFromSummary = async ({
   for (const entry of normalized.started) {
     const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
     const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
-    tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'started', processedAt }));
+    tasks.push(
+      upsertMedication({
+        userId,
+        visitId,
+        entry: entryWithWarnings,
+        status: 'started',
+        processedAt,
+        dependencies,
+      }),
+    );
   }
 
   // Stopped medications - no checks needed
   normalized.stopped.forEach((entry) => {
-    tasks.push(upsertMedication({ userId, visitId, entry, status: 'stopped', processedAt }));
+    tasks.push(
+      upsertMedication({
+        userId,
+        visitId,
+        entry,
+        status: 'stopped',
+        processedAt,
+        dependencies,
+      }),
+    );
   });
 
   // Changed medications - run fast hardcoded checks only
   for (const entry of normalized.changed) {
     const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
     const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
-    tasks.push(upsertMedication({ userId, visitId, entry: entryWithWarnings, status: 'changed', processedAt }));
+    tasks.push(
+      upsertMedication({
+        userId,
+        visitId,
+        entry: entryWithWarnings,
+        status: 'changed',
+        processedAt,
+        dependencies,
+      }),
+    );
   }
 
   await Promise.all(tasks);
@@ -789,5 +837,3 @@ export const normalizeMedicationSummary = (
     changed: normalize((medications as MedicationSummary).changed),
   };
 };
-
-

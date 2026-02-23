@@ -36,6 +36,30 @@ type ConditionInfo = {
   }>;
 };
 
+function extractDiagnosisLabels(visit: any): string[] {
+  const legacyDiagnoses = Array.isArray(visit?.diagnoses)
+    ? visit.diagnoses
+        .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value: string) => value.length > 0)
+    : [];
+
+  if (legacyDiagnoses.length > 0) {
+    return legacyDiagnoses;
+  }
+
+  const detailedDiagnoses = Array.isArray(visit?.diagnosesDetailed)
+    ? visit.diagnosesDetailed
+        .map((value: unknown) => {
+          if (!value || typeof value !== 'object') return '';
+          const name = (value as Record<string, unknown>).name;
+          return typeof name === 'string' ? name.trim() : '';
+        })
+        .filter((value: string) => value.length > 0)
+    : [];
+
+  return detailedDiagnoses;
+}
+
 export default function ConditionsPage() {
   const params = useParams<{ patientId: string }>();
   const router = useRouter();
@@ -53,7 +77,7 @@ export default function ConditionsPage() {
     const conditionMap = new Map<string, ConditionInfo>();
 
     visits.forEach((visit: any) => {
-      const diagnoses = Array.isArray(visit.diagnoses) ? visit.diagnoses.filter(Boolean) : [];
+      const diagnoses = extractDiagnosisLabels(visit);
       const visitDate = visit.visitDate || visit.createdAt;
       const parsedDate = visitDate ? new Date(visitDate) : null;
       const validDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null;

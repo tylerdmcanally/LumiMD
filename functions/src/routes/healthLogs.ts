@@ -9,7 +9,12 @@ import { Router } from 'express';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
-import { requireAuth, AuthRequest } from '../middlewares/auth';
+import {
+    requireAuth,
+    AuthRequest,
+    hasOperatorAccess,
+    ensureOperatorRestoreReasonOrReject,
+} from '../middlewares/auth';
 import {
     HealthLogResponse,
     HealthLogSummary,
@@ -24,15 +29,28 @@ import {
     screenForEmergencySymptoms,
 } from '../services/safetyChecker';
 import { resolveHealthLogDedupAction } from '../services/healthLogDedupService';
-import { completeNudge, createFollowUpNudge, createInsightNudge } from '../services/lumibotAnalyzer';
+import { createFollowUpNudge, createInsightNudge } from '../services/lumibotAnalyzer';
 import { getPrimaryInsight } from '../services/trendAnalyzer';
 import { escalatePatientFrequency } from '../triggers/personalRNEvaluation';
+import { sanitizePlainText } from '../utils/inputSanitization';
+import {
+    RESTORE_REASON_MAX_LENGTH,
+    recordRestoreAuditEvent,
+} from '../services/restoreAuditService';
+import { ensureResourceOwnerAccessOrReject } from '../middlewares/resourceAccess';
+import { createDomainServiceContainer } from '../services/domain/serviceContainer';
+import { NudgeDomainService } from '../services/domain/nudges/NudgeDomainService';
+import { FirestoreNudgeRepository } from '../services/repositories/nudges/FirestoreNudgeRepository';
 
 
 export const healthLogsRouter = Router();
 
 const getDb = () => admin.firestore();
-const getHealthLogsCollection = () => getDb().collection('healthLogs');
+const getHealthLogDomainService = () => createDomainServiceContainer({ db: getDb() }).healthLogService;
+const getNudgeDomainService = () => new NudgeDomainService(new FirestoreNudgeRepository(getDb()));
+const HEALTH_LOG_TEXT_MAX_LENGTH = 1000;
+const HEALTH_LOG_LIST_ITEM_MAX_LENGTH = 120;
+const HEALTH_LOG_MAX_LIST_ITEMS = 25;
 
 // =============================================================================
 // Validation Schemas
@@ -108,6 +126,76 @@ const createHealthLogSchema = z.object({
     symptoms: z.array(z.string()).optional(), // For safety checking
 });
 
+const restoreHealthLogSchema = z.object({
+    reason: z.string().max(RESTORE_REASON_MAX_LENGTH).optional(),
+});
+
+type CreateHealthLogInput = z.infer<typeof createHealthLogSchema>;
+
+function sanitizeStringArray(
+    values: unknown,
+    maxLength = HEALTH_LOG_LIST_ITEM_MAX_LENGTH,
+    maxItems = HEALTH_LOG_MAX_LIST_ITEMS,
+): string[] {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return values
+        .slice(0, maxItems)
+        .map((value) => sanitizePlainText(value, maxLength))
+        .filter((value) => value.length > 0);
+}
+
+function sanitizeCreateHealthLogInput(input: CreateHealthLogInput): CreateHealthLogInput {
+    let value = input.value;
+
+    if (input.type === 'med_compliance') {
+        const medCompliance = input.value as z.infer<typeof medComplianceValueSchema>;
+        const medicationName =
+            sanitizePlainText(medCompliance.medicationName, HEALTH_LOG_TEXT_MAX_LENGTH) || 'Medication';
+        const note = sanitizePlainText(medCompliance.note, HEALTH_LOG_TEXT_MAX_LENGTH);
+        const medicationId = sanitizePlainText(
+            medCompliance.medicationId,
+            HEALTH_LOG_TEXT_MAX_LENGTH,
+        );
+
+        value = {
+            medicationName,
+            response: medCompliance.response,
+            ...(medicationId ? { medicationId } : {}),
+            ...(note ? { note } : {}),
+        } as CreateHealthLogInput['value'];
+    } else if (input.type === 'symptom_check') {
+        const symptomCheck = input.value as z.infer<typeof symptomCheckValueSchema>;
+        const swellingLocations = sanitizeStringArray(symptomCheck.swellingLocations);
+        const otherSymptoms = sanitizePlainText(
+            symptomCheck.otherSymptoms,
+            HEALTH_LOG_TEXT_MAX_LENGTH,
+        );
+
+        value = {
+            breathingDifficulty: symptomCheck.breathingDifficulty,
+            swelling: symptomCheck.swelling,
+            energyLevel: symptomCheck.energyLevel,
+            cough: symptomCheck.cough,
+            ...(typeof symptomCheck.orthopnea === 'boolean'
+                ? { orthopnea: symptomCheck.orthopnea }
+                : {}),
+            ...(swellingLocations.length > 0 ? { swellingLocations } : {}),
+            ...(otherSymptoms ? { otherSymptoms } : {}),
+        } as CreateHealthLogInput['value'];
+    }
+
+    const symptoms = sanitizeStringArray(input.symptoms);
+
+    return {
+        ...input,
+        value,
+        ...(symptoms.length > 0 ? { symptoms } : {}),
+    };
+}
+
 // =============================================================================
 // Trend Analysis Helper
 // =============================================================================
@@ -126,19 +214,18 @@ async function checkForTrendInsights(userId: string, logType: string): Promise<v
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-    const logsSnapshot = await getHealthLogsCollection()
-        .where('userId', '==', userId)
-        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(fourteenDaysAgo))
-        .orderBy('createdAt', 'asc')
-        .get();
+    const healthLogService = getHealthLogDomainService();
+    const logs = await healthLogService.listForUser(userId, {
+        startDate: fourteenDaysAgo,
+        sortDirection: 'asc',
+    });
 
-    if (logsSnapshot.empty || logsSnapshot.size < 3) {
+    if (logs.length < 3) {
         return; // Not enough data for trend analysis
     }
 
     // Transform to format expected by trend analyzer
-    const logs = logsSnapshot.docs.map(doc => {
-        const data = doc.data();
+    const trendLogs = logs.map((data) => {
         return {
             type: data.type as string,
             value: data.value as Record<string, unknown>,
@@ -147,7 +234,7 @@ async function checkForTrendInsights(userId: string, logType: string): Promise<v
     });
 
     // Run trend analysis
-    const insight = getPrimaryInsight(logs);
+    const insight = getPrimaryInsight(trendLogs);
 
     if (insight && insight.severity !== 'positive') {
         // Create insight nudge for non-positive patterns
@@ -176,21 +263,22 @@ async function checkForTrendInsights(userId: string, logType: string): Promise<v
 healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
+        const healthLogService = getHealthLogDomainService();
 
         // Validate request body
-        const data = createHealthLogSchema.parse(req.body);
+        const parsedData = createHealthLogSchema.parse(req.body);
+        const data = sanitizeCreateHealthLogInput(parsedData);
 
         // Check for duplicate if sourceId is provided (deduplication for HealthKit sync)
         if (data.sourceId) {
-            const existingSnapshot = await getHealthLogsCollection()
-                .where('userId', '==', userId)
-                .where('sourceId', '==', data.sourceId)
-                .limit(1)
-                .get();
+            const existingLogs = await healthLogService.findBySourceId(userId, data.sourceId, {
+                includeDeleted: true,
+                limit: 5,
+            });
 
-            if (!existingSnapshot.empty) {
-                const existingDoc = existingSnapshot.docs[0];
-                const existingData = existingDoc.data();
+            const existingLog = existingLogs.find((log) => !log.deletedAt);
+            if (existingLog) {
+                const existingData = existingLog;
 
                 const dedupAction = resolveHealthLogDedupAction({
                     incomingType: data.type as HealthLogType,
@@ -202,21 +290,21 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
                 if (dedupAction === 'update_existing') {
                     const newValue = data.value as { count?: number };
                     const oldValue = existingData.value as { count?: number };
-                    await existingDoc.ref.update({
+                    const updatedLog = await healthLogService.updateRecord(existingData.id, {
                         value: data.value,
                         syncedAt: admin.firestore.Timestamp.now(),
                     });
                     functions.logger.info(`[healthLogs] Updated steps from ${oldValue?.count || 0} to ${newValue?.count || 0}`, {
-                        docId: existingDoc.id,
+                        docId: existingData.id,
                         sourceId: data.sourceId,
                     });
                     res.status(200).json({
-                        id: existingDoc.id,
+                        id: existingData.id,
                         userId: existingData.userId,
                         type: existingData.type,
-                        value: data.value,
-                        alertLevel: existingData.alertLevel,
-                        createdAt: existingData.createdAt?.toDate().toISOString(),
+                        value: updatedLog?.value ?? data.value,
+                        alertLevel: updatedLog?.alertLevel ?? existingData.alertLevel,
+                        createdAt: existingData.createdAt?.toDate?.().toISOString?.(),
                         source: existingData.source,
                         sourceId: existingData.sourceId,
                         updated: true,
@@ -226,15 +314,15 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
 
                 // For other types: Just return existing (true duplicate)
                 functions.logger.info(`[healthLogs] Duplicate sourceId ${data.sourceId}, returning existing`, {
-                    existingId: existingDoc.id,
+                    existingId: existingData.id,
                 });
                 res.status(200).json({
-                    id: existingDoc.id,
+                    id: existingData.id,
                     userId: existingData.userId,
                     type: existingData.type,
                     value: existingData.value,
                     alertLevel: existingData.alertLevel,
-                    createdAt: existingData.createdAt?.toDate().toISOString(),
+                    createdAt: existingData.createdAt?.toDate?.().toISOString?.(),
                     source: existingData.source,
                     sourceId: existingData.sourceId,
                     duplicate: true,
@@ -282,6 +370,8 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
             createdAt: recordedAtTimestamp, // Use original recording time for proper ordering
             syncedAt: now, // When it was actually synced to our system
             source: data.source,
+            deletedAt: null,
+            deletedBy: null,
         };
 
         // Only add optional fields if they have values
@@ -291,14 +381,18 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
         if (safetyResult.alertLevel) healthLogData.alertLevel = safetyResult.alertLevel;
         if (safetyResult.message) healthLogData.alertMessage = safetyResult.message;
 
-        const docRef = await getHealthLogsCollection().add(healthLogData);
+        const createdLog = await healthLogService.createRecord(healthLogData);
 
 
         // If this was triggered by a nudge, complete it
         if (data.nudgeId) {
-            await completeNudge(data.nudgeId, {
-                logId: docRef.id,
-                value: data.value,
+            const nudgeService = getNudgeDomainService();
+            await nudgeService.completeById(data.nudgeId, {
+                now,
+                responseValue: {
+                    logId: createdLog.id,
+                    value: data.value,
+                },
             });
         }
 
@@ -313,7 +407,7 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
             functions.logger.info(`[healthLogs] Created reactive follow-up nudge for elevated ${data.type}`);
         }
 
-        functions.logger.info(`[healthLogs] Created health log ${docRef.id}`, {
+        functions.logger.info(`[healthLogs] Created health log ${createdLog.id}`, {
             userId,
             type: data.type,
             alertLevel: safetyResult.alertLevel,
@@ -335,7 +429,7 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
 
 
         const response: HealthLogResponse & { alertMessage?: string; shouldShowAlert?: boolean; duplicate?: boolean } = {
-            id: docRef.id,
+            id: createdLog.id,
             userId,
             type: data.type as HealthLogType,
             value: data.value as HealthLogValue,
@@ -373,40 +467,30 @@ healthLogsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
 healthLogsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
+        const healthLogService = getHealthLogDomainService();
         const type = req.query.type as string | undefined;
         const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
         const startDate = req.query.startDate as string | undefined;
         const endDate = req.query.endDate as string | undefined;
 
-        let query = getHealthLogsCollection()
-            .where('userId', '==', userId)
-            .orderBy('createdAt', 'desc');
+        const logs = await healthLogService.listForUser(userId, {
+            type,
+            startDate: startDate ? new Date(startDate) : undefined,
+            endDate: endDate ? new Date(endDate) : undefined,
+            sortDirection: 'desc',
+            limit,
+        });
 
-        if (type) {
-            query = query.where('type', '==', type);
-        }
-
-        if (startDate) {
-            query = query.where('createdAt', '>=', admin.firestore.Timestamp.fromDate(new Date(startDate)));
-        }
-
-        if (endDate) {
-            query = query.where('createdAt', '<=', admin.firestore.Timestamp.fromDate(new Date(endDate)));
-        }
-
-        const snapshot = await query.limit(limit).get();
-
-        const response: HealthLogResponse[] = snapshot.docs.map(doc => {
-            const data = doc.data();
+        const response: HealthLogResponse[] = logs.map((data) => {
             return {
-                id: doc.id,
+                id: data.id,
                 userId: data.userId,
-                type: data.type,
-                value: data.value,
+                type: data.type as HealthLogType,
+                value: data.value as HealthLogValue,
                 alertLevel: data.alertLevel,
                 alertMessage: data.alertMessage,
-                createdAt: data.createdAt?.toDate().toISOString(),
-                source: data.source,
+                createdAt: data.createdAt?.toDate?.().toISOString?.(),
+                source: data.source as HealthLogSource,
             };
         });
 
@@ -428,22 +512,21 @@ healthLogsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
 healthLogsRouter.get('/summary', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
+        const healthLogService = getHealthLogDomainService();
         const days = Math.min(parseInt(req.query.days as string) || 30, 90);
 
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        const snapshot = await getHealthLogsCollection()
-            .where('userId', '==', userId)
-            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-            .orderBy('createdAt', 'desc')
-            .get();
+        const logs = await healthLogService.listForUser(userId, {
+            startDate,
+            sortDirection: 'desc',
+        });
 
         // Group by type and calculate summaries
         const summaries: Record<string, HealthLogSummary> = {};
 
-        snapshot.docs.forEach(doc => {
-            const data = doc.data();
+        logs.forEach((data) => {
             const type = data.type as HealthLogType;
 
             if (!summaries[type]) {
@@ -457,16 +540,16 @@ healthLogsRouter.get('/summary', requireAuth, async (req: AuthRequest, res) => {
 
             // Set last reading if this is the first (most recent) of this type
             if (!summaries[type].lastReading) {
-                summaries[type].lastReading = data.value;
+                summaries[type].lastReading = data.value as HealthLogValue;
                 summaries[type].lastReadingAt = data.createdAt?.toDate().toISOString();
             }
         });
 
         // Calculate averages for BP and glucose
-        const bpLogs = snapshot.docs.filter(d => d.data().type === 'bp');
+        const bpLogs = logs.filter((d) => d.type === 'bp');
         if (bpLogs.length > 0) {
-            const avgSystolic = bpLogs.reduce((sum, d) => sum + (d.data().value as BloodPressureValue).systolic, 0) / bpLogs.length;
-            const avgDiastolic = bpLogs.reduce((sum, d) => sum + (d.data().value as BloodPressureValue).diastolic, 0) / bpLogs.length;
+            const avgSystolic = bpLogs.reduce((sum, d) => sum + (d.value as BloodPressureValue).systolic, 0) / bpLogs.length;
+            const avgDiastolic = bpLogs.reduce((sum, d) => sum + (d.value as BloodPressureValue).diastolic, 0) / bpLogs.length;
 
             if (summaries['bp']) {
                 summaries['bp'].averages = {
@@ -476,9 +559,9 @@ healthLogsRouter.get('/summary', requireAuth, async (req: AuthRequest, res) => {
             }
         }
 
-        const glucoseLogs = snapshot.docs.filter(d => d.data().type === 'glucose');
+        const glucoseLogs = logs.filter((d) => d.type === 'glucose');
         if (glucoseLogs.length > 0) {
-            const avgGlucose = glucoseLogs.reduce((sum, d) => sum + (d.data().value as GlucoseValue).reading, 0) / glucoseLogs.length;
+            const avgGlucose = glucoseLogs.reduce((sum, d) => sum + (d.value as GlucoseValue).reading, 0) / glucoseLogs.length;
 
             if (summaries['glucose']) {
                 summaries['glucose'].averages = {
@@ -489,7 +572,7 @@ healthLogsRouter.get('/summary', requireAuth, async (req: AuthRequest, res) => {
 
         functions.logger.info(`[healthLogs] Generated summary for user ${userId}`, {
             types: Object.keys(summaries),
-            totalLogs: snapshot.docs.length,
+            totalLogs: logs.length,
         });
 
         res.json({
@@ -514,22 +597,21 @@ healthLogsRouter.get('/summary', requireAuth, async (req: AuthRequest, res) => {
 healthLogsRouter.get('/export', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
+        const healthLogService = getHealthLogDomainService();
         const days = Math.min(parseInt(req.query.days as string) || 30, 90);
 
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
 
-        const snapshot = await getHealthLogsCollection()
-            .where('userId', '==', userId)
-            .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-            .orderBy('createdAt', 'asc')
-            .get();
+        const logs = await healthLogService.listForUser(userId, {
+            startDate,
+            sortDirection: 'asc',
+        });
 
         // Group by type
         const groupedLogs: Record<string, Array<{ date: string; value: unknown }>> = {};
 
-        snapshot.docs.forEach(doc => {
-            const data = doc.data();
+        logs.forEach((data) => {
             const type = data.type as string;
 
             if (!groupedLogs[type]) {
@@ -569,31 +651,24 @@ healthLogsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
         const logId = req.params.id;
+        const healthLogService = getHealthLogDomainService();
 
         // Verify the log exists and belongs to the user
-        const logDoc = await getHealthLogsCollection().doc(logId).get();
-
-        if (!logDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Health log not found',
-            });
-            return;
-        }
-
-        const logData = logDoc.data();
-        if (logData?.userId !== userId) {
-            res.status(403).json({
-                code: 'forbidden',
+        const logData = await healthLogService.getById(logId);
+        if (
+            !ensureResourceOwnerAccessOrReject(userId, logData, res, {
+                resourceName: 'health log',
+                notFoundMessage: 'Health log not found',
                 message: 'You do not have permission to delete this health log',
-            });
+            })
+        ) {
             return;
         }
 
-        // Delete the log
-        await getHealthLogsCollection().doc(logId).delete();
+        const now = admin.firestore.Timestamp.now();
+        await healthLogService.softDeleteRecord(logId, userId, now);
 
-        functions.logger.info(`[healthLogs] Deleted health log ${logId} for user ${userId}`);
+        functions.logger.info(`[healthLogs] Soft deleted health log ${logId} for user ${userId}`);
 
         res.status(204).send();
     } catch (error) {
@@ -601,6 +676,108 @@ healthLogsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
         res.status(500).json({
             code: 'server_error',
             message: 'Failed to delete health log',
+        });
+    }
+});
+
+// =============================================================================
+// POST /v1/health-logs/:id/restore - Restore a soft-deleted health log
+// =============================================================================
+
+healthLogsRouter.post('/:id/restore', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+        const logId = req.params.id;
+        const healthLogService = getHealthLogDomainService();
+        const isOperator = hasOperatorAccess(req.user);
+
+        const payload = restoreHealthLogSchema.safeParse(req.body ?? {});
+        if (!payload.success) {
+            res.status(400).json({
+                code: 'validation_failed',
+                message: 'Invalid restore request body',
+                details: payload.error.errors,
+            });
+            return;
+        }
+        const restoreReason =
+            sanitizePlainText(payload.data.reason, RESTORE_REASON_MAX_LENGTH) || undefined;
+
+        const logData = await healthLogService.getById(logId);
+        const ownerUserId = typeof logData?.userId === 'string' ? logData.userId : '';
+
+        if (
+            !ensureResourceOwnerAccessOrReject(userId, logData, res, {
+                resourceName: 'health log',
+                notFoundMessage: 'Health log not found',
+                message: 'You do not have permission to restore this health log',
+                allowDeleted: true,
+                allowOperator: true,
+                isOperator,
+            })
+        ) {
+            return;
+        }
+        const restoredLogData = logData!;
+
+        if (!ensureOperatorRestoreReasonOrReject({
+            actorUserId: userId,
+            ownerUserId,
+            isOperator,
+            reason: restoreReason,
+            res,
+        })) {
+            return;
+        }
+
+        if (!restoredLogData.deletedAt) {
+            res.status(409).json({
+                code: 'not_deleted',
+                message: 'Health log is not deleted',
+            });
+            return;
+        }
+
+        const now = admin.firestore.Timestamp.now();
+        await healthLogService.restoreRecord(logId, now);
+
+        try {
+            await recordRestoreAuditEvent({
+                resourceType: 'health_log',
+                resourceId: logId,
+                ownerUserId,
+                actorUserId: userId,
+                actorIsOperator: isOperator,
+                reason: restoreReason,
+                metadata: {
+                    route: 'healthLogs.restore',
+                },
+                createdAt: now,
+            });
+        } catch (auditError) {
+            functions.logger.error('[healthLogs] Failed to record restore audit event', {
+                logId,
+                actorUserId: userId,
+                ownerUserId,
+                message: auditError instanceof Error ? auditError.message : String(auditError),
+            });
+        }
+
+        functions.logger.info(`[healthLogs] Restored health log ${logId} for user ${userId}`);
+
+        res.json({
+            success: true,
+            id: logId,
+            restoredBy: userId,
+            restoredFor: ownerUserId || null,
+            reason: restoreReason ?? null,
+            restoredAt: now.toDate().toISOString(),
+        });
+    } catch (error) {
+        functions.logger.error('[healthLogs] Error restoring health log:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to restore health log',
         });
     }
 });

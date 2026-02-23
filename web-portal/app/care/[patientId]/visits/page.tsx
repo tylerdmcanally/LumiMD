@@ -51,13 +51,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  useCareVisits,
+  useCareVisitsPage,
   useCaregiverNotes,
   useSaveCaregiverNote,
   useDeleteCaregiverNote,
   useCareSummaryExport,
   type CaregiverNote,
   type CareSummaryExport,
+  type Visit,
 } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -78,14 +79,72 @@ const DEFAULT_FILTERS: VisitFilters = {
   dateTo: '',
 };
 
+const CARE_VISITS_PAGE_SIZE = 50;
+
+function extractDiagnosisLabels(visit: any): string[] {
+  const legacyDiagnoses = Array.isArray(visit?.diagnoses)
+    ? visit.diagnoses
+        .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value: string) => value.length > 0)
+    : [];
+
+  if (legacyDiagnoses.length > 0) {
+    return legacyDiagnoses;
+  }
+
+  const detailedDiagnoses = Array.isArray(visit?.diagnosesDetailed)
+    ? visit.diagnosesDetailed
+        .map((value: unknown) => {
+          if (!value || typeof value !== 'object') return '';
+          const name = (value as Record<string, unknown>).name;
+          return typeof name === 'string' ? name.trim() : '';
+        })
+        .filter((value: string) => value.length > 0)
+    : [];
+
+  return detailedDiagnoses;
+}
+
 export default function PatientVisitsPage() {
   const params = useParams<{ patientId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const patientId = params.patientId;
 
-  const { data: visits, isLoading, error } = useCareVisits(patientId);
+  const [cursor, setCursor] = React.useState<string | null>(null);
+  const [visits, setVisits] = React.useState<Visit[]>([]);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
+
+  const {
+    data: visitsPage,
+    isLoading,
+    isFetching,
+    error,
+  } = useCareVisitsPage(patientId, {
+    limit: CARE_VISITS_PAGE_SIZE,
+    cursor,
+  });
   const { data: notes = [] } = useCaregiverNotes(patientId);
+
+  React.useEffect(() => {
+    setCursor(null);
+    setVisits([]);
+    setHasMore(false);
+    setNextCursor(null);
+  }, [patientId]);
+
+  React.useEffect(() => {
+    if (!visitsPage) return;
+    setVisits((previous) => {
+      const byId = new Map<string, Visit>();
+      previous.forEach((visit) => byId.set(visit.id, visit));
+      visitsPage.items.forEach((visit) => byId.set(visit.id, visit));
+      return Array.from(byId.values());
+    });
+    setHasMore(visitsPage.hasMore);
+    setNextCursor(visitsPage.nextCursor);
+  }, [visitsPage]);
 
   // Create a map of visitId -> note for quick lookup
   const notesMap = React.useMemo(() => {
@@ -169,12 +228,13 @@ export default function PatientVisitsPage() {
     if (filters.search.trim()) {
       const query = filters.search.toLowerCase().trim();
       result = result.filter((visit: any) => {
+        const diagnosisLabels = extractDiagnosisLabels(visit);
         const searchableFields = [
           visit.provider,
           visit.specialty,
           visit.location,
           visit.summary,
-          ...(Array.isArray(visit.diagnoses) ? visit.diagnoses : []),
+          ...diagnosisLabels,
         ].filter(Boolean);
         
         return searchableFields.some((field) => 
@@ -419,7 +479,7 @@ export default function PatientVisitsPage() {
     toast.success('Summary downloaded');
   };
 
-  if (isLoading) {
+  if (isLoading && visits.length === 0) {
     return (
       <PageContainer maxWidth="2xl">
         <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -430,7 +490,7 @@ export default function PatientVisitsPage() {
     );
   }
 
-  if (error) {
+  if (error && visits.length === 0) {
     return (
       <PageContainer maxWidth="lg">
         <Card variant="elevated" padding="lg" className="text-center py-12">
@@ -452,7 +512,7 @@ export default function PatientVisitsPage() {
     );
   }
 
-  const totalVisits = visits?.length ?? 0;
+  const totalVisits = visits.length;
   const filteredCount = pinnedVisits.length + regularVisits.length;
 
   return (
@@ -666,6 +726,30 @@ export default function PatientVisitsPage() {
                 </div>
               </section>
             )}
+
+            {(hasMore || isFetching) && (
+              <div className="pt-2 flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!hasMore || !nextCursor || isFetching}
+                  onClick={() => {
+                    if (!nextCursor) return;
+                    setCursor(nextCursor);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  {isFetching && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>{isFetching ? 'Loading...' : 'Load more visits'}</span>
+                </Button>
+              </div>
+            )}
+
+            {error && visits.length > 0 && (
+              <p className="text-sm text-error text-center">
+                Unable to load more visits right now.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -797,7 +881,7 @@ function VisitCard({
   const specialty = visit.specialty || null;
   const location = visit.location || null;
   const summary = visit.summary || null;
-  const diagnoses = Array.isArray(visit.diagnoses) ? visit.diagnoses.filter(Boolean) : [];
+  const diagnoses = extractDiagnosisLabels(visit);
 
   const isPinned = note?.pinned || false;
   const hasNote = Boolean(note?.note?.trim());
@@ -809,11 +893,13 @@ function VisitCard({
   const highlightMatch = (text: string) => {
     if (!searchQuery?.trim() || !text) return text;
     const query = searchQuery.trim();
-    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedQuery})`, 'gi');
+    const queryLower = query.toLowerCase();
     const parts = text.split(regex);
     
     return parts.map((part, i) => 
-      regex.test(part) ? (
+      part.toLowerCase() === queryLower ? (
         <mark key={i} className="bg-warning-light text-warning-dark rounded px-0.5">
           {part}
         </mark>

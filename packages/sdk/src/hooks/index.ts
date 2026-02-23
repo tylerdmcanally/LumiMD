@@ -5,12 +5,15 @@
 
 import {
   QueryKey,
+  InfiniteData,
   useQuery,
+  useInfiniteQuery,
   useMutation,
   UseQueryOptions,
+  UseInfiniteQueryOptions,
   useQueryClient,
 } from '@tanstack/react-query';
-import type { ApiClient } from '../api-client';
+import type { ApiClient, CursorPage } from '../api-client';
 import type { Visit, Medication, ActionItem, UserProfile } from '../models';
 import type {
   Nudge,
@@ -44,6 +47,13 @@ type ApiQueryOptions<TData> = Omit<
   queryKey?: QueryKey;
 };
 
+type ApiInfiniteQueryOptions<TData, TPageParam> = Omit<
+  UseInfiniteQueryOptions<TData, Error, InfiniteData<TData>, QueryKey, TPageParam>,
+  'queryFn' | 'queryKey' | 'initialPageParam' | 'getNextPageParam'
+> & {
+  queryKey?: QueryKey;
+};
+
 export function createApiHooks(api: ApiClient) {
   /**
    * Fetch all visits
@@ -54,6 +64,31 @@ export function createApiHooks(api: ApiClient) {
       queryKey: queryKey ?? queryKeys.visits,
       queryFn: () => api.visits.list(),
       staleTime: 5 * 60 * 1000, // 5 minutes
+      ...queryOptions,
+    });
+  }
+
+  /**
+   * Fetch visits using cursor pagination
+   */
+  function useInfiniteVisits(
+    params?: { limit?: number; sort?: 'asc' | 'desc' },
+    options?: ApiInfiniteQueryOptions<CursorPage<Visit>, string | null>,
+  ) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    const pageSize = params?.limit ?? 25;
+    const sort = params?.sort ?? 'desc';
+    return useInfiniteQuery({
+      queryKey: queryKey ?? [...queryKeys.visits, 'cursor', pageSize, sort],
+      initialPageParam: null as string | null,
+      queryFn: ({ pageParam }) =>
+        api.visits.listPage({
+          limit: pageSize,
+          sort,
+          cursor: typeof pageParam === 'string' ? pageParam : undefined,
+        }),
+      getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+      staleTime: 60 * 1000,
       ...queryOptions,
     });
   }
@@ -103,6 +138,29 @@ export function createApiHooks(api: ApiClient) {
   }
 
   /**
+   * Fetch action items using cursor pagination
+   */
+  function useInfiniteActionItems(
+    params?: { limit?: number },
+    options?: ApiInfiniteQueryOptions<CursorPage<ActionItem>, string | null>,
+  ) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    const pageSize = params?.limit ?? 25;
+    return useInfiniteQuery({
+      queryKey: queryKey ?? [...queryKeys.actions, 'cursor', pageSize],
+      initialPageParam: null as string | null,
+      queryFn: ({ pageParam }) =>
+        api.actions.listPage({
+          limit: pageSize,
+          cursor: typeof pageParam === 'string' ? pageParam : undefined,
+        }),
+      getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+      staleTime: 30 * 1000,
+      ...queryOptions,
+    });
+  }
+
+  /**
    * Fetch pending action items only
    * Uses select to derive from cached data
    */
@@ -126,6 +184,29 @@ export function createApiHooks(api: ApiClient) {
       queryKey: queryKey ?? queryKeys.medications,
       queryFn: () => api.medications.list(),
       staleTime: 60 * 1000, // 1 minute
+      ...queryOptions,
+    });
+  }
+
+  /**
+   * Fetch medications using cursor pagination
+   */
+  function useInfiniteMedications(
+    params?: { limit?: number },
+    options?: ApiInfiniteQueryOptions<CursorPage<Medication>, string | null>,
+  ) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    const pageSize = params?.limit ?? 25;
+    return useInfiniteQuery({
+      queryKey: queryKey ?? [...queryKeys.medications, 'cursor', pageSize],
+      initialPageParam: null as string | null,
+      queryFn: ({ pageParam }) =>
+        api.medications.listPage({
+          limit: pageSize,
+          cursor: typeof pageParam === 'string' ? pageParam : undefined,
+        }),
+      getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+      staleTime: 60 * 1000,
       ...queryOptions,
     });
   }
@@ -246,11 +327,14 @@ export function createApiHooks(api: ApiClient) {
 
   return {
     useVisits,
+    useInfiniteVisits,
     useVisit,
     useLatestVisit,
     useActionItems,
+    useInfiniteActionItems,
     usePendingActions,
     useMedications,
+    useInfiniteMedications,
     useActiveMedications,
     useUserProfile,
     // LumiBot

@@ -32,7 +32,7 @@ export default function MedicationScheduleScreen() {
         isRefetching,
         refetch,
         error,
-    } = useMedicationSchedule(user?.uid, { enabled: isAuthenticated });
+    } = useMedicationSchedule(user?.uid, { enabled: isAuthenticated && Boolean(user?.uid) });
 
     const markDose = useMarkDose();
     const markBatch = useMarkBatch();
@@ -213,7 +213,10 @@ export default function MedicationScheduleScreen() {
     };
 
     const summary = schedule?.summary;
-    const hasDoses = summary && summary.total > 0;
+    const hasScheduleData = Boolean(summary && Array.isArray(schedule?.scheduledDoses));
+    const hasDoses = Boolean(summary && summary.total > 0);
+    const hasHardFailure = Boolean(error && !hasScheduleData);
+    const scheduleSummary = summary ?? { taken: 0, pending: 0, skipped: 0, total: 0 };
 
     return (
         <ErrorBoundary title="Unable to load schedule">
@@ -241,15 +244,39 @@ export default function MedicationScheduleScreen() {
                             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.primary} />
                         }
                     >
-                        {isLoading ? (
+                        {Boolean(error && hasScheduleData) && (
+                            <View style={styles.staleDataBanner}>
+                                <Ionicons name="alert-circle-outline" size={16} color={Colors.warning} />
+                                <Text style={styles.staleDataText}>
+                                    Showing the last synced schedule. Pull to refresh.
+                                </Text>
+                            </View>
+                        )}
+
+                        {isRefetching && hasScheduleData && (
+                            <View style={styles.refreshRow}>
+                                <ActivityIndicator size="small" color={Colors.primary} />
+                                <Text style={styles.refreshText}>Refreshing schedule...</Text>
+                            </View>
+                        )}
+
+                        {isLoading && !hasScheduleData ? (
                             <View style={styles.centered}>
                                 <ActivityIndicator size="large" color={Colors.primary} />
                                 <Text style={styles.loadingText}>Loading schedule...</Text>
                             </View>
-                        ) : error ? (
+                        ) : hasHardFailure ? (
                             <View style={styles.centered}>
                                 <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
                                 <Text style={styles.errorText}>Unable to load schedule</Text>
+                                <Pressable
+                                    style={styles.retryButton}
+                                    onPress={() => {
+                                        void refetch();
+                                    }}
+                                >
+                                    <Text style={styles.retryButtonText}>Try Again</Text>
+                                </Pressable>
                             </View>
                         ) : !hasDoses ? (
                             <View style={styles.centered}>
@@ -266,17 +293,17 @@ export default function MedicationScheduleScreen() {
                                 <Card style={styles.summaryCard}>
                                     <View style={styles.summaryRow}>
                                         <View style={styles.summaryItem}>
-                                            <Text style={[styles.summaryNumber, { color: Colors.success }]}>{summary.taken}</Text>
+                                            <Text style={[styles.summaryNumber, { color: Colors.success }]}>{scheduleSummary.taken}</Text>
                                             <Text style={styles.summaryLabel}>Taken</Text>
                                         </View>
                                         <View style={styles.summaryDivider} />
                                         <View style={styles.summaryItem}>
-                                            <Text style={[styles.summaryNumber, { color: Colors.primary }]}>{summary.pending}</Text>
+                                            <Text style={[styles.summaryNumber, { color: Colors.primary }]}>{scheduleSummary.pending}</Text>
                                             <Text style={styles.summaryLabel}>Pending</Text>
                                         </View>
                                         <View style={styles.summaryDivider} />
                                         <View style={styles.summaryItem}>
-                                            <Text style={[styles.summaryNumber, { color: Colors.error }]}>{summary.skipped}</Text>
+                                            <Text style={[styles.summaryNumber, { color: Colors.error }]}>{scheduleSummary.skipped}</Text>
                                             <Text style={styles.summaryLabel}>Skipped</Text>
                                         </View>
                                     </View>
@@ -374,9 +401,49 @@ const styles = StyleSheet.create({
         fontSize: 15,
         color: Colors.textMuted,
     },
+    refreshRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: spacing(2),
+        marginBottom: spacing(3),
+    },
+    refreshText: {
+        fontSize: 13,
+        color: Colors.textMuted,
+    },
+    staleDataBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing(2),
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: `${Colors.warning}66`,
+        backgroundColor: `${Colors.warning}14`,
+        paddingHorizontal: spacing(3),
+        paddingVertical: spacing(2.5),
+        marginBottom: spacing(3),
+    },
+    staleDataText: {
+        flex: 1,
+        fontSize: 12,
+        color: Colors.textMuted,
+    },
     errorText: {
         fontSize: 16,
         color: Colors.error,
+    },
+    retryButton: {
+        marginTop: spacing(2),
+        paddingHorizontal: spacing(5),
+        paddingVertical: spacing(2.5),
+        borderRadius: Radius.md,
+        backgroundColor: Colors.primary,
+    },
+    retryButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#fff',
     },
     emptyTitle: {
         fontSize: 18,

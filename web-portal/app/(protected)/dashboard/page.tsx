@@ -21,6 +21,11 @@ import { useActions, useMedications, useUserProfile, useVisits } from '@/lib/api
 import { cn } from '@/lib/utils';
 import { WelcomeCards } from '@/components/dashboard/WelcomeCards';
 
+function getVisitSortTimestamp(visit: { visitDate?: string | null; createdAt?: string | null }) {
+  const value = visit.visitDate || visit.createdAt;
+  return value ? new Date(value).getTime() : 0;
+}
+
 export default function DashboardPage() {
   const user = useCurrentUser();
   const { viewingUserId } = useViewing();
@@ -50,8 +55,8 @@ export default function DashboardPage() {
   const latestVisit = React.useMemo(() => {
     if (!visits.length) return null;
     const sorted = [...visits].sort((a, b) => {
-      const aTime = new Date(a.createdAt || 0).getTime();
-      const bTime = new Date(b.createdAt || 0).getTime();
+      const aTime = getVisitSortTimestamp(a as any);
+      const bTime = getVisitSortTimestamp(b as any);
       return bTime - aTime;
     });
     return sorted[0];
@@ -243,8 +248,8 @@ export default function DashboardPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visits
                 .sort((a: any, b: any) => {
-                  const aTime = new Date(a.createdAt || 0).getTime();
-                  const bTime = new Date(b.createdAt || 0).getTime();
+                  const aTime = getVisitSortTimestamp(a);
+                  const bTime = getVisitSortTimestamp(b);
                   return bTime - aTime;
                 })
                 .slice(1, 4)
@@ -331,8 +336,9 @@ function QuickStatCard({
 }
 
 function PastVisitCard({ visit }: { visit: any }) {
-  const formattedDate = visit.createdAt
-    ? format(new Date(visit.createdAt), 'MMM d, yyyy')
+  const effectiveVisitDate = visit.visitDate || visit.createdAt;
+  const formattedDate = effectiveVisitDate
+    ? format(new Date(effectiveVisitDate), 'MMM d, yyyy')
     : 'Unknown date';
 
   return (

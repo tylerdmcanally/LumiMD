@@ -15,7 +15,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { Colors, spacing, Card } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
-import { useVisits } from '../lib/api/hooks';
+import { usePaginatedVisits } from '../lib/api/hooks';
 import { openWebVisit, openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,12 +45,18 @@ export default function VisitsScreen() {
   };
 
   const {
-    data: visits,
+    items: visits,
     isLoading,
     isRefetching,
+    isFetchingNextPage,
+    hasMore,
+    fetchNextPage,
     error,
     refetch,
-  } = useVisits({
+  } = usePaginatedVisits({
+    limit: 25,
+    sort: 'desc',
+  }, {
     enabled: isAuthenticated,
     staleTime: 60 * 1000,
   });
@@ -162,45 +168,64 @@ export default function VisitsScreen() {
             />
           ) : (
 
-            <Card style={styles.listCard}>
-              {sortedVisits.map((visit: any, index: number) => (
-                <Pressable
-                  key={visit.id}
-                  onPress={() => router.push({ pathname: '/visit-detail', params: { id: visit.id } })}
-                  style={[styles.row, index < sortedVisits.length - 1 && styles.rowDivider]}
-                >
-                  <View style={{ flex: 1, paddingRight: spacing(3) }}>
-                    <Text style={styles.rowDate}>
-                      {visit.createdAt ? dayjs(visit.createdAt).format('MMM D, YYYY h:mm A') : 'Unknown'}
-                    </Text>
-                    <Text style={styles.rowMeta}>
-                      {(() => {
-                        const statusKey = normalizeStatus(visit);
-                        switch (statusKey) {
-                          case 'completed':
-                            return `Processed ${visit.processedAt ? dayjs(visit.processedAt).fromNow() : ''
-                              }`;
-                          case 'finalizing':
-                            return 'Finalizing summary…';
-                          case 'failed':
-                            return visit.processingError || 'We could not process this visit.';
-                          case 'transcribing':
-                            return 'Transcribing audio…';
-                          case 'summarizing':
-                            return 'Analyzing key points…';
-                          case 'processing':
-                            return 'Processing… tap to view status.';
-                          case 'pending':
-                          default:
-                            return 'Queued for processing…';
-                        }
-                      })()}
-                    </Text>
-                  </View>
-                  {renderStatusBadge(visit)}
-                </Pressable>
-              ))}
-            </Card>
+            <>
+              <Card style={styles.listCard}>
+                {sortedVisits.map((visit: any, index: number) => (
+                  <Pressable
+                    key={visit.id}
+                    onPress={() => router.push({ pathname: '/visit-detail', params: { id: visit.id } })}
+                    style={[styles.row, index < sortedVisits.length - 1 && styles.rowDivider]}
+                  >
+                    <View style={{ flex: 1, paddingRight: spacing(3) }}>
+                      <Text style={styles.rowDate}>
+                        {visit.createdAt ? dayjs(visit.createdAt).format('MMM D, YYYY h:mm A') : 'Unknown'}
+                      </Text>
+                      <Text style={styles.rowMeta}>
+                        {(() => {
+                          const statusKey = normalizeStatus(visit);
+                          switch (statusKey) {
+                            case 'completed':
+                              return `Processed ${visit.processedAt ? dayjs(visit.processedAt).fromNow() : ''
+                                }`;
+                            case 'finalizing':
+                              return 'Finalizing summary…';
+                            case 'failed':
+                              return visit.processingError || 'We could not process this visit.';
+                            case 'transcribing':
+                              return 'Transcribing audio…';
+                            case 'summarizing':
+                              return 'Analyzing key points…';
+                            case 'processing':
+                              return 'Processing… tap to view status.';
+                            case 'pending':
+                            default:
+                              return 'Queued for processing…';
+                          }
+                        })()}
+                      </Text>
+                    </View>
+                    {renderStatusBadge(visit)}
+                  </Pressable>
+                ))}
+              </Card>
+              {hasMore && (
+                <View style={styles.loadMoreContainer}>
+                  <Pressable
+                    style={styles.loadMoreButton}
+                    onPress={() => {
+                      void fetchNextPage();
+                    }}
+                    disabled={isFetchingNextPage}
+                  >
+                    {isFetchingNextPage ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.loadMoreText}>Load older visits</Text>
+                    )}
+                  </Pressable>
+                </View>
+              )}
+            </>
           )}
         </ScrollView>
       </SafeAreaView>
@@ -262,6 +287,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing(3),
     paddingVertical: spacing(1),
   },
+  loadMoreContainer: {
+    marginTop: spacing(3),
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    minWidth: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(2),
+    backgroundColor: Colors.surface,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,5 +339,3 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
-
-

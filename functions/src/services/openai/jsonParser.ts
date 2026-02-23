@@ -66,3 +66,99 @@ export const sanitizeText = (value: unknown): string | undefined => {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
 };
+
+export type JsonExpectedType = 'string' | 'number' | 'boolean' | 'array' | 'object';
+
+export interface JsonKeySchema {
+    key: string;
+    type: JsonExpectedType;
+    required?: boolean;
+}
+
+export interface JsonValidationWarning {
+    key: string;
+    code: 'missing_key' | 'invalid_type';
+    expectedType: JsonExpectedType;
+    actualType: string;
+    message: string;
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+};
+
+const getValueType = (value: unknown): string => {
+    if (Array.isArray(value)) return 'array';
+    if (value === null) return 'null';
+    return typeof value;
+};
+
+const matchesExpectedType = (value: unknown, expectedType: JsonExpectedType): boolean => {
+    switch (expectedType) {
+        case 'array':
+            return Array.isArray(value);
+        case 'object':
+            return isPlainObject(value);
+        default:
+            return typeof value === expectedType;
+    }
+};
+
+export const validateTopLevelSchema = (
+    value: unknown,
+    schema: JsonKeySchema[]
+): {
+    record: Record<string, unknown> | null;
+    warnings: JsonValidationWarning[];
+    isValidObject: boolean;
+} => {
+    if (!isPlainObject(value)) {
+        return {
+            record: null,
+            warnings: [
+                {
+                    key: '$',
+                    code: 'invalid_type',
+                    expectedType: 'object',
+                    actualType: getValueType(value),
+                    message: 'Top-level JSON payload must be an object.',
+                },
+            ],
+            isValidObject: false,
+        };
+    }
+
+    const warnings: JsonValidationWarning[] = [];
+
+    schema.forEach(({ key, type, required = false }) => {
+        const fieldValue = value[key];
+        if (typeof fieldValue === 'undefined') {
+            if (required) {
+                warnings.push({
+                    key,
+                    code: 'missing_key',
+                    expectedType: type,
+                    actualType: 'undefined',
+                    message: `Missing required key "${key}" (expected ${type}).`,
+                });
+            }
+            return;
+        }
+
+        if (!matchesExpectedType(fieldValue, type)) {
+            warnings.push({
+                key,
+                code: 'invalid_type',
+                expectedType: type,
+                actualType: getValueType(fieldValue),
+                message: `Invalid type for key "${key}" (expected ${type}, received ${getValueType(fieldValue)}).`,
+            });
+        }
+    });
+
+    return {
+        record: value,
+        warnings,
+        isValidObject: true,
+    };
+};

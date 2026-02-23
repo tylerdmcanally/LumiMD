@@ -14,7 +14,11 @@
     "logs": "firebase functions:log",
     "clean:assembly": "ts-node scripts/delete-assembly-transcripts.ts",
     "clean:medication-cache": "ts-node scripts/clearMedicationSafetyCache.ts",
-    "backfill:canonical-meds": "ts-node scripts/backfillCanonicalMedicationNames.ts"
+    "backfill:canonical-meds": "ts-node scripts/backfillCanonicalMedicationNames.ts",
+    "verify:index-guardrails": "node scripts/verify-firestore-index-guardrails.js",
+    "test:denormalization-contract": "jest src/services/__tests__/denormalizationSync.test.ts src/services/__tests__/denormalizationBackfill.test.ts",
+    "test:repository-contract": "jest src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts",
+    "test:remediation-guardrails": "npm run verify:index-guardrails && npm run test:denormalization-contract && npm run test:repository-contract"
   },
   "engines": {
     "node": "20"
@@ -25,6 +29,7 @@
     "axios": "^1.13.2",
     "body-parser": "~1.20.4",
     "chrono-node": "^2.9.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "express": "^4.22.1",
     "express-rate-limit": "^8.2.1",
@@ -38,6 +43,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jest": "^30.0.0",

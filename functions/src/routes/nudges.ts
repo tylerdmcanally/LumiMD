@@ -9,17 +9,24 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../middlewares/auth';
-import {
-    getActiveNudgesForUser,
-    completeNudge,
-    snoozeNudge,
-    dismissNudge,
-} from '../services/lumibotAnalyzer';
+import { ensureResourceOwnerAccessOrReject } from '../middlewares/resourceAccess';
 import { NudgeResponse } from '../types/lumibot';
+import { sanitizePlainText } from '../utils/inputSanitization';
+import { NudgeDomainService } from '../services/domain/nudges/NudgeDomainService';
+import { MedicationDomainService } from '../services/domain/medications/MedicationDomainService';
+import { FirestoreNudgeRepository } from '../services/repositories/nudges/FirestoreNudgeRepository';
+import { FirestoreMedicationRepository } from '../services/repositories/medications/FirestoreMedicationRepository';
 
 export const nudgesRouter = Router();
 
 const getDb = () => admin.firestore();
+const getNudgeDomainService = () => new NudgeDomainService(new FirestoreNudgeRepository(getDb()));
+const getMedicationDomainService = () =>
+    new MedicationDomainService(new FirestoreMedicationRepository(getDb()));
+const NUDGE_NOTE_MAX_LENGTH = 1000;
+const NUDGE_SIDE_EFFECT_MAX_ITEMS = 20;
+const NUDGE_SIDE_EFFECT_ITEM_MAX_LENGTH = 120;
+const NUDGE_FREE_TEXT_MAX_LENGTH = 2000;
 
 // =============================================================================
 // Validation Schemas
@@ -52,8 +59,12 @@ const respondToNudgeSchema = z.object({
 nudgesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
+        const nudgeService = getNudgeDomainService();
 
-        const nudges = await getActiveNudgesForUser(userId);
+        const nudges = await nudgeService.listActiveByUser(userId, {
+            now: admin.firestore.Timestamp.now(),
+            limit: 10,
+        });
 
         // Transform to response format
         const response: NudgeResponse[] = nudges.map(nudge => ({
@@ -74,6 +85,7 @@ nudgesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
         }));
 
         functions.logger.info(`[nudges] Retrieved ${response.length} active nudges for user ${userId}`);
+        res.set('Cache-Control', 'private, max-age=30');
         res.json(response);
     } catch (error) {
         functions.logger.error('[nudges] Error fetching nudges:', error);
@@ -92,42 +104,54 @@ nudgesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
         const nudgeId = req.params.id;
+        const nudgeService = getNudgeDomainService();
 
         // Validate request body
-        const data = updateNudgeSchema.parse(req.body);
+        const parsedData = updateNudgeSchema.parse(req.body);
+        const data = {
+            ...parsedData,
+            ...(typeof parsedData.responseValue === 'string'
+                ? { responseValue: sanitizePlainText(parsedData.responseValue, NUDGE_FREE_TEXT_MAX_LENGTH) }
+                : {}),
+        };
 
         // Verify nudge belongs to user
-        const nudgeRef = getDb().collection('nudges').doc(nudgeId);
-        const nudgeDoc = await nudgeRef.get();
+        const nudge = await nudgeService.getById(nudgeId);
 
-        if (!nudgeDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Nudge not found',
-            });
-            return;
-        }
-
-        const nudge = nudgeDoc.data()!;
-        if (nudge.userId !== userId) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this nudge',
-            });
+        if (
+            !ensureResourceOwnerAccessOrReject(userId, nudge, res, {
+                resourceName: 'nudge',
+                notFoundMessage: 'Nudge not found',
+            })
+        ) {
             return;
         }
 
         // Update based on status
+        const now = admin.firestore.Timestamp.now();
         switch (data.status) {
-            case 'completed':
-                await completeNudge(nudgeId, data.responseValue);
+            case 'completed': {
+                await nudgeService.completeById(nudgeId, {
+                    now,
+                    responseValue: data.responseValue,
+                });
                 break;
-            case 'snoozed':
-                await snoozeNudge(nudgeId, data.snoozeDays || 1);
+            }
+            case 'snoozed': {
+                const snoozedUntil = new Date();
+                snoozedUntil.setDate(snoozedUntil.getDate() + (data.snoozeDays || 1));
+                await nudgeService.snoozeById(nudgeId, {
+                    now,
+                    snoozedUntil: admin.firestore.Timestamp.fromDate(snoozedUntil),
+                });
                 break;
-            case 'dismissed':
-                await dismissNudge(nudgeId);
+            }
+            case 'dismissed': {
+                await nudgeService.dismissById(nudgeId, {
+                    now,
+                });
                 break;
+            }
         }
 
         functions.logger.info(`[nudges] Updated nudge ${nudgeId} to status ${data.status}`);
@@ -163,36 +187,39 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
     try {
         const userId = req.user!.uid;
         const nudgeId = req.params.id;
+        const nudgeService = getNudgeDomainService();
 
         // Validate request body
-        const data = respondToNudgeSchema.parse(req.body);
+        const parsedData = respondToNudgeSchema.parse(req.body);
+        const note = sanitizePlainText(parsedData.note, NUDGE_NOTE_MAX_LENGTH);
+        const sideEffects = sanitizeStringArray(parsedData.sideEffects);
+        const data = {
+            ...parsedData,
+            ...(note ? { note } : {}),
+            ...(sideEffects.length > 0 ? { sideEffects } : {}),
+        };
 
         // Verify nudge belongs to user
-        const nudgeRef = getDb().collection('nudges').doc(nudgeId);
-        const nudgeDoc = await nudgeRef.get();
+        const nudge = await nudgeService.getById(nudgeId);
 
-        if (!nudgeDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Nudge not found',
-            });
+        if (
+            !ensureResourceOwnerAccessOrReject(userId, nudge, res, {
+                resourceName: 'nudge',
+                notFoundMessage: 'Nudge not found',
+            })
+        ) {
             return;
         }
-
-        const nudge = nudgeDoc.data()!;
-        if (nudge.userId !== userId) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this nudge',
-            });
-            return;
-        }
+        const nudgeData = nudge as Record<string, any>;
 
         // Complete the nudge with the response
-        await completeNudge(nudgeId, {
-            response: data.response,
-            note: data.note,
-            sideEffects: data.sideEffects,
+        await nudgeService.completeById(nudgeId, {
+            now: admin.firestore.Timestamp.now(),
+            responseValue: {
+                response: data.response,
+                note: data.note,
+                sideEffects: data.sideEffects,
+            },
         });
 
         functions.logger.info(`[nudges] Nudge ${nudgeId} responded with ${data.response}`);
@@ -205,58 +232,58 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
         const positiveResponses = ['taking_it', 'good', 'none'];
         const concerningResponses = ['having_trouble', 'issues', 'concerning'];
 
-        if (positiveResponses.includes(data.response) && nudge.sequenceId && nudge.medicationName) {
+        if (
+            positiveResponses.includes(data.response) &&
+            nudgeData.sequenceId &&
+            nudgeData.medicationName
+        ) {
             // Skip remaining pending nudges in this sequence - patient confirmed they're on track
             try {
-                const pendingNudges = await getDb()
-                    .collection('nudges')
-                    .where('userId', '==', userId)
-                    .where('sequenceId', '==', nudge.sequenceId)
-                    .where('status', 'in', ['pending', 'snoozed'])
-                    .get();
+                const pendingNudges = await nudgeService.listByUserAndSequence(
+                    userId,
+                    nudgeData.sequenceId as string,
+                    ['pending', 'snoozed'],
+                );
 
-                if (!pendingNudges.empty) {
-                    const batch = getDb().batch();
+                if (pendingNudges.length > 0) {
                     const now = admin.firestore.Timestamp.now();
-                    pendingNudges.docs.forEach(doc => {
-                        batch.update(doc.ref, {
-                            status: 'dismissed',
-                            dismissedAt: now,
-                            updatedAt: now,
-                        });
+                    const pendingNudgeIds = pendingNudges.map((pendingNudge) => pendingNudge.id);
+                    const dismissResult = await nudgeService.dismissByIds(pendingNudgeIds, {
+                        now,
                     });
-                    await batch.commit();
+
                     functions.logger.info(
-                        `[nudges] Smart skip: dismissed ${pendingNudges.size} remaining nudges for ${nudge.medicationName} after positive response`
+                        `[nudges] Smart skip: dismissed ${dismissResult.updatedCount} remaining nudges for ${nudgeData.medicationName} after positive response`
                     );
                 }
             } catch (skipErr) {
                 functions.logger.error('[nudges] Error skipping remaining nudges:', skipErr);
             }
-        } else if (concerningResponses.includes(data.response) && nudge.medicationName) {
+        } else if (concerningResponses.includes(data.response) && nudgeData.medicationName) {
             // Concerning response → schedule a follow-up check in 3 days
             try {
                 const followUpDate = new Date();
                 followUpDate.setDate(followUpDate.getDate() + 3);
+                const now = admin.firestore.Timestamp.now();
 
-                await getDb().collection('nudges').add({
+                await nudgeService.createRecord({
                     userId,
-                    visitId: nudge.visitId,
+                    visitId: nudgeData.visitId,
                     type: 'followup',
-                    medicationName: nudge.medicationName,
-                    medicationId: nudge.medicationId || null,
-                    title: `Following up on ${nudge.medicationName}`,
-                    message: `How are things going with ${nudge.medicationName}? Any updates since you mentioned having some issues?`,
+                    medicationName: nudgeData.medicationName,
+                    medicationId: nudgeData.medicationId || null,
+                    title: `Following up on ${nudgeData.medicationName}`,
+                    message: `How are things going with ${nudgeData.medicationName}? Any updates since you mentioned having some issues?`,
                     actionType: 'feeling_check',
                     scheduledFor: admin.firestore.Timestamp.fromDate(followUpDate),
                     sequenceDay: 0,
                     sequenceId: `followup_${nudgeId}`,
                     status: 'pending',
-                    createdAt: admin.firestore.Timestamp.now(),
-                    updatedAt: admin.firestore.Timestamp.now(),
+                    createdAt: now,
+                    updatedAt: now,
                 });
                 functions.logger.info(
-                    `[nudges] Smart follow-up: created 3-day check-in for ${nudge.medicationName} after concerning response`
+                    `[nudges] Smart follow-up: created 3-day check-in for ${nudgeData.medicationName} after concerning response`
                 );
             } catch (followUpErr) {
                 functions.logger.error('[nudges] Error creating follow-up nudge:', followUpErr);
@@ -310,37 +337,54 @@ import { getLumiBotAIService, PatientTrendContext, FollowUpUrgency } from '../se
 import { getPatientContext } from '../services/patientContextAggregator';
 
 const freeTextResponseSchema = z.object({
-    text: z.string().min(1).max(2000),
+    text: z.string().min(1).max(NUDGE_FREE_TEXT_MAX_LENGTH),
 });
+
+function sanitizeStringArray(
+    values: unknown,
+    maxLength = NUDGE_SIDE_EFFECT_ITEM_MAX_LENGTH,
+    maxItems = NUDGE_SIDE_EFFECT_MAX_ITEMS,
+): string[] {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return values
+        .slice(0, maxItems)
+        .map((value) => sanitizePlainText(value, maxLength))
+        .filter((value) => value.length > 0);
+}
 
 nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
         const nudgeId = req.params.id;
+        const nudgeService = getNudgeDomainService();
 
         // Validate request body
-        const data = freeTextResponseSchema.parse(req.body);
+        const parsedData = freeTextResponseSchema.parse(req.body);
+        const sanitizedText = sanitizePlainText(parsedData.text, NUDGE_FREE_TEXT_MAX_LENGTH);
+        if (!sanitizedText) {
+            res.status(400).json({
+                code: 'validation_failed',
+                message: 'Response text is required',
+            });
+            return;
+        }
+        const data = { ...parsedData, text: sanitizedText };
 
         // Verify nudge belongs to user
-        const nudgeRef = getDb().collection('nudges').doc(nudgeId);
-        const nudgeDoc = await nudgeRef.get();
+        const nudge = await nudgeService.getById(nudgeId);
 
-        if (!nudgeDoc.exists) {
-            res.status(404).json({
-                code: 'not_found',
-                message: 'Nudge not found',
-            });
+        if (
+            !ensureResourceOwnerAccessOrReject(userId, nudge, res, {
+                resourceName: 'nudge',
+                notFoundMessage: 'Nudge not found',
+            })
+        ) {
             return;
         }
-
-        const nudge = nudgeDoc.data()!;
-        if (nudge.userId !== userId) {
-            res.status(403).json({
-                code: 'forbidden',
-                message: 'You do not have access to this nudge',
-            });
-            return;
-        }
+        const nudgeData = nudge as Record<string, any>;
 
         // Get patient context for trends
         let trendContext: PatientTrendContext | undefined;
@@ -376,19 +420,22 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
         const aiService = getLumiBotAIService();
         const interpretation = await aiService.interpretUserResponse({
             nudgeContext: {
-                nudgeType: nudge.type,
-                conditionId: nudge.conditionId,
-                medicationName: nudge.medicationName,
-                originalMessage: nudge.message,
+                nudgeType: nudgeData.type,
+                conditionId: nudgeData.conditionId,
+                medicationName: nudgeData.medicationName,
+                originalMessage: nudgeData.message,
             },
             userResponse: data.text,
             trendContext,
         });
 
         // Complete the nudge with the response
-        await completeNudge(nudgeId, {
-            freeTextResponse: data.text,
-            aiInterpretation: interpretation,
+        await nudgeService.completeById(nudgeId, {
+            now: admin.firestore.Timestamp.now(),
+            responseValue: {
+                freeTextResponse: data.text,
+                aiInterpretation: interpretation,
+            },
         });
 
         functions.logger.info(`[nudges] Free-text response for nudge ${nudgeId}`, {
@@ -403,13 +450,14 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
             try {
                 const followUp = interpretation.followUp;
                 const scheduledFor = calculateFollowUpDate(followUp.urgency);
+                const now = admin.firestore.Timestamp.now();
 
-                await getDb().collection('nudges').add({
+                await nudgeService.createRecord({
                     userId,
-                    visitId: nudge.visitId,
+                    visitId: nudgeData.visitId,
                     type: 'followup',
-                    conditionId: nudge.conditionId,
-                    medicationName: nudge.medicationName,
+                    conditionId: nudgeData.conditionId,
+                    medicationName: nudgeData.medicationName,
                     title: 'Follow-up Check',
                     message: followUp.suggestedMessage ||
                         `Checking back in on you. ${followUp.focusArea ? `Let's talk about ${followUp.focusArea}.` : ''}`,
@@ -422,8 +470,8 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
                     aiGenerated: true,
                     personalizedContext: followUp.reason,
                     sourceNudgeId: nudgeId,
-                    createdAt: admin.firestore.Timestamp.now(),
-                    updatedAt: admin.firestore.Timestamp.now(),
+                    createdAt: now,
+                    updatedAt: now,
                 });
 
                 followUpCreated = true;
@@ -514,20 +562,15 @@ function calculateFollowUpDate(urgency: FollowUpUrgency): Date {
 nudgesRouter.get('/history', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
+        const nudgeService = getNudgeDomainService();
         const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
 
-        const snapshot = await getDb()
-            .collection('nudges')
-            .where('userId', '==', userId)
-            .where('status', 'in', ['completed', 'dismissed'])
-            .orderBy('updatedAt', 'desc')
-            .limit(limit)
-            .get();
+        const history = await nudgeService.listHistoryByUser(userId, limit);
 
-        const response: NudgeResponse[] = snapshot.docs.map(doc => {
-            const data = doc.data();
+        const response: NudgeResponse[] = history.map((nudge) => {
+            const data = nudge as any;
             return {
-                id: doc.id,
+                id: nudge.id,
                 userId: data.userId,
                 visitId: data.visitId,
                 type: data.type,
@@ -545,6 +588,7 @@ nudgesRouter.get('/history', requireAuth, async (req: AuthRequest, res) => {
         });
 
         functions.logger.info(`[nudges] Retrieved ${response.length} history nudges for user ${userId}`);
+        res.set('Cache-Control', 'private, max-age=30');
         res.json(response);
     } catch (error) {
         functions.logger.error('[nudges] Error fetching nudge history:', error);
@@ -610,40 +654,44 @@ nudgesRouter.post('/process-due', async (req, res) => {
 nudgesRouter.post('/cleanup-orphans', requireAuth, async (req: AuthRequest, res) => {
     try {
         const userId = req.user!.uid;
+        const nudgeService = getNudgeDomainService();
+        const medicationService = getMedicationDomainService();
 
         // Get all pending/active nudges with medication references for this user
-        const snapshot = await getDb()
-            .collection('nudges')
-            .where('userId', '==', userId)
-            .where('status', 'in', ['pending', 'active', 'snoozed'])
-            .get();
+        const activeNudges = await nudgeService.listByUserAndStatuses(userId, [
+            'pending',
+            'active',
+            'snoozed',
+        ]);
 
-        if (snapshot.empty) {
+        if (activeNudges.length === 0) {
             res.json({ success: true, message: 'No pending nudges found', deleted: 0 });
             return;
         }
 
         // Get all active medications for this user
-        const medsSnapshot = await getDb()
-            .collection('medications')
-            .where('userId', '==', userId)
-            .where('active', '==', true)
-            .get();
+        const medications = await medicationService.listAllForUser(userId, {
+            includeDeleted: false,
+        });
 
         const activeMedNames = new Set(
-            medsSnapshot.docs.map(doc => doc.data().name?.toLowerCase())
+            medications
+                .filter((medication) => medication.active === true)
+                .map((medication) => medication.name)
+                .filter((name): name is string => typeof name === 'string' && name.length > 0)
+                .map((name) => name.toLowerCase()),
         );
 
         // Find nudges that reference discontinued medications
         const orphans: string[] = [];
-        for (const doc of snapshot.docs) {
-            const nudge = doc.data();
+        for (const nudge of activeNudges) {
+            const nudgeData = nudge as Record<string, unknown>;
 
             // Only check nudges that have a medicationName
-            if (nudge.medicationName) {
-                const medNameLower = nudge.medicationName.toLowerCase();
+            if (typeof nudgeData.medicationName === 'string' && nudgeData.medicationName.length > 0) {
+                const medNameLower = nudgeData.medicationName.toLowerCase();
                 if (!activeMedNames.has(medNameLower)) {
-                    orphans.push(doc.id);
+                    orphans.push(nudge.id);
                 }
             }
         }
@@ -654,27 +702,21 @@ nudgesRouter.post('/cleanup-orphans', requireAuth, async (req: AuthRequest, res)
         }
 
         // Delete orphaned nudges
-        const batch = getDb().batch();
         const now = admin.firestore.Timestamp.now();
-        orphans.forEach(id => {
-            batch.update(getDb().collection('nudges').doc(id), {
-                status: 'dismissed',
-                dismissedAt: now,
-                dismissalReason: 'medication_discontinued',
-                updatedAt: now,
-            });
+        const dismissResult = await nudgeService.dismissByIds(orphans, {
+            now,
+            dismissalReason: 'medication_discontinued',
         });
-        await batch.commit();
 
-        functions.logger.info(`[nudges] Cleaned up ${orphans.length} orphaned nudges`, {
+        functions.logger.info(`[nudges] Cleaned up ${dismissResult.updatedCount} orphaned nudges`, {
             userId,
             orphanedIds: orphans,
         });
 
         res.json({
             success: true,
-            message: `Dismissed ${orphans.length} nudge(s) for discontinued medications`,
-            deleted: orphans.length,
+            message: `Dismissed ${dismissResult.updatedCount} nudge(s) for discontinued medications`,
+            deleted: dismissResult.updatedCount,
         });
     } catch (error) {
         functions.logger.error('[nudges] Cleanup failed:', error);

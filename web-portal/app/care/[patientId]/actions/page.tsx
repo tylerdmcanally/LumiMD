@@ -16,16 +16,50 @@ import {
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useCareActions } from '@/lib/api/hooks';
+import { useCareActionsPage, type ActionItem } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
+
+const CARE_ACTIONS_PAGE_SIZE = 50;
 
 export default function PatientActionsPage() {
     const params = useParams<{ patientId: string }>();
     const patientId = params.patientId;
 
-    const { data: actions, isLoading, error } = useCareActions(patientId);
+    const [cursor, setCursor] = React.useState<string | null>(null);
+    const [actions, setActions] = React.useState<ActionItem[]>([]);
+    const [hasMore, setHasMore] = React.useState(false);
+    const [nextCursor, setNextCursor] = React.useState<string | null>(null);
 
-    if (isLoading) {
+    const {
+        data: actionsPage,
+        isLoading,
+        isFetching,
+        error,
+    } = useCareActionsPage(patientId, {
+        limit: CARE_ACTIONS_PAGE_SIZE,
+        cursor,
+    });
+
+    React.useEffect(() => {
+        setCursor(null);
+        setActions([]);
+        setHasMore(false);
+        setNextCursor(null);
+    }, [patientId]);
+
+    React.useEffect(() => {
+        if (!actionsPage) return;
+        setActions((previous) => {
+            const byId = new Map<string, ActionItem>();
+            previous.forEach((item) => byId.set(item.id, item));
+            actionsPage.items.forEach((item) => byId.set(item.id, item));
+            return Array.from(byId.values());
+        });
+        setHasMore(actionsPage.hasMore);
+        setNextCursor(actionsPage.nextCursor);
+    }, [actionsPage]);
+
+    if (isLoading && actions.length === 0) {
         return (
             <PageContainer maxWidth="lg">
                 <div className="flex items-center justify-center py-20">
@@ -35,7 +69,7 @@ export default function PatientActionsPage() {
         );
     }
 
-    if (error) {
+    if (error && actions.length === 0) {
         return (
             <PageContainer maxWidth="lg">
                 <Card variant="elevated" padding="lg" className="text-center py-12">
@@ -193,6 +227,30 @@ export default function PatientActionsPage() {
                                 ))}
                             </div>
                         </section>
+                    )}
+
+                    {(hasMore || isFetching) && (
+                        <div className="pt-2 flex justify-center">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={!hasMore || !nextCursor || isFetching}
+                                onClick={() => {
+                                    if (!nextCursor) return;
+                                    setCursor(nextCursor);
+                                }}
+                                className="flex items-center gap-2"
+                            >
+                                {isFetching && <Loader2 className="h-4 w-4 animate-spin" />}
+                                <span>{isFetching ? 'Loading...' : 'Load more actions'}</span>
+                            </Button>
+                        </div>
+                    )}
+
+                    {error && actions.length > 0 && (
+                        <p className="text-sm text-error text-center">
+                            Unable to load more action items right now.
+                        </p>
                     )}
                 </div>
             )}

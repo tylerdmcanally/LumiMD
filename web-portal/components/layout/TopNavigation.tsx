@@ -16,12 +16,14 @@ import {
     ChevronDown,
     Menu,
     Activity,
+    ShieldAlert,
 } from 'lucide-react';
 
 import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
+import { useOperatorAccess } from '@/lib/hooks/useOperatorAccess';
 import { useUserProfile } from '@/lib/api/hooks';
 import { useViewing } from '@/lib/contexts/ViewingContext';
 
@@ -31,6 +33,7 @@ type NavItem = {
     href: string;
     icon: React.ComponentType<{ className?: string }>;
     exact?: boolean;
+    requiresOperator?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -40,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
     { label: 'Health', href: '/health', icon: Activity },
     { label: 'Action Items', href: '/actions', icon: CheckSquare },
     { label: 'Sharing', href: '/sharing', icon: Users },
+    { label: 'Ops', href: '/ops/escalations', icon: ShieldAlert, requiresOperator: true },
 ];
 
 
@@ -52,6 +56,7 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
     const user = useCurrentUser();
     const userId = user?.uid ?? null;
     const { isCaregiver, viewingUserId } = useViewing();
+    const { isOperator } = useOperatorAccess();
     const [userMenuOpen, setUserMenuOpen] = React.useState(false);
     const userMenuRef = React.useRef<HTMLDivElement>(null);
 
@@ -133,7 +138,11 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
 
                     {/* Center: Navigation (desktop only) */}
                     <nav className="hidden md:flex items-center gap-1">
-                        {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Sharing')).map((item) => {
+                        {NAV_ITEMS.filter(
+                            (item) =>
+                                !(isCaregiver && item.label === 'Sharing') &&
+                                (!item.requiresOperator || isOperator),
+                        ).map((item) => {
                             const isActive = item.exact
                                 ? pathname === item.href
                                 : pathname?.startsWith(item.href);

@@ -20,6 +20,8 @@ import {
     getConditionsCoveredByMedications,
 } from '../data/medicationClasses';
 import { VisitSummaryResult, MedicationChangeEntry } from './openai';
+import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
+import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
 
 
 // =============================================================================
@@ -36,7 +38,7 @@ function generateShortId(): string {
 // =============================================================================
 
 const db = () => admin.firestore();
-const getNudgesCollection = () => db().collection('nudges');
+const getNudgeDomainService = () => new NudgeDomainService(new FirestoreNudgeRepository(db()));
 
 // =============================================================================
 // Rate Limiting & Deduplication Helpers
@@ -48,14 +50,12 @@ const MIN_HOURS_BETWEEN_NUDGES = 4;
  * Check if user already has pending/active nudges for this condition
  */
 async function hasExistingConditionNudges(userId: string, conditionId: string): Promise<boolean> {
-    const snapshot = await getNudgesCollection()
-        .where('userId', '==', userId)
-        .where('conditionId', '==', conditionId)
-        .where('status', 'in', ['pending', 'active', 'snoozed'])
-        .limit(1)
-        .get();
-
-    return !snapshot.empty;
+    const nudgeService = getNudgeDomainService();
+    return nudgeService.hasByUserConditionAndStatuses(userId, conditionId, [
+        'pending',
+        'active',
+        'snoozed',
+    ]);
 }
 
 /**
@@ -69,17 +69,17 @@ async function findAvailableTimeSlot(userId: string, preferredDate: Date): Promi
     const endDate = new Date(preferredDate);
     endDate.setDate(endDate.getDate() + 2);
 
-    const snapshot = await getNudgesCollection()
-        .where('userId', '==', userId)
-        .where('status', 'in', ['pending', 'active'])
-        .where('scheduledFor', '>=', admin.firestore.Timestamp.fromDate(startDate))
-        .where('scheduledFor', '<=', admin.firestore.Timestamp.fromDate(endDate))
-        .get();
+    const nudgeService = getNudgeDomainService();
+    const existingNudges = await nudgeService.listByUserStatusesScheduledBetween(
+        userId,
+        ['pending', 'active'],
+        admin.firestore.Timestamp.fromDate(startDate),
+        admin.firestore.Timestamp.fromDate(endDate),
+    );
 
-    const existingTimes: Date[] = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return (data.scheduledFor as admin.firestore.Timestamp).toDate();
-    });
+    const existingTimes: Date[] = existingNudges
+        .map((nudge) => (nudge.scheduledFor as admin.firestore.Timestamp | undefined)?.toDate?.())
+        .filter((value): value is Date => value instanceof Date);
 
     // Check if preferredDate is far enough from existing nudges
     let candidateDate = new Date(preferredDate);
@@ -106,14 +106,12 @@ async function findAvailableTimeSlot(userId: string, preferredDate: Date): Promi
  * Check if user already has pending/active nudges for this medication
  */
 async function hasExistingMedicationNudges(userId: string, medicationName: string): Promise<boolean> {
-    const snapshot = await getNudgesCollection()
-        .where('userId', '==', userId)
-        .where('medicationName', '==', medicationName)
-        .where('status', 'in', ['pending', 'active', 'snoozed'])
-        .limit(1)
-        .get();
-
-    return !snapshot.empty;
+    const nudgeService = getNudgeDomainService();
+    return nudgeService.hasByUserMedicationNameAndStatuses(userId, medicationName, [
+        'pending',
+        'active',
+        'snoozed',
+    ]);
 }
 
 // =============================================================================
@@ -151,7 +149,8 @@ async function createNudge(input: NudgeCreateInput): Promise<string> {
     if (input.diagnosisExplanation) nudge.diagnosisExplanation = input.diagnosisExplanation;
     if (input.personalizedContext) nudge.personalizedContext = input.personalizedContext;
 
-    const docRef = await getNudgesCollection().add(nudge);
+    const nudgeService = getNudgeDomainService();
+    const docRef = await nudgeService.createRecord(nudge);
 
     functions.logger.info(`[LumibotAnalyzer] Created nudge ${docRef.id}`, {
         userId: input.userId,
@@ -535,14 +534,14 @@ export async function analyzeVisitForNudges(
         }
 
         // Check if user already has active nudges for this condition from recent visits
-        const existingNudges = await getNudgesCollection()
-            .where('userId', '==', userId)
-            .where('conditionId', '==', protocol.id)
-            .where('status', 'in', ['pending', 'active', 'snoozed'])
-            .limit(1)
-            .get();
+        const nudgeService = getNudgeDomainService();
+        const hasExistingNudges = await nudgeService.hasByUserConditionAndStatuses(
+            userId,
+            protocol.id,
+            ['pending', 'active', 'snoozed'],
+        );
 
-        if (existingNudges.empty) {
+        if (!hasExistingNudges) {
             const nudgesCreated = await createConditionNudges(
                 userId,
                 visitId,
@@ -597,83 +596,15 @@ export async function analyzeVisitForNudges(
 // =============================================================================
 
 export async function getActiveNudgesForUser(userId: string): Promise<Nudge[]> {
+    const nudgeService = getNudgeDomainService();
     const now = admin.firestore.Timestamp.now();
 
-    // Simplified query: Get all nudges for user, filter in memory
-    // This avoids needing multiple composite indexes while they build
-    const snapshot = await getNudgesCollection()
-        .where('userId', '==', userId)
-        .get();
-
-    const allNudges: Nudge[] = [];
-    const batch = db().batch();
-    let needsCommit = false;
-
-    snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const status = data.status as string;
-        const scheduledFor = data.scheduledFor as admin.firestore.Timestamp;
-        const snoozedUntil = data.snoozedUntil as admin.firestore.Timestamp | undefined;
-
-        // Skip completed/dismissed nudges
-        if (status === 'completed' || status === 'dismissed') {
-            return;
-        }
-
-        // Handle pending nudges that are due
-        if (status === 'pending' && scheduledFor && scheduledFor.toMillis() <= now.toMillis()) {
-            batch.update(doc.ref, {
-                status: 'active',
-                updatedAt: now,
-            });
-            needsCommit = true;
-            allNudges.push({
-                id: doc.id,
-                ...data,
-                status: 'active', // Return as active since we're updating it
-            } as Nudge);
-            return;
-        }
-
-        // Handle already active nudges
-        if (status === 'active') {
-            allNudges.push({
-                id: doc.id,
-                ...data,
-            } as Nudge);
-            return;
-        }
-
-        // Handle snoozed nudges that are due
-        if (status === 'snoozed' && snoozedUntil && snoozedUntil.toMillis() <= now.toMillis()) {
-            batch.update(doc.ref, {
-                status: 'active',
-                snoozedUntil: admin.firestore.FieldValue.delete(),
-                updatedAt: now,
-            });
-            needsCommit = true;
-            allNudges.push({
-                id: doc.id,
-                ...data,
-                status: 'active',
-            } as Nudge);
-            return;
-        }
+    const activeNudges = await nudgeService.listActiveByUser(userId, {
+        now,
+        limit: 10,
     });
 
-    if (needsCommit) {
-        await batch.commit();
-    }
-
-    // Sort by scheduledFor ascending (oldest first)
-    allNudges.sort((a, b) => {
-        const aTime = a.scheduledFor?.toMillis?.() || 0;
-        const bTime = b.scheduledFor?.toMillis?.() || 0;
-        return aTime - bTime;
-    });
-
-    // Limit to 10 nudges
-    return allNudges.slice(0, 10);
+    return activeNudges.map((nudge) => ({ ...nudge } as Nudge));
 }
 
 // =============================================================================
@@ -684,28 +615,11 @@ export async function completeNudge(
     nudgeId: string,
     responseValue?: string | Record<string, unknown>
 ): Promise<void> {
-    const now = admin.firestore.Timestamp.now();
-
-    // Clean responseValue to remove undefined values (Firestore doesn't accept undefined)
-    let cleanedResponseValue: string | Record<string, unknown> | undefined = responseValue;
-    if (responseValue && typeof responseValue === 'object') {
-        cleanedResponseValue = Object.fromEntries(
-            Object.entries(responseValue).filter(([, v]) => v !== undefined)
-        );
-    }
-
-    const updateData: Record<string, unknown> = {
-        status: 'completed',
-        completedAt: now,
-        updatedAt: now,
-    };
-
-    // Only add responseValue if it has content
-    if (cleanedResponseValue !== undefined) {
-        updateData.responseValue = cleanedResponseValue;
-    }
-
-    await getNudgesCollection().doc(nudgeId).update(updateData);
+    const nudgeService = getNudgeDomainService();
+    await nudgeService.completeById(nudgeId, {
+        now: admin.firestore.Timestamp.now(),
+        responseValue,
+    });
 
     functions.logger.info(`[LumibotAnalyzer] Nudge ${nudgeId} completed`);
 }
@@ -718,22 +632,19 @@ export async function snoozeNudge(
     const snoozedUntil = new Date();
     snoozedUntil.setDate(snoozedUntil.getDate() + snoozeDays);
 
-    await getNudgesCollection().doc(nudgeId).update({
-        status: 'snoozed',
+    const nudgeService = getNudgeDomainService();
+    await nudgeService.snoozeById(nudgeId, {
+        now,
         snoozedUntil: admin.firestore.Timestamp.fromDate(snoozedUntil),
-        updatedAt: now,
     });
 
     functions.logger.info(`[LumibotAnalyzer] Nudge ${nudgeId} snoozed for ${snoozeDays} days`);
 }
 
 export async function dismissNudge(nudgeId: string): Promise<void> {
-    const now = admin.firestore.Timestamp.now();
-
-    await getNudgesCollection().doc(nudgeId).update({
-        status: 'dismissed',
-        dismissedAt: now,
-        updatedAt: now,
+    const nudgeService = getNudgeDomainService();
+    await nudgeService.dismissById(nudgeId, {
+        now: admin.firestore.Timestamp.now(),
     });
 
     functions.logger.info(`[LumibotAnalyzer] Nudge ${nudgeId} dismissed`);
@@ -824,17 +735,16 @@ export async function createInsightNudge(input: CreateInsightNudgeInput): Promis
     const { userId, type, pattern, severity, title, message } = input;
 
     // Don't create nudge if we recently created one for this pattern
-    const recentInsights = await getNudgesCollection()
-        .where('userId', '==', userId)
-        .where('type', '==', 'insight')
-        .where('conditionId', '==', `${type}_${pattern}`)
-        .where('createdAt', '>', admin.firestore.Timestamp.fromDate(
-            new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) // Last 3 days
-        ))
-        .limit(1)
-        .get();
+    const nudgeService = getNudgeDomainService();
+    const hasRecentInsight = await nudgeService.hasRecentInsightByPattern(
+        userId,
+        `${type}_${pattern}`,
+        admin.firestore.Timestamp.fromDate(
+            new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // Last 3 days
+        ),
+    );
 
-    if (!recentInsights.empty) {
+    if (hasRecentInsight) {
         functions.logger.info(`[LumibotAnalyzer] Skipping duplicate insight nudge`, {
             userId,
             pattern: `${type}_${pattern}`,

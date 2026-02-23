@@ -59,6 +59,49 @@ type DiagnosisInsight = {
   source?: string;
 };
 
+const toTrimmedText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const formatFollowUpForDisplay = (item: unknown): string | null => {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  const record = item as Record<string, unknown>;
+  const task = toTrimmedText(record.task) || toTrimmedText(record.type) || 'Follow up';
+  const timeframe = toTrimmedText(record.timeframe);
+  const dueAt = toTrimmedText(record.dueAt);
+
+  if (timeframe) {
+    return `${task} — ${timeframe}`;
+  }
+
+  if (dueAt) {
+    const formattedDate = formatDateDisplay(dueAt) ?? dueAt;
+    return `${task} — by ${formattedDate}`;
+  }
+
+  return task;
+};
+
+const formatOrderedTestForDisplay = (item: unknown): string | null => {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  const record = item as Record<string, unknown>;
+  const name = toTrimmedText(record.name);
+  if (!name) {
+    return null;
+  }
+  const category = toTrimmedText(record.category);
+  if (!category || category.toLowerCase() === 'other') {
+    return name;
+  }
+  return `${name} (${category})`;
+};
+
 export default function VisitDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -333,20 +376,53 @@ export default function VisitDetailPage() {
   );
 
   const diagnoses = useMemo(
-    () =>
-      Array.isArray(visit?.diagnoses)
+    () => {
+      const baseDiagnoses = Array.isArray(visit?.diagnoses)
         ? (visit!.diagnoses as string[]).filter(Boolean)
-        : [],
-    [visit],
+        : [];
+      if (baseDiagnoses.length > 0) {
+        return baseDiagnoses;
+      }
+
+      return Array.isArray((visit as any)?.diagnosesDetailed)
+        ? ((visit as any).diagnosesDetailed as Array<Record<string, unknown>>)
+          .map((entry) => toTrimmedText(entry?.name))
+          .filter((value): value is string => Boolean(value))
+        : [];
+    },
+    [visit, (visit as any)?.diagnosesDetailed],
   );
 
-  const nextSteps = useMemo(
-    () =>
-      Array.isArray(visit?.nextSteps)
-        ? (visit!.nextSteps as string[]).filter(Boolean)
-        : [],
-    [visit],
-  );
+  const nextSteps = useMemo(() => {
+    const followUps = Array.isArray((visit as any)?.followUps)
+      ? ((visit as any).followUps as unknown[])
+        .map(formatFollowUpForDisplay)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    if (followUps.length > 0) {
+      return followUps;
+    }
+
+    return Array.isArray(visit?.nextSteps)
+      ? (visit!.nextSteps as string[]).filter(Boolean)
+      : [];
+  }, [visit, (visit as any)?.followUps]);
+
+  const orderedTests = useMemo(() => {
+    const structured = Array.isArray((visit as any)?.testsOrdered)
+      ? ((visit as any).testsOrdered as unknown[])
+        .map(formatOrderedTestForDisplay)
+        .filter((value): value is string => Boolean(value))
+      : [];
+
+    if (structured.length > 0) {
+      return structured;
+    }
+
+    return Array.isArray((visit as any)?.imaging)
+      ? ((visit as any).imaging as string[]).filter(Boolean)
+      : [];
+  }, [visit, (visit as any)?.testsOrdered, (visit as any)?.imaging]);
 
   const medications = useMemo(() => {
     const medData = visit?.medications as Record<string, unknown> | undefined;
@@ -360,6 +436,62 @@ export default function VisitDetailPage() {
       changed: Array.isArray(medData?.changed)
         ? (medData!.changed as unknown[]).filter(Boolean)
         : [],
+    };
+  }, [visit]);
+
+  const medicationReview = useMemo(() => {
+    const review = (visit as any)?.medicationReview as Record<string, unknown> | undefined;
+    if (!review || typeof review !== 'object') {
+      return {
+        reviewed: false,
+        followUpNeeded: false,
+        continuedReviewed: [] as unknown[],
+        concerns: [] as string[],
+        sideEffects: [] as string[],
+        notes: [] as string[],
+      };
+    }
+
+    const continuedReviewed = Array.isArray(review.continuedReviewed)
+      ? (review.continuedReviewed as unknown[]).filter(Boolean)
+      : Array.isArray(review.continued)
+        ? (review.continued as unknown[]).filter(Boolean)
+        : [];
+    const adherenceConcerns = Array.isArray(review.adherenceConcerns)
+      ? (review.adherenceConcerns as unknown[])
+        .map(toTrimmedText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const reviewConcerns = Array.isArray(review.reviewConcerns)
+      ? (review.reviewConcerns as unknown[])
+        .map(toTrimmedText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const concerns = Array.from(new Set([...reviewConcerns, ...adherenceConcerns]));
+    const sideEffects = Array.isArray(review.sideEffectsDiscussed)
+      ? (review.sideEffectsDiscussed as unknown[])
+        .map(toTrimmedText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const notes = Array.isArray(review.notes)
+      ? (review.notes as unknown[])
+        .map(toTrimmedText)
+        .filter((value): value is string => Boolean(value))
+      : [];
+    const reviewed = typeof review.reviewed === 'boolean'
+      ? review.reviewed
+      : continuedReviewed.length > 0 ||
+        concerns.length > 0 ||
+        sideEffects.length > 0 ||
+        notes.length > 0;
+
+    return {
+      reviewed,
+      followUpNeeded: Boolean(review.followUpNeeded),
+      continuedReviewed,
+      concerns,
+      sideEffects,
+      notes,
     };
   }, [visit]);
 
@@ -560,6 +692,11 @@ export default function VisitDetailPage() {
               description="Clear next steps captured during your visit."
               items={nextSteps}
             />
+            <SimpleListCard
+              title="Ordered tests"
+              description="Diagnostic tests and studies ordered or recommended."
+              items={orderedTests}
+            />
           </div>
         </section>
 
@@ -571,7 +708,11 @@ export default function VisitDetailPage() {
             fetchingInsights={fetchingDiagnoses}
             onRequestInsight={handleRequestDiagnosisInsight}
           />
-          <MedicationCard medications={medications} education={medicationEducationMap} />
+          <MedicationCard
+            medications={medications}
+            education={medicationEducationMap}
+            medicationReview={medicationReview}
+          />
         </section>
 
       <EditVisitMetadataDialog
@@ -941,6 +1082,7 @@ function SimpleListCard({
 function MedicationCard({
   medications,
   education,
+  medicationReview,
 }: {
   medications: {
     started: unknown[];
@@ -956,6 +1098,14 @@ function MedicationCard({
       whenToCallDoctor?: string;
     }
   >;
+  medicationReview?: {
+    reviewed: boolean;
+    followUpNeeded: boolean;
+    continuedReviewed: unknown[];
+    concerns: string[];
+    sideEffects: string[];
+    notes: string[];
+  };
 }) {
   type MedicationListItem = { key: string; label: string; name?: string };
 
@@ -1047,6 +1197,15 @@ function MedicationCard({
   const startedItems = renderList(medications.started);
   const changedItems = renderList(medications.changed);
   const stoppedItems = renderList(medications.stopped);
+  const continuedItems = renderList(medicationReview?.continuedReviewed ?? []);
+  const hasReviewDetails = Boolean(
+    medicationReview?.reviewed ||
+      (continuedItems && continuedItems.length) ||
+      (medicationReview?.concerns && medicationReview.concerns.length) ||
+      (medicationReview?.sideEffects && medicationReview.sideEffects.length) ||
+      (medicationReview?.notes && medicationReview.notes.length) ||
+      medicationReview?.followUpNeeded,
+  );
   const hasChanges = Boolean(
     (startedItems && startedItems.length) ||
       (changedItems && changedItems.length) ||
@@ -1080,9 +1239,70 @@ function MedicationCard({
             emptyMessage="No medications were stopped."
           />
         </TooltipProvider>
-        {!hasChanges ? (
+        {!hasChanges && !hasReviewDetails ? (
           <div className="rounded-2xl border border-dashed border-border-light/60 bg-background-subtle/70 p-4 text-sm text-muted-foreground text-center">
             No medication changes were recorded in this visit.
+          </div>
+        ) : null}
+
+        {hasReviewDetails ? (
+          <div className="rounded-2xl border border-border-light/60 bg-background-subtle/60 p-4">
+            <p className="text-sm font-semibold text-text-primary">Medication review</p>
+            <div className="mt-3 space-y-3">
+              {continuedItems.length ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    Reviewed/continued
+                  </p>
+                  <ul className="space-y-2">{continuedItems}</ul>
+                </div>
+              ) : null}
+
+              {medicationReview?.concerns?.length ? (
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    Review concerns
+                  </p>
+                  <ul className="ml-4 list-disc space-y-1 text-sm text-text-primary">
+                    {medicationReview.concerns.map((item, index) => (
+                      <li key={`review-concern-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {medicationReview?.sideEffects?.length ? (
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    Side effects discussed
+                  </p>
+                  <ul className="ml-4 list-disc space-y-1 text-sm text-text-primary">
+                    {medicationReview.sideEffects.map((item, index) => (
+                      <li key={`review-side-effect-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {medicationReview?.notes?.length ? (
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    Notes
+                  </p>
+                  <ul className="ml-4 list-disc space-y-1 text-sm text-text-primary">
+                    {medicationReview.notes.map((item, index) => (
+                      <li key={`review-note-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {medicationReview?.followUpNeeded ? (
+                <p className="text-sm font-medium text-warning-dark">
+                  Medication follow-up is needed.
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </CardContent>
@@ -1211,4 +1431,3 @@ function formatDateDisplay(value: string | null | undefined): string | null {
 function normalizeEducationKey(value: string) {
   return value.trim().toLowerCase();
 }
-

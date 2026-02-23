@@ -8,6 +8,14 @@
 
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
+import { HealthLogDomainService } from './domain/healthLogs/HealthLogDomainService';
+import { MedicationDomainService } from './domain/medications/MedicationDomainService';
+import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
+import { VisitDomainService } from './domain/visits/VisitDomainService';
+import { FirestoreHealthLogRepository } from './repositories/healthLogs/FirestoreHealthLogRepository';
+import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
+import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
+import { FirestoreVisitRepository } from './repositories/visits/FirestoreVisitRepository';
 
 // =============================================================================
 // Types
@@ -74,7 +82,36 @@ export interface PatientContext {
 // Firestore Access
 // =============================================================================
 
-const db = () => admin.firestore();
+type PatientContextDependencies = {
+    healthLogService?: Pick<HealthLogDomainService, 'listForUser'>;
+    medicationService?: Pick<MedicationDomainService, 'listAllForUser'>;
+    nudgeService?: Pick<NudgeDomainService, 'listByUserAndStatuses'>;
+    visitService?: Pick<VisitDomainService, 'listAllForUser'>;
+    nowProvider?: () => Date;
+};
+
+function buildDefaultDependencies(): Required<Omit<PatientContextDependencies, 'nowProvider'>> {
+    const db = admin.firestore();
+    return {
+        healthLogService: new HealthLogDomainService(new FirestoreHealthLogRepository(db)),
+        medicationService: new MedicationDomainService(new FirestoreMedicationRepository(db)),
+        nudgeService: new NudgeDomainService(new FirestoreNudgeRepository(db)),
+        visitService: new VisitDomainService(new FirestoreVisitRepository(db)),
+    };
+}
+
+function resolveDependencies(
+    overrides: PatientContextDependencies,
+): Required<PatientContextDependencies> {
+    const defaults = buildDefaultDependencies();
+    return {
+        healthLogService: overrides.healthLogService ?? defaults.healthLogService,
+        medicationService: overrides.medicationService ?? defaults.medicationService,
+        nudgeService: overrides.nudgeService ?? defaults.nudgeService,
+        visitService: overrides.visitService ?? defaults.visitService,
+        nowProvider: overrides.nowProvider ?? (() => new Date()),
+    };
+}
 
 // =============================================================================
 // Health Log Trend Analysis
@@ -82,7 +119,7 @@ const db = () => admin.firestore();
 
 interface NumericLogEntry {
     value: number;
-    createdAt: admin.firestore.Timestamp;
+    createdAt: FirebaseFirestore.Timestamp;
 }
 
 function calculateTrend(values: NumericLogEntry[]): 'improving' | 'stable' | 'worsening' | 'insufficient_data' {
@@ -115,22 +152,26 @@ function calculateTrend(values: NumericLogEntry[]): 'improving' | 'stable' | 'wo
     return 'stable';
 }
 
-async function getHealthLogTrends(userId: string, daysBack: number = 30): Promise<HealthLogTrend[]> {
-    const startDate = new Date();
+async function getHealthLogTrends(
+    userId: string,
+    dependencies: Required<PatientContextDependencies>,
+    daysBack: number = 30,
+): Promise<HealthLogTrend[]> {
+    const startDate = dependencies.nowProvider();
     startDate.setDate(startDate.getDate() - daysBack);
 
-    const snapshot = await db()
-        .collection('healthLogs')
-        .where('userId', '==', userId)
-        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-        .orderBy('createdAt', 'desc')
-        .get();
+    const logs = await dependencies.healthLogService.listForUser(userId, {
+        startDate,
+        sortDirection: 'desc',
+    });
 
     // Group by type
-    const logsByType: Record<string, admin.firestore.DocumentData[]> = {};
-    snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const type = data.type as string;
+    const logsByType: Record<string, FirebaseFirestore.DocumentData[]> = {};
+    logs.forEach((data) => {
+        const type = typeof data.type === 'string' ? data.type : null;
+        if (!type) {
+            return;
+        }
         if (!logsByType[type]) {
             logsByType[type] = [];
         }
@@ -148,24 +189,42 @@ async function getHealthLogTrends(userId: string, daysBack: number = 30): Promis
         if (type === 'bp') {
             // Use systolic for BP trend
             numericValues = logs
-                .filter(l => l.value?.systolic)
+                .filter((l) => {
+                    const value =
+                        l.value && typeof l.value === 'object'
+                            ? (l.value as Record<string, unknown>)
+                            : null;
+                    return value !== null && typeof value.systolic === 'number';
+                })
                 .map(l => ({
-                    value: l.value.systolic as number,
-                    createdAt: l.createdAt as admin.firestore.Timestamp,
+                    value: (l.value as Record<string, number>).systolic,
+                    createdAt: l.createdAt as FirebaseFirestore.Timestamp,
                 }));
         } else if (type === 'glucose') {
             numericValues = logs
-                .filter(l => l.value?.reading)
+                .filter((l) => {
+                    const value =
+                        l.value && typeof l.value === 'object'
+                            ? (l.value as Record<string, unknown>)
+                            : null;
+                    return value !== null && typeof value.reading === 'number';
+                })
                 .map(l => ({
-                    value: l.value.reading as number,
-                    createdAt: l.createdAt as admin.firestore.Timestamp,
+                    value: (l.value as Record<string, number>).reading,
+                    createdAt: l.createdAt as FirebaseFirestore.Timestamp,
                 }));
         } else if (type === 'weight') {
             numericValues = logs
-                .filter(l => l.value?.weight)
+                .filter((l) => {
+                    const value =
+                        l.value && typeof l.value === 'object'
+                            ? (l.value as Record<string, unknown>)
+                            : null;
+                    return value !== null && typeof value.weight === 'number';
+                })
                 .map(l => ({
-                    value: l.value.weight as number,
-                    createdAt: l.createdAt as admin.firestore.Timestamp,
+                    value: (l.value as Record<string, number>).weight,
+                    createdAt: l.createdAt as FirebaseFirestore.Timestamp,
                 }));
         }
 
@@ -198,19 +257,21 @@ async function getHealthLogTrends(userId: string, daysBack: number = 30): Promis
 // Recent Visits
 // =============================================================================
 
-async function getRecentVisits(userId: string, limit: number = 3): Promise<RecentVisitSummary[]> {
-    const snapshot = await db()
-        .collection('visits')
-        .where('userId', '==', userId)
-        .where('processingStatus', '==', 'completed')
-        .orderBy('createdAt', 'desc')
-        .limit(limit)
-        .get();
+async function getRecentVisits(
+    userId: string,
+    dependencies: Required<PatientContextDependencies>,
+    limit: number = 3,
+): Promise<RecentVisitSummary[]> {
+    const visits = await dependencies.visitService.listAllForUser(userId, {
+        sortDirection: 'desc',
+    });
 
-    return snapshot.docs.map(doc => {
-        const data = doc.data();
+    return visits
+        .filter((visit) => visit.processingStatus === 'completed')
+        .slice(0, limit)
+        .map((data) => {
         return {
-            visitId: doc.id,
+            visitId: data.id,
             visitDate: data.visitDate?.toDate() || data.createdAt?.toDate() || new Date(),
             diagnoses: data.diagnoses || [],
             medicationsStarted: (data.medications?.started || []).map((m: unknown) =>
@@ -228,21 +289,21 @@ async function getRecentVisits(userId: string, limit: number = 3): Promise<Recen
 // Active Medications
 // =============================================================================
 
-async function getActiveMedications(userId: string): Promise<MedicationInfo[]> {
-    const snapshot = await db()
-        .collection('medications')
-        .where('userId', '==', userId)
-        .where('active', '==', true)
-        .get();
+async function getActiveMedications(
+    userId: string,
+    dependencies: Required<PatientContextDependencies>,
+): Promise<MedicationInfo[]> {
+    const medications = await dependencies.medicationService.listAllForUser(userId);
 
-    return snapshot.docs.map(doc => {
-        const data = doc.data();
+    return medications
+        .filter((data) => data.active === true)
+        .map((data) => {
         const startedAt = data.createdAt?.toDate();
         const daysOnMedication = startedAt
             ? Math.floor((Date.now() - startedAt.getTime()) / (1000 * 60 * 60 * 24))
             : undefined;
         return {
-            id: doc.id,
+            id: data.id,
             name: data.name,
             dose: data.dose,
             frequency: data.frequency,
@@ -257,15 +318,21 @@ async function getActiveMedications(userId: string): Promise<MedicationInfo[]> {
 // Nudge Engagement Metrics
 // =============================================================================
 
-async function getNudgeMetrics(userId: string): Promise<PatientContext['nudgeMetrics']> {
-    const thirtyDaysAgo = new Date();
+async function getNudgeMetrics(
+    userId: string,
+    dependencies: Required<PatientContextDependencies>,
+): Promise<PatientContext['nudgeMetrics']> {
+    const thirtyDaysAgo = dependencies.nowProvider();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Get all nudges for metrics
-    const snapshot = await db()
-        .collection('nudges')
-        .where('userId', '==', userId)
-        .get();
+    // Get all relevant nudge statuses for metrics
+    const nudges = await dependencies.nudgeService.listByUserAndStatuses(userId, [
+        'pending',
+        'active',
+        'completed',
+        'dismissed',
+        'snoozed',
+    ]);
 
     let activeCount = 0;
     let completedLast30Days = 0;
@@ -273,37 +340,35 @@ async function getNudgeMetrics(userId: string): Promise<PatientContext['nudgeMet
     let concerningResponsesLast30Days = 0;
     const responseTimes: number[] = [];
 
-    snapshot.docs.forEach(doc => {
-        const data = doc.data();
+    nudges.forEach((data) => {
         const status = data.status as string;
-        const completedAt = data.completedAt as admin.firestore.Timestamp | undefined;
-        const scheduledFor = data.scheduledFor as admin.firestore.Timestamp | undefined;
+        const completedAt = data.completedAt as FirebaseFirestore.Timestamp | undefined;
+        const dismissedAt = data.dismissedAt as FirebaseFirestore.Timestamp | undefined;
+        const scheduledFor = data.scheduledFor as FirebaseFirestore.Timestamp | undefined;
         const responseValue = data.responseValue as Record<string, unknown> | undefined;
 
         if (status === 'active' || status === 'pending') {
             activeCount++;
         }
 
-        if (completedAt && completedAt.toDate() > thirtyDaysAgo) {
-            if (status === 'completed') {
-                completedLast30Days++;
+        if (status === 'completed' && completedAt && completedAt.toDate() > thirtyDaysAgo) {
+            completedLast30Days++;
 
-                // Track concerning responses
-                const response = responseValue?.response as string | undefined;
-                if (response && ['having_trouble', 'issues', 'concerning'].includes(response)) {
-                    concerningResponsesLast30Days++;
-                }
-
-                // Calculate response time
-                if (scheduledFor) {
-                    const responseTimeMs = completedAt.toMillis() - scheduledFor.toMillis();
-                    if (responseTimeMs > 0) {
-                        responseTimes.push(responseTimeMs / (1000 * 60 * 60)); // Convert to hours
-                    }
-                }
-            } else if (status === 'dismissed') {
-                dismissedLast30Days++;
+            // Track concerning responses
+            const response = responseValue?.response as string | undefined;
+            if (response && ['having_trouble', 'issues', 'concerning'].includes(response)) {
+                concerningResponsesLast30Days++;
             }
+
+            // Calculate response time
+            if (scheduledFor) {
+                const responseTimeMs = completedAt.toMillis() - scheduledFor.toMillis();
+                if (responseTimeMs > 0) {
+                    responseTimes.push(responseTimeMs / (1000 * 60 * 60)); // Convert to hours
+                }
+            }
+        } else if (status === 'dismissed' && dismissedAt && dismissedAt.toDate() > thirtyDaysAgo) {
+            dismissedLast30Days++;
         }
     });
 
@@ -329,8 +394,12 @@ async function getNudgeMetrics(userId: string): Promise<PatientContext['nudgeMet
  * Returns a comprehensive view of the patient's recent medical history,
  * medications, health trends, and engagement with LumiBot.
  */
-export async function getPatientContext(userId: string): Promise<PatientContext> {
+export async function getPatientContext(
+    userId: string,
+    dependencyOverrides: PatientContextDependencies = {},
+): Promise<PatientContext> {
     functions.logger.info(`[PatientContext] Aggregating context for user ${userId}`);
+    const dependencies = resolveDependencies(dependencyOverrides);
 
     try {
         // Run all queries in parallel for performance
@@ -340,10 +409,10 @@ export async function getPatientContext(userId: string): Promise<PatientContext>
             healthLogTrends,
             nudgeMetrics,
         ] = await Promise.all([
-            getRecentVisits(userId),
-            getActiveMedications(userId),
-            getHealthLogTrends(userId),
-            getNudgeMetrics(userId),
+            getRecentVisits(userId, dependencies),
+            getActiveMedications(userId, dependencies),
+            getHealthLogTrends(userId, dependencies),
+            getNudgeMetrics(userId, dependencies),
         ]);
 
         // Extract unique diagnoses from recent visits
@@ -358,7 +427,7 @@ export async function getPatientContext(userId: string): Promise<PatientContext>
             recentVisits,
             healthLogTrends,
             nudgeMetrics,
-            aggregatedAt: new Date(),
+            aggregatedAt: dependencies.nowProvider(),
         };
 
         functions.logger.info(`[PatientContext] Aggregated context`, {
@@ -380,10 +449,14 @@ export async function getPatientContext(userId: string): Promise<PatientContext>
  * Lightweight context fetch for simple use cases.
  * Only gets medications and recent diagnoses (faster, fewer queries).
  */
-export async function getPatientContextLight(userId: string): Promise<Pick<PatientContext, 'userId' | 'recentDiagnoses' | 'activeMedications'>> {
+export async function getPatientContextLight(
+    userId: string,
+    dependencyOverrides: PatientContextDependencies = {},
+): Promise<Pick<PatientContext, 'userId' | 'recentDiagnoses' | 'activeMedications'>> {
+    const dependencies = resolveDependencies(dependencyOverrides);
     const [recentVisits, activeMedications] = await Promise.all([
-        getRecentVisits(userId, 2),
-        getActiveMedications(userId),
+        getRecentVisits(userId, dependencies, 2),
+        getActiveMedications(userId, dependencies),
     ]);
 
     const recentDiagnoses = [...new Set(

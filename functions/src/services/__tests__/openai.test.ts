@@ -14,6 +14,7 @@
 // or by importing from the module directly after modifying exports
 
 import type { MedicationChangeEntry, VisitSummaryResult } from '../openai';
+import { validateTopLevelSchema, type JsonKeySchema } from '../openai/jsonParser';
 
 // Helper to access internal functions by testing through the module
 // For now, we'll test what's publicly accessible and simulate inputs
@@ -67,13 +68,37 @@ describe('OpenAI Service Utilities', () => {
             const result: VisitSummaryResult = {
                 summary: 'Patient discussed blood pressure management',
                 diagnoses: ['Hypertension', 'Type 2 Diabetes'],
+                diagnosesDetailed: [
+                    { name: 'Hypertension', status: 'chronic', confidence: 'high' },
+                    { name: 'Type 2 Diabetes', status: 'chronic', confidence: 'high' },
+                ],
                 medications: {
                     started: [{ name: 'Amlodipine' }],
                     stopped: [],
                     changed: [{ name: 'Lisinopril', dose: '20 mg', note: 'increased from 10 mg' }],
                 },
                 imaging: ['Chest X-ray'],
+                testsOrdered: [
+                    { name: 'Chest X-ray', category: 'imaging', status: 'ordered' },
+                ],
                 nextSteps: ['Follow up in 3 months'],
+                followUps: [
+                    {
+                        type: 'clinic_follow_up',
+                        task: 'Clinic follow up',
+                        timeframe: 'follow up in 3 months',
+                    },
+                ],
+                medicationReview: {
+                    reviewed: true,
+                    continued: [{ name: 'Metformin' }],
+                    continuedReviewed: [{ name: 'Metformin' }],
+                    adherenceConcerns: [],
+                    reviewConcerns: [],
+                    sideEffectsDiscussed: [],
+                    followUpNeeded: false,
+                    notes: [],
+                },
                 education: {
                     diagnoses: [
                         {
@@ -92,6 +117,13 @@ describe('OpenAI Service Utilities', () => {
                         },
                     ],
                 },
+                extractionVersion: 'v2_structured',
+                promptMeta: {
+                    promptVersion: 'visit-summary-v1',
+                    schemaVersion: 'v2.0',
+                    responseFormat: 'json_object',
+                    model: 'gpt-4.1-mini',
+                },
             };
 
             expect(result.summary).toBeDefined();
@@ -100,9 +132,12 @@ describe('OpenAI Service Utilities', () => {
             expect(result.medications.stopped).toHaveLength(0);
             expect(result.medications.changed).toHaveLength(1);
             expect(result.imaging).toHaveLength(1);
+            expect(result.testsOrdered).toHaveLength(1);
             expect(result.nextSteps).toHaveLength(1);
+            expect(result.followUps).toHaveLength(1);
             expect(result.education.diagnoses).toHaveLength(1);
             expect(result.education.medications).toHaveLength(1);
+            expect(result.medicationReview?.reviewed).toBe(true);
         });
     });
 });
@@ -284,6 +319,10 @@ describe('Medication Name Extraction', () => {
             nameSection = nameSection.slice(leadingVerbMatch[0].length).trim();
         }
 
+        nameSection = nameSection
+            .replace(/\b\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)*\s*$/g, '')
+            .trim();
+
         const name = nameSection || cleaned.split(/\s+/)[0] || 'Unknown medication';
         const note = cleaned === name ? undefined : cleaned;
 
@@ -297,9 +336,8 @@ describe('Medication Name Extraction', () => {
     });
 
     it('should extract name before dose unit', () => {
-        // The break happens at ' mg' so '10' is included in name
         const result = extractNameFromMedicationText('Lisinopril 10 mg');
-        expect(result.name).toBe('Lisinopril 10');
+        expect(result.name).toBe('Lisinopril');
         expect(result.note).toBe('Lisinopril 10 mg');
     });
 
@@ -310,9 +348,13 @@ describe('Medication Name Extraction', () => {
     });
 
     it('should strip leading action verbs', () => {
-        // 'Started' is stripped, break happens at ' mg'
         const result = extractNameFromMedicationText('Started lisinopril 10 mg');
-        expect(result.name).toBe('lisinopril 10');
+        expect(result.name).toBe('lisinopril');
+    });
+
+    it('should keep combination names while trimming dose fragments', () => {
+        const result = extractNameFromMedicationText('HCTZ/Lisinopril 12.5/20 mg daily');
+        expect(result.name).toBe('HCTZ/Lisinopril');
     });
 
     it('should handle empty input', () => {
@@ -398,5 +440,69 @@ describe('Drug Name Normalization', () => {
 
     it('should handle empty input', () => {
         expect(normalizeDrugName('')).toBe('');
+    });
+});
+
+describe('Top-level Schema Validation', () => {
+    const schema: JsonKeySchema[] = [
+        { key: 'summary', type: 'string', required: true },
+        { key: 'diagnoses', type: 'array', required: true },
+        { key: 'medications', type: 'object', required: true },
+    ];
+
+    it('should accept a valid payload', () => {
+        const payload = {
+            summary: 'Visit summary',
+            diagnoses: ['Hypertension'],
+            medications: {
+                started: [],
+                stopped: [],
+                changed: [],
+            },
+        };
+
+        const result = validateTopLevelSchema(payload, schema);
+        expect(result.isValidObject).toBe(true);
+        expect(result.record).toEqual(payload);
+        expect(result.warnings).toHaveLength(0);
+    });
+
+    it('should flag missing required keys', () => {
+        const payload = {
+            summary: 'Visit summary',
+            medications: {},
+        };
+
+        const result = validateTopLevelSchema(payload, schema);
+        expect(result.isValidObject).toBe(true);
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0].code).toBe('missing_key');
+        expect(result.warnings[0].key).toBe('diagnoses');
+    });
+
+    it('should flag invalid key types', () => {
+        const payload = {
+            summary: ['not-a-string'],
+            diagnoses: 'not-an-array',
+            medications: [],
+        };
+
+        const result = validateTopLevelSchema(payload, schema);
+        expect(result.isValidObject).toBe(true);
+        expect(result.warnings).toHaveLength(3);
+        expect(result.warnings.map((warning) => warning.code)).toEqual([
+            'invalid_type',
+            'invalid_type',
+            'invalid_type',
+        ]);
+    });
+
+    it('should reject non-object root payloads', () => {
+        const result = validateTopLevelSchema([], schema);
+        expect(result.isValidObject).toBe(false);
+        expect(result.record).toBeNull();
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0].key).toBe('$');
+        expect(result.warnings[0].code).toBe('invalid_type');
     });
 });

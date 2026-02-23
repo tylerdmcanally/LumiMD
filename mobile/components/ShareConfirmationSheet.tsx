@@ -49,6 +49,7 @@ export function ShareConfirmationSheet({
     const [caregivers, setCaregivers] = useState<Caregiver[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [autoShare, setAutoShare] = useState(false);
+    const [initialAutoShare, setInitialAutoShare] = useState(false);
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [slideAnim] = useState(new Animated.Value(SCREEN_HEIGHT));
@@ -82,7 +83,9 @@ export function ShareConfirmationSheet({
             setCaregivers(activeCaregivers);
             // Select all by default
             setSelectedIds(new Set(activeCaregivers.map((c: Caregiver) => c.id)));
-            setAutoShare(response.autoShareWithCaregivers || false);
+            const autoShareEnabled = response.autoShareWithCaregivers !== false;
+            setAutoShare(autoShareEnabled);
+            setInitialAutoShare(autoShareEnabled);
         } catch (error) {
             console.error('Failed to load caregivers:', error);
             setCaregivers([]);
@@ -90,6 +93,23 @@ export function ShareConfirmationSheet({
             setLoading(false);
         }
     };
+
+    const syncAutoSharePreference = useCallback(async () => {
+        if (autoShare === initialAutoShare) {
+            return;
+        }
+
+        try {
+            await api.user.updateProfile({ autoShareWithCaregivers: autoShare });
+            setInitialAutoShare(autoShare);
+        } catch (error) {
+            console.error('Failed to update auto-share preference:', error);
+            Alert.alert(
+                'Preference not saved',
+                'Your sharing preference could not be updated right now.',
+            );
+        }
+    }, [autoShare, initialAutoShare]);
 
     const toggleCaregiver = useCallback((id: string) => {
         setSelectedIds(prev => {
@@ -105,16 +125,14 @@ export function ShareConfirmationSheet({
 
     const handleShare = async () => {
         if (selectedIds.size === 0) {
+            await syncAutoSharePreference();
             onClose();
             return;
         }
 
         setSending(true);
         try {
-            // Update auto-share preference if changed
-            if (autoShare) {
-                await api.user.updateProfile({ autoShareWithCaregivers: true });
-            }
+            await syncAutoSharePreference();
 
             // Share with selected caregivers
             const token = await getIdToken();
@@ -153,7 +171,8 @@ export function ShareConfirmationSheet({
         }
     };
 
-    const handleSkip = () => {
+    const handleSkip = async () => {
+        await syncAutoSharePreference();
         onClose();
     };
 

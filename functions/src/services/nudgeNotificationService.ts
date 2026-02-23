@@ -11,10 +11,53 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { getNotificationService, PushNotificationPayload } from './notifications';
+import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
+import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
+import { UserDomainService } from './domain/users/UserDomainService';
+import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
 
 const getDb = () => admin.firestore();
-const getNudgesCollection = () => getDb().collection('nudges');
-const getUsersCollection = () => getDb().collection('users');
+
+type NotificationServiceClient = Pick<
+    ReturnType<typeof getNotificationService>,
+    'getUserPushTokens' | 'sendNotifications' | 'removeInvalidToken'
+>;
+
+type NudgeNotificationDependencies = {
+    nudgeService?: Pick<
+        NudgeDomainService,
+        | 'listDuePendingForNotification'
+        | 'countByUserNotificationSentBetween'
+        | 'acquireNotificationSendLock'
+        | 'markNotificationProcessed'
+        | 'backfillPendingNotificationSentField'
+    >;
+    userService?: Pick<UserDomainService, 'getById'>;
+    notificationService?: NotificationServiceClient;
+    nowTimestampProvider?: () => FirebaseFirestore.Timestamp;
+};
+
+function buildDefaultDependencies(): Required<NudgeNotificationDependencies> {
+    const db = getDb();
+    return {
+        nudgeService: new NudgeDomainService(new FirestoreNudgeRepository(db)),
+        userService: new UserDomainService(new FirestoreUserRepository(db)),
+        notificationService: getNotificationService(),
+        nowTimestampProvider: () => admin.firestore.Timestamp.now(),
+    };
+}
+
+function resolveDependencies(
+    overrides: NudgeNotificationDependencies,
+): Required<NudgeNotificationDependencies> {
+    const defaults = buildDefaultDependencies();
+    return {
+        nudgeService: overrides.nudgeService ?? defaults.nudgeService,
+        userService: overrides.userService ?? defaults.userService,
+        notificationService: overrides.notificationService ?? defaults.notificationService,
+        nowTimestampProvider: overrides.nowTimestampProvider ?? defaults.nowTimestampProvider,
+    };
+}
 
 // Max nudges to send per user per day
 const MAX_DAILY_NUDGES = 3;
@@ -48,14 +91,15 @@ export const NUDGE_TYPE_PRIORITY: Record<string, number> = {
 /**
  * Get user's timezone from their profile
  */
-async function getUserTimezone(userId: string): Promise<string> {
+async function getUserTimezone(
+    userId: string,
+    dependencies: Required<NudgeNotificationDependencies>,
+): Promise<string> {
     try {
-        const userDoc = await getUsersCollection().doc(userId).get();
-        if (userDoc.exists) {
-            const timezone = userDoc.data()?.timezone;
-            if (timezone && typeof timezone === 'string') {
-                return timezone;
-            }
+        const user = await dependencies.userService.getById(userId);
+        const timezone = user?.timezone;
+        if (typeof timezone === 'string' && timezone.length > 0) {
+            return timezone;
         }
     } catch (error) {
         functions.logger.warn(`[NudgeNotifications] Could not fetch timezone for user ${userId}:`, error);
@@ -89,7 +133,10 @@ function isQuietHours(timezone: string): boolean {
 /**
  * Get count of nudges already sent to user today
  */
-async function getDailyNudgeCount(userId: string): Promise<number> {
+async function getDailyNudgeCount(
+    userId: string,
+    dependencies: Required<NudgeNotificationDependencies>,
+): Promise<number> {
     const now = new Date();
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
@@ -97,13 +144,12 @@ async function getDailyNudgeCount(userId: string): Promise<number> {
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const snapshot = await getNudgesCollection()
-        .where('userId', '==', userId)
-        .where('notificationSentAt', '>=', admin.firestore.Timestamp.fromDate(startOfDay))
-        .where('notificationSentAt', '<=', admin.firestore.Timestamp.fromDate(endOfDay))
-        .get();
-
-    return snapshot.size;
+    const nudgeService = dependencies.nudgeService;
+    return nudgeService.countByUserNotificationSentBetween(
+        userId,
+        admin.firestore.Timestamp.fromDate(startOfDay),
+        admin.firestore.Timestamp.fromDate(endOfDay),
+    );
 }
 
 /**
@@ -117,71 +163,40 @@ export function sortNudgesByPriority(nudges: DueNudge[]): DueNudge[] {
     });
 }
 
-async function acquireNudgeSendLock(nudgeId: string, now: admin.firestore.Timestamp): Promise<boolean> {
-    const nudgeRef = getNudgesCollection().doc(nudgeId);
-    const lockUntil = admin.firestore.Timestamp.fromMillis(now.toMillis() + LOCK_WINDOW_MS);
-
-    return getDb().runTransaction(async (tx) => {
-        const snapshot = await tx.get(nudgeRef);
-        if (!snapshot.exists) {
-            return false;
-        }
-
-        const data = snapshot.data();
-        if (data?.notificationSent === true) {
-            return false;
-        }
-
-        const existingLock = data?.notificationLockUntil as admin.firestore.Timestamp | undefined;
-        if (existingLock && existingLock.toMillis() > now.toMillis()) {
-            return false;
-        }
-
-        tx.update(nudgeRef, {
-            notificationLockUntil: lockUntil,
-            notificationLockAt: now,
-            updatedAt: now,
-        });
-
-        return true;
-    });
-}
-
 /**
  * Process all due nudges and send push notifications
  * Called by Cloud Scheduler every 15 minutes
  */
-export async function processAndNotifyDueNudges(): Promise<{
+export async function processAndNotifyDueNudges(
+    dependencyOverrides: NudgeNotificationDependencies = {},
+): Promise<{
     processed: number;
     notified: number;
     errors: number;
     skippedDailyLimit: number;
     skippedQuietHours: number;
 }> {
-    const now = admin.firestore.Timestamp.now();
+    const dependencies = resolveDependencies(dependencyOverrides);
+    const now = dependencies.nowTimestampProvider();
+    const nudgeService = dependencies.nudgeService;
     const stats = { processed: 0, notified: 0, errors: 0, skippedDailyLimit: 0, skippedQuietHours: 0 };
 
     try {
         // Find nudges that are due and haven't been notified yet
-        const dueNudgesQuery = await getNudgesCollection()
-            .where('status', '==', 'pending')
-            .where('scheduledFor', '<=', now)
-            .where('notificationSent', '==', false)
-            .limit(100) // Process in batches
-            .get();
+        const dueNudges = await nudgeService.listDuePendingForNotification(now, 100);
 
-        if (dueNudgesQuery.empty) {
+        if (dueNudges.length === 0) {
             functions.logger.info('[NudgeNotifications] No due nudges to process');
             return stats;
         }
 
-        functions.logger.info(`[NudgeNotifications] Found ${dueNudgesQuery.docs.length} due nudges`);
+        functions.logger.info(`[NudgeNotifications] Found ${dueNudges.length} due nudges`);
 
         // Group by userId for efficient token fetching
         const nudgesByUser = new Map<string, DueNudge[]>();
 
-        dueNudgesQuery.docs.forEach(doc => {
-            const data = doc.data();
+        dueNudges.forEach((nudge) => {
+            const data = nudge;
             const userId = data.userId as string;
 
             if (!nudgesByUser.has(userId)) {
@@ -189,7 +204,7 @@ export async function processAndNotifyDueNudges(): Promise<{
             }
 
             nudgesByUser.get(userId)!.push({
-                id: doc.id,
+                id: data.id,
                 userId,
                 title: data.title as string,
                 message: data.message as string,
@@ -200,14 +215,12 @@ export async function processAndNotifyDueNudges(): Promise<{
             });
         });
 
-        const notificationService = getNotificationService();
-        const batch = getDb().batch();
-
+        const notificationService = dependencies.notificationService;
         // Process each user's nudges
         for (const [userId, nudges] of nudgesByUser) {
             try {
                 // Check quiet hours first
-                const timezone = await getUserTimezone(userId);
+                const timezone = await getUserTimezone(userId, dependencies);
                 if (isQuietHours(timezone)) {
                     functions.logger.info(`[NudgeNotifications] User ${userId} in quiet hours (${timezone}), skipping ${nudges.length} nudges`);
                     stats.skippedQuietHours += nudges.length;
@@ -215,7 +228,7 @@ export async function processAndNotifyDueNudges(): Promise<{
                 }
 
                 // Check daily limit
-                const dailyCount = await getDailyNudgeCount(userId);
+                const dailyCount = await getDailyNudgeCount(userId, dependencies);
                 const remaining = MAX_DAILY_NUDGES - dailyCount;
 
                 if (remaining <= 0) {
@@ -243,10 +256,9 @@ export async function processAndNotifyDueNudges(): Promise<{
                     functions.logger.info(`[NudgeNotifications] No push tokens for user ${userId}`);
                     // Still mark as processed, just not notified
                     for (const nudge of nudgesToSend) {
-                        batch.update(getNudgesCollection().doc(nudge.id), {
-                            notificationSent: true,
-                            notificationSkipped: 'no_push_tokens',
-                            updatedAt: now,
+                        await nudgeService.markNotificationProcessed(nudge.id, {
+                            now,
+                            skippedReason: 'no_push_tokens',
                         });
                         stats.processed++;
                     }
@@ -255,7 +267,11 @@ export async function processAndNotifyDueNudges(): Promise<{
 
                 // Send notification for each nudge
                 for (const nudge of nudgesToSend) {
-                    const lockAcquired = await acquireNudgeSendLock(nudge.id, now);
+                    const lockAcquired = await nudgeService.acquireNotificationSendLock(
+                        nudge.id,
+                        now,
+                        LOCK_WINDOW_MS,
+                    );
                     if (!lockAcquired) {
                         functions.logger.info(
                             `[NudgeNotifications] Skipping nudge ${nudge.id} - send lock not acquired`,
@@ -286,13 +302,10 @@ export async function processAndNotifyDueNudges(): Promise<{
                         }
                     });
 
-                    // Mark nudge as notified
-                    batch.update(getNudgesCollection().doc(nudge.id), {
-                        notificationSent: true,
-                        notificationSentAt: now,
-                        notificationLockUntil: admin.firestore.FieldValue.delete(),
-                        notificationLockAt: admin.firestore.FieldValue.delete(),
-                        updatedAt: now,
+                    await nudgeService.markNotificationProcessed(nudge.id, {
+                        now,
+                        sentAt: now,
+                        clearLock: true,
                     });
 
                     stats.processed++;
@@ -313,9 +326,6 @@ export async function processAndNotifyDueNudges(): Promise<{
             }
         }
 
-        // Commit all updates
-        await batch.commit();
-
         functions.logger.info('[NudgeNotifications] Processing complete', stats);
         return stats;
 
@@ -329,24 +339,13 @@ export async function processAndNotifyDueNudges(): Promise<{
  * Also process nudges where notificationSent field doesn't exist yet (legacy)
  * Run this once or include in main processor
  */
-export async function backfillNotificationSentField(): Promise<number> {
-    const snapshot = await getNudgesCollection()
-        .where('status', '==', 'pending')
-        .get();
-
-    const batch = getDb().batch();
-    let updated = 0;
-
-    snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.notificationSent === undefined) {
-            batch.update(doc.ref, { notificationSent: false });
-            updated++;
-        }
-    });
-
+export async function backfillNotificationSentField(
+    dependencyOverrides: NudgeNotificationDependencies = {},
+): Promise<number> {
+    const dependencies = resolveDependencies(dependencyOverrides);
+    const nudgeService = dependencies.nudgeService;
+    const updated = await nudgeService.backfillPendingNotificationSentField();
     if (updated > 0) {
-        await batch.commit();
         functions.logger.info(`[NudgeNotifications] Backfilled ${updated} nudges with notificationSent=false`);
     }
 

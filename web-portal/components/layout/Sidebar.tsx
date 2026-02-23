@@ -9,6 +9,7 @@ import {
   Stethoscope,
   Pill,
   ClipboardCheck,
+  ShieldAlert,
   Settings2,
   LogOut,
   User,
@@ -18,6 +19,7 @@ import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser';
+import { useOperatorAccess } from '@/lib/hooks/useOperatorAccess';
 import { useUserProfile } from '@/lib/api/hooks';
 import { useViewing } from '@/lib/contexts/ViewingContext';
 
@@ -26,6 +28,7 @@ type NavItem = {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   exact?: boolean;
+  requiresOperator?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -54,6 +57,12 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Profile',
     href: '/profile',
     icon: Settings2,
+  },
+  {
+    label: 'Ops',
+    href: '/ops/escalations',
+    icon: ShieldAlert,
+    requiresOperator: true,
   },
 ];
 
@@ -96,6 +105,7 @@ export function Sidebar() {
   const user = useCurrentUser();
   const userId = user?.uid ?? null;
   const { isCaregiver, incomingShares, viewingUserId } = useViewing();
+  const { isOperator } = useOperatorAccess();
   const { data: viewingProfile } = useUserProfile(viewingUserId ?? undefined, {
     enabled: Boolean(viewingUserId),
   });
@@ -163,7 +173,11 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-5 py-8">
-        {NAV_ITEMS.filter((item) => !(isCaregiver && item.label === 'Profile')).map((item) => (
+        {NAV_ITEMS.filter(
+          (item) =>
+            !(isCaregiver && item.label === 'Profile') &&
+            (!item.requiresOperator || isOperator),
+        ).map((item) => (
           <NavLink key={item.href} item={item} />
         ))}
       </nav>

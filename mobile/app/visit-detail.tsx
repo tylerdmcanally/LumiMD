@@ -127,6 +127,36 @@ const buildMedicationEntries = (items: any): MedicationListEntry[] => {
     .filter((entry): entry is MedicationListEntry => entry !== null);
 };
 
+const formatFollowUpEntry = (item: any): string | null => {
+  if (!item || typeof item !== 'object') return null;
+  const task = sanitizeMedicationText(item.task) || sanitizeMedicationText(item.type) || 'Follow up';
+  const timeframe = sanitizeMedicationText(item.timeframe);
+  const dueAt = sanitizeMedicationText(item.dueAt);
+
+  if (timeframe) {
+    return `${task} — ${timeframe}`;
+  }
+
+  if (dueAt) {
+    const parsed = dayjs(dueAt);
+    const dateLabel = parsed.isValid() ? parsed.format('MMM D, YYYY') : dueAt;
+    return `${task} — by ${dateLabel}`;
+  }
+
+  return task;
+};
+
+const formatOrderedTestEntry = (item: any): string | null => {
+  if (!item || typeof item !== 'object') return null;
+  const name = sanitizeMedicationText(item.name);
+  if (!name) return null;
+  const category = sanitizeMedicationText(item.category);
+  if (!category || category.toLowerCase() === 'other') {
+    return name;
+  }
+  return `${name} (${category})`;
+};
+
 function SummarySection({
   title,
   children,
@@ -193,9 +223,103 @@ export default function VisitDetailScreen() {
     [visit?.medications],
   );
 
-  const diagnoses = useMemo(() => formatList(visit?.diagnoses), [visit?.diagnoses]);
-  const imaging = useMemo(() => formatList(visit?.imaging), [visit?.imaging]);
-  const nextSteps = useMemo(() => formatList(visit?.nextSteps), [visit?.nextSteps]);
+  const diagnoses = useMemo(() => {
+    const legacyDiagnoses = formatList(visit?.diagnoses);
+    if (legacyDiagnoses.length > 0) {
+      return legacyDiagnoses;
+    }
+
+    const detailed = Array.isArray((visit as any)?.diagnosesDetailed)
+      ? ((visit as any).diagnosesDetailed as any[])
+        .map((item) => sanitizeMedicationText(item?.name))
+        .filter((value): value is string => Boolean(value))
+      : [];
+
+    return detailed;
+  }, [visit?.diagnoses, (visit as any)?.diagnosesDetailed]);
+
+  const orderedTests = useMemo(() => {
+    const structured = Array.isArray((visit as any)?.testsOrdered)
+      ? ((visit as any).testsOrdered as any[])
+        .map(formatOrderedTestEntry)
+        .filter((value): value is string => Boolean(value))
+      : [];
+
+    if (structured.length > 0) {
+      return structured;
+    }
+
+    return formatList(visit?.imaging);
+  }, [(visit as any)?.testsOrdered, visit?.imaging]);
+
+  const actionItems = useMemo(() => {
+    const followUps = Array.isArray((visit as any)?.followUps)
+      ? ((visit as any).followUps as any[])
+        .map(formatFollowUpEntry)
+        .filter((value): value is string => Boolean(value))
+      : [];
+
+    if (followUps.length > 0) {
+      return followUps;
+    }
+
+    return formatList(visit?.nextSteps);
+  }, [(visit as any)?.followUps, visit?.nextSteps]);
+
+  const medicationReview = useMemo(() => {
+    const review = (visit as any)?.medicationReview as any;
+    if (!review || typeof review !== 'object') {
+      return {
+        reviewed: false,
+        followUpNeeded: false,
+        continuedReviewed: [] as MedicationListEntry[],
+        concerns: [] as string[],
+        sideEffects: [] as string[],
+        notes: [] as string[],
+      };
+    }
+
+    const continuedReviewed = buildMedicationEntries(
+      review.continuedReviewed ?? review.continued,
+    );
+    const adherenceConcerns = Array.isArray(review.adherenceConcerns)
+      ? review.adherenceConcerns
+        .map((item: unknown) => sanitizeMedicationText(item))
+        .filter((value: string | undefined): value is string => Boolean(value))
+      : [];
+    const reviewConcerns = Array.isArray(review.reviewConcerns)
+      ? review.reviewConcerns
+        .map((item: unknown) => sanitizeMedicationText(item))
+        .filter((value: string | undefined): value is string => Boolean(value))
+      : [];
+    const concerns = Array.from(new Set([...reviewConcerns, ...adherenceConcerns]));
+    const sideEffects = Array.isArray(review.sideEffectsDiscussed)
+      ? review.sideEffectsDiscussed
+        .map((item: unknown) => sanitizeMedicationText(item))
+        .filter((value: string | undefined): value is string => Boolean(value))
+      : [];
+    const notes = Array.isArray(review.notes)
+      ? review.notes
+        .map((item: unknown) => sanitizeMedicationText(item))
+        .filter((value: string | undefined): value is string => Boolean(value))
+      : [];
+
+    const reviewed = typeof review.reviewed === 'boolean'
+      ? review.reviewed
+      : continuedReviewed.length > 0 ||
+        concerns.length > 0 ||
+        sideEffects.length > 0 ||
+        notes.length > 0;
+
+    return {
+      reviewed,
+      followUpNeeded: Boolean(review.followUpNeeded),
+      continuedReviewed,
+      concerns,
+      sideEffects,
+      notes,
+    };
+  }, [(visit as any)?.medicationReview]);
 
   const isProcessing =
     visit?.processingStatus && processingStates.includes(visit.processingStatus);
@@ -543,15 +667,92 @@ export default function VisitDetailScreen() {
                   </SummarySection>
 
                   <SummarySection title="Imaging & Labs Ordered">
-                    {imaging.length > 0 ? (
-                      imaging.map((item, idx) => (
+                    {orderedTests.length > 0 ? (
+                      orderedTests.map((item, idx) => (
                         <View key={idx} style={styles.listRow}>
                           <Ionicons name="image" size={16} color={Colors.primary} />
                           <Text style={styles.listRowText}>{item}</Text>
                         </View>
                       ))
                     ) : (
-                      <Text style={styles.placeholderText}>No imaging or studies recorded.</Text>
+                      <Text style={styles.placeholderText}>No ordered tests recorded.</Text>
+                    )}
+                  </SummarySection>
+
+                  <SummarySection title="Medication Review">
+                    {!medicationReview.reviewed &&
+                      medicationReview.continuedReviewed.length === 0 &&
+                      medicationReview.concerns.length === 0 &&
+                      medicationReview.sideEffects.length === 0 &&
+                      medicationReview.notes.length === 0 &&
+                      !medicationReview.followUpNeeded ? (
+                      <Text style={styles.placeholderText}>
+                        No medication review details recorded.
+                      </Text>
+                    ) : (
+                      <View style={{ gap: spacing(3) }}>
+                        {medicationReview.continuedReviewed.length > 0 ? (
+                          <View>
+                            <Text style={styles.medSubheading}>Reviewed/Continued</Text>
+                            {medicationReview.continuedReviewed.map((item, idx) => (
+                              <View key={idx} style={styles.listRow}>
+                                <Ionicons name="checkmark-circle-outline" size={16} color={Colors.primary} />
+                                <View style={styles.listRowContent}>
+                                  <Text style={styles.listRowText}>{item.primary}</Text>
+                                  {item.secondary ? (
+                                    <Text style={styles.listRowSubText}>{item.secondary}</Text>
+                                  ) : null}
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {medicationReview.concerns.length > 0 ? (
+                          <View>
+                            <Text style={styles.medSubheading}>Review Concerns</Text>
+                            {medicationReview.concerns.map((item, idx) => (
+                              <View key={idx} style={styles.listRow}>
+                                <Ionicons name="alert-circle-outline" size={16} color={Colors.warning} />
+                                <Text style={styles.listRowText}>{item}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {medicationReview.sideEffects.length > 0 ? (
+                          <View>
+                            <Text style={styles.medSubheading}>Side Effects Discussed</Text>
+                            {medicationReview.sideEffects.map((item: string, idx: number) => (
+                              <View key={idx} style={styles.listRow}>
+                                <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
+                                <Text style={styles.listRowText}>{item}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {medicationReview.notes.length > 0 ? (
+                          <View>
+                            <Text style={styles.medSubheading}>Review Notes</Text>
+                            {medicationReview.notes.map((item: string, idx: number) => (
+                              <View key={idx} style={styles.listRow}>
+                                <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
+                                <Text style={styles.listRowText}>{item}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {medicationReview.followUpNeeded ? (
+                          <View style={styles.listRow}>
+                            <Ionicons name="time-outline" size={16} color={Colors.warning} />
+                            <Text style={styles.listRowText}>
+                              Medication follow-up is needed.
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                     )}
                   </SummarySection>
                 </View>
@@ -571,8 +772,8 @@ export default function VisitDetailScreen() {
 
               {activeTab === 'actions' && (
                 <Card style={styles.actionsCard}>
-                  {nextSteps.length > 0 ? (
-                    nextSteps.map((item, idx) => (
+                  {actionItems.length > 0 ? (
+                    actionItems.map((item, idx) => (
                       <View key={idx} style={styles.actionRow}>
                         <Ionicons name="ellipse-outline" size={16} color={Colors.primary} />
                         <Text style={styles.actionText}>{item}</Text>

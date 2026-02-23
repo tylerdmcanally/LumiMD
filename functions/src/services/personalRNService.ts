@@ -13,6 +13,8 @@ import * as functions from 'firebase-functions';
 import { getPatientContext, PatientContext } from './patientContextAggregator';
 import { getLumiBotAIService } from './lumibotAI';
 import { NudgeActionType } from '../types/lumibot';
+import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
+import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
 
 // =============================================================================
 // Constants
@@ -80,7 +82,32 @@ export interface EvaluationResult {
 // Firestore Access
 // =============================================================================
 
-const db = () => admin.firestore();
+type PersonalRNDependencies = {
+    nudgeService?: Pick<NudgeDomainService, 'listByUserAndStatuses' | 'createRecord'>;
+};
+
+function buildDefaultDependencies(): Required<PersonalRNDependencies> {
+    return {
+        nudgeService: new NudgeDomainService(new FirestoreNudgeRepository(admin.firestore())),
+    };
+}
+
+function toMillis(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (
+        typeof value === 'object' &&
+        value !== null &&
+        'toMillis' in (value as Record<string, unknown>) &&
+        typeof (value as { toMillis?: unknown }).toMillis === 'function'
+    ) {
+        return (value as { toMillis: () => number }).toMillis();
+    }
+
+    return null;
+}
 
 // =============================================================================
 // Frequency Tier Logic (Rule-Based)
@@ -111,7 +138,12 @@ export function getFrequencyTier(state: PatientState): FrequencyTier {
 /**
  * Build patient state from aggregated context.
  */
-export async function buildPatientState(userId: string): Promise<PatientState> {
+export async function buildPatientState(
+    userId: string,
+    dependencies: PersonalRNDependencies = {},
+): Promise<PatientState> {
+    const defaultDependencies = buildDefaultDependencies();
+    const nudgeService = dependencies.nudgeService ?? defaultDependencies.nudgeService;
     const context = await getPatientContext(userId);
     const now = new Date();
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
@@ -145,7 +177,7 @@ export async function buildPatientState(userId: string): Promise<PatientState> {
         : 999;
 
     // Check for recent dismissals
-    const recentDismissals = await countRecentDismissals(userId, sevenDaysAgo);
+    const recentDismissals = await countRecentDismissals(userId, sevenDaysAgo, nudgeService);
 
     return {
         userId,
@@ -185,15 +217,17 @@ function checkForElevatedReadings(context: PatientContext): boolean {
 /**
  * Count nudges dismissed in the recent period.
  */
-async function countRecentDismissals(userId: string, since: Date): Promise<number> {
-    const snapshot = await db()
-        .collection('nudges')
-        .where('userId', '==', userId)
-        .where('status', '==', 'dismissed')
-        .where('dismissedAt', '>=', admin.firestore.Timestamp.fromDate(since))
-        .get();
-
-    return snapshot.size;
+async function countRecentDismissals(
+    userId: string,
+    since: Date,
+    nudgeService: Pick<NudgeDomainService, 'listByUserAndStatuses'>,
+): Promise<number> {
+    const dismissedNudges = await nudgeService.listByUserAndStatuses(userId, ['dismissed']);
+    const sinceMillis = since.getTime();
+    return dismissedNudges.filter((nudge) => {
+        const dismissedAtMillis = toMillis(nudge.dismissedAt);
+        return dismissedAtMillis !== null && dismissedAtMillis >= sinceMillis;
+    }).length;
 }
 
 // =============================================================================
@@ -306,9 +340,14 @@ function getDaysSinceLastLog(context: PatientContext): number {
  * Evaluate whether a patient needs a nudge today.
  * Called by the scheduled job.
  */
-export async function evaluatePatient(userId: string): Promise<EvaluationResult> {
+export async function evaluatePatient(
+    userId: string,
+    dependencies: PersonalRNDependencies = {},
+): Promise<EvaluationResult> {
+    const defaultDependencies = buildDefaultDependencies();
+    const nudgeService = dependencies.nudgeService ?? defaultDependencies.nudgeService;
     try {
-        const state = await buildPatientState(userId);
+        const state = await buildPatientState(userId, { nudgeService });
         const frequencyTier = getFrequencyTier(state);
         const nextEvaluationHours = FREQUENCY_INTERVALS[frequencyTier];
 
@@ -323,7 +362,7 @@ export async function evaluatePatient(userId: string): Promise<EvaluationResult>
         }
 
         // Check if there's a pending active nudge
-        const hasActiveNudge = await checkForActiveNudge(userId);
+        const hasActiveNudge = await checkForActiveNudge(userId, nudgeService);
         if (hasActiveNudge) {
             return {
                 shouldNudge: false,
@@ -363,15 +402,17 @@ export async function evaluatePatient(userId: string): Promise<EvaluationResult>
     }
 }
 
-async function checkForActiveNudge(userId: string): Promise<boolean> {
-    const snapshot = await db()
-        .collection('nudges')
-        .where('userId', '==', userId)
-        .where('status', 'in', ['pending', 'active', 'snoozed'])
-        .limit(1)
-        .get();
+async function checkForActiveNudge(
+    userId: string,
+    nudgeService: Pick<NudgeDomainService, 'listByUserAndStatuses'>,
+): Promise<boolean> {
+    const activeNudges = await nudgeService.listByUserAndStatuses(userId, [
+        'pending',
+        'active',
+        'snoozed',
+    ]);
 
-    return !snapshot.empty;
+    return activeNudges.length > 0;
 }
 
 function getReasonDescription(state: PatientState): string {
@@ -395,8 +436,11 @@ function getReasonDescription(state: PatientState): string {
 export async function createReactiveNudge(
     userId: string,
     logType: 'bp' | 'glucose',
-    value: { systolic?: number; diastolic?: number; reading?: number }
+    value: { systolic?: number; diastolic?: number; reading?: number },
+    dependencies: PersonalRNDependencies = {},
 ): Promise<void> {
+    const defaultDependencies = buildDefaultDependencies();
+    const nudgeService = dependencies.nudgeService ?? defaultDependencies.nudgeService;
     // Check if reading is elevated
     let isElevated = false;
     let isCritical = false;
@@ -425,7 +469,7 @@ export async function createReactiveNudge(
 
     const now = admin.firestore.Timestamp.now();
 
-    await db().collection('nudges').add({
+    await nudgeService.createRecord({
         userId,
         type: 'followup',
         title: nudge.title,

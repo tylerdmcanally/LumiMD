@@ -116,6 +116,19 @@ async function fetchWithTimeout(url, options, timeoutMs) {
     clearTimeout(timeoutId);
   }
 }
+function appendQueryParams(searchParams, params) {
+  if (!params) return;
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === void 0) return;
+    searchParams.append(key, String(value));
+  });
+}
+function parseCursorHeaders(headers) {
+  const hasMore = headers.get("X-Has-More") === "true";
+  const nextCursorValue = headers.get("X-Next-Cursor");
+  const nextCursor = nextCursorValue && nextCursorValue.length > 0 ? nextCursorValue : null;
+  return { hasMore, nextCursor };
+}
 function createApiClient(config) {
   const { baseUrl, getAuthToken, enableLogging = false } = config;
   async function apiRequest(endpoint, options = {}) {
@@ -203,20 +216,130 @@ function createApiClient(config) {
     }
     throw lastError ?? new Error("Request failed unexpectedly");
   }
+  async function apiRequestWithHeaders(endpoint, options = {}) {
+    const {
+      requireAuth = true,
+      timeoutMs = DEFAULT_TIMEOUT_MS,
+      retry: retryOption,
+      headers: providedHeaders,
+      ...restOptions
+    } = options;
+    const method = (restOptions.method ?? "GET").toString().toUpperCase();
+    const headers = normalizeHeaders(providedHeaders);
+    if (!headers["Content-Type"] && restOptions.body) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (requireAuth) {
+      const token = await getAuthToken();
+      if (!token) {
+        const error = new Error("Authentication required");
+        error.code = "auth_required";
+        error.userMessage = UNAUTHORIZED_MESSAGE;
+        error.status = 401;
+        throw error;
+      }
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const url = `${baseUrl}${endpoint}`;
+    const maxRetries = retryOption ?? (["GET", "HEAD", "OPTIONS"].includes(method) ? 2 : 0);
+    let attempt = 0;
+    let lastError;
+    while (attempt <= maxRetries) {
+      const requestInit = {
+        ...restOptions,
+        method,
+        headers
+      };
+      try {
+        if (enableLogging) {
+          console.log(`[API] ${method} ${url} (attempt ${attempt + 1})`);
+        }
+        const response = await fetchWithTimeout(url, requestInit, timeoutMs);
+        if (!response.ok) {
+          const error = await buildApiError(response);
+          if (attempt < maxRetries && isRetryable(error, method)) {
+            lastError = error;
+            attempt += 1;
+            await sleep(250 * attempt);
+            continue;
+          }
+          throw error;
+        }
+        if (response.status === 204) {
+          return { data: void 0, headers: response.headers };
+        }
+        const rawBody = await response.text();
+        if (!rawBody) {
+          return { data: void 0, headers: response.headers };
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          return { data: rawBody, headers: response.headers };
+        }
+        try {
+          return { data: JSON.parse(rawBody), headers: response.headers };
+        } catch (parseError) {
+          const error = buildParseError(parseError);
+          if (attempt < maxRetries && isRetryable(error, method)) {
+            lastError = error;
+            attempt += 1;
+            await sleep(250 * attempt);
+            continue;
+          }
+          throw error;
+        }
+      } catch (err) {
+        const error = err?.userMessage || err?.status !== void 0 ? err : buildNetworkError(err);
+        if (attempt < maxRetries && isRetryable(error, method)) {
+          lastError = error;
+          attempt += 1;
+          await sleep(250 * attempt);
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError ?? new Error("Request failed unexpectedly");
+  }
+  async function requestCursorPage(endpoint, limit) {
+    const { data, headers } = await apiRequestWithHeaders(endpoint);
+    const items = Array.isArray(data) ? data : [];
+    const { hasMore, nextCursor } = parseCursorHeaders(headers);
+    return {
+      items,
+      hasMore,
+      nextCursor,
+      count: items.length,
+      limit: typeof limit === "number" ? limit : items.length
+    };
+  }
   return {
     // Health check
     health: () => apiRequest("/health", { requireAuth: false }),
     // Visits
     visits: {
-      list: (params) => {
-        if (params) {
-          const searchParams = new URLSearchParams();
-          Object.entries(params).forEach(([k, v]) => {
-            searchParams.append(k, String(v));
-          });
-          return apiRequest(`/v1/visits?${searchParams.toString()}`);
-        }
-        return apiRequest("/v1/visits");
+      list: async (params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          sort: params?.sort,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/visits${query ? `?${query}` : ""}`;
+        const page = await requestCursorPage(endpoint, params?.limit);
+        return page.items;
+      },
+      listPage: (params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          sort: params?.sort,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/visits${query ? `?${query}` : ""}`;
+        return requestCursorPage(endpoint, params?.limit);
       },
       get: (id) => apiRequest(`/v1/visits/${id}`),
       create: (data) => apiRequest("/v1/visits", {
@@ -236,7 +359,27 @@ function createApiClient(config) {
     },
     // Action Items
     actions: {
-      list: () => apiRequest("/v1/actions"),
+      list: async (params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/actions${query ? `?${query}` : ""}`;
+        const page = await requestCursorPage(endpoint, params?.limit);
+        return page.items;
+      },
+      listPage: (params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/actions${query ? `?${query}` : ""}`;
+        return requestCursorPage(endpoint, params?.limit);
+      },
       get: (id) => apiRequest(`/v1/actions/${id}`),
       create: (data) => apiRequest("/v1/actions", {
         method: "POST",
@@ -252,7 +395,27 @@ function createApiClient(config) {
     },
     // Medications
     medications: {
-      list: () => apiRequest("/v1/meds"),
+      list: async (params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/meds${query ? `?${query}` : ""}`;
+        const page = await requestCursorPage(endpoint, params?.limit);
+        return page.items;
+      },
+      listPage: (params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/meds${query ? `?${query}` : ""}`;
+        return requestCursorPage(endpoint, params?.limit);
+      },
       get: (id) => apiRequest(`/v1/meds/${id}`),
       create: (data) => apiRequest("/v1/meds", {
         method: "POST",
@@ -297,9 +460,11 @@ function createApiClient(config) {
       }),
       // Caregiver management
       listCaregivers: () => apiRequest("/v1/users/me/caregivers"),
-      addCaregiver: (data) => apiRequest("/v1/users/me/caregivers", {
+      addCaregiver: (data) => apiRequest("/v1/shares/invite", {
         method: "POST",
-        body: JSON.stringify(data)
+        body: JSON.stringify({
+          caregiverEmail: data.email
+        })
       }),
       updateCaregiver: (id, data) => apiRequest(`/v1/users/me/caregivers/${id}`, {
         method: "PUT",
@@ -433,6 +598,23 @@ function createApiHooks(api) {
       ...queryOptions
     });
   }
+  function useInfiniteVisits(params, options) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    const pageSize = params?.limit ?? 25;
+    const sort = params?.sort ?? "desc";
+    return reactQuery.useInfiniteQuery({
+      queryKey: queryKey ?? [...queryKeys.visits, "cursor", pageSize, sort],
+      initialPageParam: null,
+      queryFn: ({ pageParam }) => api.visits.listPage({
+        limit: pageSize,
+        sort,
+        cursor: typeof pageParam === "string" ? pageParam : void 0
+      }),
+      getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor : void 0,
+      staleTime: 60 * 1e3,
+      ...queryOptions
+    });
+  }
   function useVisit(id, options) {
     const { queryKey, ...queryOptions } = options ?? {};
     return reactQuery.useQuery({
@@ -465,6 +647,21 @@ function createApiHooks(api) {
       ...queryOptions
     });
   }
+  function useInfiniteActionItems(params, options) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    const pageSize = params?.limit ?? 25;
+    return reactQuery.useInfiniteQuery({
+      queryKey: queryKey ?? [...queryKeys.actions, "cursor", pageSize],
+      initialPageParam: null,
+      queryFn: ({ pageParam }) => api.actions.listPage({
+        limit: pageSize,
+        cursor: typeof pageParam === "string" ? pageParam : void 0
+      }),
+      getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor : void 0,
+      staleTime: 30 * 1e3,
+      ...queryOptions
+    });
+  }
   function usePendingActions(options) {
     const { queryKey, ...queryOptions } = options ?? {};
     return reactQuery.useQuery({
@@ -483,6 +680,21 @@ function createApiHooks(api) {
       queryFn: () => api.medications.list(),
       staleTime: 60 * 1e3,
       // 1 minute
+      ...queryOptions
+    });
+  }
+  function useInfiniteMedications(params, options) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    const pageSize = params?.limit ?? 25;
+    return reactQuery.useInfiniteQuery({
+      queryKey: queryKey ?? [...queryKeys.medications, "cursor", pageSize],
+      initialPageParam: null,
+      queryFn: ({ pageParam }) => api.medications.listPage({
+        limit: pageSize,
+        cursor: typeof pageParam === "string" ? pageParam : void 0
+      }),
+      getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor : void 0,
+      staleTime: 60 * 1e3,
       ...queryOptions
     });
   }
@@ -566,11 +778,14 @@ function createApiHooks(api) {
   }
   return {
     useVisits,
+    useInfiniteVisits,
     useVisit,
     useLatestVisit,
     useActionItems,
+    useInfiniteActionItems,
     usePendingActions,
     useMedications,
+    useInfiniteMedications,
     useActiveMedications,
     useUserProfile,
     // LumiBot

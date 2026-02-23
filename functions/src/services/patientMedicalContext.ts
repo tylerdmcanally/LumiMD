@@ -10,6 +10,8 @@
 
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
+import { PatientContextDomainService } from './domain/patientContexts/PatientContextDomainService';
+import { FirestorePatientContextRepository } from './repositories/patientContexts/FirestorePatientContextRepository';
 
 // =============================================================================
 // Type Definitions
@@ -72,14 +74,28 @@ export interface PatientMedicalContext {
     updatedAt: admin.firestore.Timestamp;
 }
 
-// =============================================================================
-// Firestore Access
-// =============================================================================
+type PatientMedicalContextDependencies = {
+    patientContextService?: Pick<
+        PatientContextDomainService,
+        'getForUser' | 'setForUser' | 'updateForUser'
+    >;
+};
 
-const db = () => admin.firestore();
+function buildDefaultDependencies(): Required<PatientMedicalContextDependencies> {
+    return {
+        patientContextService: new PatientContextDomainService(
+            new FirestorePatientContextRepository(admin.firestore()),
+        ),
+    };
+}
 
-function getContextCollection() {
-    return db().collection('patientContexts');
+function resolveDependencies(
+    overrides: PatientMedicalContextDependencies,
+): Required<PatientMedicalContextDependencies> {
+    const defaults = buildDefaultDependencies();
+    return {
+        patientContextService: overrides.patientContextService ?? defaults.patientContextService,
+    };
 }
 
 // =============================================================================
@@ -89,22 +105,23 @@ function getContextCollection() {
 /**
  * Get or create patient medical context
  */
-export async function getPatientMedicalContext(userId: string): Promise<PatientMedicalContext | null> {
-    const doc = await getContextCollection().doc(userId).get();
-
-    if (!doc.exists) {
-        return null;
-    }
-
-    return doc.data() as PatientMedicalContext;
+export async function getPatientMedicalContext(
+    userId: string,
+    dependencyOverrides: PatientMedicalContextDependencies = {},
+): Promise<PatientMedicalContext | null> {
+    const dependencies = resolveDependencies(dependencyOverrides);
+    const context = await dependencies.patientContextService.getForUser(userId);
+    return context as PatientMedicalContext | null;
 }
 
 /**
  * Create initial patient context (called when first visit is processed)
  */
 export async function createPatientMedicalContext(
-    userId: string
+    userId: string,
+    dependencyOverrides: PatientMedicalContextDependencies = {},
 ): Promise<PatientMedicalContext> {
+    const dependencies = resolveDependencies(dependencyOverrides);
     const now = admin.firestore.Timestamp.now();
 
     const context: PatientMedicalContext = {
@@ -117,7 +134,7 @@ export async function createPatientMedicalContext(
         updatedAt: now,
     };
 
-    await getContextCollection().doc(userId).set(context);
+    await dependencies.patientContextService.setForUser(userId, context);
 
     functions.logger.info(`[PatientContext] Created context for user ${userId}`);
 
@@ -138,15 +155,17 @@ export interface VisitContextUpdate {
 
 export async function updatePatientContextFromVisit(
     userId: string,
-    update: VisitContextUpdate
+    update: VisitContextUpdate,
+    dependencyOverrides: PatientMedicalContextDependencies = {},
 ): Promise<PatientMedicalContext> {
+    const dependencies = resolveDependencies(dependencyOverrides);
     const now = admin.firestore.Timestamp.now();
     const visitTimestamp = admin.firestore.Timestamp.fromDate(update.visitDate);
 
     // Get or create context
-    let context = await getPatientMedicalContext(userId);
+    let context = await getPatientMedicalContext(userId, dependencyOverrides);
     if (!context) {
-        context = await createPatientMedicalContext(userId);
+        context = await createPatientMedicalContext(userId, dependencyOverrides);
     }
 
     // Add new conditions (deduplicate by ID)
@@ -205,7 +224,7 @@ export async function updatePatientContextFromVisit(
     context.updatedAt = now;
 
     // Save
-    await getContextCollection().doc(userId).set(context, { merge: true });
+    await dependencies.patientContextService.setForUser(userId, context, { merge: true });
 
     functions.logger.info(`[PatientContext] Updated context for user ${userId}`, {
         newConditions: update.diagnoses.length,
@@ -221,11 +240,13 @@ export async function updatePatientContextFromVisit(
 export async function enableTracking(
     userId: string,
     trackingType: TrackingType,
-    sourceConditionId?: string
+    sourceConditionId?: string,
+    dependencyOverrides: PatientMedicalContextDependencies = {},
 ): Promise<void> {
+    const dependencies = resolveDependencies(dependencyOverrides);
     const now = admin.firestore.Timestamp.now();
 
-    await getContextCollection().doc(userId).update({
+    await dependencies.patientContextService.updateForUser(userId, {
         activeTracking: admin.firestore.FieldValue.arrayUnion({
             type: trackingType,
             enabledAt: now,
@@ -242,9 +263,11 @@ export async function enableTracking(
  */
 export async function recordTrackingLog(
     userId: string,
-    trackingType: TrackingType
+    trackingType: TrackingType,
+    dependencyOverrides: PatientMedicalContextDependencies = {},
 ): Promise<void> {
-    const context = await getPatientMedicalContext(userId);
+    const dependencies = resolveDependencies(dependencyOverrides);
+    const context = await getPatientMedicalContext(userId, dependencyOverrides);
     if (!context) return;
 
     const now = admin.firestore.Timestamp.now();
@@ -253,7 +276,7 @@ export async function recordTrackingLog(
     const tracking = context.activeTracking.find(t => t.type === trackingType);
     if (tracking) {
         tracking.lastLoggedAt = now;
-        await getContextCollection().doc(userId).update({
+        await dependencies.patientContextService.updateForUser(userId, {
             activeTracking: context.activeTracking,
             updatedAt: now,
         });

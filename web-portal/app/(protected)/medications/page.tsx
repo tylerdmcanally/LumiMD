@@ -35,6 +35,7 @@ export default function MedicationsPage() {
   const [viewMedication, setViewMedication] = React.useState<any | null>(null);
   const [medicationWarnings, setMedicationWarnings] = React.useState<any | null>(null);
   const [reminderMedication, setReminderMedication] = React.useState<any | null>(null);
+  const [showStoppedHistory, setShowStoppedHistory] = React.useState(false);
   // Read-only mode removed - caregivers use /care route instead
   const isReadOnly = false;
 
@@ -223,19 +224,42 @@ export default function MedicationsPage() {
           isReadOnly={isReadOnly}
         />
 
-        {/* Stopped Medications */}
-        <MedicationGroup
-          title="Discontinued medications"
-          description="Previously prescribed medications for quick reference."
-          emptyMessage="No discontinued medications recorded."
-          medications={stoppedMeds}
-          isLoading={isLoading}
-          onView={(med) => setViewMedication(med)}
-          onEdit={(med) => setEditingMedication(med)}
-          onDelete={setMedToDelete}
-          onShowWarnings={(med) => setMedicationWarnings({ medicationName: med.name, warnings: med.medicationWarning })}
-          isReadOnly={isReadOnly}
-        />
+        {/* Stopped Medications (history, collapsed by default) */}
+        {stoppedMeds.length > 0 && (
+          <Card variant="elevated" padding="md">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between text-left"
+              onClick={() => setShowStoppedHistory((prev) => !prev)}
+              aria-expanded={showStoppedHistory}
+            >
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">Discontinued medications</h2>
+                <p className="text-sm text-text-secondary">
+                  Previously prescribed medications for quick reference ({stoppedMeds.length}).
+                </p>
+              </div>
+              <span className="text-sm font-medium text-brand-primary">
+                {showStoppedHistory ? 'Hide history' : 'Show history'}
+              </span>
+            </button>
+          </Card>
+        )}
+
+        {stoppedMeds.length > 0 && showStoppedHistory && (
+          <MedicationGroup
+            title="Discontinued medications"
+            description="Previously prescribed medications for quick reference."
+            emptyMessage="No discontinued medications recorded."
+            medications={stoppedMeds}
+            isLoading={isLoading}
+            onView={(med) => setViewMedication(med)}
+            onEdit={(med) => setEditingMedication(med)}
+            onDelete={setMedToDelete}
+            onShowWarnings={(med) => setMedicationWarnings({ medicationName: med.name, warnings: med.medicationWarning })}
+            isReadOnly={isReadOnly}
+          />
+        )}
 
         {!isReadOnly && (
           <>

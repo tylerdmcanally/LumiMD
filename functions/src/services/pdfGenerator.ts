@@ -11,6 +11,10 @@ import PdfPrinter from 'pdfmake';
 import type { TDocumentDefinitions, Content, TableCell } from 'pdfmake/interfaces';
 import { BloodPressureValue, GlucoseValue, WeightValue, HealthLogType } from '../types/lumibot';
 import { analyzeTrends, TrendInsight } from './trendAnalyzer';
+import { HealthLogDomainService } from './domain/healthLogs/HealthLogDomainService';
+import { MedicationDomainService } from './domain/medications/MedicationDomainService';
+import { FirestoreHealthLogRepository } from './repositories/healthLogs/FirestoreHealthLogRepository';
+import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
 
 // =============================================================================
 // Types
@@ -62,6 +66,23 @@ interface ReportStats {
         latest?: { weight: number; date: string };
         startWeight?: number;
         change?: number;
+    };
+}
+
+type ProviderReportDependencies = {
+    healthLogService?: Pick<HealthLogDomainService, 'listForUser'>;
+    medicationService?: Pick<MedicationDomainService, 'listAllForUser'>;
+};
+
+function buildDefaultDependencies(): Required<ProviderReportDependencies> {
+    const firestore = admin.firestore();
+    return {
+        healthLogService: new HealthLogDomainService(
+            new FirestoreHealthLogRepository(firestore),
+        ),
+        medicationService: new MedicationDomainService(
+            new FirestoreMedicationRepository(firestore),
+        ),
     };
 }
 
@@ -625,43 +646,42 @@ function buildDocumentDefinition(data: ReportData): TDocumentDefinitions {
 
 export async function generateProviderReport(
     userId: string,
-    days: number = 30
+    days: number = 30,
+    dependencies: ProviderReportDependencies = {},
 ): Promise<Buffer> {
-    const db = admin.firestore();
+    const defaultDependencies = buildDefaultDependencies();
+    const healthLogService = dependencies.healthLogService ?? defaultDependencies.healthLogService;
+    const medicationService = dependencies.medicationService ?? defaultDependencies.medicationService;
 
     // Calculate date range
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
     // Fetch health logs
-    const healthLogsSnapshot = await db
-        .collection('healthLogs')
-        .where('userId', '==', userId)
-        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
-        .orderBy('createdAt', 'desc')
-        .get();
-
-    const healthLogs: HealthLogDoc[] = healthLogsSnapshot.docs.map(doc => ({
-        type: doc.data().type,
-        value: doc.data().value,
-        alertLevel: doc.data().alertLevel,
-        createdAt: doc.data().createdAt,
-        source: doc.data().source,
-    }));
+    const healthLogRecords = await healthLogService.listForUser(userId, {
+        startDate,
+        sortDirection: 'desc',
+    });
+    const healthLogs: HealthLogDoc[] = healthLogRecords
+        .filter((record) => typeof record.type === 'string')
+        .map((record) => ({
+            type: record.type as HealthLogType,
+            value: record.value as BloodPressureValue | GlucoseValue | WeightValue,
+            alertLevel: typeof record.alertLevel === 'string' ? record.alertLevel : undefined,
+            createdAt: record.createdAt as admin.firestore.Timestamp,
+            source: typeof record.source === 'string' ? record.source : 'manual',
+        }));
 
     // Fetch active medications
-    const medicationsSnapshot = await db
-        .collection('medications')
-        .where('userId', '==', userId)
-        .where('status', '==', 'active')
-        .get();
-
-    const medications: MedicationDoc[] = medicationsSnapshot.docs.map(doc => ({
-        name: doc.data().name,
-        dosage: doc.data().dosage,
-        frequency: doc.data().frequency,
-        status: doc.data().status,
-    }));
+    const medicationRecords = await medicationService.listAllForUser(userId, { includeDeleted: true });
+    const medications: MedicationDoc[] = medicationRecords
+        .filter((record) => record.status === 'active')
+        .map((record) => ({
+            name: String(record.name || ''),
+            dosage: typeof record.dosage === 'string' ? record.dosage : undefined,
+            frequency: typeof record.frequency === 'string' ? record.frequency : undefined,
+            status: typeof record.status === 'string' ? record.status : undefined,
+        }));
 
     functions.logger.info(`[PDF] Generating report for user ${userId}`, {
         healthLogs: healthLogs.length,

@@ -5,6 +5,7 @@ import * as functions from 'firebase-functions';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import { authRouter } from './routes/auth';
 import { visitsRouter } from './routes/visits';
 import { actionsRouter } from './routes/actions';
@@ -26,16 +27,44 @@ import { errorHandler } from './middlewares/errorHandler';
 import { corsConfig } from './config';
 import { initSentry, sentryRequestHandler, setupSentryErrorHandler } from './utils/sentry';
 import { processAndNotifyDueNudges } from './services/nudgeNotificationService';
-import { processAndNotifyMedicationReminders } from './services/medicationReminderService';
+import {
+  backfillMedicationReminderTimingPolicy,
+  processAndNotifyMedicationReminders,
+} from './services/medicationReminderService';
+import { purgeSoftDeletedCollections } from './services/softDeleteRetentionService';
+import { processVisitPostCommitRecoveries } from './services/visitPostCommitRecoveryService';
+import { reportPostCommitEscalations } from './services/postCommitEscalationReportingService';
+import { backfillDenormalizedFields } from './services/denormalizationSync';
 
 export { processVisitAudio } from './triggers/processVisitAudio';
 export { checkPendingTranscriptions } from './triggers/checkPendingTranscriptions';
 export { summarizeVisitTrigger } from './triggers/summarizeVisit';
 export { autoAcceptShareInvites } from './triggers/autoAcceptShareInvites';
+export {
+  syncReminderDenormalizationOnMedicationWrite,
+  syncShareOwnerDenormalizationOnUserWrite,
+} from './triggers/denormalizationSync';
 export { analyzeMedicationSafety } from './callables/medicationSafety';
 export { privacyDataSweeper } from './triggers/privacySweeper';
 export { staleVisitSweeper } from './triggers/staleVisitSweeper';
 
+const parsePositiveInt = (value: string | undefined): number | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+};
+
+const DENORMALIZATION_BACKFILL_DRY_RUN =
+  process.env.DENORMALIZATION_BACKFILL_DRY_RUN === 'true' ||
+  process.env.DENORMALIZATION_BACKFILL_DRY_RUN === '1';
+const DENORMALIZATION_BACKFILL_PAGE_SIZE = parsePositiveInt(
+  process.env.DENORMALIZATION_BACKFILL_PAGE_SIZE,
+);
 
 // Initialize Sentry BEFORE other initializations
 initSentry();
@@ -145,6 +174,11 @@ app.use(helmet({
   },
 }));
 
+app.use(compression({
+  threshold: 1024,
+  level: 6,
+}));
+
 // Request size limits and parsing
 app.use(express.json({ limit: '10mb' })); // Prevent large payload attacks
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -242,6 +276,131 @@ export const processMedicationReminders = onSchedule(
       throw error;
     }
   }
+);
+
+// Scheduled function to progressively backfill reminder timing metadata for legacy reminders
+export const backfillMedicationReminderTiming = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 2 hours',
+    timeZone: 'Etc/UTC',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    maxInstances: 1,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running medication reminder timing backfill');
+
+    try {
+      const result = await backfillMedicationReminderTimingPolicy();
+      functions.logger.info('[Scheduler] Medication reminder timing backfill complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error in medication reminder timing backfill:', error);
+      throw error;
+    }
+  }
+);
+
+// Scheduled function to backfill denormalized fields for shares/invites/reminders
+export const backfillDenormalizedFieldSync = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 2 hours',
+    timeZone: 'Etc/UTC',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    maxInstances: 1,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running denormalized field backfill', {
+      dryRun: DENORMALIZATION_BACKFILL_DRY_RUN,
+      pageSize: DENORMALIZATION_BACKFILL_PAGE_SIZE ?? 'default',
+    });
+
+    try {
+      const db = admin.firestore();
+      const result = await backfillDenormalizedFields({
+        db,
+        stateCollection: db.collection('systemMaintenance'),
+        now: admin.firestore.Timestamp.now(),
+        pageSize: DENORMALIZATION_BACKFILL_PAGE_SIZE,
+        dryRun: DENORMALIZATION_BACKFILL_DRY_RUN,
+      });
+      functions.logger.info('[Scheduler] Denormalized field backfill complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error in denormalized field backfill:', error);
+      throw error;
+    }
+  },
+);
+
+// Scheduled function to purge soft-deleted resources after retention window
+export const purgeSoftDeletedData = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 24 hours',
+    timeZone: 'Etc/UTC',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    maxInstances: 1,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running soft-deleted data purge');
+
+    try {
+      const result = await purgeSoftDeletedCollections();
+      functions.logger.info('[Scheduler] Soft-deleted data purge complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error purging soft-deleted data:', error);
+      throw error;
+    }
+  }
+);
+
+// Scheduled function to retry visit post-commit operations that previously failed
+export const retryVisitPostCommitOperations = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 30 minutes',
+    timeZone: 'Etc/UTC',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    maxInstances: 1,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running visit post-commit recovery');
+
+    try {
+      const result = await processVisitPostCommitRecoveries();
+      functions.logger.info('[Scheduler] Visit post-commit recovery complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error in visit post-commit recovery:', error);
+      throw error;
+    }
+  }
+);
+
+// Scheduled function to report escalated post-commit failures for incident visibility
+export const reportVisitPostCommitEscalations = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every hour',
+    timeZone: 'Etc/UTC',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    maxInstances: 1,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running visit post-commit escalation report');
+
+    try {
+      const result = await reportPostCommitEscalations();
+      functions.logger.info('[Scheduler] Visit post-commit escalation report complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error in visit post-commit escalation report:', error);
+      throw error;
+    }
+  },
 );
 
 // Scheduled function to create recurring condition check-in nudges (daily at 9 AM)

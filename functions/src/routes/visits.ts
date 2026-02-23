@@ -2,19 +2,47 @@ import { Router } from 'express';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { z } from 'zod';
-import { requireAuth, AuthRequest } from '../middlewares/auth';
+import {
+  requireAuth,
+  AuthRequest,
+  hasOperatorAccess,
+  ensureOperatorAccessOrReject,
+  ensureOperatorRestoreReasonOrReject,
+} from '../middlewares/auth';
 import { storageConfig } from '../config';
 import { normalizeMedicationSummary } from '../services/medicationSync';
 import { getAssemblyAIService } from '../services/assemblyai';
+import { sanitizePlainText } from '../utils/inputSanitization';
+import { createDomainServiceContainer } from '../services/domain/serviceContainer';
+import { RepositoryValidationError } from '../services/repositories/common/errors';
+import type { VisitRecord } from '../services/repositories/visits/VisitRepository';
 import {
   calculateRetryWaitSeconds,
   resolveRetryPath,
 } from '../services/visitProcessingTransitions';
+import {
+  RESTORE_REASON_MAX_LENGTH,
+  recordRestoreAuditEvent,
+} from '../services/restoreAuditService';
+import {
+  ensureVisitOwnerAccessOrReject,
+  ensureVisitReadAccessOrReject,
+} from '../middlewares/visitAccess';
 
 export const visitsRouter = Router();
 
 // Getter function to access Firestore after initialization
 const getDb = () => admin.firestore();
+const getVisitDomainService = () => createDomainServiceContainer({ db: getDb() }).visitService;
+const VISIT_NOTES_MAX_LENGTH = 10000;
+const VISIT_SUMMARY_MAX_LENGTH = 20000;
+const VISIT_METADATA_MAX_LENGTH = 256;
+const VISIT_LIST_TEXT_MAX_LENGTH = 256;
+const VISITS_PAGE_SIZE_DEFAULT = 50;
+const VISITS_PAGE_SIZE_MAX = 100;
+const VISITS_ESCALATIONS_PAGE_SIZE_DEFAULT = 25;
+const VISITS_ESCALATIONS_PAGE_SIZE_MAX = 100;
+const VISITS_ESCALATION_NOTE_MAX_LENGTH = 1000;
 
 const decodeStoragePathFromAudioUrl = (audioUrl?: string | null): string | null => {
   if (!audioUrl) return null;
@@ -38,6 +66,73 @@ const parseBucketFromAudioUrl = (audioUrl?: string | null): string | null => {
     functions.logger.warn('[visits] Failed to parse bucket from audioUrl', error);
     return null;
   }
+};
+
+const timestampToIso = (value: unknown): string | null =>
+  (value as admin.firestore.Timestamp | undefined)?.toDate?.().toISOString?.() ?? null;
+
+const normalizeOperationList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : [];
+
+const normalizeOperationAttempts = (value: unknown): Record<string, number> => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const attempts: Record<string, number> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([operation, rawAttempts]) => {
+    if (typeof rawAttempts !== 'number' || !Number.isFinite(rawAttempts) || rawAttempts < 0) {
+      return;
+    }
+    attempts[operation] = Math.floor(rawAttempts);
+  });
+  return attempts;
+};
+
+const normalizeOperationRetryAt = (value: unknown): Record<string, string> => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const retryAtByOperation: Record<string, string> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([operation, rawTimestamp]) => {
+    const iso = timestampToIso(rawTimestamp);
+    if (!iso) {
+      return;
+    }
+    retryAtByOperation[operation] = iso;
+  });
+  return retryAtByOperation;
+};
+
+const serializeVisitForResponse = (visit: VisitRecord) => ({
+  ...visit,
+  id: visit.id,
+  createdAt: visit.createdAt?.toDate?.().toISOString?.(),
+  updatedAt: visit.updatedAt?.toDate?.().toISOString?.(),
+  processedAt: visit.processedAt?.toDate?.().toISOString?.() ?? null,
+  visitDate: visit.visitDate?.toDate?.()
+    ? visit.visitDate.toDate().toISOString()
+    : visit.visitDate ?? null,
+});
+
+const sanitizeStringArray = (
+  values: unknown,
+  maxLength: number = VISIT_LIST_TEXT_MAX_LENGTH,
+): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => sanitizePlainText(value, maxLength))
+        .filter((value): value is string => value.length > 0),
+    ),
+  );
 };
 
 // Validation schemas
@@ -95,6 +190,18 @@ const updateVisitSchema = z.object({
   folders: z.array(z.string()).optional(),
 });
 
+const acknowledgeEscalationSchema = z.object({
+  note: z.string().max(VISITS_ESCALATION_NOTE_MAX_LENGTH).optional(),
+});
+
+const resolveEscalationSchema = z.object({
+  note: z.string().max(VISITS_ESCALATION_NOTE_MAX_LENGTH).optional(),
+});
+
+const restoreVisitSchema = z.object({
+  reason: z.string().max(RESTORE_REASON_MAX_LENGTH).optional(),
+});
+
 /**
  * GET /v1/visits
  * List all visits for the authenticated user
@@ -105,36 +212,72 @@ const updateVisitSchema = z.object({
 visitsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const visitService = getVisitDomainService();
+    const rawLimit = req.query.limit;
+    const cursor =
+      typeof req.query.cursor === 'string' && req.query.cursor.trim().length > 0
+        ? req.query.cursor.trim()
+        : null;
+    const paginationRequested = rawLimit !== undefined || cursor !== null;
     const sort = req.query.sort as 'asc' | 'desc' | undefined;
+    const orderDirection = sort === 'asc' ? 'asc' : 'desc';
 
-    // Query visits collection for this user
-    let query = getDb()
-      .collection('visits')
-      .where('userId', '==', userId)
-      .orderBy('createdAt', sort === 'asc' ? 'asc' : 'desc');
-
-    if (limit && limit > 0) {
-      query = query.limit(limit);
+    let limit = VISITS_PAGE_SIZE_DEFAULT;
+    if (rawLimit !== undefined) {
+      const parsedLimit = parseInt(String(rawLimit), 10);
+      if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'limit must be a positive integer',
+        });
+        return;
+      }
+      limit = Math.min(parsedLimit, VISITS_PAGE_SIZE_MAX);
     }
 
-    const visitsSnapshot = await query.get();
+    let visits: VisitRecord[];
+    let hasMore = false;
+    let nextCursor: string | null = null;
 
-    const visits = visitsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      // Convert Firestore timestamps to ISO strings
-      createdAt: doc.data().createdAt?.toDate().toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate().toISOString(),
-      processedAt: doc.data().processedAt?.toDate().toISOString() ?? null,
-      visitDate: doc.data().visitDate?.toDate?.()
-        ? doc.data().visitDate.toDate().toISOString()
-        : doc.data().visitDate ?? null,
-    }));
+    if (paginationRequested) {
+      const page = await visitService.listForUser(userId, {
+        limit,
+        cursor,
+        sortDirection: orderDirection,
+      });
 
-    functions.logger.info(`[visits] Listed ${visits.length} visits for user ${userId}`);
-    res.json(visits);
+      visits = page.items;
+      hasMore = page.hasMore;
+      nextCursor = page.nextCursor;
+    } else {
+      visits = await visitService.listAllForUser(userId, {
+        sortDirection: orderDirection,
+      });
+    }
+
+    if (paginationRequested) {
+      res.set('X-Has-More', hasMore ? 'true' : 'false');
+      res.set('X-Next-Cursor', nextCursor || '');
+    }
+
+    const serializedVisits = visits.map((visit) => serializeVisitForResponse(visit));
+
+    functions.logger.info(`[visits] Listed ${serializedVisits.length} visits for user ${userId}`, {
+      paginated: paginationRequested,
+      hasMore,
+      nextCursor,
+      orderDirection,
+    });
+    res.json(serializedVisits);
   } catch (error) {
+    if (error instanceof RepositoryValidationError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid cursor',
+      });
+      return;
+    }
+
     functions.logger.error('[visits] Error listing visits:', error);
     res.status(500).json({
       code: 'server_error',
@@ -151,10 +294,10 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const visitId = req.params.id;
+    const visitService = getVisitDomainService();
 
-    const visitDoc = await getDb().collection('visits').doc(visitId).get();
-
-    if (!visitDoc.exists) {
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
       res.status(404).json({
         code: 'not_found',
         message: 'Visit not found',
@@ -162,27 +305,11 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const visit = visitDoc.data()!;
-
-    // Verify ownership
-    if (visit.userId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
-        message: 'You do not have access to this visit',
-      });
+    if (!(await ensureVisitReadAccessOrReject(userId, visit, res))) {
       return;
     }
 
-    res.json({
-      id: visitDoc.id,
-      ...visit,
-      createdAt: visit.createdAt?.toDate().toISOString(),
-      updatedAt: visit.updatedAt?.toDate().toISOString(),
-      processedAt: visit.processedAt?.toDate().toISOString() ?? null,
-      visitDate: visit.visitDate?.toDate?.()
-        ? visit.visitDate.toDate().toISOString()
-        : visit.visitDate ?? null,
-    });
+    res.json(serializeVisitForResponse(visit));
   } catch (error) {
     functions.logger.error('[visits] Error getting visit:', error);
     res.status(500).json({
@@ -193,12 +320,387 @@ visitsRouter.get('/:id', requireAuth, async (req: AuthRequest, res) => {
 });
 
 /**
+ * GET /v1/visits/ops/post-commit-escalations
+ * List escalated post-commit visit processing failures for operators
+ */
+visitsRouter.get('/ops/post-commit-escalations', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!ensureOperatorAccessOrReject(req.user, res)) {
+      return;
+    }
+
+    const rawLimit = req.query.limit;
+    const cursor =
+      typeof req.query.cursor === 'string' && req.query.cursor.trim().length > 0
+        ? req.query.cursor.trim()
+        : null;
+
+    let limit = VISITS_ESCALATIONS_PAGE_SIZE_DEFAULT;
+    if (rawLimit !== undefined) {
+      const parsedLimit = parseInt(String(rawLimit), 10);
+      if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'limit must be a positive integer',
+        });
+        return;
+      }
+      limit = Math.min(parsedLimit, VISITS_ESCALATIONS_PAGE_SIZE_MAX);
+    }
+
+    let query = getDb()
+      .collection('visits')
+      .where('postCommitStatus', '==', 'partial_failure')
+      .where('postCommitEscalatedAt', '!=', null)
+      .orderBy('postCommitEscalatedAt', 'desc');
+
+    if (cursor) {
+      const cursorDoc = await getDb().collection('visits').doc(cursor).get();
+      const cursorData = cursorDoc.data();
+      if (
+        !cursorDoc.exists ||
+        cursorData?.postCommitStatus !== 'partial_failure' ||
+        !cursorData?.postCommitEscalatedAt
+      ) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'Invalid cursor',
+        });
+        return;
+      }
+      query = query.startAfter(cursorDoc);
+    }
+
+    const snapshot = await query.limit(limit + 1).get();
+    const pageDocs = snapshot.docs.slice(0, limit);
+    const hasMore = snapshot.docs.length > limit;
+    const nextCursor = hasMore && pageDocs.length > 0 ? pageDocs[pageDocs.length - 1].id : null;
+
+    res.set('X-Has-More', hasMore ? 'true' : 'false');
+    res.set('X-Next-Cursor', nextCursor || '');
+
+    const escalations = pageDocs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        userId: typeof data.userId === 'string' ? data.userId : null,
+        processingStatus: typeof data.processingStatus === 'string' ? data.processingStatus : null,
+        postCommitStatus:
+          typeof data.postCommitStatus === 'string' ? data.postCommitStatus : null,
+        postCommitRetryEligible:
+          typeof data.postCommitRetryEligible === 'boolean'
+            ? data.postCommitRetryEligible
+            : null,
+        postCommitFailedOperations: normalizeOperationList(data.postCommitFailedOperations),
+        postCommitCompletedOperations: normalizeOperationList(data.postCommitCompletedOperations),
+        postCommitOperationAttempts: normalizeOperationAttempts(data.postCommitOperationAttempts),
+        postCommitOperationNextRetryAt: normalizeOperationRetryAt(
+          data.postCommitOperationNextRetryAt,
+        ),
+        postCommitLastAttemptAt: timestampToIso(data.postCommitLastAttemptAt),
+        postCommitCompletedAt: timestampToIso(data.postCommitCompletedAt),
+        postCommitEscalatedAt: timestampToIso(data.postCommitEscalatedAt),
+        postCommitEscalationAcknowledgedAt: timestampToIso(
+          data.postCommitEscalationAcknowledgedAt,
+        ),
+        postCommitEscalationAcknowledgedBy:
+          typeof data.postCommitEscalationAcknowledgedBy === 'string'
+            ? data.postCommitEscalationAcknowledgedBy
+            : null,
+        postCommitEscalationNote:
+          typeof data.postCommitEscalationNote === 'string'
+            ? data.postCommitEscalationNote
+            : null,
+        postCommitEscalationResolvedAt: timestampToIso(data.postCommitEscalationResolvedAt),
+        postCommitEscalationResolvedBy:
+          typeof data.postCommitEscalationResolvedBy === 'string'
+            ? data.postCommitEscalationResolvedBy
+            : null,
+        postCommitEscalationResolutionNote:
+          typeof data.postCommitEscalationResolutionNote === 'string'
+            ? data.postCommitEscalationResolutionNote
+            : null,
+        createdAt: timestampToIso(data.createdAt),
+        updatedAt: timestampToIso(data.updatedAt),
+        visitDate: timestampToIso(data.visitDate),
+      };
+    });
+
+    functions.logger.info('[visits] Listed escalated post-commit failures', {
+      operatorId: req.user?.uid ?? null,
+      count: escalations.length,
+      hasMore,
+      nextCursor,
+    });
+
+    res.json({ escalations });
+  } catch (error) {
+    functions.logger.error('[visits] Error listing post-commit escalations:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to fetch escalated visit failures',
+    });
+  }
+});
+
+/**
+ * POST /v1/visits/ops/post-commit-escalations/:id/acknowledge
+ * Acknowledge an escalated post-commit visit processing failure
+ */
+visitsRouter.post(
+  '/ops/post-commit-escalations/:id/acknowledge',
+  requireAuth,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!ensureOperatorAccessOrReject(req.user, res)) {
+        return;
+      }
+
+      const operatorId = req.user!.uid;
+      const visitId = req.params.id;
+      const payload = acknowledgeEscalationSchema.parse(req.body ?? {});
+      const visitService = getVisitDomainService();
+
+      const visit = await visitService.getById(visitId);
+      if (!visit) {
+        res.status(404).json({
+          code: 'not_found',
+          message: 'Visit not found',
+        });
+        return;
+      }
+
+      if (!visit.postCommitEscalatedAt) {
+        res.status(409).json({
+          code: 'not_escalated',
+          message: 'Visit does not have an active escalation',
+        });
+        return;
+      }
+
+      const note =
+        payload.note !== undefined
+          ? sanitizePlainText(payload.note, VISITS_ESCALATION_NOTE_MAX_LENGTH)
+          : undefined;
+      const now = admin.firestore.Timestamp.now();
+
+      const updatedVisit = await visitService.updateRecord(visitId, {
+        postCommitEscalationAcknowledgedAt: now,
+        postCommitEscalationAcknowledgedBy: operatorId,
+        postCommitEscalationNote: note !== undefined ? note : admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      });
+      if (!updatedVisit) {
+        res.status(404).json({
+          code: 'not_found',
+          message: 'Visit not found',
+        });
+        return;
+      }
+
+      functions.logger.info('[visits] Acknowledged post-commit escalation', {
+        operatorId,
+        visitId,
+      });
+
+      res.json({
+        success: true,
+        id: visitId,
+        acknowledgedAt: now.toDate().toISOString(),
+        acknowledgedBy: operatorId,
+        note: note ?? null,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'Invalid request body',
+          details: error.errors,
+        });
+        return;
+      }
+
+      functions.logger.error('[visits] Error acknowledging post-commit escalation:', error);
+      res.status(500).json({
+        code: 'server_error',
+        message: 'Failed to acknowledge escalated visit failure',
+      });
+    }
+  },
+);
+
+/**
+ * POST /v1/visits/ops/post-commit-escalations/:id/resolve
+ * Mark an escalated post-commit failure as resolved by an operator
+ */
+visitsRouter.post(
+  '/ops/post-commit-escalations/:id/resolve',
+  requireAuth,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!ensureOperatorAccessOrReject(req.user, res)) {
+        return;
+      }
+
+      const operatorId = req.user!.uid;
+      const visitId = req.params.id;
+      const payload = resolveEscalationSchema.parse(req.body ?? {});
+      const visitService = getVisitDomainService();
+
+      const visit = await visitService.getById(visitId);
+      if (!visit) {
+        res.status(404).json({
+          code: 'not_found',
+          message: 'Visit not found',
+        });
+        return;
+      }
+
+      if (!visit.postCommitEscalatedAt) {
+        res.status(409).json({
+          code: 'not_escalated',
+          message: 'Visit does not have an active escalation',
+        });
+        return;
+      }
+
+      const note =
+        payload.note !== undefined
+          ? sanitizePlainText(payload.note, VISITS_ESCALATION_NOTE_MAX_LENGTH)
+          : undefined;
+      const now = admin.firestore.Timestamp.now();
+
+      const updatedVisit = await visitService.updateRecord(visitId, {
+        postCommitEscalationResolvedAt: now,
+        postCommitEscalationResolvedBy: operatorId,
+        postCommitEscalationResolutionNote:
+          note !== undefined ? note : admin.firestore.FieldValue.delete(),
+        postCommitEscalationAcknowledgedAt:
+          visit.postCommitEscalationAcknowledgedAt || now,
+        postCommitEscalationAcknowledgedBy:
+          visit.postCommitEscalationAcknowledgedBy || operatorId,
+        updatedAt: now,
+      });
+      if (!updatedVisit) {
+        res.status(404).json({
+          code: 'not_found',
+          message: 'Visit not found',
+        });
+        return;
+      }
+
+      functions.logger.info('[visits] Resolved post-commit escalation', {
+        operatorId,
+        visitId,
+      });
+
+      res.json({
+        success: true,
+        id: visitId,
+        resolvedAt: now.toDate().toISOString(),
+        resolvedBy: operatorId,
+        note: note ?? null,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({
+          code: 'validation_failed',
+          message: 'Invalid request body',
+          details: error.errors,
+        });
+        return;
+      }
+
+      functions.logger.error('[visits] Error resolving post-commit escalation:', error);
+      res.status(500).json({
+        code: 'server_error',
+        message: 'Failed to resolve escalated visit failure',
+      });
+    }
+  },
+);
+
+/**
+ * POST /v1/visits/ops/post-commit-escalations/:id/reopen
+ * Reopen a resolved escalation when the incident requires follow-up
+ */
+visitsRouter.post(
+  '/ops/post-commit-escalations/:id/reopen',
+  requireAuth,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!ensureOperatorAccessOrReject(req.user, res)) {
+        return;
+      }
+
+      const operatorId = req.user!.uid;
+      const visitId = req.params.id;
+      const visitService = getVisitDomainService();
+      const visit = await visitService.getById(visitId);
+      if (!visit) {
+        res.status(404).json({
+          code: 'not_found',
+          message: 'Visit not found',
+        });
+        return;
+      }
+
+      if (!visit.postCommitEscalatedAt) {
+        res.status(409).json({
+          code: 'not_escalated',
+          message: 'Visit does not have an active escalation',
+        });
+        return;
+      }
+
+      const now = admin.firestore.Timestamp.now();
+      const updatedVisit = await visitService.updateRecord(visitId, {
+        postCommitEscalatedAt: now,
+        postCommitEscalationResolvedAt: admin.firestore.FieldValue.delete(),
+        postCommitEscalationResolvedBy: admin.firestore.FieldValue.delete(),
+        postCommitEscalationResolutionNote: admin.firestore.FieldValue.delete(),
+        postCommitEscalationAcknowledgedAt: admin.firestore.FieldValue.delete(),
+        postCommitEscalationAcknowledgedBy: admin.firestore.FieldValue.delete(),
+        postCommitEscalationNote: admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      });
+      if (!updatedVisit) {
+        res.status(404).json({
+          code: 'not_found',
+          message: 'Visit not found',
+        });
+        return;
+      }
+
+      functions.logger.info('[visits] Reopened post-commit escalation', {
+        operatorId,
+        visitId,
+      });
+
+      res.json({
+        success: true,
+        id: visitId,
+        reopenedAt: now.toDate().toISOString(),
+        reopenedBy: operatorId,
+      });
+    } catch (error) {
+      functions.logger.error('[visits] Error reopening post-commit escalation:', error);
+      res.status(500).json({
+        code: 'server_error',
+        message: 'Failed to reopen escalated visit failure',
+      });
+    }
+  },
+);
+
+/**
  * POST /v1/visits
  * Create a new visit (premium)
  */
 visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
+    const visitService = getVisitDomainService();
 
     // Validate request body
     const data = createVisitSchema.parse(req.body);
@@ -206,11 +708,11 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     const now = admin.firestore.Timestamp.now();
 
     // Create visit document
-    const visitRef = await getDb().collection('visits').add({
+    const visit = await visitService.createRecord({
       userId,
       audioUrl: data.audioUrl || null,
       storagePath: data.storagePath || null,
-      notes: data.notes || '',
+      notes: sanitizePlainText(data.notes, VISIT_NOTES_MAX_LENGTH),
       status: data.status,
       processingStatus: 'pending',
       transcript: null,
@@ -225,17 +727,15 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       nextSteps: [],
       processedAt: null,
       retryCount: 0,
+      deletedAt: null,
+      deletedBy: null,
       createdAt: now,
       updatedAt: now,
     });
 
-    const visitDoc = await visitRef.get();
-    const visit = visitDoc.data()!;
-
-    functions.logger.info(`[visits] Created visit ${visitRef.id} for user ${userId}`);
+    functions.logger.info(`[visits] Created visit ${visit.id} for user ${userId}`);
 
     res.status(201).json({
-      id: visitRef.id,
       ...visit,
       createdAt: visit.createdAt.toDate().toISOString(),
       updatedAt: visit.updatedAt.toDate().toISOString(),
@@ -266,14 +766,13 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const visitId = req.params.id;
+    const visitService = getVisitDomainService();
 
     // Validate request body
     const data = updateVisitSchema.parse(req.body);
 
-    const visitRef = getDb().collection('visits').doc(visitId);
-    const visitDoc = await visitRef.get();
-
-    if (!visitDoc.exists) {
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
       res.status(404).json({
         code: 'not_found',
         message: 'Visit not found',
@@ -281,14 +780,7 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const visit = visitDoc.data()!;
-
-    // Verify ownership
-    if (visit.userId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
-        message: 'You do not have access to this visit',
-      });
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) {
       return;
     }
 
@@ -297,7 +789,7 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     };
 
     if (data.notes !== undefined) {
-      updatePayload.notes = data.notes;
+      updatePayload.notes = sanitizePlainText(data.notes, VISIT_NOTES_MAX_LENGTH);
     }
 
     if (data.status !== undefined) {
@@ -309,11 +801,13 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (data.summary !== undefined) {
-      updatePayload.summary = data.summary;
+      updatePayload.summary = data.summary === null
+        ? null
+        : sanitizePlainText(data.summary, VISIT_SUMMARY_MAX_LENGTH);
     }
 
     if (data.diagnoses !== undefined) {
-      updatePayload.diagnoses = data.diagnoses;
+      updatePayload.diagnoses = sanitizeStringArray(data.diagnoses);
     }
 
     if (data.medications !== undefined) {
@@ -321,11 +815,11 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (data.imaging !== undefined) {
-      updatePayload.imaging = data.imaging;
+      updatePayload.imaging = sanitizeStringArray(data.imaging);
     }
 
     if (data.nextSteps !== undefined) {
-      updatePayload.nextSteps = data.nextSteps;
+      updatePayload.nextSteps = sanitizeStringArray(data.nextSteps);
     }
 
     if (data.processingStatus !== undefined) {
@@ -339,15 +833,15 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (data.provider !== undefined) {
-      updatePayload.provider = data.provider?.trim() || null;
+      updatePayload.provider = sanitizePlainText(data.provider, VISIT_METADATA_MAX_LENGTH) || null;
     }
 
     if (data.location !== undefined) {
-      updatePayload.location = data.location?.trim() || null;
+      updatePayload.location = sanitizePlainText(data.location, VISIT_METADATA_MAX_LENGTH) || null;
     }
 
     if (data.specialty !== undefined) {
-      updatePayload.specialty = data.specialty?.trim() || null;
+      updatePayload.specialty = sanitizePlainText(data.specialty, VISIT_METADATA_MAX_LENGTH) || null;
     }
 
     if (data.visitDate !== undefined) {
@@ -357,42 +851,25 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (data.tags !== undefined) {
-      const cleanedTags = Array.from(
-        new Set(
-          (data.tags || []).map((tag) => tag?.trim()).filter(Boolean) as string[],
-        ),
-      );
-      updatePayload.tags = cleanedTags;
+      updatePayload.tags = sanitizeStringArray(data.tags);
     }
 
     if (data.folders !== undefined) {
-      const cleanedFolders = Array.from(
-        new Set(
-          (data.folders || [])
-            .map((folder) => folder?.trim())
-            .filter(Boolean) as string[],
-        ),
-      );
-      updatePayload.folders = cleanedFolders;
+      updatePayload.folders = sanitizeStringArray(data.folders);
     }
 
-    await visitRef.update(updatePayload);
-
-    const updatedDoc = await visitRef.get();
-    const updatedVisit = updatedDoc.data()!;
+    const updatedVisit = await visitService.updateRecord(visitId, updatePayload);
+    if (!updatedVisit) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
 
     functions.logger.info(`[visits] Updated visit ${visitId} for user ${userId}`);
 
-    res.json({
-      id: visitId,
-      ...updatedVisit,
-      createdAt: updatedVisit.createdAt?.toDate().toISOString(),
-      updatedAt: updatedVisit.updatedAt?.toDate().toISOString(),
-      processedAt: updatedVisit.processedAt?.toDate().toISOString() ?? null,
-      visitDate: updatedVisit.visitDate?.toDate
-        ? updatedVisit.visitDate.toDate().toISOString()
-        : updatedVisit.visitDate ?? null,
-    });
+    res.json(serializeVisitForResponse(updatedVisit));
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({
@@ -419,11 +896,10 @@ visitsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const visitId = req.params.id;
+    const visitService = getVisitDomainService();
 
-    const visitRef = getDb().collection('visits').doc(visitId);
-    const visitDoc = await visitRef.get();
-
-    if (!visitDoc.exists) {
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
       res.status(404).json({
         code: 'not_found',
         message: 'Visit not found',
@@ -431,80 +907,16 @@ visitsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const visit = visitDoc.data()!;
-
-    if (visit.userId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
-        message: 'You do not have access to this visit',
-      });
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) {
       return;
     }
 
-    // Attempt to delete associated audio file
-    const storagePath =
-      visit.storagePath ||
-      decodeStoragePathFromAudioUrl(visit.audioUrl) ||
-      null;
-    const bucketName =
-      visit.bucketName ||
-      parseBucketFromAudioUrl(visit.audioUrl) ||
-      storageConfig.bucket;
-
-    if (storagePath && bucketName) {
-      try {
-        const bucket = admin.storage().bucket(bucketName);
-        await bucket.file(storagePath).delete({ ignoreNotFound: true });
-        functions.logger.info(
-          `[visits] Deleted storage file for visit ${visitId}: ${storagePath}`,
-        );
-      } catch (error) {
-        functions.logger.warn(
-          `[visits] Unable to delete storage file for visit ${visitId}:`,
-          error,
-        );
-      }
-    }
-
-    const transcriptionId =
-      typeof visit.transcriptionId === 'string' ? visit.transcriptionId : null;
-
-    if (transcriptionId) {
-      try {
-        const assemblyAI = getAssemblyAIService();
-        await assemblyAI.deleteTranscript(transcriptionId);
-        functions.logger.info(
-          `[visits] Deleted AssemblyAI transcript for visit ${visitId}: ${transcriptionId}`,
-        );
-      } catch (error) {
-        functions.logger.warn(
-          `[visits] Unable to delete AssemblyAI transcript for visit ${visitId}`,
-          error,
-        );
-      }
-    }
-
-    // Remove action items tied to this visit
-    const actionsSnapshot = await getDb()
-      .collection('actions')
-      .where('visitId', '==', visitId)
-      .get();
-
-    const batch = getDb().batch();
-
-    actionsSnapshot.docs.forEach((actionDoc) => {
-      const action = actionDoc.data();
-      if (action.userId === userId) {
-        batch.delete(actionDoc.ref);
-      }
-    });
-
-    batch.delete(visitRef);
-
-    await batch.commit();
+    const now = admin.firestore.Timestamp.now();
+    const { softDeletedActions } = await visitService.softDeleteRecord(visitId, userId, now);
 
     functions.logger.info(
-      `[visits] Deleted visit ${visitId} and related data for user ${userId}`,
+      `[visits] Soft-deleted visit ${visitId} and related actions for user ${userId}`,
+      { softDeletedActions },
     );
 
     res.status(204).send();
@@ -518,18 +930,30 @@ visitsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 });
 
 /**
- * POST /v1/visits/:id/retry
- * Re-run AI processing for a visit
+ * POST /v1/visits/:id/restore
+ * Restore a soft-deleted visit and related action items
  */
-visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
+visitsRouter.post('/:id/restore', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.uid;
     const visitId = req.params.id;
+    const isOperator = hasOperatorAccess(req.user);
+    const visitService = getVisitDomainService();
 
-    const visitRef = getDb().collection('visits').doc(visitId);
-    const visitDoc = await visitRef.get();
+    const payload = restoreVisitSchema.safeParse(req.body ?? {});
+    if (!payload.success) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid restore request body',
+        details: payload.error.errors,
+      });
+      return;
+    }
+    const restoreReason =
+      sanitizePlainText(payload.data.reason, RESTORE_REASON_MAX_LENGTH) || undefined;
 
-    if (!visitDoc.exists) {
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
       res.status(404).json({
         code: 'not_found',
         message: 'Visit not found',
@@ -537,13 +961,100 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const visit = visitDoc.data()!;
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res, {
+      allowOperator: true,
+      isOperator,
+      allowDeleted: true,
+    })) {
+      return;
+    }
 
-    if (visit.userId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
-        message: 'You do not have access to this visit',
+    if (!ensureOperatorRestoreReasonOrReject({
+      actorUserId: userId,
+      ownerUserId: visit.userId,
+      isOperator,
+      reason: restoreReason,
+      res,
+    })) {
+      return;
+    }
+
+    if (!visit.deletedAt) {
+      res.status(409).json({
+        code: 'not_deleted',
+        message: 'Visit is not deleted',
       });
+      return;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    const { restoredActions } = await visitService.restoreRecord(visitId, userId, now);
+
+    try {
+      await recordRestoreAuditEvent({
+        resourceType: 'visit',
+        resourceId: visitId,
+        ownerUserId: visit.userId,
+        actorUserId: userId,
+        actorIsOperator: isOperator,
+        reason: restoreReason,
+        metadata: {
+          route: 'visits.restore',
+          restoredActions,
+        },
+        createdAt: now,
+      });
+    } catch (auditError) {
+      functions.logger.error('[visits] Failed to record restore audit event', {
+        visitId,
+        actorUserId: userId,
+        ownerUserId: visit.userId,
+        message: auditError instanceof Error ? auditError.message : String(auditError),
+      });
+    }
+
+    functions.logger.info(
+      `[visits] Restored visit ${visitId} and ${restoredActions} related action(s) for user ${userId}`,
+    );
+
+    res.json({
+      success: true,
+      id: visitId,
+      restoredActions,
+      restoredBy: userId,
+      restoredFor: visit.userId,
+      reason: restoreReason ?? null,
+      restoredAt: now.toDate().toISOString(),
+    });
+  } catch (error) {
+    functions.logger.error('[visits] Error restoring visit:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to restore visit',
+    });
+  }
+});
+
+/**
+ * POST /v1/visits/:id/retry
+ * Re-run AI processing for a visit
+ */
+visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const visitId = req.params.id;
+    const visitService = getVisitDomainService();
+
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
+
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) {
       return;
     }
 
@@ -588,11 +1099,15 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
       parseBucketFromAudioUrl(visit.audioUrl) || storageConfig.bucket || visit.bucketName;
 
     // Check if we already have a transcript to save costs/time
-    const retryPath = resolveRetryPath(visit);
+    const retryPath = resolveRetryPath({
+      transcript: visit.transcript,
+      transcriptText: visit.transcriptText,
+    });
+    let updatedVisit: VisitRecord | null = null;
 
     if (retryPath === 'summarize') {
       // Skip transcription and go straight to summarization
-      await visitRef.update({
+      updatedVisit = await visitService.updateRecord(visitId, {
         processingStatus: 'summarizing',
         status: 'processing',
         processingError: admin.firestore.FieldValue.delete(),
@@ -612,6 +1127,13 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
         retryCount: admin.firestore.FieldValue.increment(1),
         updatedAt: now,
       });
+      if (!updatedVisit) {
+        res.status(404).json({
+          code: 'not_found',
+          message: 'Visit not found',
+        });
+        return;
+      }
 
       functions.logger.info(`[visits] Retrying visit ${visitId} starting from summarization (transcript found)`);
     } else {
@@ -632,7 +1154,7 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
         const assemblyAI = getAssemblyAIService();
         const transcriptionId = await assemblyAI.submitTranscription(signedUrl);
 
-        await visitRef.update({
+        updatedVisit = await visitService.updateRecord(visitId, {
           transcriptionId,
           transcriptionStatus: 'submitted',
           transcriptionSubmittedAt: now,
@@ -659,6 +1181,13 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
           storagePath,
           updatedAt: now,
         });
+        if (!updatedVisit) {
+          res.status(404).json({
+            code: 'not_found',
+            message: 'Visit not found',
+          });
+          return;
+        }
 
         functions.logger.info(`[visits] Retrying visit ${visitId} with full re-transcription`);
       } catch (error) {
@@ -671,16 +1200,15 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    const updatedDoc = await visitRef.get();
-    const updatedVisit = updatedDoc.data()!;
+    if (!updatedVisit) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
 
-    res.json({
-      id: updatedDoc.id,
-      ...updatedVisit,
-      createdAt: updatedVisit.createdAt?.toDate().toISOString(),
-      updatedAt: updatedVisit.updatedAt?.toDate().toISOString(),
-      processedAt: updatedVisit.processedAt?.toDate().toISOString() ?? null,
-    });
+    res.json(serializeVisitForResponse(updatedVisit));
   } catch (error) {
     functions.logger.error('[visits] Error retrying visit:', error);
     res.status(500).json({
@@ -698,26 +1226,21 @@ visitsRouter.post('/:id/share-with-caregivers', requireAuth, async (req: AuthReq
   try {
     const userId = req.user!.uid;
     const visitId = req.params.id;
+    const visitService = getVisitDomainService();
 
     // Validate optional caregiver filter
     const caregiverIds = Array.isArray(req.body.caregiverIds) ? req.body.caregiverIds : undefined;
 
     // Verify visit exists and belongs to user
-    const visitDoc = await getDb().collection('visits').doc(visitId).get();
-    if (!visitDoc.exists) {
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
       res.status(404).json({
         code: 'not_found',
         message: 'Visit not found',
       });
       return;
     }
-
-    const visit = visitDoc.data()!;
-    if (visit.userId !== userId) {
-      res.status(403).json({
-        code: 'forbidden',
-        message: 'You do not have access to this visit',
-      });
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) {
       return;
     }
 
