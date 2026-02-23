@@ -15,10 +15,12 @@
     "clean:assembly": "ts-node scripts/delete-assembly-transcripts.ts",
     "clean:medication-cache": "ts-node scripts/clearMedicationSafetyCache.ts",
     "backfill:canonical-meds": "ts-node scripts/backfillCanonicalMedicationNames.ts",
+    "backfill:soft-delete-defaults": "ts-node scripts/backfillSoftDeleteDefaults.ts",
     "verify:index-guardrails": "node scripts/verify-firestore-index-guardrails.js",
     "test:denormalization-contract": "jest src/services/__tests__/denormalizationSync.test.ts src/services/__tests__/denormalizationBackfill.test.ts",
     "test:repository-contract": "jest src/services/__tests__/domainServices.test.ts src/services/__tests__/serviceContainer.test.ts",
-    "test:remediation-guardrails": "npm run verify:index-guardrails && npm run test:denormalization-contract && npm run test:repository-contract"
+    "test:soft-delete-guardrails": "jest src/services/repositories/actions/__tests__/FirestoreActionRepository.test.ts src/services/repositories/visits/__tests__/FirestoreVisitRepository.test.ts",
+    "test:remediation-guardrails": "npm run verify:index-guardrails && npm run test:denormalization-contract && npm run test:repository-contract && npm run test:soft-delete-guardrails"
   },
   "engines": {
     "node": "20"

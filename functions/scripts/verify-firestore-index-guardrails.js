@@ -57,6 +57,21 @@ const REQUIRED_INDEXES = [
     collectionGroup: 'medications',
     fields: [
       { fieldPath: 'userId', order: 'ASCENDING' },
+      { fieldPath: 'deletedAt', order: 'ASCENDING' },
+      { fieldPath: 'name', order: 'DESCENDING' },
+    ],
+  },
+  {
+    collectionGroup: 'medications',
+    fields: [
+      { fieldPath: 'userId', order: 'ASCENDING' },
+      { fieldPath: 'name', order: 'DESCENDING' },
+    ],
+  },
+  {
+    collectionGroup: 'medications',
+    fields: [
+      { fieldPath: 'userId', order: 'ASCENDING' },
       { fieldPath: 'active', order: 'ASCENDING' },
     ],
   },
@@ -98,6 +113,13 @@ const REQUIRED_INDEXES = [
     fields: [
       { fieldPath: 'userId', order: 'ASCENDING' },
       { fieldPath: 'medicationId', order: 'ASCENDING' },
+    ],
+  },
+  {
+    collectionGroup: 'medicationLogs',
+    fields: [
+      { fieldPath: 'userId', order: 'ASCENDING' },
+      { fieldPath: 'createdAt', order: 'ASCENDING' },
     ],
   },
   {

@@ -216,6 +216,93 @@ describe('visits pagination', () => {
     expect(res.headers['x-next-cursor']).toBeUndefined();
   });
 
+  it('excludes soft-deleted visits when listing without pagination params', async () => {
+    const harness = buildHarness({
+      visits: {
+        'visit-1': {
+          userId: 'user-1',
+          deletedAt: null,
+          createdAt: makeTimestamp('2026-02-20T10:00:00.000Z'),
+          updatedAt: makeTimestamp('2026-02-20T10:00:00.000Z'),
+        },
+        'visit-2': {
+          userId: 'user-1',
+          deletedAt: makeTimestamp('2026-02-19T12:00:00.000Z'),
+          createdAt: makeTimestamp('2026-02-19T10:00:00.000Z'),
+          updatedAt: makeTimestamp('2026-02-19T10:00:00.000Z'),
+        },
+        'visit-3': {
+          userId: 'user-1',
+          deletedAt: null,
+          createdAt: makeTimestamp('2026-02-18T10:00:00.000Z'),
+          updatedAt: makeTimestamp('2026-02-18T10:00:00.000Z'),
+        },
+      },
+    });
+    firestoreMock.mockImplementation(() => harness.db);
+
+    const handler = getRouteHandler('get', '/');
+    const req = createRequest({ user: { uid: 'user-1' }, query: {} });
+    const res = createResponse();
+
+    await handler(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect((res.body as Array<{ id: string }>).map((row) => row.id)).toEqual([
+      'visit-1',
+      'visit-3',
+    ]);
+  });
+
+  it('paginates correctly when deleted visits are interleaved', async () => {
+    const harness = buildHarness({
+      visits: {
+        'visit-1': {
+          userId: 'user-1',
+          deletedAt: null,
+          createdAt: makeTimestamp('2026-02-20T10:00:00.000Z'),
+          updatedAt: makeTimestamp('2026-02-20T10:00:00.000Z'),
+        },
+        'visit-2': {
+          userId: 'user-1',
+          deletedAt: makeTimestamp('2026-02-19T12:00:00.000Z'),
+          createdAt: makeTimestamp('2026-02-19T10:00:00.000Z'),
+          updatedAt: makeTimestamp('2026-02-19T10:00:00.000Z'),
+        },
+        'visit-3': {
+          userId: 'user-1',
+          deletedAt: null,
+          createdAt: makeTimestamp('2026-02-18T10:00:00.000Z'),
+          updatedAt: makeTimestamp('2026-02-18T10:00:00.000Z'),
+        },
+        'visit-4': {
+          userId: 'user-1',
+          deletedAt: null,
+          createdAt: makeTimestamp('2026-02-17T10:00:00.000Z'),
+          updatedAt: makeTimestamp('2026-02-17T10:00:00.000Z'),
+        },
+      },
+    });
+    firestoreMock.mockImplementation(() => harness.db);
+
+    const handler = getRouteHandler('get', '/');
+    const req = createRequest({
+      user: { uid: 'user-1' },
+      query: { limit: '2' },
+    });
+    const res = createResponse();
+
+    await handler(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(200);
+    expect((res.body as Array<{ id: string }>).map((row) => row.id)).toEqual([
+      'visit-1',
+      'visit-3',
+    ]);
+    expect(res.headers['x-has-more']).toBe('true');
+    expect(res.headers['x-next-cursor']).toBe('visit-3');
+  });
+
   it('returns a paginated first page with next-cursor headers', async () => {
     const harness = buildHarness({
       visits: {

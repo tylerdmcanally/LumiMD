@@ -165,10 +165,21 @@ export function registerCareQuickOverviewRoutes(
 
             if (recentMedLogById.size < 5) {
                 weekLogFallbackUsed = true;
-                const recentMedLogs = await medicationLogService.listForUser(patientId, {
+                let recentMedLogs = await medicationLogService.listForUser(patientId, {
                     startDate: weekAgo,
                     dateField: 'createdAt',
                     limit: 10,
+                }).catch(async (error) => {
+                    functions.logger.warn(
+                        '[care] quick-overview createdAt medicationLogs query failed; retrying with loggedAt',
+                        error,
+                    );
+
+                    return medicationLogService.listForUser(patientId, {
+                        startDate: weekAgo,
+                        dateField: 'loggedAt',
+                        limit: 10,
+                    });
                 });
                 perf.addQueries(1);
 

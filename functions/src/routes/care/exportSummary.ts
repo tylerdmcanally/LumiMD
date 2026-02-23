@@ -63,6 +63,8 @@ export function registerCareExportSummaryRoutes(
                 }),
                 medicationService.listAllForUser(patientId, {
                     includeDeleted: true,
+                    sortDirection: 'asc',
+                    sortField: 'name',
                 }),
                 actionService.listAllForUser(patientId, {
                     sortDirection: 'desc',

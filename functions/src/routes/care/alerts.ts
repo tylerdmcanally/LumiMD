@@ -104,6 +104,8 @@ export function registerCareAlertsRoutes(
                 }),
                 medicationService.listAllForUser(patientId, {
                     includeDeleted: true,
+                    sortDirection: 'asc',
+                    sortField: 'name',
                 }),
             ]);
             perf.addQueries(4);

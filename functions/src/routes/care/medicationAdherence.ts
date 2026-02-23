@@ -80,6 +80,8 @@ export function registerCareMedicationAdherenceRoutes(
             // Fetch active medications
             const medicationRecords = await medicationService.listAllForUser(patientId, {
                 includeDeleted: true,
+                sortDirection: 'asc',
+                sortField: 'name',
             });
             perf.addQueries(1);
 

@@ -47,6 +47,8 @@ export function registerCareMedicationChangeRoutes(
             const medicationService = getMedicationService();
             const medications = await medicationService.listAllForUser(patientId, {
                 includeDeleted: true,
+                sortDirection: 'asc',
+                sortField: 'name',
             });
             perf.addQueries(1);
 

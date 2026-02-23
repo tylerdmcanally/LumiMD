@@ -65,7 +65,12 @@ export class FirestoreVisitRepository implements VisitRepository {
   }
 
   async create(payload: FirebaseFirestore.DocumentData): Promise<VisitRecord> {
-    const ref = await this.db.collection('visits').add(payload);
+    const createPayload: FirebaseFirestore.DocumentData = {
+      ...(payload || {}),
+      deletedAt: payload?.deletedAt ?? null,
+      deletedBy: payload?.deletedBy ?? null,
+    };
+    const ref = await this.db.collection('visits').add(createPayload);
     const createdDoc = await ref.get();
     return mapVisitDoc(
       createdDoc as FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>,

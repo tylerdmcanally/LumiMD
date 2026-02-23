@@ -64,7 +64,12 @@ export class FirestoreActionRepository implements ActionRepository {
   }
 
   async create(payload: FirebaseFirestore.DocumentData): Promise<ActionRecord> {
-    const ref = await this.db.collection('actions').add(payload);
+    const createPayload: FirebaseFirestore.DocumentData = {
+      ...(payload || {}),
+      deletedAt: payload?.deletedAt ?? null,
+      deletedBy: payload?.deletedBy ?? null,
+    };
+    const ref = await this.db.collection('actions').add(createPayload);
     const createdDoc = await ref.get();
     return mapActionDoc(
       createdDoc as FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>,

@@ -44,6 +44,15 @@ type PaginatedHookOptions = {
   refetchInterval?: number | false;
 };
 
+const DEFAULT_API_BASE_URL = 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
+
+type ApiLikeError = Error & {
+  status?: number | null;
+  code?: string | null;
+};
+
 const getSessionKey = () => auth().currentUser?.uid ?? 'anonymous';
 
 function flattenCursorPages<T extends { id: string }>(pages?: CursorPage<T>[]): T[] {
@@ -65,6 +74,119 @@ function flattenCursorPages<T extends { id: string }>(pages?: CursorPage<T>[]): 
   return flattened;
 }
 
+function normalizePageSize(limit: number): number {
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return DEFAULT_PAGE_SIZE;
+  }
+  return Math.min(Math.floor(limit), MAX_PAGE_SIZE);
+}
+
+function parseCreatedAtValue(value: unknown): number {
+  if (typeof value !== 'string' || value.length === 0) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortByCreatedAt<T extends { createdAt?: string | null }>(
+  records: T[],
+  direction: 'asc' | 'desc',
+): T[] {
+  return [...records].sort((a, b) => {
+    const aTime = parseCreatedAtValue(a.createdAt);
+    const bTime = parseCreatedAtValue(b.createdAt);
+    if (direction === 'asc') {
+      return aTime - bTime;
+    }
+    return bTime - aTime;
+  });
+}
+
+async function fetchVisitsFromFirestoreFallback(
+  userId: string,
+  limit: number,
+  sort: 'asc' | 'desc',
+): Promise<Visit[]> {
+  const normalizedLimit = normalizePageSize(limit);
+
+  const runQuery = async (includeDeletedFilter: boolean): Promise<Visit[]> => {
+    let query: FirebaseFirestoreTypes.Query = firestore()
+      .collection('visits')
+      .where('userId', '==', userId);
+
+    if (includeDeletedFilter) {
+      query = query.where('deletedAt', '==', null);
+    }
+
+    const snapshot = await query
+      .orderBy('createdAt', sort)
+      .limit(normalizedLimit)
+      .get();
+
+    return sortByCreatedAt(
+      snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
+      sort,
+    );
+  };
+
+  try {
+    return await runQuery(true);
+  } catch {
+    return runQuery(false);
+  }
+}
+
+async function fetchActionsFromFirestoreFallback(
+  userId: string,
+  limit: number,
+): Promise<ActionItem[]> {
+  const normalizedLimit = normalizePageSize(limit);
+
+  const runQuery = async (includeDeletedFilter: boolean): Promise<ActionItem[]> => {
+    let query: FirebaseFirestoreTypes.Query = firestore()
+      .collection('actions')
+      .where('userId', '==', userId);
+
+    if (includeDeletedFilter) {
+      query = query.where('deletedAt', '==', null);
+    }
+
+    const snapshot = await query
+      .orderBy('createdAt', 'desc')
+      .limit(normalizedLimit)
+      .get();
+
+    return sortByCreatedAt(
+      snapshot.docs.map((doc) => serializeDoc<ActionItem>(doc)),
+      'desc',
+    );
+  };
+
+  try {
+    return await runQuery(true);
+  } catch {
+    return runQuery(false);
+  }
+}
+
+function logFirestoreFallback(resource: 'visits' | 'actions', userId: string, error: unknown) {
+  const maybeError = error as ApiLikeError | null;
+  const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
+  const firebaseProjectId = firestore().app.options.projectId ?? 'unknown';
+  const authUserId = auth().currentUser?.uid ?? 'anonymous';
+
+  console.warn(`[API fallback] ${resource} list failed, using Firestore fallback`, {
+    apiBaseUrl,
+    firebaseProjectId,
+    authUserId,
+    requestedUserId: userId,
+    errorMessage: maybeError?.message ?? 'unknown',
+    errorStatus: maybeError?.status ?? null,
+    errorCode: maybeError?.code ?? null,
+  });
+}
+
 // Session-scoped API hooks (prevents stale cached data across account switches)
 export function useVisits(options?: ApiHookQueryOptions<Visit[]>) {
   return hooks.useVisits({
@@ -79,6 +201,7 @@ export function usePaginatedVisits(
 ) {
   const pageSize = params?.limit ?? 25;
   const sort = params?.sort ?? 'desc';
+  const userId = auth().currentUser?.uid ?? null;
   const query = hooks.useInfiniteVisits(
     { limit: pageSize, sort },
     {
@@ -90,12 +213,70 @@ export function usePaginatedVisits(
     },
   );
 
-  const items = useMemo(() => flattenCursorPages<Visit>(query.data?.pages), [query.data?.pages]);
+  const apiItems = useMemo(() => flattenCursorPages<Visit>(query.data?.pages), [query.data?.pages]);
+  const shouldRunFallback =
+    (options?.enabled ?? true) && Boolean(userId) && Boolean(query.error) && apiItems.length === 0;
+
+  const fallbackQuery = useQuery<Visit[]>({
+    queryKey: ['fallback', 'visits', userId ?? 'anonymous', pageSize, sort],
+    enabled: shouldRunFallback,
+    staleTime: options?.staleTime ?? 30_000,
+    gcTime: options?.gcTime,
+    retry: false,
+    queryFn: async () => {
+      if (!userId) return [];
+      return fetchVisitsFromFirestoreFallback(userId, pageSize, sort);
+    },
+  });
+
+  const fallbackLogRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shouldRunFallback || !userId || !query.error) {
+      fallbackLogRef.current = null;
+      return;
+    }
+
+    const maybeError = query.error as ApiLikeError;
+    const signature = `${userId}:${maybeError.status ?? 'na'}:${maybeError.code ?? 'na'}:${maybeError.message}`;
+    if (fallbackLogRef.current === signature) {
+      return;
+    }
+
+    fallbackLogRef.current = signature;
+    logFirestoreFallback('visits', userId, query.error);
+  }, [query.error, shouldRunFallback, userId]);
+
+  const usingFallback = shouldRunFallback && fallbackQuery.status === 'success';
+  const items = useMemo(
+    () => (usingFallback ? fallbackQuery.data ?? [] : apiItems),
+    [apiItems, fallbackQuery.data, usingFallback],
+  );
+
+  const error = apiItems.length > 0 || usingFallback
+    ? null
+    : (query.error ?? fallbackQuery.error ?? null);
+  const isLoading = query.isLoading || (shouldRunFallback && fallbackQuery.isLoading);
+  const isRefetching = query.isRefetching || (shouldRunFallback && fallbackQuery.isRefetching);
+  const isFetching = query.isFetching || (shouldRunFallback && fallbackQuery.isFetching);
+
+  const refetch = useCallback(async () => {
+    const apiResult = await query.refetch();
+    if (apiResult.error && shouldRunFallback) {
+      await fallbackQuery.refetch();
+    }
+    return apiResult;
+  }, [fallbackQuery, query, shouldRunFallback]);
 
   return {
     ...query,
+    error,
     items,
-    hasMore: Boolean(query.hasNextPage),
+    isLoading,
+    isRefetching,
+    isFetching,
+    refetch,
+    hasMore: usingFallback ? false : Boolean(query.hasNextPage),
+    isFetchingNextPage: usingFallback ? false : query.isFetchingNextPage,
   };
 }
 
@@ -128,6 +309,7 @@ export function usePaginatedActionItems(
   options?: PaginatedHookOptions,
 ) {
   const pageSize = params?.limit ?? 25;
+  const userId = auth().currentUser?.uid ?? null;
   const query = hooks.useInfiniteActionItems(
     { limit: pageSize },
     {
@@ -138,15 +320,73 @@ export function usePaginatedActionItems(
       refetchInterval: options?.refetchInterval,
     },
   );
-  const items = useMemo(
+  const apiItems = useMemo(
     () => flattenCursorPages<ActionItem>(query.data?.pages),
     [query.data?.pages],
   );
+  const shouldRunFallback =
+    (options?.enabled ?? true) && Boolean(userId) && Boolean(query.error) && apiItems.length === 0;
+
+  const fallbackQuery = useQuery<ActionItem[]>({
+    queryKey: ['fallback', 'actions', userId ?? 'anonymous', pageSize],
+    enabled: shouldRunFallback,
+    staleTime: options?.staleTime ?? 30_000,
+    gcTime: options?.gcTime,
+    retry: false,
+    queryFn: async () => {
+      if (!userId) return [];
+      return fetchActionsFromFirestoreFallback(userId, pageSize);
+    },
+  });
+
+  const fallbackLogRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shouldRunFallback || !userId || !query.error) {
+      fallbackLogRef.current = null;
+      return;
+    }
+
+    const maybeError = query.error as ApiLikeError;
+    const signature = `${userId}:${maybeError.status ?? 'na'}:${maybeError.code ?? 'na'}:${maybeError.message}`;
+    if (fallbackLogRef.current === signature) {
+      return;
+    }
+
+    fallbackLogRef.current = signature;
+    logFirestoreFallback('actions', userId, query.error);
+  }, [query.error, shouldRunFallback, userId]);
+
+  const usingFallback = shouldRunFallback && fallbackQuery.status === 'success';
+  const items = useMemo(
+    () => (usingFallback ? fallbackQuery.data ?? [] : apiItems),
+    [apiItems, fallbackQuery.data, usingFallback],
+  );
+
+  const error = apiItems.length > 0 || usingFallback
+    ? null
+    : (query.error ?? fallbackQuery.error ?? null);
+  const isLoading = query.isLoading || (shouldRunFallback && fallbackQuery.isLoading);
+  const isRefetching = query.isRefetching || (shouldRunFallback && fallbackQuery.isRefetching);
+  const isFetching = query.isFetching || (shouldRunFallback && fallbackQuery.isFetching);
+
+  const refetch = useCallback(async () => {
+    const apiResult = await query.refetch();
+    if (apiResult.error && shouldRunFallback) {
+      await fallbackQuery.refetch();
+    }
+    return apiResult;
+  }, [fallbackQuery, query, shouldRunFallback]);
 
   return {
     ...query,
+    error,
     items,
-    hasMore: Boolean(query.hasNextPage),
+    isLoading,
+    isRefetching,
+    isFetching,
+    refetch,
+    hasMore: usingFallback ? false : Boolean(query.hasNextPage),
+    isFetchingNextPage: usingFallback ? false : query.isFetchingNextPage,
   };
 }
 
