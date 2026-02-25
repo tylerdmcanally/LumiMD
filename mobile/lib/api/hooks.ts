@@ -136,15 +136,12 @@ async function fetchVisitsFromFirestoreFallback(
       query = query.where('deletedAt', '==', null);
     }
 
-    const snapshot = await query
-      .orderBy('createdAt', sort)
-      .limit(normalizedLimit)
-      .get();
+    const snapshot = await query.get();
 
     const docs = filterSoftDeleted(
       snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
     );
-    return sortByCreatedAt(docs, sort);
+    return sortByCreatedAt(docs, sort).slice(0, normalizedLimit);
   };
 
   try {
@@ -173,15 +170,12 @@ async function fetchActionsFromFirestoreFallback(
       query = query.where('deletedAt', '==', null);
     }
 
-    const snapshot = await query
-      .orderBy('createdAt', 'desc')
-      .limit(normalizedLimit)
-      .get();
+    const snapshot = await query.get();
 
     const docs = filterSoftDeleted(
       snapshot.docs.map((doc) => serializeDoc<ActionItem>(doc)),
     );
-    return sortByCreatedAt(docs, 'desc');
+    return sortByCreatedAt(docs, 'desc').slice(0, normalizedLimit);
   };
 
   try {
@@ -210,15 +204,12 @@ async function fetchMedicationsFromFirestoreFallback(
       query = query.where('deletedAt', '==', null);
     }
 
-    const snapshot = await query
-      .orderBy('createdAt', 'desc')
-      .limit(normalizedLimit)
-      .get();
+    const snapshot = await query.get();
 
     const docs = filterSoftDeleted(
       snapshot.docs.map((doc) => serializeDoc<Medication>(doc)),
     );
-    return sortByCreatedAt(docs, 'desc');
+    return sortByCreatedAt(docs, 'desc').slice(0, normalizedLimit);
   };
 
   try {
@@ -316,12 +307,13 @@ export function usePaginatedVisits(
   }, [query.error, shouldRunFallback, userId]);
 
   const usingFallback = shouldRunFallback && fallbackQuery.status === 'success';
+  const apiRequestSucceeded = query.status === 'success' && !query.error;
   const items = useMemo(
     () => (usingFallback ? fallbackQuery.data ?? [] : apiItems),
     [apiItems, fallbackQuery.data, usingFallback],
   );
 
-  const error = apiItems.length > 0 || usingFallback
+  const error = apiItems.length > 0 || usingFallback || apiRequestSucceeded
     ? null
     : (query.error ?? fallbackQuery.error ?? null);
   const isLoading = query.isLoading || (shouldRunFallback && fallbackQuery.isLoading);
@@ -429,12 +421,13 @@ export function usePaginatedActionItems(
   }, [query.error, shouldRunFallback, userId]);
 
   const usingFallback = shouldRunFallback && fallbackQuery.status === 'success';
+  const apiRequestSucceeded = query.status === 'success' && !query.error;
   const items = useMemo(
     () => (usingFallback ? fallbackQuery.data ?? [] : apiItems),
     [apiItems, fallbackQuery.data, usingFallback],
   );
 
-  const error = apiItems.length > 0 || usingFallback
+  const error = apiItems.length > 0 || usingFallback || apiRequestSucceeded
     ? null
     : (query.error ?? fallbackQuery.error ?? null);
   const isLoading = query.isLoading || (shouldRunFallback && fallbackQuery.isLoading);
@@ -532,12 +525,13 @@ export function usePaginatedMedications(
   }, [query.error, shouldRunFallback, userId]);
 
   const usingFallback = shouldRunFallback && fallbackQuery.status === 'success';
+  const apiRequestSucceeded = query.status === 'success' && !query.error;
   const mergedItems = useMemo(
     () => (usingFallback ? fallbackQuery.data ?? [] : items),
     [fallbackQuery.data, items, usingFallback],
   );
 
-  const error = items.length > 0 || usingFallback
+  const error = items.length > 0 || usingFallback || apiRequestSucceeded
     ? null
     : (query.error ?? fallbackQuery.error ?? null);
   const isLoading = query.isLoading || (shouldRunFallback && fallbackQuery.isLoading);
