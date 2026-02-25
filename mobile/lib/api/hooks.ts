@@ -195,7 +195,48 @@ async function fetchActionsFromFirestoreFallback(
   }
 }
 
-function logFirestoreFallback(resource: 'visits' | 'actions', userId: string, error: unknown) {
+async function fetchMedicationsFromFirestoreFallback(
+  userId: string,
+  limit: number,
+): Promise<Medication[]> {
+  const normalizedLimit = normalizePageSize(limit);
+
+  const runQuery = async (includeDeletedFilter: boolean): Promise<Medication[]> => {
+    let query: FirebaseFirestoreTypes.Query = firestore()
+      .collection('medications')
+      .where('userId', '==', userId);
+
+    if (includeDeletedFilter) {
+      query = query.where('deletedAt', '==', null);
+    }
+
+    const snapshot = await query
+      .orderBy('createdAt', 'desc')
+      .limit(normalizedLimit)
+      .get();
+
+    const docs = filterSoftDeleted(
+      snapshot.docs.map((doc) => serializeDoc<Medication>(doc)),
+    );
+    return sortByCreatedAt(docs, 'desc');
+  };
+
+  try {
+    const preferred = await runQuery(true);
+    if (preferred.length > 0) {
+      return preferred;
+    }
+    return runQuery(false);
+  } catch {
+    return runQuery(false);
+  }
+}
+
+function logFirestoreFallback(
+  resource: 'visits' | 'actions' | 'medications',
+  userId: string,
+  error: unknown,
+) {
   const maybeError = error as ApiLikeError | null;
   const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
   const firebaseProjectId = firestore().app.options.projectId ?? 'unknown';
@@ -440,6 +481,7 @@ export function usePaginatedMedications(
   options?: PaginatedHookOptions,
 ) {
   const pageSize = params?.limit ?? 25;
+  const userId = auth().currentUser?.uid ?? null;
   const query = hooks.useInfiniteMedications(
     { limit: pageSize },
     {
@@ -454,11 +496,72 @@ export function usePaginatedMedications(
     () => flattenCursorPages<Medication>(query.data?.pages),
     [query.data?.pages],
   );
+  const apiReturnedEmpty = query.status === 'success' && items.length === 0;
+  const shouldRunFallback =
+    (options?.enabled ?? true) &&
+    Boolean(userId) &&
+    (Boolean(query.error) || apiReturnedEmpty);
+
+  const fallbackQuery = useQuery<Medication[]>({
+    queryKey: ['fallback', 'medications', userId ?? 'anonymous', pageSize],
+    enabled: shouldRunFallback,
+    staleTime: options?.staleTime ?? 30_000,
+    gcTime: options?.gcTime,
+    retry: false,
+    queryFn: async () => {
+      if (!userId) return [];
+      return fetchMedicationsFromFirestoreFallback(userId, pageSize);
+    },
+  });
+
+  const fallbackLogRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shouldRunFallback || !userId || !query.error) {
+      fallbackLogRef.current = null;
+      return;
+    }
+
+    const maybeError = query.error as ApiLikeError;
+    const signature = `${userId}:${maybeError.status ?? 'na'}:${maybeError.code ?? 'na'}:${maybeError.message}`;
+    if (fallbackLogRef.current === signature) {
+      return;
+    }
+
+    fallbackLogRef.current = signature;
+    logFirestoreFallback('medications', userId, query.error);
+  }, [query.error, shouldRunFallback, userId]);
+
+  const usingFallback = shouldRunFallback && fallbackQuery.status === 'success';
+  const mergedItems = useMemo(
+    () => (usingFallback ? fallbackQuery.data ?? [] : items),
+    [fallbackQuery.data, items, usingFallback],
+  );
+
+  const error = items.length > 0 || usingFallback
+    ? null
+    : (query.error ?? fallbackQuery.error ?? null);
+  const isLoading = query.isLoading || (shouldRunFallback && fallbackQuery.isLoading);
+  const isRefetching = query.isRefetching || (shouldRunFallback && fallbackQuery.isRefetching);
+  const isFetching = query.isFetching || (shouldRunFallback && fallbackQuery.isFetching);
+
+  const refetch = useCallback(async () => {
+    const apiResult = await query.refetch();
+    if (apiResult.error && shouldRunFallback) {
+      await fallbackQuery.refetch();
+    }
+    return apiResult;
+  }, [fallbackQuery, query, shouldRunFallback]);
 
   return {
     ...query,
-    items,
-    hasMore: Boolean(query.hasNextPage),
+    error,
+    items: mergedItems,
+    isLoading,
+    isRefetching,
+    isFetching,
+    refetch,
+    hasMore: usingFallback ? false : Boolean(query.hasNextPage),
+    isFetchingNextPage: usingFallback ? false : query.isFetchingNextPage,
   };
 }
 
@@ -608,7 +711,7 @@ export function useRealtimeActiveMedications(
 
   const filterActiveMeds = useCallback((meds: Medication[]) => {
     return sortByTimestampDescending(
-      meds.filter((med) => med.active !== false),
+      meds.filter((med) => med.active !== false && !isSoftDeletedRecord(med)),
     );
   }, []);
 
