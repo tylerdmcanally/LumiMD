@@ -83,6 +83,24 @@ function sortByTimestampDescending<
     return bTime - aTime;
   });
 }
+
+function isSoftDeletedRecord(record: Record<string, unknown>): boolean {
+  const deletedAt = record.deletedAt;
+  if (deletedAt === null || deletedAt === undefined) {
+    return false;
+  }
+
+  if (typeof deletedAt === 'string') {
+    return deletedAt.trim().length > 0;
+  }
+
+  return true;
+}
+
+function filterSoftDeleted<T extends Record<string, unknown>>(items: T[]): T[] {
+  return items.filter((item) => !isSoftDeletedRecord(item));
+}
+
 function useFirestoreCollection<T extends { id: string }>(
   queryRef: Firestore.Query<Firestore.DocumentData> | null,
   key: QueryKey,
@@ -149,6 +167,7 @@ function useFirestoreDocument<T extends { id: string }>(
   docRef: Firestore.DocumentReference<Firestore.DocumentData> | null,
   key: QueryKey,
   options?: {
+    transform?: (item: T | null) => T | null;
     enabled?: boolean;
     staleTimeMs?: number;
     onError?: (error: Firestore.FirestoreError) => void;
@@ -156,7 +175,13 @@ function useFirestoreDocument<T extends { id: string }>(
   },
 ) {
   const queryClient = useQueryClient();
-  const { enabled = true, staleTimeMs = 15_000, onError, queryOptions } = options ?? {};
+  const {
+    transform,
+    enabled = true,
+    staleTimeMs = 15_000,
+    onError,
+    queryOptions,
+  } = options ?? {};
   const combinedEnabled =
     typeof queryOptions?.enabled === 'boolean' ? enabled && queryOptions.enabled : enabled;
 
@@ -173,12 +198,10 @@ function useFirestoreDocument<T extends { id: string }>(
     const unsubscribe = Firestore.onSnapshot(
       docRef,
       (snapshot) => {
-        if (!snapshot.exists()) {
-          queryClient.setQueryData(key, null);
-          return;
-        }
-        const data = mapDoc(snapshot as Firestore.QueryDocumentSnapshot<Firestore.DocumentData>);
-        queryClient.setQueryData(key, data);
+        const data = snapshot.exists()
+          ? mapDoc(snapshot as Firestore.QueryDocumentSnapshot<Firestore.DocumentData>)
+          : null;
+        queryClient.setQueryData(key, transform ? transform(data) : data);
       },
       (error) => {
         console.error('[Firestore] Snapshot error', error);
@@ -187,7 +210,7 @@ function useFirestoreDocument<T extends { id: string }>(
     );
 
     return () => unsubscribe();
-  }, [combinedEnabled, docRef, key, mapDoc, onError, queryClient]);
+  }, [combinedEnabled, docRef, key, mapDoc, onError, queryClient, transform]);
 
   return useQuery<T | null>({
     queryKey: key,
@@ -199,7 +222,8 @@ function useFirestoreDocument<T extends { id: string }>(
       if (!docRef) return null;
       const snapshot = await Firestore.getDoc(docRef);
       if (!snapshot.exists()) return null;
-      return mapDoc(snapshot as Firestore.QueryDocumentSnapshot<Firestore.DocumentData>);
+      const data = mapDoc(snapshot as Firestore.QueryDocumentSnapshot<Firestore.DocumentData>);
+      return transform ? transform(data) : data;
     },
   });
 }
@@ -371,7 +395,7 @@ export function useVisits(
   }, [effectiveUserId]);
 
   return useFirestoreCollection<Visit>(visitsQueryRef, key, {
-    transform: sortByTimestampDescending,
+    transform: (visits) => sortByTimestampDescending(filterSoftDeleted(visits)),
     enabled,
     onError: handleSnapshotError,
     queryOptions: options,
@@ -396,6 +420,7 @@ export function useVisit(
   }, [userId, visitId]);
 
   return useFirestoreDocument<Visit>(visitDocRef, key, {
+    transform: (visit) => (visit && !isSoftDeletedRecord(visit) ? visit : null),
     enabled,
     onError: handleSnapshotError,
     queryOptions: options,
@@ -482,7 +507,7 @@ export function useActions(
   }, []);
 
   return useFirestoreCollection<ActionItem>(actionsQueryRef, key, {
-    transform: sortActions,
+    transform: (actions) => sortActions(filterSoftDeleted(actions)),
     enabled,
     onError: handleSnapshotError,
     queryOptions: options,
