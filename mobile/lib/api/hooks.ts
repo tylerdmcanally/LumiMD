@@ -103,6 +103,23 @@ function sortByCreatedAt<T extends { createdAt?: string | null }>(
   });
 }
 
+function isSoftDeletedRecord(record: Record<string, unknown>): boolean {
+  const deletedAt = record.deletedAt;
+  if (deletedAt === null || deletedAt === undefined) {
+    return false;
+  }
+
+  if (typeof deletedAt === 'string') {
+    return deletedAt.trim().length > 0;
+  }
+
+  return true;
+}
+
+function filterSoftDeleted<T extends Record<string, unknown>>(records: T[]): T[] {
+  return records.filter((record) => !isSoftDeletedRecord(record));
+}
+
 async function fetchVisitsFromFirestoreFallback(
   userId: string,
   limit: number,
@@ -124,14 +141,18 @@ async function fetchVisitsFromFirestoreFallback(
       .limit(normalizedLimit)
       .get();
 
-    return sortByCreatedAt(
+    const docs = filterSoftDeleted(
       snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
-      sort,
     );
+    return sortByCreatedAt(docs, sort);
   };
 
   try {
-    return await runQuery(true);
+    const preferred = await runQuery(true);
+    if (preferred.length > 0) {
+      return preferred;
+    }
+    return runQuery(false);
   } catch {
     return runQuery(false);
   }
@@ -157,14 +178,18 @@ async function fetchActionsFromFirestoreFallback(
       .limit(normalizedLimit)
       .get();
 
-    return sortByCreatedAt(
+    const docs = filterSoftDeleted(
       snapshot.docs.map((doc) => serializeDoc<ActionItem>(doc)),
-      'desc',
     );
+    return sortByCreatedAt(docs, 'desc');
   };
 
   try {
-    return await runQuery(true);
+    const preferred = await runQuery(true);
+    if (preferred.length > 0) {
+      return preferred;
+    }
+    return runQuery(false);
   } catch {
     return runQuery(false);
   }
@@ -214,8 +239,11 @@ export function usePaginatedVisits(
   );
 
   const apiItems = useMemo(() => flattenCursorPages<Visit>(query.data?.pages), [query.data?.pages]);
+  const apiReturnedEmpty = query.status === 'success' && apiItems.length === 0;
   const shouldRunFallback =
-    (options?.enabled ?? true) && Boolean(userId) && Boolean(query.error) && apiItems.length === 0;
+    (options?.enabled ?? true) &&
+    Boolean(userId) &&
+    (Boolean(query.error) || apiReturnedEmpty);
 
   const fallbackQuery = useQuery<Visit[]>({
     queryKey: ['fallback', 'visits', userId ?? 'anonymous', pageSize, sort],
@@ -324,8 +352,11 @@ export function usePaginatedActionItems(
     () => flattenCursorPages<ActionItem>(query.data?.pages),
     [query.data?.pages],
   );
+  const apiReturnedEmpty = query.status === 'success' && apiItems.length === 0;
   const shouldRunFallback =
-    (options?.enabled ?? true) && Boolean(userId) && Boolean(query.error) && apiItems.length === 0;
+    (options?.enabled ?? true) &&
+    Boolean(userId) &&
+    (Boolean(query.error) || apiReturnedEmpty);
 
   const fallbackQuery = useQuery<ActionItem[]>({
     queryKey: ['fallback', 'actions', userId ?? 'anonymous', pageSize],
@@ -533,7 +564,9 @@ export function useRealtimeVisits(
       .where('userId', '==', userId)
       .onSnapshot(
         (snapshot) => {
-          const docs = snapshot.docs.map(doc => serializeDoc<Visit>(doc));
+          const docs = filterSoftDeleted(
+            snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
+          );
           const sorted = sortByTimestampDescending(docs);
           queryClient.setQueryData(key, sorted);
         },
@@ -557,7 +590,9 @@ export function useRealtimeVisits(
         .collection('visits')
         .where('userId', '==', userId)
         .get();
-      const docs = snapshot.docs.map(doc => serializeDoc<Visit>(doc));
+      const docs = filterSoftDeleted(
+        snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
+      );
       return sortByTimestampDescending(docs);
     },
   });
@@ -629,7 +664,7 @@ export function useRealtimePendingActions(
 
   const filterPendingActions = useCallback((actions: ActionItem[]) => {
     return actions
-      .filter((action) => !action.completed)
+      .filter((action) => !action.completed && !isSoftDeletedRecord(action))
       .sort((a, b) => {
         const aTime =
           (a.dueAt && Date.parse(a.dueAt)) ||
