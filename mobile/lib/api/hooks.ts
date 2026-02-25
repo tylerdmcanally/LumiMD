@@ -271,11 +271,10 @@ export function usePaginatedVisits(
   );
 
   const apiItems = useMemo(() => flattenCursorPages<Visit>(query.data?.pages), [query.data?.pages]);
-  const apiReturnedEmpty = query.status === 'success' && apiItems.length === 0;
   const shouldRunFallback =
     (options?.enabled ?? true) &&
     Boolean(userId) &&
-    (Boolean(query.error) || apiReturnedEmpty);
+    Boolean(query.error);
 
   const fallbackQuery = useQuery<Visit[]>({
     queryKey: ['fallback', 'visits', userId ?? 'anonymous', pageSize, sort],
@@ -385,11 +384,10 @@ export function usePaginatedActionItems(
     () => flattenCursorPages<ActionItem>(query.data?.pages),
     [query.data?.pages],
   );
-  const apiReturnedEmpty = query.status === 'success' && apiItems.length === 0;
   const shouldRunFallback =
     (options?.enabled ?? true) &&
     Boolean(userId) &&
-    (Boolean(query.error) || apiReturnedEmpty);
+    Boolean(query.error);
 
   const fallbackQuery = useQuery<ActionItem[]>({
     queryKey: ['fallback', 'actions', userId ?? 'anonymous', pageSize],
@@ -489,11 +487,10 @@ export function usePaginatedMedications(
     () => flattenCursorPages<Medication>(query.data?.pages),
     [query.data?.pages],
   );
-  const apiReturnedEmpty = query.status === 'success' && items.length === 0;
   const shouldRunFallback =
     (options?.enabled ?? true) &&
     Boolean(userId) &&
-    (Boolean(query.error) || apiReturnedEmpty);
+    Boolean(query.error);
 
   const fallbackQuery = useQuery<Medication[]>({
     queryKey: ['fallback', 'medications', userId ?? 'anonymous', pageSize],

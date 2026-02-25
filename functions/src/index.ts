@@ -35,6 +35,7 @@ import { purgeSoftDeletedCollections } from './services/softDeleteRetentionServi
 import { processVisitPostCommitRecoveries } from './services/visitPostCommitRecoveryService';
 import { reportPostCommitEscalations } from './services/postCommitEscalationReportingService';
 import { backfillDenormalizedFields } from './services/denormalizationSync';
+import { backfillListQueryContractData } from './services/listQueryContractBackfill';
 
 export { processVisitAudio } from './triggers/processVisitAudio';
 export { checkPendingTranscriptions } from './triggers/checkPendingTranscriptions';
@@ -64,6 +65,12 @@ const DENORMALIZATION_BACKFILL_DRY_RUN =
   process.env.DENORMALIZATION_BACKFILL_DRY_RUN === '1';
 const DENORMALIZATION_BACKFILL_PAGE_SIZE = parsePositiveInt(
   process.env.DENORMALIZATION_BACKFILL_PAGE_SIZE,
+);
+const LIST_QUERY_CONTRACT_BACKFILL_DRY_RUN =
+  process.env.LIST_QUERY_CONTRACT_BACKFILL_DRY_RUN === 'true' ||
+  process.env.LIST_QUERY_CONTRACT_BACKFILL_DRY_RUN === '1';
+const LIST_QUERY_CONTRACT_BACKFILL_PAGE_SIZE = parsePositiveInt(
+  process.env.LIST_QUERY_CONTRACT_BACKFILL_PAGE_SIZE,
 );
 
 // Initialize Sentry BEFORE other initializations
@@ -329,6 +336,39 @@ export const backfillDenormalizedFieldSync = onSchedule(
       functions.logger.info('[Scheduler] Denormalized field backfill complete', result);
     } catch (error) {
       functions.logger.error('[Scheduler] Error in denormalized field backfill:', error);
+      throw error;
+    }
+  },
+);
+
+// Scheduled function to backfill legacy docs so paginated list queries remain canonical.
+export const backfillLegacyListQueryContract = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 2 hours',
+    timeZone: 'Etc/UTC',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    maxInstances: 1,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running list-query contract backfill', {
+      dryRun: LIST_QUERY_CONTRACT_BACKFILL_DRY_RUN,
+      pageSize: LIST_QUERY_CONTRACT_BACKFILL_PAGE_SIZE ?? 'default',
+    });
+
+    try {
+      const db = admin.firestore();
+      const result = await backfillListQueryContractData({
+        db,
+        stateCollection: db.collection('systemMaintenance'),
+        now: admin.firestore.Timestamp.now(),
+        pageSize: LIST_QUERY_CONTRACT_BACKFILL_PAGE_SIZE,
+        dryRun: LIST_QUERY_CONTRACT_BACKFILL_DRY_RUN,
+      });
+      functions.logger.info('[Scheduler] List-query contract backfill complete', result);
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error in list-query contract backfill:', error);
       throw error;
     }
   },

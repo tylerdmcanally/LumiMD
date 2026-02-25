@@ -15,6 +15,7 @@
     "clean:assembly": "ts-node scripts/delete-assembly-transcripts.ts",
     "clean:medication-cache": "ts-node scripts/clearMedicationSafetyCache.ts",
     "backfill:canonical-meds": "ts-node scripts/backfillCanonicalMedicationNames.ts",
+    "backfill:list-query-contract": "ts-node scripts/backfillListQueryContract.ts",
     "backfill:soft-delete-defaults": "ts-node scripts/backfillSoftDeleteDefaults.ts",
     "verify:index-guardrails": "node scripts/verify-firestore-index-guardrails.js",
     "test:denormalization-contract": "jest src/services/__tests__/denormalizationSync.test.ts src/services/__tests__/denormalizationBackfill.test.ts",
