@@ -2,7 +2,7 @@ import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { processVisitPostCommitRecoveries } from '../visitPostCommitRecoveryService';
 import { getAssemblyAIService } from '../assemblyai';
-import { normalizeMedicationSummary, syncMedicationsFromSummary } from '../medicationSync';
+import { normalizeMedicationSummary, computePendingMedicationChanges } from '../medicationSync';
 import { analyzeVisitWithDelta } from '../lumibotAnalyzer';
 import { getNotificationService } from '../notifications';
 import { sendVisitPdfToAllCaregivers } from '../caregiverEmailService';
@@ -18,7 +18,7 @@ jest.mock('../medicationSync', () => ({
       stopped: [],
       changed: [],
     }),
-  syncMedicationsFromSummary: jest.fn(async () => undefined),
+  computePendingMedicationChanges: jest.fn(async () => undefined),
 }));
 
 jest.mock('../lumibotAnalyzer', () => ({
@@ -237,7 +237,7 @@ describe('visit post-commit recovery service', () => {
   const firestoreMock = admin.firestore as unknown as jest.Mock;
   const mockedGetAssemblyAIService = getAssemblyAIService as jest.Mock;
   const mockedNormalizeMedicationSummary = normalizeMedicationSummary as jest.Mock;
-  const mockedSyncMedicationsFromSummary = syncMedicationsFromSummary as jest.Mock;
+  const mockedComputePendingMedicationChanges = computePendingMedicationChanges as jest.Mock;
   const mockedAnalyzeVisitWithDelta = analyzeVisitWithDelta as jest.Mock;
   const mockedGetNotificationService = getNotificationService as jest.Mock;
   const mockedSendVisitPdfToAllCaregivers = sendVisitPdfToAllCaregivers as jest.Mock;
@@ -261,7 +261,7 @@ describe('visit post-commit recovery service', () => {
         changed: [],
       },
     );
-    mockedSyncMedicationsFromSummary.mockResolvedValue(undefined);
+    mockedComputePendingMedicationChanges.mockResolvedValue(undefined);
     mockedGetAssemblyAIService.mockReturnValue({
       deleteTranscript: jest.fn(async () => undefined),
     });
@@ -305,12 +305,14 @@ describe('visit post-commit recovery service', () => {
       operationAttempts: 2,
       operationFailures: 0,
     });
-    expect(mockedSyncMedicationsFromSummary).toHaveBeenCalledWith(
+    expect(mockedComputePendingMedicationChanges).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'user-1',
         visitId: 'visit-1',
       }),
     );
+    // Recovery now computes pending medication changes (safety-annotated) for user review,
+    // not syncMedicationsFromSummary directly.
     expect(deleteTranscript).toHaveBeenCalledWith('tx-1');
     expect(harness.state.visits['visit-1'].postCommitStatus).toBe('completed');
     expect(harness.state.visits['visit-1'].postCommitFailedOperations).toBeUndefined();
@@ -337,7 +339,7 @@ describe('visit post-commit recovery service', () => {
       },
     });
     firestoreMock.mockImplementation(() => harness.db);
-    mockedSyncMedicationsFromSummary.mockRejectedValueOnce(new Error('sync failed'));
+    mockedComputePendingMedicationChanges.mockRejectedValueOnce(new Error('sync failed'));
 
     const result = await processVisitPostCommitRecoveries({ limit: 10 });
 
@@ -349,7 +351,7 @@ describe('visit post-commit recovery service', () => {
       operationAttempts: 1,
       operationFailures: 1,
     });
-    expect(mockedSyncMedicationsFromSummary).toHaveBeenCalledTimes(1);
+    expect(mockedComputePendingMedicationChanges).toHaveBeenCalledTimes(1);
     expect(harness.state.visits['visit-2'].postCommitStatus).toBe('partial_failure');
     expect(harness.state.visits['visit-2'].postCommitFailedOperations).toEqual([
       'syncMedications',
@@ -470,7 +472,7 @@ describe('visit post-commit recovery service', () => {
       operationAttempts: 0,
       operationFailures: 0,
     });
-    expect(mockedSyncMedicationsFromSummary).not.toHaveBeenCalled();
+    expect(mockedComputePendingMedicationChanges).not.toHaveBeenCalled();
     expect(harness.state.visits['visit-5'].postCommitRetryEligible).toBe(true);
     expect(harness.state.visits['visit-5'].postCommitOperationNextRetryAt).toEqual({
       syncMedications: futureRetryAt,
@@ -502,7 +504,7 @@ describe('visit post-commit recovery service', () => {
       operationAttempts: 0,
       operationFailures: 0,
     });
-    expect(mockedSyncMedicationsFromSummary).not.toHaveBeenCalled();
+    expect(mockedComputePendingMedicationChanges).not.toHaveBeenCalled();
     expect(harness.state.visits['visit-6'].postCommitRetryEligible).toBe(false);
   });
 
@@ -521,7 +523,7 @@ describe('visit post-commit recovery service', () => {
       },
     });
     firestoreMock.mockImplementation(() => harness.db);
-    mockedSyncMedicationsFromSummary.mockRejectedValueOnce(new Error('still failing'));
+    mockedComputePendingMedicationChanges.mockRejectedValueOnce(new Error('still failing'));
 
     const result = await processVisitPostCommitRecoveries({ limit: 10 });
 
