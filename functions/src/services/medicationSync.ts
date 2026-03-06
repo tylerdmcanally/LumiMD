@@ -188,13 +188,18 @@ const STOP_WORDS = new Set([
   'to',
   'at',
   'for',
-  'with',
   'and',
   'then',
   'from',
   'on',
   'in',
   'per',
+]);
+
+// Dosing-context words that follow "with" in dosing instructions (not combo names)
+const DOSING_CONTEXT_WORDS = new Set([
+  'food', 'meals', 'water', 'juice', 'milk',
+  'breakfast', 'lunch', 'dinner', 'plenty',
 ]);
 
 const UNIT_REGEX = /(mg|mcg|g|gram|tablet|tab|tabs|capsule|cap|caps|ml|units|iu|dose|bid|tid|qid|daily|weekly|nightly|prn)/i;
@@ -225,11 +230,33 @@ const parseLegacyMedicationEntry = (entry: string): MedicationChangeEntry => {
 
     const lower = sanitized.toLowerCase();
 
+    // Break on standalone dose numbers (500, 10, 12.5) but keep alphanumeric
+    // medication identifiers that start with a digit (5-HTP, 5-ASA, 5-FU)
     if (/^\d/.test(lower)) {
+      if (/[a-z]/i.test(sanitized)) {
+        // Contains letters — likely a medication identifier like "5-HTP"
+        nameTokens.push(sanitized);
+        continue;
+      }
       break;
     }
 
-    if (STOP_WORDS.has(lower) || VERB_SET.has(lower) || UNIT_REGEX.test(lower)) {
+    if (VERB_SET.has(lower) || UNIT_REGEX.test(lower)) {
+      break;
+    }
+
+    // Context-aware "with" handling: break for dosing instructions ("with food")
+    // but keep for combo product names ("Vitamin D with K2")
+    if (lower === 'with') {
+      const nextWord = (words[index + 1] || '').replace(/[.,;:]/g, '').toLowerCase();
+      if (DOSING_CONTEXT_WORDS.has(nextWord) || !nextWord) {
+        break;
+      }
+      nameTokens.push(sanitized);
+      continue;
+    }
+
+    if (STOP_WORDS.has(lower)) {
       break;
     }
 
@@ -337,9 +364,18 @@ const normalizeMedicationList = (entries?: MedicationEntryInput[]): MedicationCh
     return [];
   }
 
-  return entries
-    .map((entry) => normalizeMedicationEntry(entry))
-    .filter((entry): entry is MedicationChangeEntry => entry !== null);
+  const results: MedicationChangeEntry[] = [];
+  for (const entry of entries) {
+    const normalized = normalizeMedicationEntry(entry);
+    if (normalized) {
+      results.push(normalized);
+    } else {
+      functions.logger.warn('[medicationSync] Dropped medication entry during normalization', {
+        rawEntry: typeof entry === 'object' ? JSON.stringify(entry) : String(entry),
+      });
+    }
+  }
+  return results;
 };
 
 /**
@@ -554,7 +590,12 @@ const upsertMedication = async ({
   };
 
   if (existingDoc) {
-    const updates: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = { ...baseData };
+    const updates: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
+      ...baseData,
+      // Clear soft-delete so reactivated/changed meds become visible again
+      deletedAt: null,
+      deletedBy: null,
+    };
 
     if (status === 'started') {
       updates.active = true;
@@ -664,9 +705,24 @@ const upsertMedication = async ({
             );
           }
         } else {
-          functions.logger.info(
-            `[medicationSync] Reminder already exists for ${entry.name}, skipping auto-create`
-          );
+          // Re-enable disabled/soft-deleted reminders when medication is reactivated
+          const reminderData = existingReminder[0].data();
+          if (reminderData.enabled === false || reminderData.deletedAt != null) {
+            await existingReminder[0].ref.update({
+              enabled: true,
+              deletedAt: null,
+              medicationName: entry.name,
+              medicationDose: entry.dose || null,
+              updatedAt: processedAt,
+            });
+            functions.logger.info(
+              `[medicationSync] Re-enabled existing reminder for ${entry.name}`
+            );
+          } else {
+            functions.logger.info(
+              `[medicationSync] Reminder already exists and is active for ${entry.name}, skipping`
+            );
+          }
         }
       } catch (reminderError) {
         functions.logger.error('[medicationSync] Failed to auto-create reminder for updated med:', reminderError);
@@ -682,6 +738,8 @@ const upsertMedication = async ({
     startedAt: status === 'stopped' ? null : processedAt,
     stoppedAt: status === 'stopped' ? processedAt : null,
     changedAt: status === 'changed' ? processedAt : null,
+    deletedAt: null,
+    deletedBy: null,
   };
 
   const medicationId = await dependencies.medicationSyncRepository.create(newDoc);

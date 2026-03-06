@@ -353,7 +353,20 @@ function createApiClient(config) {
       }),
       retry: (id) => apiRequest(`/v1/visits/${id}/retry`, {
         method: "POST"
-      })
+      }),
+      confirmMedications: (id, data) => apiRequest(
+        `/v1/visits/${id}/confirm-medications`,
+        {
+          method: "POST",
+          body: JSON.stringify(data)
+        }
+      ),
+      skipMedicationConfirmation: (id) => apiRequest(
+        `/v1/visits/${id}/skip-medication-confirmation`,
+        {
+          method: "POST"
+        }
+      )
     },
     // Action Items
     actions: {

@@ -23,7 +23,7 @@ import {
 } from '../data/drugInteractions';
 
 // Re-export for backward compatibility
-export { CANONICAL_MEDICATIONS };
+export { CANONICAL_MEDICATIONS, ALIAS_TO_CANONICAL };
 
 type MedicationSafetyDependencies = {
   medicationService?: Pick<MedicationDomainService, 'listAllForUser'>;

@@ -20,10 +20,18 @@ export interface PendingMedicationReview {
 export function useMedicationReviewPrompt() {
   const { user } = useAuth();
   const [pendingReview, setPendingReview] = useState<PendingMedicationReview | null>(null);
-  const lastPromptedRef = useRef<Set<string>>(new Set());
+  const dismissedRef = useRef<Set<string>>(new Set());
+  // Track the visitId we've already set as pending — prevents duplicate
+  // snapshots (from sequential backend writes) from re-triggering the sheet.
+  const activeVisitIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      console.log('[useMedicationReviewPrompt] No user, skipping listener');
+      return;
+    }
+
+    console.log('[useMedicationReviewPrompt] Setting up Firestore listener for user:', user.uid);
 
     // Listen for visits with pending medication confirmation
     const unsubscribe = firestore()
@@ -34,64 +42,117 @@ export function useMedicationReviewPrompt() {
       .limit(5)
       .onSnapshot(
         (snapshot) => {
-          for (const change of snapshot.docChanges()) {
-            if (change.type === 'added' || change.type === 'modified') {
-              const visit = change.doc.data();
-              const visitId = change.doc.id;
+          console.log(
+            '[useMedicationReviewPrompt] Snapshot received:',
+            snapshot.size,
+            'docs,',
+            'empty:',
+            snapshot.empty,
+          );
 
-              // Only prompt once per visit per session
-              if (lastPromptedRef.current.has(visitId)) {
-                continue;
-              }
+          if (snapshot.empty) {
+            console.log('[useMedicationReviewPrompt] No pending visits found');
+            return;
+          }
 
-              // Need both pending status and populated pending changes
-              if (
-                visit.medicationConfirmationStatus === 'pending' &&
-                visit.pendingMedicationChanges
-              ) {
-                const pending = visit.pendingMedicationChanges;
-                const hasChanges =
-                  (pending.started?.length ?? 0) > 0 ||
-                  (pending.stopped?.length ?? 0) > 0 ||
-                  (pending.changed?.length ?? 0) > 0;
+          // Iterate over all docs in the snapshot (more reliable than docChanges)
+          for (const doc of snapshot.docs) {
+            const visit = doc.data();
+            const visitId = doc.id;
 
-                if (hasChanges) {
-                  lastPromptedRef.current.add(visitId);
-                  console.log(
-                    '[useMedicationReviewPrompt] Pending medication review found:',
-                    visitId,
-                  );
+            console.log(
+              '[useMedicationReviewPrompt] Checking visit:',
+              visitId,
+              'status:',
+              visit.medicationConfirmationStatus,
+              'hasPending:',
+              Boolean(visit.pendingMedicationChanges),
+              'dismissed:',
+              dismissedRef.current.has(visitId),
+            );
 
-                  const visitDate =
-                    visit.visitDate?.toDate?.()?.toISOString?.() ??
-                    visit.createdAt?.toDate?.()?.toISOString?.() ??
-                    null;
+            // Skip visits the user already dismissed this session
+            if (dismissedRef.current.has(visitId)) {
+              continue;
+            }
 
-                  setPendingReview({
-                    visitId,
-                    visitDate,
-                    pendingMedicationChanges: pending as MedicationChanges,
-                  });
-                  // Only show one review at a time
-                  return;
-                }
+            // Skip if we've already set this visit as the active review —
+            // subsequent snapshots from backend writes shouldn't re-trigger.
+            if (activeVisitIdRef.current === visitId) {
+              console.log(
+                '[useMedicationReviewPrompt] Skipping duplicate snapshot for already-active visit:',
+                visitId,
+              );
+              return;
+            }
+
+            // Need both pending status and populated pending changes
+            if (
+              visit.medicationConfirmationStatus === 'pending' &&
+              visit.pendingMedicationChanges
+            ) {
+              const pending = visit.pendingMedicationChanges;
+              const startedCount = pending.started?.length ?? 0;
+              const stoppedCount = pending.stopped?.length ?? 0;
+              const changedCount = pending.changed?.length ?? 0;
+              const hasChanges = startedCount > 0 || stoppedCount > 0 || changedCount > 0;
+
+              console.log(
+                '[useMedicationReviewPrompt] Visit',
+                visitId,
+                'changes:',
+                `started=${startedCount}, stopped=${stoppedCount}, changed=${changedCount}`,
+                'hasChanges:',
+                hasChanges,
+              );
+
+              if (hasChanges) {
+                const visitDate =
+                  visit.visitDate?.toDate?.()?.toISOString?.() ??
+                  visit.createdAt?.toDate?.()?.toISOString?.() ??
+                  null;
+
+                console.log(
+                  '[useMedicationReviewPrompt] Setting pending review for visit:',
+                  visitId,
+                );
+
+                activeVisitIdRef.current = visitId;
+                setPendingReview({
+                  visitId,
+                  visitDate,
+                  pendingMedicationChanges: pending as MedicationChanges,
+                });
+                // Only show one review at a time — most recent first
+                return;
               }
             }
           }
         },
         (error) => {
           console.error('[useMedicationReviewPrompt] Firestore listener error:', error);
+          console.error('[useMedicationReviewPrompt] Error code:', (error as any)?.code);
+          console.error('[useMedicationReviewPrompt] Error message:', error?.message);
         },
       );
 
     return () => {
+      console.log('[useMedicationReviewPrompt] Cleaning up listener');
       unsubscribe();
     };
   }, [user]);
 
   const clearPendingReview = useCallback(() => {
+    if (pendingReview) {
+      console.log(
+        '[useMedicationReviewPrompt] Dismissing review for visit:',
+        pendingReview.visitId,
+      );
+      dismissedRef.current.add(pendingReview.visitId);
+    }
+    activeVisitIdRef.current = null;
     setPendingReview(null);
-  }, []);
+  }, [pendingReview]);
 
   return {
     pendingReview,

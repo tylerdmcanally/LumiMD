@@ -88,6 +88,13 @@ export function MedicationReviewSheet({
   const [submitting, setSubmitting] = useState(false);
   const [slideAnim] = useState(new Animated.Value(SCREEN_HEIGHT));
 
+  // Stable key for pendingMedicationChanges — prevents re-init when the
+  // Firestore listener delivers a new object reference with identical content.
+  const pendingKey = useMemo(
+    () => (pendingMedicationChanges ? JSON.stringify(pendingMedicationChanges) : ''),
+    [pendingMedicationChanges],
+  );
+
   // Initialize editable state from pending changes
   useEffect(() => {
     if (visible && pendingMedicationChanges) {
@@ -95,7 +102,8 @@ export function MedicationReviewSheet({
       setChanged((pendingMedicationChanges.changed ?? []).map(toEditable));
       setStopped((pendingMedicationChanges.stopped ?? []).map(toEditable));
     }
-  }, [visible, pendingMedicationChanges]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, pendingKey]);
 
   // Animate sheet
   useEffect(() => {

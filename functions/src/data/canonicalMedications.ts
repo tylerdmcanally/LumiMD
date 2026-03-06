@@ -715,6 +715,306 @@ export const CANONICAL_MEDICATIONS: Record<string, CanonicalMedicationEntry> = {
         classes: ['anticonvulsant', 'neuropathic-pain', 'psychiatric'],
         aliases: ['lyrica'],
     },
+
+    // ── Opioids / Pain Management ────────────────────────────────────
+    oxycodone: {
+        classes: ['opioid', 'pain-reliever', 'controlled-substance'],
+        aliases: ['oxycontin', 'roxicodone', 'percocet', 'oxaydo'],
+    },
+    hydrocodone: {
+        classes: ['opioid', 'pain-reliever', 'controlled-substance'],
+        aliases: ['vicodin', 'norco', 'lortab', 'hysingla'],
+    },
+    tramadol: {
+        classes: ['opioid', 'pain-reliever'],
+        aliases: ['ultram', 'conzip'],
+    },
+    morphine: {
+        classes: ['opioid', 'pain-reliever', 'controlled-substance'],
+        aliases: ['ms contin', 'kadian', 'avinza'],
+    },
+    fentanyl: {
+        classes: ['opioid', 'pain-reliever', 'controlled-substance'],
+        aliases: ['duragesic', 'subsys', 'actiq'],
+    },
+    codeine: {
+        classes: ['opioid', 'pain-reliever'],
+        aliases: ['tylenol with codeine'],
+    },
+    buprenorphine: {
+        classes: ['opioid', 'opioid-use-disorder', 'pain-reliever'],
+        aliases: ['suboxone', 'subutex', 'sublocade', 'belbuca'],
+    },
+    naloxone: {
+        classes: ['opioid-antagonist', 'emergency'],
+        aliases: ['narcan'],
+    },
+
+    // ── Muscle Relaxants ─────────────────────────────────────────────
+    cyclobenzaprine: {
+        classes: ['muscle-relaxant'],
+        aliases: ['flexeril', 'amrix', 'fexmid'],
+    },
+    methocarbamol: {
+        classes: ['muscle-relaxant'],
+        aliases: ['robaxin'],
+    },
+    baclofen: {
+        classes: ['muscle-relaxant', 'antispasmodic'],
+        aliases: ['lioresal', 'gablofen'],
+    },
+    tizanidine: {
+        classes: ['muscle-relaxant'],
+        aliases: ['zanaflex'],
+    },
+    carisoprodol: {
+        classes: ['muscle-relaxant', 'controlled-substance'],
+        aliases: ['soma'],
+    },
+
+    // ── Antipsychotics ───────────────────────────────────────────────
+    quetiapine: {
+        classes: ['antipsychotic', 'psychiatric'],
+        aliases: ['seroquel'],
+    },
+    risperidone: {
+        classes: ['antipsychotic', 'psychiatric'],
+        aliases: ['risperdal'],
+    },
+    aripiprazole: {
+        classes: ['antipsychotic', 'psychiatric'],
+        aliases: ['abilify'],
+    },
+    olanzapine: {
+        classes: ['antipsychotic', 'psychiatric'],
+        aliases: ['zyprexa'],
+    },
+    lurasidone: {
+        classes: ['antipsychotic', 'psychiatric'],
+        aliases: ['latuda'],
+    },
+    ziprasidone: {
+        classes: ['antipsychotic', 'psychiatric'],
+        aliases: ['geodon'],
+    },
+
+    // ── Anticonvulsants / Epilepsy ───────────────────────────────────
+    levetiracetam: {
+        classes: ['anticonvulsant', 'epilepsy'],
+        aliases: ['keppra'],
+    },
+    lamotrigine: {
+        classes: ['anticonvulsant', 'mood-stabilizer', 'epilepsy'],
+        aliases: ['lamictal'],
+    },
+    topiramate: {
+        classes: ['anticonvulsant', 'migraine-preventive', 'epilepsy'],
+        aliases: ['topamax'],
+    },
+    'valproic acid': {
+        classes: ['anticonvulsant', 'mood-stabilizer', 'epilepsy'],
+        aliases: ['depakote', 'depakene', 'valproate', 'divalproex'],
+    },
+    carbamazepine: {
+        classes: ['anticonvulsant', 'mood-stabilizer', 'epilepsy'],
+        aliases: ['tegretol', 'carbatrol', 'equetro'],
+    },
+    phenytoin: {
+        classes: ['anticonvulsant', 'epilepsy'],
+        aliases: ['dilantin'],
+    },
+    oxcarbazepine: {
+        classes: ['anticonvulsant', 'epilepsy'],
+        aliases: ['trileptal'],
+    },
+
+    // ── ADHD ─────────────────────────────────────────────────────────
+    methylphenidate: {
+        classes: ['stimulant', 'adhd'],
+        aliases: ['ritalin', 'concerta', 'daytrana', 'methylin', 'focalin'],
+    },
+    amphetamine: {
+        classes: ['stimulant', 'adhd'],
+        aliases: ['adderall', 'dexedrine', 'evekeo'],
+    },
+    lisdexamfetamine: {
+        classes: ['stimulant', 'adhd'],
+        aliases: ['vyvanse'],
+    },
+    atomoxetine: {
+        classes: ['non-stimulant', 'adhd'],
+        aliases: ['strattera'],
+    },
+
+    // ── PDE5 Inhibitors / Erectile Dysfunction ───────────────────────
+    sildenafil: {
+        classes: ['pde5-inhibitor', 'erectile-dysfunction', 'pulmonary-hypertension'],
+        aliases: ['viagra', 'revatio'],
+    },
+    tadalafil: {
+        classes: ['pde5-inhibitor', 'erectile-dysfunction', 'pulmonary-hypertension'],
+        aliases: ['cialis', 'adcirca'],
+    },
+
+    // ── Osteoporosis ─────────────────────────────────────────────────
+    alendronate: {
+        classes: ['bisphosphonate', 'osteoporosis'],
+        aliases: ['fosamax'],
+    },
+    risedronate: {
+        classes: ['bisphosphonate', 'osteoporosis'],
+        aliases: ['actonel', 'atelvia'],
+    },
+    denosumab: {
+        classes: ['monoclonal-antibody', 'osteoporosis'],
+        aliases: ['prolia', 'xgeva'],
+    },
+
+    // ── Immunosuppressants ───────────────────────────────────────────
+    methotrexate: {
+        classes: ['immunosuppressant', 'dmard', 'antimetabolite'],
+        aliases: ['trexall', 'otrexup', 'rasuvo'],
+    },
+    azathioprine: {
+        classes: ['immunosuppressant'],
+        aliases: ['imuran', 'azasan'],
+    },
+    mycophenolate: {
+        classes: ['immunosuppressant'],
+        aliases: ['cellcept', 'myfortic'],
+    },
+    tacrolimus: {
+        classes: ['immunosuppressant', 'calcineurin-inhibitor'],
+        aliases: ['prograf', 'envarsus'],
+    },
+
+    // ── Vitamins / Supplements ───────────────────────────────────────
+    'vitamin d': {
+        classes: ['vitamin', 'supplement'],
+        aliases: ['cholecalciferol', 'ergocalciferol', 'd3', 'vitamin d3', 'vitamin d2'],
+    },
+    'vitamin b12': {
+        classes: ['vitamin', 'supplement'],
+        aliases: ['cyanocobalamin', 'methylcobalamin', 'b12'],
+    },
+    'folic acid': {
+        classes: ['vitamin', 'supplement'],
+        aliases: ['folate', 'vitamin b9'],
+    },
+    'iron supplement': {
+        classes: ['mineral', 'supplement'],
+        aliases: ['ferrous sulfate', 'ferrous gluconate', 'ferrous fumarate', 'iron'],
+    },
+    magnesium: {
+        classes: ['mineral', 'supplement'],
+        aliases: ['magnesium oxide', 'magnesium citrate', 'mag oxide', 'mag citrate'],
+    },
+    'fish oil': {
+        classes: ['supplement', 'omega-3'],
+        aliases: ['omega-3', 'omega 3', 'lovaza', 'vascepa', 'icosapent ethyl'],
+    },
+    'coenzyme q10': {
+        classes: ['supplement'],
+        aliases: ['coq10', 'ubiquinone', 'ubiquinol'],
+    },
+    calcium: {
+        classes: ['mineral', 'supplement'],
+        aliases: ['calcium carbonate', 'calcium citrate', 'caltrate', 'tums', 'os-cal'],
+    },
+
+    // ── Eye / Glaucoma Medications ───────────────────────────────────
+    latanoprost: {
+        classes: ['prostaglandin-analog', 'ophthalmic', 'glaucoma'],
+        aliases: ['xalatan'],
+    },
+    'timolol ophthalmic': {
+        classes: ['beta-blocker', 'ophthalmic', 'glaucoma'],
+        aliases: ['timoptic'],
+    },
+    brimonidine: {
+        classes: ['alpha-agonist', 'ophthalmic', 'glaucoma'],
+        aliases: ['alphagan'],
+    },
+
+    // ── Hormone Therapy ──────────────────────────────────────────────
+    estradiol: {
+        classes: ['estrogen', 'hormone-therapy'],
+        aliases: ['estrace', 'climara', 'vivelle', 'divigel'],
+    },
+    progesterone: {
+        classes: ['progestin', 'hormone-therapy'],
+        aliases: ['prometrium'],
+    },
+    testosterone: {
+        classes: ['androgen', 'hormone-therapy'],
+        aliases: ['androgel', 'testim', 'depo-testosterone', 'axiron'],
+    },
+
+    // ── Gout ─────────────────────────────────────────────────────────
+    allopurinol: {
+        classes: ['xanthine-oxidase-inhibitor', 'gout'],
+        aliases: ['zyloprim', 'aloprim'],
+    },
+    colchicine: {
+        classes: ['anti-gout', 'gout'],
+        aliases: ['colcrys', 'mitigare'],
+    },
+    febuxostat: {
+        classes: ['xanthine-oxidase-inhibitor', 'gout'],
+        aliases: ['uloric'],
+    },
+
+    // ── Migraine ─────────────────────────────────────────────────────
+    sumatriptan: {
+        classes: ['triptan', 'migraine'],
+        aliases: ['imitrex'],
+    },
+    rizatriptan: {
+        classes: ['triptan', 'migraine'],
+        aliases: ['maxalt'],
+    },
+    erenumab: {
+        classes: ['cgrp-inhibitor', 'migraine-preventive'],
+        aliases: ['aimovig'],
+    },
+
+    // ── Overactive Bladder ───────────────────────────────────────────
+    oxybutynin: {
+        classes: ['anticholinergic', 'overactive-bladder'],
+        aliases: ['ditropan'],
+    },
+    solifenacin: {
+        classes: ['anticholinergic', 'overactive-bladder'],
+        aliases: ['vesicare'],
+    },
+    mirabegron: {
+        classes: ['beta3-agonist', 'overactive-bladder'],
+        aliases: ['myrbetriq'],
+    },
+
+    // ── Parkinson's Disease ──────────────────────────────────────────
+    'carbidopa-levodopa': {
+        classes: ['dopamine-precursor', 'parkinsons'],
+        aliases: ['sinemet', 'levodopa', 'carbidopa/levodopa', 'rytary'],
+    },
+    ropinirole: {
+        classes: ['dopamine-agonist', 'parkinsons', 'restless-legs'],
+        aliases: ['requip'],
+    },
+    pramipexole: {
+        classes: ['dopamine-agonist', 'parkinsons', 'restless-legs'],
+        aliases: ['mirapex'],
+    },
+
+    // ── Dermatological ───────────────────────────────────────────────
+    isotretinoin: {
+        classes: ['retinoid', 'dermatological'],
+        aliases: ['accutane', 'claravis', 'absorica', 'amnesteem'],
+    },
+    'tretinoin topical': {
+        classes: ['retinoid', 'dermatological'],
+        aliases: ['retin-a', 'renova'],
+    },
 };
 
 /**

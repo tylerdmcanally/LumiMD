@@ -96,6 +96,19 @@ export default function HomeScreen() {
   // Visit share prompt - triggers when a visit finishes processing and user has caregivers
   const { pendingShare, clearPendingShare } = useVisitSharePrompt();
 
+  // Debug: trace medication review visibility
+  useEffect(() => {
+    console.log(
+      '[HomeScreen] Medication review state:',
+      'pendingReview:',
+      pendingReview ? pendingReview.visitId : null,
+      'pendingShare:',
+      pendingShare ? pendingShare.visitId : null,
+      'sheetVisible:',
+      pendingReview !== null && pendingShare === null,
+    );
+  }, [pendingReview, pendingShare]);
+
   const handleShareComplete = useCallback((sent: number, failed: number) => {
     if (sent > 0) {
       Alert.alert(

@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import * as functions from 'firebase-functions';
 import { openAIConfig } from '../config';
-import { CANONICAL_MEDICATIONS } from './medicationSafety';
+import { CANONICAL_MEDICATIONS, ALIAS_TO_CANONICAL } from './medicationSafety';
 import { withRetry } from '../utils/retryUtils';
 import { validateTopLevelSchema } from './openai/jsonParser';
 import {
@@ -117,10 +117,11 @@ export interface VisitPromptMeta {
   fallbackUsed?: boolean;
 }
 
-const MAX_CANONICAL_GLOSSARY_ITEMS = 80;
-const CANONICAL_GLOSSARY_TEXT = buildCanonicalGlossaryText(MAX_CANONICAL_GLOSSARY_ITEMS);
+// Send the full canonical glossary to GPT-4. ~230 entries at ~50 chars each = ~12K chars / ~940 tokens,
+// negligible in GPT-4's 128K context window.
+const CANONICAL_GLOSSARY_TEXT = buildCanonicalGlossaryText();
 
-function buildCanonicalGlossaryText(limit: number): string {
+function buildCanonicalGlossaryText(): string {
   const entries = Object.entries(CANONICAL_MEDICATIONS).map(([name, data]) => {
     const classLabel =
       Array.isArray(data.classes) && data.classes.length > 0 ? ` [${data.classes[0]}]` : '';
@@ -133,7 +134,6 @@ function buildCanonicalGlossaryText(limit: number): string {
 
   return entries
     .sort((a, b) => a.localeCompare(b))
-    .slice(0, limit)
     .map((line, index) => `${index + 1}. ${line}`)
     .join('\n');
 }
@@ -773,7 +773,6 @@ const extractNameFromMedicationText = (text: string): { name: string; note?: str
     ' twice',
     ' three',
     ' every',
-    ' with',
     ' for',
     ' from',
     ' at ',
@@ -795,6 +794,21 @@ const extractNameFromMedicationText = (text: string): { name: string; note?: str
     }
   }
 
+  // Context-aware break on "with" — only break for dosing instructions
+  // ("with food", "with meals"), NOT combination product names ("Vitamin D with K2")
+  const withIndex = lower.indexOf(' with ');
+  if (withIndex !== -1 && withIndex < breakIndex) {
+    const afterWith = lower.slice(withIndex + 6).trim();
+    const DOSING_CONTEXT_WORDS = [
+      'food', 'meals', 'water', 'juice', 'milk',
+      'breakfast', 'lunch', 'dinner', 'a meal',
+      'an empty', 'plenty',
+    ];
+    if (DOSING_CONTEXT_WORDS.some(word => afterWith.startsWith(word))) {
+      breakIndex = withIndex;
+    }
+  }
+
   const leadingVerbMatch = cleaned.match(
     /^(?:started|start|starting|initiated|initiating|add|added|adding|begin|began|increase|increased|increasing|decrease|decreased|decreasing|change|changed|changing|titrate|titrated|titrating|switch|switched|switching|restart|restarted|restarting|resume|resumed|resuming|hold|held|holding|stop|stopped|stopping)\s+/i,
   );
@@ -806,8 +820,9 @@ const extractNameFromMedicationText = (text: string): { name: string; note?: str
   }
 
   // Strip trailing numeric dose fragments accidentally captured before unit break tokens.
+  // Preserve alphanumeric identifiers like B12, D3 (numbers preceded by a letter).
   nameSection = nameSection
-    .replace(/\b\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)*\s*$/g, '')
+    .replace(/(?<![a-zA-Z])\b\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)*\s*$/g, '')
     .trim();
 
   const name = nameSection || cleaned.split(/\s+/)[0] || 'Unknown medication';
@@ -915,17 +930,28 @@ const ensureMedicationsObject = (value: unknown) => {
 
   const typed = value as Record<string, unknown>;
 
-  const normalizeArray = (entries: unknown): MedicationChangeEntry[] => {
+  const normalizeArray = (entries: unknown, category: string): MedicationChangeEntry[] => {
     if (!Array.isArray(entries)) return [];
-    return entries
-      .map((entry) => normalizeMedicationEntry(entry))
-      .filter((entry): entry is MedicationChangeEntry => entry !== null);
+    const results: MedicationChangeEntry[] = [];
+    for (const entry of entries) {
+      const normalized = normalizeMedicationEntry(entry);
+      if (normalized) {
+        results.push(normalized);
+      } else {
+        functions.logger.warn('[OpenAI] Dropped medication entry during normalization', {
+          category,
+          rawEntry: typeof entry === 'object' ? JSON.stringify(entry) : String(entry),
+          reason: !entry ? 'falsy value' : typeof entry === 'string' && !entry.trim() ? 'empty string' : 'could not extract name',
+        });
+      }
+    }
+    return results;
   };
 
   return {
-    started: normalizeArray(typed.started),
-    stopped: normalizeArray(typed.stopped),
-    changed: normalizeArray(typed.changed),
+    started: normalizeArray(typed.started, 'started'),
+    stopped: normalizeArray(typed.stopped, 'stopped'),
+    changed: normalizeArray(typed.changed, 'changed'),
   };
 };
 
@@ -1203,6 +1229,44 @@ const refineMedicationListWithKnownNames = (
       }
     }
 
+    // Check canonical medications database for a direct match (brand or generic)
+    const canonicalMatch = ALIAS_TO_CANONICAL[normalizedEntryName]
+      ?? ALIAS_TO_CANONICAL[normalizedEntryName.replace(/\d+/g, '')];
+    if (canonicalMatch) {
+      result.name = canonicalMatch;
+      result.needsConfirmation = entry.needsConfirmation ?? false;
+      result.status = entry.status ?? 'matched';
+      return result;
+    }
+
+    // Try fuzzy matching against canonical medication names
+    const canonicalNames = Object.keys(CANONICAL_MEDICATIONS);
+    let bestCanonicalMatch: string | null = null;
+    let bestCanonicalScore = Number.POSITIVE_INFINITY;
+    for (const canonical of canonicalNames) {
+      const normalizedCanonical = canonical.replace(/[^a-z0-9]/g, '');
+      const score = levenshteinDistance(normalizedCanonical, normalizedEntryName);
+      if (score < bestCanonicalScore) {
+        bestCanonicalScore = score;
+        bestCanonicalMatch = canonical;
+      }
+    }
+    if (bestCanonicalMatch) {
+      const normalizedCanonical = bestCanonicalMatch.replace(/[^a-z0-9]/g, '');
+      const baseLength = Math.max(normalizedCanonical.length, normalizedEntryName.length);
+      const tolerance = Math.ceil(baseLength * 0.3); // Slightly tighter than known-names (0.35)
+      if (bestCanonicalScore <= tolerance) {
+        result.name = bestCanonicalMatch;
+        result.needsConfirmation = true;
+        result.status = 'fuzzy';
+        if (!result.note) {
+          result.note = 'Medication name matched against canonical database. Please verify.';
+        }
+        return result;
+      }
+    }
+
+    // Fall through: medication not found in known list or canonical DB
     result.needsConfirmation = true;
     result.status = 'unverified';
     if (!result.note) {
