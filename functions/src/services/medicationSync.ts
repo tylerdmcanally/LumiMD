@@ -797,6 +797,65 @@ export const syncMedicationsFromSummary = async ({
   await clearMedicationSafetyCacheForUser(userId);
 };
 
+/**
+ * Compute safety-annotated medication changes for user review WITHOUT committing.
+ * Runs the same safety checks as syncMedicationsFromSummary but writes results
+ * back to the visit document as `pendingMedicationChanges` instead of upserting
+ * medication records.
+ */
+export const computePendingMedicationChanges = async ({
+  userId,
+  visitId,
+  medications,
+  processedAt,
+}: SyncMedicationsOptions): Promise<void> => {
+  if (!medications) {
+    return;
+  }
+
+  const normalized = normalizeMedicationSummary(medications);
+  const hasMedChanges =
+    normalized.started.length > 0 ||
+    normalized.stopped.length > 0 ||
+    normalized.changed.length > 0;
+
+  if (!hasMedChanges) {
+    return;
+  }
+
+  // Run safety checks for started medications
+  const annotatedStarted: MedicationChangeEntry[] = [];
+  for (const entry of normalized.started) {
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+    annotatedStarted.push(addSafetyWarningsToEntry(entry, safetyWarnings));
+  }
+
+  // Stopped medications don't need safety checks
+  const annotatedStopped = [...normalized.stopped];
+
+  // Run safety checks for changed medications
+  const annotatedChanged: MedicationChangeEntry[] = [];
+  for (const entry of normalized.changed) {
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+    annotatedChanged.push(addSafetyWarningsToEntry(entry, safetyWarnings));
+  }
+
+  // Write safety-annotated changes to visit document for user review
+  const db = admin.firestore();
+  await db.collection('visits').doc(visitId).update({
+    pendingMedicationChanges: {
+      started: annotatedStarted,
+      stopped: annotatedStopped,
+      changed: annotatedChanged,
+    },
+  });
+
+  functions.logger.info(
+    `[medicationSync] Computed pending medication changes for visit ${visitId}: ` +
+    `started=${annotatedStarted.length}, stopped=${annotatedStopped.length}, changed=${annotatedChanged.length}`,
+  );
+};
+
 export const normalizeMedicationSummary = (
   medications?: MedicationSummary | NormalizedMedicationSummary,
 ): NormalizedMedicationSummary => {

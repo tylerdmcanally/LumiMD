@@ -25,6 +25,7 @@ import { useVisit, queryKeys } from '../lib/api/hooks';
 import { api } from '../lib/api/client';
 import { openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { MedicationReviewSheet } from '../components/MedicationReviewSheet';
 import { trackEvent } from '../lib/telemetry';
 
 dayjs.extend(relativeTime);
@@ -179,6 +180,7 @@ export default function VisitDetailScreen() {
 
   const [activeTab, setActiveTab] = useState<TabKey>('summary');
   const [retrying, setRetrying] = useState(false);
+  const [showMedicationReview, setShowMedicationReview] = useState(false);
   const hadLoadFailureRef = useRef(false);
   const processingStates = ['pending', 'processing', 'transcribing', 'summarizing'];
   const queryClient = useQueryClient();
@@ -573,6 +575,25 @@ export default function VisitDetailScreen() {
                   </Card>
                 )}
 
+              {/* Medication confirmation banner */}
+              {visit.medicationConfirmationStatus === 'pending' && (
+                <Pressable
+                  style={styles.medReviewBanner}
+                  onPress={() => setShowMedicationReview(true)}
+                >
+                  <Ionicons name="medkit" size={22} color={Colors.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.medReviewBannerTitle}>
+                      Review Medication Changes
+                    </Text>
+                    <Text style={styles.medReviewBannerSubtitle}>
+                      Medications need your confirmation before saving
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                </Pressable>
+              )}
+
               <View style={styles.tabRow}>
                 {tabs.map((tab) => {
                   const isActive = activeTab === tab.key;
@@ -797,6 +818,32 @@ export default function VisitDetailScreen() {
           </View>
         )}
       </SafeAreaView>
+      {/* Medication Review Sheet (opened from banner) */}
+      {visit && (
+        <MedicationReviewSheet
+          visible={showMedicationReview}
+          visitId={visit.id}
+          visitDate={visit.visitDate ?? visit.createdAt ?? null}
+          pendingMedicationChanges={
+            (visit as any).pendingMedicationChanges ?? {
+              started: [],
+              stopped: [],
+              changed: [],
+            }
+          }
+          onClose={() => {
+            setShowMedicationReview(false);
+            refetch();
+          }}
+          onConfirmComplete={(count) => {
+            Alert.alert(
+              'Medications Confirmed',
+              `${count} medication${count > 1 ? 's' : ''} saved to your list.`,
+              [{ text: 'OK' }],
+            );
+          }}
+        />
+      )}
     </ErrorBoundary>
   );
 }
@@ -974,6 +1021,27 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
+  },
+  medReviewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(3),
+    backgroundColor: `${Colors.accent}12`,
+    borderRadius: spacing(3),
+    padding: spacing(4),
+    marginBottom: spacing(4),
+    borderWidth: 1,
+    borderColor: `${Colors.accent}30`,
+  },
+  medReviewBannerTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  medReviewBannerSubtitle: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
   tabRow: {
     flexDirection: 'row',

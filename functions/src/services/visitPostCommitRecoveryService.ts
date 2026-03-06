@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { getAssemblyAIService } from './assemblyai';
-import { normalizeMedicationSummary, syncMedicationsFromSummary } from './medicationSync';
+import { normalizeMedicationSummary, computePendingMedicationChanges } from './medicationSync';
 import { analyzeVisitWithDelta } from './lumibotAnalyzer';
 import { getNotificationService } from './notifications';
 import { sendVisitPdfToAllCaregivers } from './caregiverEmailService';
@@ -246,12 +246,14 @@ async function retryOperation(
 
   switch (operation) {
     case 'syncMedications': {
+      // Retry computes pending medication changes (safety-annotated) for user review.
+      // Actual medication commit happens only after user confirmation via confirm-medications endpoint.
       const normalizedMedications = normalizeMedicationSummary(
         (visitData.medications as Record<string, unknown> | undefined) ?? {},
       );
       const processedAt = extractProcessedAtTimestamp(visitData.processedAt);
 
-      await syncMedicationsFromSummary({
+      await computePendingMedicationChanges({
         userId,
         visitId,
         medications: normalizedMedications,

@@ -55,6 +55,22 @@ export interface CursorPage<T> {
   limit: number;
 }
 
+export interface ConfirmMedicationEntry {
+  name: string;
+  dose?: string;
+  frequency?: string;
+  note?: string;
+  confirmed: boolean;
+}
+
+export interface ConfirmMedicationsPayload {
+  medications: {
+    started?: ConfirmMedicationEntry[];
+    stopped?: ConfirmMedicationEntry[];
+    changed?: ConfirmMedicationEntry[];
+  };
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function normalizeHeaders(headersInit?: HeadersInit): Record<string, string> {
@@ -499,6 +515,21 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<Visit>(`/v1/visits/${id}/retry`, {
           method: 'POST',
         }),
+      confirmMedications: (id: string, data: ConfirmMedicationsPayload) =>
+        apiRequest<{ success: boolean; confirmedCount: number }>(
+          `/v1/visits/${id}/confirm-medications`,
+          {
+            method: 'POST',
+            body: JSON.stringify(data),
+          },
+        ),
+      skipMedicationConfirmation: (id: string) =>
+        apiRequest<{ success: boolean }>(
+          `/v1/visits/${id}/skip-medication-confirmation`,
+          {
+            method: 'POST',
+          },
+        ),
     },
 
     // Action Items

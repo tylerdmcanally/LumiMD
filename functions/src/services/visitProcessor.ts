@@ -4,7 +4,7 @@ import { getOpenAIService } from './openai';
 import type { FollowUpItem, VisitSummaryResult } from './openai';
 import { MedicationDomainService } from './domain/medications/MedicationDomainService';
 import { UserDomainService } from './domain/users/UserDomainService';
-import { normalizeMedicationSummary, syncMedicationsFromSummary } from './medicationSync';
+import { normalizeMedicationSummary, computePendingMedicationChanges } from './medicationSync';
 import { normalizeMedicationName } from './medicationSafety';
 import { resolveActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 import { getAssemblyAIService } from './assemblyai';
@@ -316,6 +316,11 @@ export async function summarizeVisit({
     const processedAt = admin.firestore.Timestamp.now();
     const batch = db().batch();
 
+    const hasMedicationChanges =
+      (normalizedMedications.started?.length ?? 0) > 0 ||
+      (normalizedMedications.stopped?.length ?? 0) > 0 ||
+      (normalizedMedications.changed?.length ?? 0) > 0;
+
     batch.update(visitRef, {
       summary: summary.summary,
       diagnoses: summary.diagnoses,
@@ -344,6 +349,12 @@ export async function summarizeVisit({
       postCommitOperationAttempts: admin.firestore.FieldValue.delete(),
       postCommitOperationNextRetryAt: admin.firestore.FieldValue.delete(),
       postCommitEscalatedAt: admin.firestore.FieldValue.delete(),
+      // Medication confirmation flow: hold medications for user review
+      medicationConfirmationStatus: hasMedicationChanges ? 'pending' : 'not_applicable',
+      medicationConfirmationRequestedAt: hasMedicationChanges ? processedAt : null,
+      medicationConfirmedAt: null,
+      pendingMedicationChanges: null, // populated in post-commit safety check step
+      confirmedMedicationChanges: null,
     });
 
     // Privacy Audit Log
@@ -379,8 +390,8 @@ export async function summarizeVisit({
     const transcriptionId = visitData.transcriptionId;
 
     const postCommitResults = await Promise.allSettled([
-      // 1. Sync medications to user's medication list
-      syncMedicationsFromSummary({
+      // 1. Compute safety-annotated medication changes for user review (held until confirmed)
+      computePendingMedicationChanges({
         userId: visitData.userId,
         visitId: visitRef.id,
         medications: normalizedMedications,
