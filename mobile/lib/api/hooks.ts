@@ -127,32 +127,16 @@ async function fetchVisitsFromFirestoreFallback(
 ): Promise<Visit[]> {
   const normalizedLimit = normalizePageSize(limit);
 
-  const runQuery = async (includeDeletedFilter: boolean): Promise<Visit[]> => {
-    let query: FirebaseFirestoreTypes.Query = firestore()
-      .collection('visits')
-      .where('userId', '==', userId);
+  const snapshot = await firestore()
+    .collection('visits')
+    .where('userId', '==', userId)
+    .where('deletedAt', '==', null)
+    .get();
 
-    if (includeDeletedFilter) {
-      query = query.where('deletedAt', '==', null);
-    }
-
-    const snapshot = await query.get();
-
-    const docs = filterSoftDeleted(
-      snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
-    );
-    return sortByCreatedAt(docs, sort).slice(0, normalizedLimit);
-  };
-
-  try {
-    const preferred = await runQuery(true);
-    if (preferred.length > 0) {
-      return preferred;
-    }
-    return runQuery(false);
-  } catch {
-    return runQuery(false);
-  }
+  const docs = filterSoftDeleted(
+    snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
+  );
+  return sortByCreatedAt(docs, sort).slice(0, normalizedLimit);
 }
 
 async function fetchActionsFromFirestoreFallback(
@@ -161,32 +145,16 @@ async function fetchActionsFromFirestoreFallback(
 ): Promise<ActionItem[]> {
   const normalizedLimit = normalizePageSize(limit);
 
-  const runQuery = async (includeDeletedFilter: boolean): Promise<ActionItem[]> => {
-    let query: FirebaseFirestoreTypes.Query = firestore()
-      .collection('actions')
-      .where('userId', '==', userId);
+  const snapshot = await firestore()
+    .collection('actions')
+    .where('userId', '==', userId)
+    .where('deletedAt', '==', null)
+    .get();
 
-    if (includeDeletedFilter) {
-      query = query.where('deletedAt', '==', null);
-    }
-
-    const snapshot = await query.get();
-
-    const docs = filterSoftDeleted(
-      snapshot.docs.map((doc) => serializeDoc<ActionItem>(doc)),
-    );
-    return sortByCreatedAt(docs, 'desc').slice(0, normalizedLimit);
-  };
-
-  try {
-    const preferred = await runQuery(true);
-    if (preferred.length > 0) {
-      return preferred;
-    }
-    return runQuery(false);
-  } catch {
-    return runQuery(false);
-  }
+  const docs = filterSoftDeleted(
+    snapshot.docs.map((doc) => serializeDoc<ActionItem>(doc)),
+  );
+  return sortByCreatedAt(docs, 'desc').slice(0, normalizedLimit);
 }
 
 async function fetchMedicationsFromFirestoreFallback(
@@ -195,32 +163,16 @@ async function fetchMedicationsFromFirestoreFallback(
 ): Promise<Medication[]> {
   const normalizedLimit = normalizePageSize(limit);
 
-  const runQuery = async (includeDeletedFilter: boolean): Promise<Medication[]> => {
-    let query: FirebaseFirestoreTypes.Query = firestore()
-      .collection('medications')
-      .where('userId', '==', userId);
+  const snapshot = await firestore()
+    .collection('medications')
+    .where('userId', '==', userId)
+    .where('deletedAt', '==', null)
+    .get();
 
-    if (includeDeletedFilter) {
-      query = query.where('deletedAt', '==', null);
-    }
-
-    const snapshot = await query.get();
-
-    const docs = filterSoftDeleted(
-      snapshot.docs.map((doc) => serializeDoc<Medication>(doc)),
-    );
-    return sortByCreatedAt(docs, 'desc').slice(0, normalizedLimit);
-  };
-
-  try {
-    const preferred = await runQuery(true);
-    if (preferred.length > 0) {
-      return preferred;
-    }
-    return runQuery(false);
-  } catch {
-    return runQuery(false);
-  }
+  const docs = filterSoftDeleted(
+    snapshot.docs.map((doc) => serializeDoc<Medication>(doc)),
+  );
+  return sortByCreatedAt(docs, 'desc').slice(0, normalizedLimit);
 }
 
 function logFirestoreFallback(
@@ -656,6 +608,7 @@ export function useRealtimeVisits(
     const unsubscribe = firestore()
       .collection('visits')
       .where('userId', '==', userId)
+      .where('deletedAt', '==', null)
       .onSnapshot(
         (snapshot) => {
           const docs = filterSoftDeleted(
@@ -683,6 +636,7 @@ export function useRealtimeVisits(
       const snapshot = await firestore()
         .collection('visits')
         .where('userId', '==', userId)
+        .where('deletedAt', '==', null)
         .get();
       const docs = filterSoftDeleted(
         snapshot.docs.map((doc) => serializeDoc<Visit>(doc)),
@@ -713,6 +667,7 @@ export function useRealtimeActiveMedications(
     const unsubscribe = firestore()
       .collection('medications')
       .where('userId', '==', userId)
+      .where('deletedAt', '==', null)
       .onSnapshot(
         (snapshot) => {
           const docs = snapshot.docs.map(doc => serializeDoc<Medication>(doc));
@@ -741,6 +696,7 @@ export function useRealtimeActiveMedications(
       const snapshot = await firestore()
         .collection('medications')
         .where('userId', '==', userId)
+        .where('deletedAt', '==', null)
         .get();
       const docs = snapshot.docs.map(doc => serializeDoc<Medication>(doc));
       return filterActiveMeds(docs);
@@ -779,6 +735,7 @@ export function useRealtimePendingActions(
     const unsubscribe = firestore()
       .collection('actions')
       .where('userId', '==', userId)
+      .where('deletedAt', '==', null)
       .onSnapshot(
         (snapshot) => {
           const docs = snapshot.docs.map(doc => serializeDoc<ActionItem>(doc));
@@ -802,6 +759,7 @@ export function useRealtimePendingActions(
       const snapshot = await firestore()
         .collection('actions')
         .where('userId', '==', userId)
+        .where('deletedAt', '==', null)
         .get();
       const docs = snapshot.docs.map(doc => serializeDoc<ActionItem>(doc));
       return filterPendingActions(docs);
