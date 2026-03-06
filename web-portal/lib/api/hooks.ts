@@ -391,7 +391,11 @@ export function useVisits(
 
   const visitsQueryRef = useMemo(() => {
     if (!effectiveUserId) return null;
-    return query(collection(db, 'visits'), where('userId', '==', effectiveUserId));
+    return query(
+      collection(db, 'visits'),
+      where('userId', '==', effectiveUserId),
+      where('deletedAt', '==', null),
+    );
   }, [effectiveUserId]);
 
   return useFirestoreCollection<Visit>(visitsQueryRef, key, {
@@ -439,11 +443,15 @@ export function useMedications(
 
   const medicationsQueryRef = useMemo(() => {
     if (!effectiveUserId) return null;
-    return query(collection(db, 'medications'), where('userId', '==', effectiveUserId));
+    return query(
+      collection(db, 'medications'),
+      where('userId', '==', effectiveUserId),
+      where('deletedAt', '==', null),
+    );
   }, [effectiveUserId]);
 
   return useFirestoreCollection<Medication>(medicationsQueryRef, key, {
-    transform: sortByTimestampDescending,
+    transform: (meds) => sortByTimestampDescending(filterSoftDeleted(meds)),
     enabled,
     onError: handleSnapshotError,
     queryOptions: options,
@@ -468,6 +476,7 @@ export function useMedication(
   }, [userId, medicationId]);
 
   return useFirestoreDocument<Medication>(medicationDocRef, key, {
+    transform: (med) => (med && !isSoftDeletedRecord(med) ? med : null),
     enabled,
     onError: handleSnapshotError,
     queryOptions: options,
@@ -486,7 +495,11 @@ export function useActions(
 
   const actionsQueryRef = useMemo(() => {
     if (!effectiveUserId) return null;
-    return query(collection(db, 'actions'), where('userId', '==', effectiveUserId));
+    return query(
+      collection(db, 'actions'),
+      where('userId', '==', effectiveUserId),
+      where('deletedAt', '==', null),
+    );
   }, [effectiveUserId]);
 
   const sortActions = useCallback((actions: ActionItem[]) => {
