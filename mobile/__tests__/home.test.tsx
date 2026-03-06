@@ -61,6 +61,17 @@ jest.mock('../components/ShareConfirmationSheet', () => ({
   ShareConfirmationSheet: () => null,
 }));
 
+jest.mock('../components/MedicationReviewSheet', () => ({
+  MedicationReviewSheet: () => null,
+}));
+
+jest.mock('../lib/hooks/useMedicationReviewPrompt', () => ({
+  useMedicationReviewPrompt: () => ({
+    pendingReview: null,
+    clearPendingReview: jest.fn(),
+  }),
+}));
+
 jest.mock('../components/HealthSnapshotCard', () => ({
   HealthSnapshotCard: () => null,
 }));

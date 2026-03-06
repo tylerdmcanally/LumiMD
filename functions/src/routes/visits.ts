@@ -10,7 +10,8 @@ import {
   ensureOperatorRestoreReasonOrReject,
 } from '../middlewares/auth';
 import { storageConfig } from '../config';
-import { normalizeMedicationSummary } from '../services/medicationSync';
+import { normalizeMedicationSummary, syncMedicationsFromSummary } from '../services/medicationSync';
+import { runMedicationSafetyChecks, addSafetyWarningsToEntry } from '../services/medicationSafety';
 import { getAssemblyAIService } from '../services/assemblyai';
 import { sanitizePlainText } from '../utils/inputSanitization';
 import { createDomainServiceContainer } from '../services/domain/serviceContainer';
@@ -1126,6 +1127,12 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
         lastRetryAt: now,
         retryCount: admin.firestore.FieldValue.increment(1),
         updatedAt: now,
+        // Clear medication confirmation flow on retry
+        medicationConfirmationStatus: admin.firestore.FieldValue.delete(),
+        medicationConfirmationRequestedAt: admin.firestore.FieldValue.delete(),
+        medicationConfirmedAt: admin.firestore.FieldValue.delete(),
+        pendingMedicationChanges: admin.firestore.FieldValue.delete(),
+        confirmedMedicationChanges: admin.firestore.FieldValue.delete(),
       });
       if (!updatedVisit) {
         res.status(404).json({
@@ -1180,6 +1187,12 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
           retryCount: admin.firestore.FieldValue.increment(1),
           storagePath,
           updatedAt: now,
+          // Clear medication confirmation flow on retry
+          medicationConfirmationStatus: admin.firestore.FieldValue.delete(),
+          medicationConfirmationRequestedAt: admin.firestore.FieldValue.delete(),
+          medicationConfirmedAt: admin.firestore.FieldValue.delete(),
+          pendingMedicationChanges: admin.firestore.FieldValue.delete(),
+          confirmedMedicationChanges: admin.firestore.FieldValue.delete(),
         });
         if (!updatedVisit) {
           res.status(404).json({
@@ -1214,6 +1227,186 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to retry visit processing',
+    });
+  }
+});
+
+// --- Medication confirmation schemas ---
+const confirmMedicationEntrySchema = z.object({
+  name: z.string().min(1),
+  dose: z.string().optional(),
+  frequency: z.string().optional(),
+  note: z.string().optional(),
+  confirmed: z.boolean(),
+});
+
+const confirmMedicationsBodySchema = z.object({
+  medications: z.object({
+    started: z.array(confirmMedicationEntrySchema).optional().default([]),
+    stopped: z.array(confirmMedicationEntrySchema).optional().default([]),
+    changed: z.array(confirmMedicationEntrySchema).optional().default([]),
+  }),
+});
+
+/**
+ * POST /v1/visits/:id/confirm-medications
+ * Confirm (or partially confirm) pending medication changes from a processed visit.
+ * Only confirmed entries are committed to the user's medication list.
+ */
+visitsRouter.post('/:id/confirm-medications', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const visitId = req.params.id;
+    const visitService = getVisitDomainService();
+
+    // Validate request body
+    const payload = confirmMedicationsBodySchema.parse(req.body);
+
+    // Verify visit exists and belongs to user
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
+
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) {
+      return;
+    }
+
+    // Ensure visit is in 'pending' confirmation state
+    if (visit.medicationConfirmationStatus !== 'pending') {
+      res.status(409).json({
+        code: 'not_pending',
+        message:
+          visit.medicationConfirmationStatus === 'confirmed'
+            ? 'Medication changes have already been confirmed for this visit'
+            : 'This visit does not have pending medication changes',
+      });
+      return;
+    }
+
+    // Filter to only confirmed entries
+    const confirmedStarted = (payload.medications.started || []).filter((e) => e.confirmed);
+    const confirmedStopped = (payload.medications.stopped || []).filter((e) => e.confirmed);
+    const confirmedChanged = (payload.medications.changed || []).filter((e) => e.confirmed);
+    const confirmedCount = confirmedStarted.length + confirmedStopped.length + confirmedChanged.length;
+
+    // Re-run safety checks on started/changed entries (user may have edited dose/frequency)
+    const safetyAnnotatedStarted = [];
+    for (const entry of confirmedStarted) {
+      const warnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+      safetyAnnotatedStarted.push(addSafetyWarningsToEntry(entry, warnings));
+    }
+
+    const safetyAnnotatedChanged = [];
+    for (const entry of confirmedChanged) {
+      const warnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+      safetyAnnotatedChanged.push(addSafetyWarningsToEntry(entry, warnings));
+    }
+
+    const confirmedMedications = {
+      started: safetyAnnotatedStarted,
+      stopped: confirmedStopped,
+      changed: safetyAnnotatedChanged,
+    };
+
+    // Commit confirmed medications using existing sync logic (upserts, reminders, nudges)
+    if (confirmedCount > 0) {
+      const processedAt = visit.processedAt || admin.firestore.Timestamp.now();
+      await syncMedicationsFromSummary({
+        userId,
+        visitId,
+        medications: confirmedMedications,
+        processedAt,
+      });
+    }
+
+    // Update visit document with confirmation status
+    const now = admin.firestore.Timestamp.now();
+    await visitService.updateRecord(visitId, {
+      medicationConfirmationStatus: 'confirmed',
+      medicationConfirmedAt: now,
+      confirmedMedicationChanges: confirmedMedications,
+      updatedAt: now,
+    });
+
+    functions.logger.info(
+      `[visits] Medication changes confirmed for visit ${visitId}: ` +
+      `started=${confirmedStarted.length}, stopped=${confirmedStopped.length}, changed=${confirmedChanged.length}`,
+    );
+
+    res.json({
+      success: true,
+      confirmedCount,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[visits] Error confirming medications:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to confirm medication changes',
+    });
+  }
+});
+
+/**
+ * POST /v1/visits/:id/skip-medication-confirmation
+ * Skip the medication confirmation step (mark as skipped, no medications committed)
+ */
+visitsRouter.post('/:id/skip-medication-confirmation', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const visitId = req.params.id;
+    const visitService = getVisitDomainService();
+
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
+      res.status(404).json({
+        code: 'not_found',
+        message: 'Visit not found',
+      });
+      return;
+    }
+
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) {
+      return;
+    }
+
+    if (visit.medicationConfirmationStatus !== 'pending') {
+      res.status(409).json({
+        code: 'not_pending',
+        message: 'This visit does not have pending medication changes',
+      });
+      return;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    await visitService.updateRecord(visitId, {
+      medicationConfirmationStatus: 'skipped',
+      medicationConfirmedAt: now,
+      confirmedMedicationChanges: { started: [], stopped: [], changed: [] },
+      updatedAt: now,
+    });
+
+    functions.logger.info(`[visits] Medication confirmation skipped for visit ${visitId}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    functions.logger.error('[visits] Error skipping medication confirmation:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to skip medication confirmation',
     });
   }
 });

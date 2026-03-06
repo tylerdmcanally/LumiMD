@@ -33,6 +33,10 @@ jest.mock('expo-router', () => {
   };
 });
 
+jest.mock('../components/MedicationReviewSheet', () => ({
+  MedicationReviewSheet: () => null,
+}));
+
 describe('VisitDetailScreen', () => {
   beforeEach(() => {
     mockUseVisit.mockReset();

@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 import { summarizeVisit } from '../visitProcessor';
 import { getOpenAIService } from '../openai';
-import { normalizeMedicationSummary, syncMedicationsFromSummary } from '../medicationSync';
+import { normalizeMedicationSummary, syncMedicationsFromSummary, computePendingMedicationChanges } from '../medicationSync';
 import { getAssemblyAIService } from '../assemblyai';
 import { analyzeVisitWithDelta } from '../lumibotAnalyzer';
 import { getNotificationService } from '../notifications';
@@ -20,6 +20,7 @@ jest.mock('../medicationSync', () => ({
     }
   ),
   syncMedicationsFromSummary: jest.fn(async () => undefined),
+  computePendingMedicationChanges: jest.fn(async () => undefined),
 }));
 
 jest.mock('../assemblyai', () => ({
@@ -188,6 +189,7 @@ describe('visitProcessor caregiver auto-share', () => {
   const mockedGetOpenAIService = getOpenAIService as jest.Mock;
   const mockedNormalizeMedicationSummary = normalizeMedicationSummary as jest.Mock;
   const mockedSyncMedicationsFromSummary = syncMedicationsFromSummary as jest.Mock;
+  const mockedComputePendingMedicationChanges = computePendingMedicationChanges as jest.Mock;
   const mockedGetAssemblyAIService = getAssemblyAIService as jest.Mock;
   const mockedAnalyzeVisitWithDelta = analyzeVisitWithDelta as jest.Mock;
   const mockedGetNotificationService = getNotificationService as jest.Mock;
@@ -252,6 +254,7 @@ describe('visitProcessor caregiver auto-share', () => {
     );
 
     mockedSyncMedicationsFromSummary.mockResolvedValue(undefined);
+    mockedComputePendingMedicationChanges.mockResolvedValue(undefined);
     mockedGetAssemblyAIService.mockReturnValue({
       deleteTranscript: jest.fn(async () => undefined),
     });
@@ -389,7 +392,7 @@ describe('visitProcessor caregiver auto-share', () => {
   it('records partial post-commit failures without failing visit summarization', async () => {
     const harness = buildHarness({ autoShareWithCaregivers: false });
     firestoreMock.mockImplementation(() => harness.db);
-    mockedSyncMedicationsFromSummary.mockRejectedValueOnce(new Error('sync failed'));
+    mockedComputePendingMedicationChanges.mockRejectedValueOnce(new Error('sync failed'));
 
     const visitRefUpdate = jest.fn(async () => undefined);
 
@@ -492,7 +495,7 @@ describe('visitProcessor caregiver auto-share', () => {
       },
     });
 
-    const syncArg = mockedSyncMedicationsFromSummary.mock.calls[0]?.[0];
+    const syncArg = mockedComputePendingMedicationChanges.mock.calls[0]?.[0];
     expect(syncArg).toBeDefined();
     expect(syncArg.medications.started).toEqual(
       expect.arrayContaining([
@@ -580,7 +583,7 @@ describe('visitProcessor caregiver auto-share', () => {
       },
     });
 
-    const syncArg = mockedSyncMedicationsFromSummary.mock.calls[0]?.[0];
+    const syncArg = mockedComputePendingMedicationChanges.mock.calls[0]?.[0];
     expect(syncArg).toBeDefined();
     expect(syncArg.medications.started).toEqual([]);
     expect(syncArg.medications.changed).toEqual(
@@ -668,7 +671,7 @@ describe('visitProcessor caregiver auto-share', () => {
       },
     });
 
-    const syncArg = mockedSyncMedicationsFromSummary.mock.calls[0]?.[0];
+    const syncArg = mockedComputePendingMedicationChanges.mock.calls[0]?.[0];
     expect(syncArg).toBeDefined();
     expect(syncArg.medications.started).toEqual([]);
     expect(syncArg.medications.changed).toEqual(
@@ -780,7 +783,7 @@ describe('visitProcessor caregiver auto-share', () => {
       },
     });
 
-    const syncArg = mockedSyncMedicationsFromSummary.mock.calls[0]?.[0];
+    const syncArg = mockedComputePendingMedicationChanges.mock.calls[0]?.[0];
     expect(syncArg).toBeDefined();
     expect(syncArg.medications.started).toEqual(
       expect.arrayContaining([

@@ -224,8 +224,18 @@ export default function SharedVisitPage() {
                     </Card>
                 )}
 
-                {/* Medications */}
-                {visit.medications && (
+                {/* Medications — hidden when pending patient confirmation */}
+                {(visit as any).medicationConfirmationStatus === 'pending' ? (
+                    <Card variant="elevated" padding="lg" className="mb-6">
+                        <h3 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
+                            <Pill className="h-5 w-5 text-brand-primary" />
+                            Medication Updates
+                        </h3>
+                        <p className="text-sm text-text-secondary">
+                            Medication changes are being reviewed by the patient and will appear here once confirmed.
+                        </p>
+                    </Card>
+                ) : visit.medications && (
                     Object.values(visit.medications).some(arr => arr && arr.length > 0)
                 ) && (
                         <Card variant="elevated" padding="lg" className="mb-6">

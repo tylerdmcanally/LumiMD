@@ -708,11 +708,30 @@ export default function VisitDetailPage() {
             fetchingInsights={fetchingDiagnoses}
             onRequestInsight={handleRequestDiagnosisInsight}
           />
-          <MedicationCard
-            medications={medications}
-            education={medicationEducationMap}
-            medicationReview={medicationReview}
-          />
+          {(visit as Record<string, unknown>).medicationConfirmationStatus === 'pending' ? (
+            <Card className="border border-border-light/60 bg-card shadow-soft">
+              <CardHeader className="space-y-1">
+                <CardTitle className="text-lg font-semibold text-foreground">Medication changes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-start gap-3 rounded-xl border border-brand-primary/20 bg-brand-primary/5 p-4">
+                  <Info className="mt-0.5 h-5 w-5 shrink-0 text-brand-primary" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Medication changes pending review</p>
+                    <p className="mt-1 text-sm text-text-secondary">
+                      Medications detected from this visit are awaiting confirmation in the mobile app before they appear here.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <MedicationCard
+              medications={medications}
+              education={medicationEducationMap}
+              medicationReview={medicationReview}
+            />
+          )}
         </section>
 
       <EditVisitMetadataDialog

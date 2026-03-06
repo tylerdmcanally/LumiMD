@@ -38,8 +38,14 @@ interface Visit {
     education?: VisitEducation;
     audioUrl?: string | null;
     duration?: number | null;
+    medicationConfirmationStatus?: MedicationConfirmationStatus;
+    medicationConfirmationRequestedAt?: string | null;
+    medicationConfirmedAt?: string | null;
+    pendingMedicationChanges?: MedicationChanges;
+    confirmedMedicationChanges?: MedicationChanges;
     [key: string]: unknown;
 }
+type MedicationConfirmationStatus = 'pending' | 'confirmed' | 'skipped' | 'not_applicable';
 interface MedicationChanges {
     started?: MedicationEntry[];
     stopped?: MedicationEntry[];
@@ -441,6 +447,20 @@ interface CursorPage<T> {
     count: number;
     limit: number;
 }
+interface ConfirmMedicationEntry {
+    name: string;
+    dose?: string;
+    frequency?: string;
+    note?: string;
+    confirmed: boolean;
+}
+interface ConfirmMedicationsPayload {
+    medications: {
+        started?: ConfirmMedicationEntry[];
+        stopped?: ConfirmMedicationEntry[];
+        changed?: ConfirmMedicationEntry[];
+    };
+}
 declare function createApiClient(config: ApiClientConfig): {
     health: () => Promise<{
         status: string;
@@ -453,6 +473,13 @@ declare function createApiClient(config: ApiClientConfig): {
         update: (id: string, data: Partial<Visit>) => Promise<Visit>;
         delete: (id: string) => Promise<void>;
         retry: (id: string) => Promise<Visit>;
+        confirmMedications: (id: string, data: ConfirmMedicationsPayload) => Promise<{
+            success: boolean;
+            confirmedCount: number;
+        }>;
+        skipMedicationConfirmation: (id: string) => Promise<{
+            success: boolean;
+        }>;
     };
     actions: {
         list: (params?: CursorListParams) => Promise<ActionItem[]>;
@@ -651,4 +678,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

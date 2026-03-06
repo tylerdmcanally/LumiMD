@@ -33,8 +33,20 @@ export interface Visit {
   education?: VisitEducation;
   audioUrl?: string | null;
   duration?: number | null;
+  // Medication confirmation flow
+  medicationConfirmationStatus?: MedicationConfirmationStatus;
+  medicationConfirmationRequestedAt?: string | null;
+  medicationConfirmedAt?: string | null;
+  pendingMedicationChanges?: MedicationChanges;
+  confirmedMedicationChanges?: MedicationChanges;
   [key: string]: unknown;
 }
+
+export type MedicationConfirmationStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'skipped'
+  | 'not_applicable';
 
 export interface MedicationChanges {
   started?: MedicationEntry[];

@@ -21,7 +21,9 @@ import {
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { LumiBotContainer } from '../components/lumibot';
 import { ShareConfirmationSheet } from '../components/ShareConfirmationSheet';
+import { MedicationReviewSheet } from '../components/MedicationReviewSheet';
 import { useVisitSharePrompt } from '../lib/hooks/useVisitSharePrompt';
+import { useMedicationReviewPrompt } from '../lib/hooks/useMedicationReviewPrompt';
 import { trackEvent } from '../lib/telemetry';
 
 const LAST_VIEWED_VISIT_KEY_PREFIX = 'lumimd:lastViewedVisit:';
@@ -78,8 +80,34 @@ export default function HomeScreen() {
   // Web portal banner state - for placing "Need help?" button below cards
   const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();
 
+  // Medication review prompt - triggers when a visit has pending medication changes
+  const { pendingReview, clearPendingReview } = useMedicationReviewPrompt();
+
+  const handleMedicationConfirmComplete = useCallback((confirmedCount: number) => {
+    if (confirmedCount > 0) {
+      Alert.alert(
+        'Medications Confirmed',
+        `${confirmedCount} medication${confirmedCount > 1 ? 's' : ''} saved to your list.`,
+        [{ text: 'OK' }],
+      );
+    }
+  }, []);
+
   // Visit share prompt - triggers when a visit finishes processing and user has caregivers
   const { pendingShare, clearPendingShare } = useVisitSharePrompt();
+
+  // Debug: trace medication review visibility
+  useEffect(() => {
+    console.log(
+      '[HomeScreen] Medication review state:',
+      'pendingReview:',
+      pendingReview ? pendingReview.visitId : null,
+      'pendingShare:',
+      pendingShare ? pendingShare.visitId : null,
+      'sheetVisible:',
+      pendingReview !== null && pendingShare === null,
+    );
+  }, [pendingReview, pendingShare]);
 
   const handleShareComplete = useCallback((sent: number, failed: number) => {
     if (sent > 0) {
@@ -547,6 +575,16 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
       </SafeAreaView>
+
+      {/* Medication Review Sheet - shown when visit has pending medication changes (priority over share) */}
+      <MedicationReviewSheet
+        visible={pendingReview !== null && pendingShare === null}
+        visitId={pendingReview?.visitId || ''}
+        visitDate={pendingReview?.visitDate ?? null}
+        pendingMedicationChanges={pendingReview?.pendingMedicationChanges ?? { started: [], stopped: [], changed: [] }}
+        onClose={clearPendingReview}
+        onConfirmComplete={handleMedicationConfirmComplete}
+      />
 
       {/* Share Confirmation Sheet - shown when visit processing completes */}
       <ShareConfirmationSheet
