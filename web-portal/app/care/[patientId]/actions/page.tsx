@@ -198,9 +198,9 @@ function CareActionCard({
     patientId: string;
 }) {
     const [isExpanded, setIsExpanded] = React.useState(false);
-    const typeLabel = getFollowUpCategoryLabel((action as any).type);
+    const typeLabel = getFollowUpCategoryLabel(action.type);
     const hasExpandableDetail = Boolean(
-        typeLabel || (action as any).details || (action.source === 'visit' && action.visitId),
+        typeLabel || action.details || (action.source === 'visit' && action.visitId),
     );
     const isCompleted = action.completed === true;
     const overdue = action.dueAt ? new Date(action.dueAt) < new Date() : false;
@@ -274,13 +274,13 @@ function CareActionCard({
                                     {typeLabel}
                                 </span>
                             )}
-                            {(action as any).details && (
+                            {action.details && (
                                 <div className="rounded-xl border border-border-light bg-background-subtle/40 px-3 py-2.5">
                                     <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1">
                                         Evidence / Details
                                     </p>
                                     <p className="text-sm text-text-primary leading-relaxed">
-                                        {(action as any).details}
+                                        {action.details}
                                     </p>
                                 </div>
                             )}

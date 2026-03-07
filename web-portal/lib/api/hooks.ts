@@ -301,6 +301,9 @@ export type ActionItem = {
   updatedAt?: string | null;
   source?: 'manual' | 'visit';
   notes?: string | null;
+  type?: string | null;
+  details?: string | null;
+  calendarEvents?: Record<string, unknown> | null;
   [key: string]: unknown;
 };
 
