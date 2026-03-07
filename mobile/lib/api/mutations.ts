@@ -11,8 +11,6 @@ interface ToggleActionInput {
 
 export function useCompleteAction() {
   const queryClient = useQueryClient();
-  const currentUserId = auth().currentUser?.uid;
-  const actionsKey = [...queryKeys.actions, currentUserId ?? 'anonymous'] as const;
 
   return useMutation({
     mutationFn: async ({ id, completed }: ToggleActionInput) => {
@@ -25,32 +23,16 @@ export function useCompleteAction() {
       return api.actions.update(id, payload);
     },
     onMutate: async (variables) => {
-      await queryClient.cancelQueries({ queryKey: actionsKey });
-
-      const previousActions = queryClient.getQueryData<any[]>(actionsKey);
-
-      queryClient.setQueryData<any[]>(actionsKey, (old) => {
-        if (!old) return old;
-        return old.map((action) => {
-          if (action.id !== variables.id) return action;
-          if (variables.optimisticData) return variables.optimisticData;
-          return {
-            ...action,
-            completed: variables.completed,
-            completedAt: variables.completed ? new Date().toISOString() : null,
-          };
-        });
-      });
-
-      return { previousActions };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previousActions) {
-        queryClient.setQueryData(actionsKey, context.previousActions);
-      }
+      // Cancel all action queries (paginated, fallback, etc.)
+      await queryClient.cancelQueries({ queryKey: queryKeys.actions });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: actionsKey });
+      // Invalidate ALL action-related queries so both tabs refresh.
+      // Using the base key ['actions'] matches all variants:
+      //   ['actions', 'cursor', sessionKey, pageSize]  (paginated)
+      //   ['fallback', 'actions', ...]                  (fallback)
+      queryClient.invalidateQueries({ queryKey: queryKeys.actions });
+      queryClient.invalidateQueries({ queryKey: ['fallback', 'actions'] });
     },
   });
 }
