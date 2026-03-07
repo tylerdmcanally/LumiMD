@@ -10,14 +10,17 @@ import {
     CheckSquare,
     Calendar,
     CheckCircle,
+    ChevronDown,
     Circle,
     Clock,
+    FileText,
 } from 'lucide-react';
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCareActionsPage, type ActionItem } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
+import { getFollowUpCategoryLabel } from '@lumimd/sdk';
 
 const CARE_ACTIONS_PAGE_SIZE = 50;
 
@@ -137,59 +140,9 @@ export default function PatientActionsPage() {
                                 Pending
                             </h2>
                             <div className="space-y-3">
-                                {pendingActions.map((action) => {
-                                    const overdue = isOverdue(action.dueAt);
-                                    return (
-                                        <Card
-                                            key={action.id}
-                                            variant="elevated"
-                                            padding="md"
-                                            className={cn(overdue && 'border-l-4 border-l-error')}
-                                        >
-                                            <div className="flex items-start gap-3">
-                                                <Circle
-                                                    className={cn(
-                                                        'h-5 w-5 shrink-0 mt-0.5',
-                                                        overdue ? 'text-error' : 'text-text-muted'
-                                                    )}
-                                                />
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-text-primary">
-                                                        {action.description}
-                                                    </p>
-                                                    {action.dueAt && (
-                                                        <div
-                                                            className={cn(
-                                                                'flex items-center gap-1 text-sm mt-2',
-                                                                overdue
-                                                                    ? 'text-error font-medium'
-                                                                    : 'text-text-muted'
-                                                            )}
-                                                        >
-                                                            {overdue ? (
-                                                                <Clock className="h-3 w-3" />
-                                                            ) : (
-                                                                <Calendar className="h-3 w-3" />
-                                                            )}
-                                                            {overdue ? 'Overdue - ' : 'Due '}
-                                                            {new Date(action.dueAt).toLocaleDateString()}
-                                                        </div>
-                                                    )}
-                                                    {action.notes && (
-                                                        <p className="text-xs text-text-muted mt-2 italic">
-                                                            {action.notes}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                                {action.source === 'visit' && (
-                                                    <span className="text-xs px-2 py-1 rounded-full bg-background-subtle text-text-muted shrink-0">
-                                                        From visit
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </Card>
-                                    );
-                                })}
+                                {pendingActions.map((action) => (
+                                    <CareActionCard key={action.id} action={action} patientId={patientId} />
+                                ))}
                             </div>
                         </section>
                     )}
@@ -202,28 +155,7 @@ export default function PatientActionsPage() {
                             </h2>
                             <div className="space-y-3">
                                 {completedActions.map((action) => (
-                                    <Card
-                                        key={action.id}
-                                        variant="elevated"
-                                        padding="md"
-                                        className="opacity-60"
-                                    >
-                                        <div className="flex items-start gap-3">
-                                            <CheckCircle className="h-5 w-5 text-success shrink-0 mt-0.5" />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-text-secondary line-through">
-                                                    {action.description}
-                                                </p>
-                                                {action.completedAt && (
-                                                    <div className="flex items-center gap-1 text-xs text-text-muted mt-2">
-                                                        <CheckCircle className="h-3 w-3" />
-                                                        Completed{' '}
-                                                        {new Date(action.completedAt).toLocaleDateString()}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </Card>
+                                    <CareActionCard key={action.id} action={action} patientId={patientId} />
                                 ))}
                             </div>
                         </section>
@@ -255,5 +187,141 @@ export default function PatientActionsPage() {
                 </div>
             )}
         </PageContainer>
+    );
+}
+
+function CareActionCard({
+    action,
+    patientId,
+}: {
+    action: ActionItem;
+    patientId: string;
+}) {
+    const [isExpanded, setIsExpanded] = React.useState(false);
+    const typeLabel = getFollowUpCategoryLabel((action as any).type);
+    const hasExpandableDetail = Boolean(
+        typeLabel || (action as any).details || (action.source === 'visit' && action.visitId),
+    );
+    const isCompleted = action.completed === true;
+    const overdue = action.dueAt ? new Date(action.dueAt) < new Date() : false;
+
+    return (
+        <Card
+            variant="elevated"
+            padding="md"
+            className={cn(
+                overdue && !isCompleted && 'border-l-4 border-l-error',
+                isCompleted && 'opacity-60',
+                hasExpandableDetail && 'cursor-pointer hover:shadow-hover transition-smooth',
+            )}
+            onClick={() => hasExpandableDetail && setIsExpanded(!isExpanded)}
+        >
+            <div className="flex items-start gap-3">
+                {isCompleted ? (
+                    <CheckCircle className="h-5 w-5 text-success shrink-0 mt-0.5" />
+                ) : (
+                    <Circle
+                        className={cn(
+                            'h-5 w-5 shrink-0 mt-0.5',
+                            overdue ? 'text-error' : 'text-text-muted',
+                        )}
+                    />
+                )}
+                <div className="flex-1 min-w-0">
+                    <p
+                        className={cn(
+                            'text-text-primary',
+                            isCompleted && 'line-through text-text-secondary',
+                        )}
+                    >
+                        {action.description}
+                    </p>
+
+                    {/* Due date */}
+                    {action.dueAt && !isCompleted && (
+                        <div
+                            className={cn(
+                                'flex items-center gap-1 text-sm mt-2',
+                                overdue ? 'text-error font-medium' : 'text-text-muted',
+                            )}
+                        >
+                            {overdue ? <Clock className="h-3 w-3" /> : <Calendar className="h-3 w-3" />}
+                            {overdue ? 'Overdue - ' : 'Due '}
+                            {new Date(action.dueAt).toLocaleDateString()}
+                        </div>
+                    )}
+
+                    {/* Completed date */}
+                    {isCompleted && action.completedAt && (
+                        <div className="flex items-center gap-1 text-xs text-text-muted mt-2">
+                            <CheckCircle className="h-3 w-3" />
+                            Completed {new Date(action.completedAt).toLocaleDateString()}
+                        </div>
+                    )}
+
+                    {/* Notes (collapsed preview) */}
+                    {action.notes && !isExpanded && (
+                        <p className="text-xs text-text-muted mt-2 italic line-clamp-1">
+                            {action.notes}
+                        </p>
+                    )}
+
+                    {/* Expanded detail */}
+                    {hasExpandableDetail && isExpanded && (
+                        <div className="space-y-3 animate-fade-in-up mt-3 pt-3 border-t border-border-light">
+                            {typeLabel && (
+                                <span className="inline-flex items-center rounded-full bg-brand-primary-pale px-3 py-1 text-xs font-semibold text-brand-primary">
+                                    {typeLabel}
+                                </span>
+                            )}
+                            {(action as any).details && (
+                                <div className="rounded-xl border border-border-light bg-background-subtle/40 px-3 py-2.5">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1">
+                                        Evidence / Details
+                                    </p>
+                                    <p className="text-sm text-text-primary leading-relaxed">
+                                        {(action as any).details}
+                                    </p>
+                                </div>
+                            )}
+                            {action.notes && (
+                                <p className="text-sm text-text-muted italic">{action.notes}</p>
+                            )}
+                            {action.source === 'visit' && action.visitId && (
+                                <a
+                                    href={`/care/${patientId}/visits/${action.visitId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-primary hover:text-brand-primary-dark transition-colors"
+                                >
+                                    <FileText className="h-4 w-4" />
+                                    View source visit
+                                </a>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Collapsed hint */}
+                    {hasExpandableDetail && !isExpanded && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsExpanded(true);
+                            }}
+                            className="mt-2 text-xs text-brand-primary font-semibold hover:text-brand-primary-dark transition-colors flex items-center gap-1"
+                        >
+                            <span>More details</span>
+                            <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
+
+                {action.source === 'visit' && !isExpanded && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-background-subtle text-text-muted shrink-0">
+                        From visit
+                    </span>
+                )}
+            </div>
+        </Card>
     );
 }

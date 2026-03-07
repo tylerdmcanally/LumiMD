@@ -512,11 +512,26 @@ const ensureFollowUps = (value: unknown): FollowUpItem[] => {
   }
 
   const followUps: FollowUpItem[] = [];
-  value.forEach((item) => {
-    if (!item || typeof item !== 'object') return;
+  value.forEach((item, index) => {
+    if (!item || typeof item !== 'object') {
+      functions.logger.warn('[OpenAI] Dropped follow-up entry during normalization', {
+        index,
+        rawEntry: item === null ? 'null' : typeof item === 'undefined' ? 'undefined' : String(item),
+        reason: !item ? 'falsy value' : 'not an object',
+      });
+      return;
+    }
     const record = item as Record<string, unknown>;
     const type = ensureFollowUpCategory(record.type);
     const task = sanitizeText(record.task) || FOLLOW_UP_TYPE_FALLBACK_LABELS[type];
+    if (!task) {
+      functions.logger.warn('[OpenAI] Dropped follow-up entry during normalization', {
+        index,
+        rawEntry: JSON.stringify(record),
+        reason: 'no task and no fallback label for type',
+      });
+      return;
+    }
     const timeframe = sanitizeText(record.timeframe);
     const dueAt = normalizeIsoDateString(record.dueAt);
     const details = sanitizeText(record.details);

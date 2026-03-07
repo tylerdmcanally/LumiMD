@@ -1,4 +1,5 @@
 import { parseDate } from 'chrono-node';
+import * as functions from 'firebase-functions';
 
 function toDate(value: unknown): Date | null {
   if (!value) return null;
@@ -62,6 +63,14 @@ export function parseActionDueDate(
   });
 
   if (!parsed) {
+    // Only log when the description contains time-like words (avoid noise for generic descriptions)
+    const hasTimeLikeContent = /\b(in|within|after|before|by|next|week|month|day|year|january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(description);
+    if (hasTimeLikeContent) {
+      functions.logger.info('[actionDueDate] Failed to parse date from description', {
+        description: description.slice(0, 200),
+        referenceDate: referenceDate.toISOString(),
+      });
+    }
     return null;
   }
 
@@ -102,6 +111,10 @@ export function resolveActionDueDate({
     if (parsedTimeframe) {
       return normalizeToNoon(new Date(parsedTimeframe));
     }
+    functions.logger.info('[actionDueDate] Failed to parse timeframe', {
+      timeframe,
+      referenceDate: referenceDate.toISOString(),
+    });
   }
 
   return parseActionDueDate(description, referenceDate);

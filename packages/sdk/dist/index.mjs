@@ -1,6 +1,26 @@
 import { useQueryClient, useQuery, useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 
+// src/models/action.ts
+var FOLLOW_UP_CATEGORY_LABELS = {
+  clinic_follow_up: "Clinic Follow-Up",
+  return_to_clinic: "Return to Clinic",
+  nurse_visit: "Nurse Visit",
+  lab_draw: "Lab Draw",
+  imaging_appointment: "Imaging",
+  stress_test: "Stress Test",
+  cardiac_testing: "Cardiac Testing",
+  specialist_referral: "Specialist Referral",
+  medication_review: "Medication Review",
+  contact_clinic: "Contact Clinic",
+  procedure: "Procedure",
+  other: "Other"
+};
+function getFollowUpCategoryLabel(type) {
+  if (!type) return null;
+  return FOLLOW_UP_CATEGORY_LABELS[type] ?? null;
+}
+
 // src/models/error.ts
 function isApiError(error) {
   return error instanceof Error && "status" in error;
@@ -942,4 +962,4 @@ function useFirestoreDocument(docRef, key, options) {
   });
 }
 
-export { configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { FOLLOW_UP_CATEGORY_LABELS, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

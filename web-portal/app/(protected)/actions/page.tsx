@@ -25,6 +25,9 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  FileText,
   Trash2,
   Pencil,
 } from 'lucide-react';
@@ -44,6 +47,7 @@ import { db } from '@/lib/firebase';
 import { addDoc, collection, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { downloadActionAsICS } from '@/lib/calendar';
+import { getFollowUpCategoryLabel } from '@lumimd/sdk';
 
 export default function ActionsPage() {
   const user = useCurrentUser();
@@ -840,10 +844,15 @@ function ActionCard({
   onDelete?: () => void;
   isReadOnly?: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = React.useState(false);
   const isCompleted = action.completed === true;
   const dueDate = action.dueAt ? new Date(action.dueAt) : null;
   const isOverdue = dueDate && dueDate < new Date() && !isCompleted;
   const descriptionText = getActionTitle(action.description);
+  const typeLabel = getFollowUpCategoryLabel(action.type);
+  const hasExpandableDetail = Boolean(
+    typeLabel || action.details || (action.source === 'visit' && action.visitId),
+  );
   const notesText =
     typeof action.notes === 'string' && action.notes.trim().length ? action.notes.trim() : '';
   const tooltipClassName =
@@ -908,7 +917,15 @@ function ActionCard({
         </button>
 
         {/* Content */}
-        <div className="flex-1 min-w-0 space-y-2.5 sm:space-y-3">
+        <div
+          className={cn(
+            'flex-1 min-w-0 space-y-2.5 sm:space-y-3',
+            hasExpandableDetail && 'cursor-pointer',
+          )}
+          onClick={() => {
+            if (hasExpandableDetail) setIsExpanded(!isExpanded);
+          }}
+        >
           {/* Title and Notes */}
           <div className="space-y-1.5">
             {showDescriptionTooltip ? (
@@ -994,6 +1011,54 @@ function ActionCard({
               </span>
             )}
           </div>
+
+          {/* Expandable detail */}
+          {hasExpandableDetail && isExpanded && (
+            <div className="space-y-3 animate-fade-in-up pt-1">
+              {typeLabel && (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-brand-primary-pale px-3 py-1 text-xs font-semibold text-brand-primary">
+                    {typeLabel}
+                  </span>
+                </div>
+              )}
+              {action.details && (
+                <div className="rounded-2xl border border-border-light bg-background-subtle/40 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">
+                    Evidence / Details
+                  </p>
+                  <p className="text-sm text-text-primary leading-relaxed">
+                    {action.details}
+                  </p>
+                </div>
+              )}
+              {action.source === 'visit' && action.visitId && (
+                <a
+                  href={`/visits/${action.visitId}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-primary hover:text-brand-primary-dark transition-colors"
+                >
+                  <FileText className="h-4 w-4" />
+                  View source visit
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Collapsed hint */}
+          {hasExpandableDetail && !isExpanded && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(true);
+              }}
+              className="text-xs text-brand-primary font-semibold hover:text-brand-primary-dark transition-colors flex items-center gap-1"
+            >
+              <span>More details</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          )}
 
           {/* Actions Menu */}
           <div className="flex items-center gap-2 pt-1">

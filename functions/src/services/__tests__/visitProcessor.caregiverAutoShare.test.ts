@@ -155,10 +155,12 @@ function buildHarness(options: HarnessOptions = {}) {
       }
 
       if (name === 'actions') {
+        const buildActionQuery = (): any => ({
+          where: jest.fn(() => buildActionQuery()),
+          get: jest.fn(async () => ({ docs: existingActionDocs })),
+        });
         return {
-          where: jest.fn(() => ({
-            get: jest.fn(async () => ({ docs: existingActionDocs })),
-          })),
+          ...buildActionQuery(),
           doc: jest.fn(() => ({
             id: `action-${++actionDocCounter}`,
           })),

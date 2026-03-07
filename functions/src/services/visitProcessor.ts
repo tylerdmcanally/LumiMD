@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { getOpenAIService } from './openai';
-import type { FollowUpItem, VisitSummaryResult } from './openai';
+import type { FollowUpItem, FollowUpCategory, VisitSummaryResult } from './openai';
 import { MedicationDomainService } from './domain/medications/MedicationDomainService';
 import { UserDomainService } from './domain/users/UserDomainService';
 import { normalizeMedicationSummary, computePendingMedicationChanges } from './medicationSync';
@@ -44,6 +44,8 @@ interface SummarizeVisitOptions {
 interface ActionDraft {
   description: string;
   dueAt: Date | null;
+  type: FollowUpCategory | null;
+  details: string | null;
 }
 
 interface ExistingMedicationRecord {
@@ -240,7 +242,12 @@ const buildActionDrafts = (
         timeframe: followUp.timeframe,
         referenceDate,
       });
-      drafts.push({ description, dueAt });
+      drafts.push({
+        description,
+        dueAt,
+        type: followUp.type || null,
+        details: followUp.details || null,
+      });
     });
     return drafts;
   }
@@ -255,7 +262,7 @@ const buildActionDrafts = (
       description,
       referenceDate,
     });
-    drafts.push({ description, dueAt });
+    drafts.push({ description, dueAt, type: null, details: null });
   });
 
   return drafts;
@@ -372,9 +379,14 @@ export async function summarizeVisit({
         completed: false,
         completedAt: null,
         notes: '',
+        source: 'visit',
+        type: draft.type,
+        details: draft.details,
         createdAt: processedAt,
         updatedAt: processedAt,
         dueAt: draft.dueAt ? admin.firestore.Timestamp.fromDate(draft.dueAt) : null,
+        deletedAt: null,
+        deletedBy: null,
       })),
     });
 

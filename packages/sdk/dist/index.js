@@ -3,6 +3,26 @@
 var reactQuery = require('@tanstack/react-query');
 var react = require('react');
 
+// src/models/action.ts
+var FOLLOW_UP_CATEGORY_LABELS = {
+  clinic_follow_up: "Clinic Follow-Up",
+  return_to_clinic: "Return to Clinic",
+  nurse_visit: "Nurse Visit",
+  lab_draw: "Lab Draw",
+  imaging_appointment: "Imaging",
+  stress_test: "Stress Test",
+  cardiac_testing: "Cardiac Testing",
+  specialist_referral: "Specialist Referral",
+  medication_review: "Medication Review",
+  contact_clinic: "Contact Clinic",
+  procedure: "Procedure",
+  other: "Other"
+};
+function getFollowUpCategoryLabel(type) {
+  if (!type) return null;
+  return FOLLOW_UP_CATEGORY_LABELS[type] ?? null;
+}
+
 // src/models/error.ts
 function isApiError(error) {
   return error instanceof Error && "status" in error;
@@ -944,10 +964,12 @@ function useFirestoreDocument(docRef, key, options) {
   });
 }
 
+exports.FOLLOW_UP_CATEGORY_LABELS = FOLLOW_UP_CATEGORY_LABELS;
 exports.configureFirestoreRealtime = configureFirestoreRealtime;
 exports.convertValue = convertValue;
 exports.createApiClient = createApiClient;
 exports.createApiHooks = createApiHooks;
+exports.getFollowUpCategoryLabel = getFollowUpCategoryLabel;
 exports.isApiError = isApiError;
 exports.queryKeys = queryKeys;
 exports.serializeDoc = serializeDoc;

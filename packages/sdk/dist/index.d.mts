@@ -179,6 +179,14 @@ interface Medication {
 /**
  * Action Item Model
  */
+
+interface CalendarEventEntry {
+    platform?: string;
+    calendarId?: string | null;
+    eventId: string;
+    addedAt?: string;
+    removedAt?: string;
+}
 interface ActionItem {
     id: string;
     userId: string;
@@ -191,8 +199,19 @@ interface ActionItem {
     updatedAt?: string | null;
     source?: 'manual' | 'visit';
     notes?: string | null;
+    type?: FollowUpCategory | null;
+    details?: string | null;
+    calendarEvents?: Record<string, CalendarEventEntry> | null;
     [key: string]: unknown;
 }
+/**
+ * Human-readable labels for each FollowUpCategory value.
+ */
+declare const FOLLOW_UP_CATEGORY_LABELS: Record<string, string>;
+/**
+ * Returns the human-readable label for a FollowUpCategory, or null if not found.
+ */
+declare function getFollowUpCategoryLabel(type: FollowUpCategory | string | null | undefined): string | null;
 
 /**
  * User Profile Model
@@ -678,4 +697,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CalendarEventEntry, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, FOLLOW_UP_CATEGORY_LABELS, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

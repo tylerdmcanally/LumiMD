@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
@@ -24,6 +25,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { addActionToCalendar, removeCalendarEvent } from '../lib/calendar';
 import { api } from '../lib/api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { getFollowUpCategoryLabel } from '@lumimd/sdk';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';
@@ -46,6 +48,7 @@ export default function ActionsScreen() {
   const router = useRouter();
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [showCompleted, setShowCompleted] = useState(false);
+  const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const platformKey = Platform.OS === 'ios' ? 'ios' : 'android';
 
@@ -104,6 +107,7 @@ export default function ActionsScreen() {
   }, [actions]);
 
   const handleToggle = (action: any) => {
+    setExpandedActionId(null);
     toggleAction({
       id: action.id,
       completed: !action.completed,
@@ -213,53 +217,103 @@ export default function ActionsScreen() {
     const platformEvent = action.calendarEvents?.[platformKey];
     const isInCalendar = Boolean(platformEvent && !platformEvent.removedAt);
 
+    const typeLabel = getFollowUpCategoryLabel(action.type);
+    const hasExpandableDetail = Boolean(
+      typeLabel || action.details || (action.source === 'visit' && action.visitId),
+    );
+    const isItemExpanded = expandedActionId === action.id;
+
     return (
-      <View key={action.id} style={[styles.actionRow, !isLast && styles.rowDivider]}>
-        <Pressable
-          onPress={() => handleToggle(action)}
-          style={styles.actionMainContent}
-        >
-          <View style={styles.actionIcon}>
+      <View key={action.id} style={[!isLast && styles.rowDivider]}>
+        <View style={styles.actionRow}>
+          {/* Checkbox — toggles completion */}
+          <Pressable
+            onPress={() => handleToggle(action)}
+            style={styles.actionIcon}
+            hitSlop={8}
+          >
             <Ionicons
               name={action.completed ? 'checkmark-circle' : 'ellipse-outline'}
               size={24}
               color={action.completed ? Colors.success : Colors.primary}
             />
-          </View>
-          <View style={styles.actionContent}>
-            <Text style={[styles.actionTitle, action.completed && styles.actionTitleCompleted]}>
-              {displayTitle}
-            </Text>
-            <Text style={styles.actionMeta}>
-              {action.completed
-                ? `Completed ${formatDate(action.completedAt)}`
-                : dueDate
-                  ? `Due on ${dueDate}`
-                  : visitDate
-                    ? `From visit on ${visitDate}`
-                    : 'Tap to mark complete'}
-            </Text>
-          </View>
-          <Ionicons
-            name={action.completed ? 'arrow-undo' : 'checkmark'}
-            size={20}
-            color={Colors.textMuted}
-          />
-        </Pressable>
-        {!action.completed && hasDueDate && (
-          <Pressable
-            onPress={() =>
-              isInCalendar ? handleRemoveFromCalendar(action) : handleAddToCalendar(action)
-            }
-            style={styles.calendarButton}
-            hitSlop={8}
-          >
-            <Ionicons
-              name={isInCalendar ? 'calendar' : 'calendar-outline'}
-              size={20}
-              color={isInCalendar ? Colors.success : Colors.primary}
-            />
           </Pressable>
+
+          {/* Content area — tap to expand/collapse */}
+          <Pressable
+            onPress={() => {
+              if (!hasExpandableDetail) return;
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setExpandedActionId((prev) => (prev === action.id ? null : action.id));
+            }}
+            style={styles.actionMainContent}
+          >
+            <View style={styles.actionContent}>
+              <Text style={[styles.actionTitle, action.completed && styles.actionTitleCompleted]}>
+                {displayTitle}
+              </Text>
+              <View style={styles.actionMetaRow}>
+                <Text style={styles.actionMeta}>
+                  {action.completed
+                    ? `Completed ${formatDate(action.completedAt)}`
+                    : dueDate
+                      ? `Due on ${dueDate}`
+                      : visitDate
+                        ? `From visit on ${visitDate}`
+                        : 'Tap to mark complete'}
+                </Text>
+                {hasExpandableDetail && (
+                  <Ionicons
+                    name={isItemExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color={Colors.textMuted}
+                  />
+                )}
+              </View>
+            </View>
+          </Pressable>
+
+          {/* Calendar button */}
+          {!action.completed && hasDueDate && (
+            <Pressable
+              onPress={() =>
+                isInCalendar ? handleRemoveFromCalendar(action) : handleAddToCalendar(action)
+              }
+              style={styles.calendarButton}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={isInCalendar ? 'calendar' : 'calendar-outline'}
+                size={20}
+                color={isInCalendar ? Colors.success : Colors.primary}
+              />
+            </Pressable>
+          )}
+        </View>
+
+        {/* Expanded detail */}
+        {isItemExpanded && (
+          <View style={styles.expandedDetail}>
+            {typeLabel && (
+              <View style={styles.detailPill}>
+                <Text style={styles.detailPillText}>{typeLabel}</Text>
+              </View>
+            )}
+            {action.details && (
+              <Text style={styles.detailText}>{action.details}</Text>
+            )}
+            {action.source === 'visit' && action.visitId && (
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: '/visit-detail', params: { id: action.visitId } })
+                }
+                style={styles.visitLink}
+              >
+                <Ionicons name="document-text-outline" size={14} color={Colors.primary} />
+                <Text style={styles.visitLinkText}>View source visit</Text>
+              </Pressable>
+            )}
+          </View>
         )}
       </View>
     );
@@ -492,9 +546,7 @@ const styles = StyleSheet.create({
   },
   actionMainContent: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(3),
+    gap: spacing(1),
   },
   actionIcon: {
     width: 28,
@@ -503,6 +555,11 @@ const styles = StyleSheet.create({
   actionContent: {
     flex: 1,
     gap: spacing(1),
+  },
+  actionMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
   },
   calendarButton: {
     padding: spacing(2),
@@ -549,6 +606,40 @@ const styles = StyleSheet.create({
   },
   loadMoreText: {
     fontSize: 14,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
+  },
+  expandedDetail: {
+    paddingLeft: 28 + spacing(3),
+    paddingBottom: spacing(3),
+    gap: spacing(2),
+  },
+  detailPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(64,201,208,0.12)',
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(1),
+    borderRadius: 999,
+  },
+  detailPillText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
+  },
+  detailText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+    lineHeight: 19,
+  },
+  visitLink: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing(1.5),
+    marginTop: spacing(1),
+  },
+  visitLinkText: {
+    fontSize: 13,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
