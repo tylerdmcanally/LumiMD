@@ -148,6 +148,7 @@ function formatMedicationReferenceList(list: string[]): string {
 
 export interface VisitSummaryResult {
   summary: string;
+  caregiverSummary: string;
   diagnoses: string[];
   diagnosesDetailed?: DiagnosisDetail[];
   medications: {
@@ -189,6 +190,7 @@ interface StructuredVisitExtraction {
 
 interface SummaryStageOutput {
   summary: string;
+  caregiverSummary: string;
   nextSteps: string[];
   education: VisitSummaryResult['education'];
   validationWarnings: string[];
@@ -197,6 +199,7 @@ interface SummaryStageOutput {
 
 const defaultSummaryResult = (model = 'unknown'): VisitSummaryResult => ({
   summary: '',
+  caregiverSummary: '',
   diagnoses: [],
   diagnosesDetailed: [],
   medications: {
@@ -1532,6 +1535,7 @@ export class OpenAIService {
 
       return {
         summary: typeof record.summary === 'string' ? record.summary.trim() : '',
+        caregiverSummary: typeof record.caregiverSummary === 'string' ? record.caregiverSummary.trim() : '',
         nextSteps: ensureArrayOfStrings(record.nextSteps),
         education: ensureEducationObject(record.education),
         validationWarnings,
@@ -1605,6 +1609,7 @@ export class OpenAIService {
         );
         summaryStage = {
           summary: '',
+          caregiverSummary: '',
           nextSteps: [],
           education: {
             diagnoses: [],
@@ -1649,6 +1654,7 @@ export class OpenAIService {
 
       const result: VisitSummaryResult = {
         summary: summaryStage.summary,
+        caregiverSummary: summaryStage.caregiverSummary,
         diagnoses: extraction.diagnoses,
         diagnosesDetailed: extraction.diagnosesDetailed,
         medications: refinedMedications,
@@ -1782,6 +1788,7 @@ export class OpenAIService {
 
       return {
         summary: typeof record.summary === 'string' ? record.summary.trim() : '',
+        caregiverSummary: typeof record.caregiverSummary === 'string' ? record.caregiverSummary.trim() : '',
         diagnoses,
         diagnosesDetailed,
         medications: refinedMedications,

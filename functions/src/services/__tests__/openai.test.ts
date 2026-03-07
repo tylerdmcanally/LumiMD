@@ -67,6 +67,7 @@ describe('OpenAI Service Utilities', () => {
         it('should have correct structure', () => {
             const result: VisitSummaryResult = {
                 summary: 'Patient discussed blood pressure management',
+                caregiverSummary: 'Patient presented for follow-up of chronic hypertension and type 2 diabetes.',
                 diagnoses: ['Hypertension', 'Type 2 Diabetes'],
                 diagnosesDetailed: [
                     { name: 'Hypertension', status: 'chronic', confidence: 'high' },

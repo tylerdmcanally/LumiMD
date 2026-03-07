@@ -330,6 +330,7 @@ export async function summarizeVisit({
 
     batch.update(visitRef, {
       summary: summary.summary,
+      caregiverSummary: summary.caregiverSummary,
       diagnoses: summary.diagnoses,
       diagnosesDetailed: summary.diagnosesDetailed,
       medications: normalizedMedications,

@@ -473,6 +473,7 @@ nudgesDebugRouter.post('/debug/analyze-visit', requireAuth, async (req: AuthRequ
         // Build summary from visit data
         const summary = {
             summary: visitData.summary || '',
+            caregiverSummary: visitData.caregiverSummary || '',
             diagnoses: visitData.diagnoses || [],
             medications: visitData.medications || { started: [], changed: [], stopped: [], continued: [] },
             nextSteps: visitData.nextSteps || [],

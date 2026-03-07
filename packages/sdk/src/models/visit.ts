@@ -14,6 +14,7 @@ export interface Visit {
   status?: string;
   processingStatus?: string;
   summary?: string | null;
+  caregiverSummary?: string | null;
   transcript?: string | null;
   transcriptText?: string | null;
   notes?: string | null;

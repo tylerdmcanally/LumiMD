@@ -19,6 +19,10 @@ import {
   RefreshCw,
   FileText,
   Pencil,
+  Eye,
+  BookOpen,
+  Info,
+  AlertTriangle,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
@@ -125,6 +129,10 @@ export default function CareVisitDetailPage() {
       setLocalOverrides(null);
     }
   }, [visitData]);
+
+  // Summary view toggle: 'clinical' (caregiverSummary) or 'patient' (patient summary)
+  const [summaryView, setSummaryView] = React.useState<'clinical' | 'patient'>('clinical');
+  const hasCaregiverSummary = Boolean(visit?.caregiverSummary?.trim());
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
@@ -463,11 +471,42 @@ export default function CareVisitDetailPage() {
                   Key takeaways generated from the visit recording.
                 </p>
               </div>
+              {/* Toggle: Clinical ↔ Patient View */}
+              {hasCaregiverSummary && (
+                <div className="flex items-center gap-1 rounded-full border border-border-light/60 bg-white/70 p-1 shadow-sm backdrop-blur-sm">
+                  <button
+                    onClick={() => setSummaryView('clinical')}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all',
+                      summaryView === 'clinical'
+                        ? 'bg-brand-primary text-white shadow-sm'
+                        : 'text-text-secondary hover:text-text-primary',
+                    )}
+                  >
+                    <Stethoscope className="h-3 w-3" />
+                    Clinical
+                  </button>
+                  <button
+                    onClick={() => setSummaryView('patient')}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all',
+                      summaryView === 'patient'
+                        ? 'bg-brand-primary text-white shadow-sm'
+                        : 'text-text-secondary hover:text-text-primary',
+                    )}
+                  >
+                    <Eye className="h-3 w-3" />
+                    Patient View
+                  </button>
+                </div>
+              )}
             </div>
-            {visit.summary ? (
+            {visit.summary || visit.caregiverSummary ? (
               <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur-sm">
                 <p className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap">
-                  {visit.summary}
+                  {hasCaregiverSummary && summaryView === 'clinical'
+                    ? visit.caregiverSummary
+                    : visit.summary}
                 </p>
               </div>
             ) : (
@@ -477,6 +516,9 @@ export default function CareVisitDetailPage() {
             )}
           </div>
         </Card>
+
+        {/* Education Card */}
+        <EducationSection education={(visit as any).education} />
 
         {/* Two Column Layout for Action Items and Diagnoses */}
         <section className="grid gap-6 lg:grid-cols-2">
@@ -797,6 +839,105 @@ function HighlightCard({
         {value}
       </div>
     </button>
+  );
+}
+
+function EducationSection({ education }: { education?: Record<string, unknown> | null }) {
+  if (!education || typeof education !== 'object') return null;
+
+  const diagnosisEdu = Array.isArray(education.diagnoses) ? education.diagnoses : [];
+  const medicationEdu = Array.isArray(education.medications) ? education.medications : [];
+
+  if (diagnosisEdu.length === 0 && medicationEdu.length === 0) return null;
+
+  return (
+    <Card variant="elevated" padding="none" className="overflow-hidden">
+      <div className="border-b border-border-light bg-background-subtle/50 px-5 py-4">
+        <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+          <BookOpen className="h-5 w-5 text-brand-primary" />
+          Patient Education
+        </h2>
+        <p className="text-sm text-text-secondary mt-1">
+          AI-generated reference information about conditions and medications
+        </p>
+      </div>
+      <div className="p-5 space-y-6">
+        {/* Diagnosis education */}
+        {diagnosisEdu.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
+              <Stethoscope className="h-4 w-4 text-text-muted" />
+              Conditions
+            </h3>
+            <div className="space-y-3">
+              {diagnosisEdu.map((dx: any, idx: number) => (
+                <div
+                  key={`edu-dx-${idx}`}
+                  className="rounded-2xl border border-border-light/60 bg-background-subtle/70 p-4 shadow-sm"
+                >
+                  <p className="font-medium text-text-primary mb-1">{dx.name || 'Condition'}</p>
+                  {dx.summary && (
+                    <p className="text-sm text-text-secondary leading-relaxed mb-2">{dx.summary}</p>
+                  )}
+                  {dx.watchFor && (
+                    <div className="flex items-start gap-2 mt-2 rounded-xl bg-warning-light/40 border border-warning/20 px-3 py-2">
+                      <AlertTriangle className="h-4 w-4 text-warning-dark mt-0.5 shrink-0" />
+                      <p className="text-xs text-warning-dark leading-relaxed">{dx.watchFor}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Medication education */}
+        {medicationEdu.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
+              <Pill className="h-4 w-4 text-success" />
+              Medications
+            </h3>
+            <div className="space-y-3">
+              {medicationEdu.map((med: any, idx: number) => (
+                <div
+                  key={`edu-med-${idx}`}
+                  className="rounded-2xl border border-border-light/60 bg-background-subtle/70 p-4 shadow-sm"
+                >
+                  <p className="font-medium text-text-primary mb-2">{med.name || 'Medication'}</p>
+                  <div className="space-y-1.5">
+                    {med.purpose && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <Info className="h-3.5 w-3.5 text-brand-primary mt-0.5 shrink-0" />
+                        <span className="text-text-secondary"><span className="font-medium text-text-primary">Purpose:</span> {med.purpose}</span>
+                      </div>
+                    )}
+                    {med.usage && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <Info className="h-3.5 w-3.5 text-brand-primary mt-0.5 shrink-0" />
+                        <span className="text-text-secondary"><span className="font-medium text-text-primary">Usage:</span> {med.usage}</span>
+                      </div>
+                    )}
+                    {med.sideEffects && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
+                        <span className="text-text-secondary"><span className="font-medium text-text-primary">Side effects:</span> {med.sideEffects}</span>
+                      </div>
+                    )}
+                  </div>
+                  {med.whenToCallDoctor && (
+                    <div className="flex items-start gap-2 mt-2 rounded-xl bg-error-light/40 border border-error/20 px-3 py-2">
+                      <AlertCircle className="h-4 w-4 text-error mt-0.5 shrink-0" />
+                      <p className="text-xs text-error leading-relaxed">{med.whenToCallDoctor}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

@@ -1383,6 +1383,7 @@ export type CareVisitSummary = {
   specialty?: string | null;
   location?: string | null;
   summary?: string | null;
+  caregiverSummary?: string | null;
   diagnoses?: string[];
   diagnosesDetailed?: Array<Record<string, unknown>>;
   medications?: Record<string, unknown>;

@@ -165,6 +165,7 @@ function buildSummaryForRetry(visitData: FirebaseFirestore.DocumentData): VisitS
 
   return {
     summary: typeof visitData.summary === 'string' ? visitData.summary : '',
+    caregiverSummary: typeof visitData.caregiverSummary === 'string' ? visitData.caregiverSummary : '',
     diagnoses: ensureStringArray(visitData.diagnoses),
     diagnosesDetailed: Array.isArray(visitData.diagnosesDetailed)
       ? (visitData.diagnosesDetailed as VisitSummaryResult['diagnosesDetailed'])
