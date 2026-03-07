@@ -1,6 +1,9 @@
 /**
  * Visit Detail Screen
- * Displays AI-generated summary, transcript, and action items for a visit
+ * Summary-first single-scroll layout with inline education content.
+ * The AI-generated summary is the hero element; structured data follows
+ * with expandable patient education. Transcript and medication review
+ * are collapsed by default as secondary content.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -13,6 +16,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  LayoutAnimation,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,23 +24,23 @@ import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useQueryClient } from '@tanstack/react-query';
-import { Colors, Card, spacing } from '../components/ui';
+import { Colors, Card, spacing, Radius } from '../components/ui';
 import { useVisit, queryKeys } from '../lib/api/hooks';
 import { api } from '../lib/api/client';
 import { openWebDashboard } from '../lib/linking';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MedicationReviewSheet } from '../components/MedicationReviewSheet';
+import { CollapsibleSection } from '../components/CollapsibleSection';
+import { DiagnosisEducationCard, MedicationEducationCard } from '../components/EducationCard';
+import {
+  normalizeEducationKey,
+  buildDiagnosisEducationMap,
+  buildMedicationEducationMap,
+} from '../lib/utils/educationHelpers';
 import { trackEvent } from '../lib/telemetry';
 
 dayjs.extend(relativeTime);
 
-type TabKey = 'summary' | 'transcript' | 'actions';
-
-const tabs: Array<{ key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
-  { key: 'summary', label: 'Summary', icon: 'reader' },
-  { key: 'transcript', label: 'Transcript', icon: 'document-text' },
-  { key: 'actions', label: 'Next Steps', icon: 'checkmark-circle' },
-];
 type VisitDetailRefreshSource = 'pull_to_refresh' | 'error_fallback';
 
 function getStatusBadge(status: string | undefined) {
@@ -106,7 +110,7 @@ const buildMedicationEntry = (item: any): MedicationListEntry | null => {
         parts.push(note);
       }
       if (parts.length > 0) {
-        secondary = parts.join(' • ');
+        secondary = parts.join(' \u2022 ');
       } else if (original && original !== primary) {
         secondary = original;
       }
@@ -135,13 +139,13 @@ const formatFollowUpEntry = (item: any): string | null => {
   const dueAt = sanitizeMedicationText(item.dueAt);
 
   if (timeframe) {
-    return `${task} — ${timeframe}`;
+    return `${task} \u2014 ${timeframe}`;
   }
 
   if (dueAt) {
     const parsed = dayjs(dueAt);
     const dateLabel = parsed.isValid() ? parsed.format('MMM D, YYYY') : dueAt;
-    return `${task} — by ${dateLabel}`;
+    return `${task} \u2014 by ${dateLabel}`;
   }
 
   return task;
@@ -160,14 +164,19 @@ const formatOrderedTestEntry = (item: any): string | null => {
 
 function SummarySection({
   title,
+  icon,
   children,
 }: {
   title: string;
+  icon?: keyof typeof Ionicons.glyphMap;
   children: React.ReactNode;
 }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionTitleRow}>
+        {icon && <Ionicons name={icon} size={18} color={Colors.primary} style={{ marginRight: spacing(2) }} />}
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
       <Card style={styles.sectionCard}>{children}</Card>
     </View>
   );
@@ -178,7 +187,6 @@ export default function VisitDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const visitId = params.id;
 
-  const [activeTab, setActiveTab] = useState<TabKey>('summary');
   const [retrying, setRetrying] = useState(false);
   const [showMedicationReview, setShowMedicationReview] = useState(false);
   const hadLoadFailureRef = useRef(false);
@@ -323,6 +331,36 @@ export default function VisitDetailScreen() {
     };
   }, [(visit as any)?.medicationReview]);
 
+  // Education maps for inline learning content
+  const diagnosisEducationMap = useMemo(
+    () => buildDiagnosisEducationMap((visit as any)?.education),
+    [(visit as any)?.education],
+  );
+
+  const medicationEducationMap = useMemo(
+    () => buildMedicationEducationMap((visit as any)?.education),
+    [(visit as any)?.education],
+  );
+
+  // Key highlight counts for the at-a-glance bar
+  const highlightCounts = useMemo(() => {
+    const totalMeds = medications.started.length + medications.stopped.length + medications.changed.length;
+    return {
+      diagnoses: diagnoses.length,
+      medications: totalMeds,
+      actions: actionItems.length,
+      tests: orderedTests.length,
+    };
+  }, [diagnoses, medications, actionItems, orderedTests]);
+
+  const hasMedReviewContent =
+    medicationReview.reviewed ||
+    medicationReview.continuedReviewed.length > 0 ||
+    medicationReview.concerns.length > 0 ||
+    medicationReview.sideEffects.length > 0 ||
+    medicationReview.notes.length > 0 ||
+    medicationReview.followUpNeeded;
+
   const isProcessing =
     visit?.processingStatus && processingStates.includes(visit.processingStatus);
 
@@ -347,9 +385,9 @@ export default function VisitDetailScreen() {
       case 'processing':
         return 'Processing your visit. This usually takes under a minute.';
       case 'transcribing':
-        return 'Transcribing your visit audio…';
+        return 'Transcribing your visit audio\u2026';
       case 'summarizing':
-        return 'Summarizing the key points…';
+        return 'Summarizing the key points\u2026';
       default:
         return null;
     }
@@ -384,7 +422,7 @@ export default function VisitDetailScreen() {
       });
       Alert.alert(
         'Retry started',
-        'We’ll reprocess this visit now. This usually takes under a minute.'
+        'We\u2019ll reprocess this visit now. This usually takes under a minute.'
       );
       await refetch();
     } catch (error) {
@@ -426,10 +464,18 @@ export default function VisitDetailScreen() {
     void refetch();
   }, [hasLoadFailure, refetch]);
 
+  // Provider / specialty meta line
+  const providerLine = useMemo(() => {
+    const parts: string[] = [];
+    if (visit?.provider) parts.push(visit.provider as string);
+    if (visit?.specialty) parts.push(visit.specialty as string);
+    return parts.length > 0 ? parts.join(' \u2022 ') : null;
+  }, [visit?.provider, visit?.specialty]);
+
   return (
     <ErrorBoundary
       title="Unable to open visit details"
-      description="We couldn’t load this visit. Pull to refresh or go back and try again."
+      description="We couldn't load this visit. Pull to refresh or go back and try again."
     >
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <View style={styles.header}>
@@ -494,24 +540,22 @@ export default function VisitDetailScreen() {
                 />
               }
             >
+              {/* Meta bar */}
               <View style={styles.metaContainer}>
                 <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Recorded</Text>
-                  <Text style={styles.metaValue}>
-                    {visit.createdAt ? dayjs(visit.createdAt).format('MMM D, YYYY h:mm A') : 'Unknown'}
+                  <Text style={styles.metaLabel}>
+                    {visit.createdAt ? dayjs(visit.createdAt).format('MMM D, YYYY h:mm A') : 'Unknown date'}
                   </Text>
-                </View>
-                {visit.processedAt && (
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaLabel}>Processed</Text>
-                    <Text style={styles.metaValue}>{dayjs(visit.processedAt).fromNow()}</Text>
+                  <View style={[styles.badge, { backgroundColor: statusBadge.color }]}>
+                    <Text style={styles.badgeText}>{statusBadge.label}</Text>
                   </View>
-                )}
-                <View style={[styles.badge, { backgroundColor: statusBadge.color }]}>
-                  <Text style={styles.badgeText}>{statusBadge.label}</Text>
                 </View>
+                {providerLine && (
+                  <Text style={styles.providerLine}>{providerLine}</Text>
+                )}
               </View>
 
+              {/* Processing / stuck / failure banners — UNCHANGED */}
               {isProcessing && processingMessage && (
                 <View style={styles.processingBanner}>
                   <ActivityIndicator color={Colors.warning} />
@@ -540,8 +584,8 @@ export default function VisitDetailScreen() {
                     <View style={{ flex: 1, gap: spacing(1) }}>
                       <Text style={styles.failureTitle}>
                         {visit.processingStatus === 'failed'
-                          ? 'We couldn’t process this visit'
-                          : 'Processing hasn’t started yet'}
+                          ? 'We couldn\u2019t process this visit'
+                          : 'Processing hasn\u2019t started yet'}
                       </Text>
                       <Text style={styles.failureText}>
                         {visit.processingStatus === 'failed'
@@ -564,7 +608,7 @@ export default function VisitDetailScreen() {
                       ) : isProcessing ? (
                         <View style={styles.retryButtonContent}>
                           <ActivityIndicator size="small" color="#fff" />
-                          <Text style={styles.retryButtonText}>Processing…</Text>
+                          <Text style={styles.retryButtonText}>Processing\u2026</Text>
                         </View>
                       ) : (
                         <Text style={styles.retryButtonText}>
@@ -594,82 +638,131 @@ export default function VisitDetailScreen() {
                 </Pressable>
               )}
 
-              <View style={styles.tabRow}>
-                {tabs.map((tab) => {
-                  const isActive = activeTab === tab.key;
-                  return (
-                    <Pressable
-                      key={tab.key}
-                      style={[
-                        styles.tabButton,
-                        isActive ? styles.tabButtonActive : styles.tabButtonInactive,
-                      ]}
-                      onPress={() => setActiveTab(tab.key)}
-                    >
-                      <Ionicons
-                        name={tab.icon}
-                        size={18}
-                        color={isActive ? '#fff' : Colors.textMuted}
-                      />
-                      <Text
-                        style={[
-                          styles.tabLabel,
-                          { color: isActive ? '#fff' : Colors.textMuted },
-                        ]}
-                      >
-                        {tab.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+              {/* ── PRIMARY ZONE: Summary Hero ── */}
+              <View style={styles.summaryHero}>
+                <View style={styles.summaryHeroHeader}>
+                  <Ionicons name="sparkles" size={20} color={Colors.primary} />
+                  <Text style={styles.summaryHeroTitle}>Your Visit Summary</Text>
+                </View>
+                {visit.summary ? (
+                  <Text style={styles.summaryHeroText}>{visit.summary}</Text>
+                ) : (
+                  <Text style={styles.placeholderText}>
+                    {isProcessing
+                      ? 'Your summary is being generated\u2026'
+                      : 'Summary will appear here once processing is complete.'}
+                  </Text>
+                )}
               </View>
 
-              {activeTab === 'summary' && (
-                <View>
-                  <SummarySection title="Visit Summary">
-                    {visit.summary ? (
-                      <Text style={styles.summaryText}>{visit.summary}</Text>
-                    ) : (
-                      <Text style={styles.placeholderText}>
-                        Summary will appear here once processing is complete.
+              {/* ── KEY HIGHLIGHTS BAR ── */}
+              {(highlightCounts.diagnoses > 0 ||
+                highlightCounts.medications > 0 ||
+                highlightCounts.actions > 0 ||
+                highlightCounts.tests > 0) && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.highlightsBar}
+                  contentContainerStyle={styles.highlightsBarContent}
+                >
+                  {highlightCounts.diagnoses > 0 && (
+                    <View style={styles.highlightChip}>
+                      <Ionicons name="medical" size={14} color={Colors.primary} />
+                      <Text style={styles.highlightChipText}>
+                        {highlightCounts.diagnoses} {highlightCounts.diagnoses === 1 ? 'Diagnosis' : 'Diagnoses'}
                       </Text>
-                    )}
-                  </SummarySection>
+                    </View>
+                  )}
+                  {highlightCounts.medications > 0 && (
+                    <View style={styles.highlightChip}>
+                      <Ionicons name="medkit" size={14} color={Colors.primary} />
+                      <Text style={styles.highlightChipText}>
+                        {highlightCounts.medications} Med {highlightCounts.medications === 1 ? 'Change' : 'Changes'}
+                      </Text>
+                    </View>
+                  )}
+                  {highlightCounts.actions > 0 && (
+                    <View style={styles.highlightChip}>
+                      <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
+                      <Text style={styles.highlightChipText}>
+                        {highlightCounts.actions} {highlightCounts.actions === 1 ? 'Action' : 'Actions'}
+                      </Text>
+                    </View>
+                  )}
+                  {highlightCounts.tests > 0 && (
+                    <View style={styles.highlightChip}>
+                      <Ionicons name="flask" size={14} color={Colors.primary} />
+                      <Text style={styles.highlightChipText}>
+                        {highlightCounts.tests} {highlightCounts.tests === 1 ? 'Test' : 'Tests'} Ordered
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+              )}
 
-                  <SummarySection title="Diagnoses Discussed">
-                    {diagnoses.length > 0 ? (
-                      diagnoses.map((item, idx) => (
-                        <View key={idx} style={styles.listRow}>
+              {/* ── STRUCTURED DATA: Action Items ── */}
+              {actionItems.length > 0 && (
+                <SummarySection title="Action Items" icon="checkmark-circle">
+                  {actionItems.map((item, idx) => (
+                    <View key={idx} style={styles.listRow}>
+                      <Ionicons name="ellipse-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.listRowText}>{item}</Text>
+                    </View>
+                  ))}
+                  <Pressable
+                    style={styles.viewAllLink}
+                    onPress={() => router.push('/actions')}
+                  >
+                    <Text style={styles.viewAllLinkText}>View all actions</Text>
+                    <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
+                  </Pressable>
+                </SummarySection>
+              )}
+
+              {/* ── STRUCTURED DATA: Diagnoses + Education ── */}
+              {diagnoses.length > 0 && (
+                <SummarySection title="Diagnoses Discussed" icon="medical">
+                  {diagnoses.map((item, idx) => {
+                    const edu = diagnosisEducationMap.get(normalizeEducationKey(item));
+                    return (
+                      <View key={idx}>
+                        <View style={styles.listRow}>
                           <Ionicons name="medical" size={16} color={Colors.primary} />
                           <Text style={styles.listRowText}>{item}</Text>
                         </View>
-                      ))
-                    ) : (
-                      <Text style={styles.placeholderText}>No diagnoses captured.</Text>
-                    )}
-                  </SummarySection>
+                        {edu && <DiagnosisEducationCard {...edu} />}
+                      </View>
+                    );
+                  })}
+                </SummarySection>
+              )}
 
-                  <SummarySection title="Medications">
-                    {medications.started.length === 0 &&
-                      medications.stopped.length === 0 &&
-                      medications.changed.length === 0 ? (
-                      <Text style={styles.placeholderText}>No medication changes noted.</Text>
-                    ) : (
-                      <View style={{ gap: spacing(3) }}>
-                        {(['started', 'stopped', 'changed'] as Array<keyof typeof medications>).map(
-                          (typedKey) => {
-                            const labelMap: Record<typeof typedKey, string> = {
-                              started: 'Started',
-                              stopped: 'Stopped',
-                              changed: 'Changed',
-                            };
-                            const items = medications[typedKey];
-                            if (!items.length) return null;
-                            return (
-                              <View key={typedKey}>
-                                <Text style={styles.medSubheading}>{labelMap[typedKey]}</Text>
-                                {items.map((item, idx) => (
-                                  <View key={idx} style={styles.listRow}>
+              {/* ── STRUCTURED DATA: Medication Changes + Education ── */}
+              {(medications.started.length > 0 ||
+                medications.stopped.length > 0 ||
+                medications.changed.length > 0) && (
+                <SummarySection title="Medication Changes" icon="medkit">
+                  <View style={{ gap: spacing(3) }}>
+                    {(['started', 'stopped', 'changed'] as Array<keyof typeof medications>).map(
+                      (typedKey) => {
+                        const labelMap: Record<typeof typedKey, string> = {
+                          started: 'Started',
+                          stopped: 'Stopped',
+                          changed: 'Changed',
+                        };
+                        const items = medications[typedKey];
+                        if (!items.length) return null;
+                        return (
+                          <View key={typedKey}>
+                            <Text style={styles.medSubheading}>{labelMap[typedKey]}</Text>
+                            {items.map((item, idx) => {
+                              const edu = medicationEducationMap.get(
+                                normalizeEducationKey(item.primary),
+                              );
+                              return (
+                                <View key={idx}>
+                                  <View style={styles.listRow}>
                                     <Ionicons name="medkit" size={16} color={Colors.primary} />
                                     <View style={styles.listRowContent}>
                                       <Text style={styles.listRowText}>{item.primary}</Text>
@@ -678,141 +771,112 @@ export default function VisitDetailScreen() {
                                       )}
                                     </View>
                                   </View>
-                                ))}
-                              </View>
-                            );
-                          },
-                        )}
-                      </View>
-                    )}
-                  </SummarySection>
-
-                  <SummarySection title="Imaging & Labs Ordered">
-                    {orderedTests.length > 0 ? (
-                      orderedTests.map((item, idx) => (
-                        <View key={idx} style={styles.listRow}>
-                          <Ionicons name="image" size={16} color={Colors.primary} />
-                          <Text style={styles.listRowText}>{item}</Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.placeholderText}>No ordered tests recorded.</Text>
-                    )}
-                  </SummarySection>
-
-                  <SummarySection title="Medication Review">
-                    {!medicationReview.reviewed &&
-                      medicationReview.continuedReviewed.length === 0 &&
-                      medicationReview.concerns.length === 0 &&
-                      medicationReview.sideEffects.length === 0 &&
-                      medicationReview.notes.length === 0 &&
-                      !medicationReview.followUpNeeded ? (
-                      <Text style={styles.placeholderText}>
-                        No medication review details recorded.
-                      </Text>
-                    ) : (
-                      <View style={{ gap: spacing(3) }}>
-                        {medicationReview.continuedReviewed.length > 0 ? (
-                          <View>
-                            <Text style={styles.medSubheading}>Reviewed/Continued</Text>
-                            {medicationReview.continuedReviewed.map((item, idx) => (
-                              <View key={idx} style={styles.listRow}>
-                                <Ionicons name="checkmark-circle-outline" size={16} color={Colors.primary} />
-                                <View style={styles.listRowContent}>
-                                  <Text style={styles.listRowText}>{item.primary}</Text>
-                                  {item.secondary ? (
-                                    <Text style={styles.listRowSubText}>{item.secondary}</Text>
-                                  ) : null}
+                                  {edu && <MedicationEducationCard {...edu} />}
                                 </View>
-                              </View>
-                            ))}
+                              );
+                            })}
                           </View>
-                        ) : null}
+                        );
+                      },
+                    )}
+                  </View>
+                </SummarySection>
+              )}
 
-                        {medicationReview.concerns.length > 0 ? (
-                          <View>
-                            <Text style={styles.medSubheading}>Review Concerns</Text>
-                            {medicationReview.concerns.map((item, idx) => (
-                              <View key={idx} style={styles.listRow}>
-                                <Ionicons name="alert-circle-outline" size={16} color={Colors.warning} />
-                                <Text style={styles.listRowText}>{item}</Text>
-                              </View>
-                            ))}
-                          </View>
-                        ) : null}
+              {/* ── STRUCTURED DATA: Imaging & Labs ── */}
+              {orderedTests.length > 0 && (
+                <SummarySection title="Imaging & Labs Ordered" icon="flask">
+                  {orderedTests.map((item, idx) => (
+                    <View key={idx} style={styles.listRow}>
+                      <Ionicons name="image" size={16} color={Colors.primary} />
+                      <Text style={styles.listRowText}>{item}</Text>
+                    </View>
+                  ))}
+                </SummarySection>
+              )}
 
-                        {medicationReview.sideEffects.length > 0 ? (
-                          <View>
-                            <Text style={styles.medSubheading}>Side Effects Discussed</Text>
-                            {medicationReview.sideEffects.map((item: string, idx: number) => (
-                              <View key={idx} style={styles.listRow}>
-                                <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
-                                <Text style={styles.listRowText}>{item}</Text>
-                              </View>
-                            ))}
+              {/* ── SECONDARY ZONE: Medication Review (collapsed) ── */}
+              {hasMedReviewContent && (
+                <CollapsibleSection
+                  title="Medication Review"
+                  icon="clipboard-outline"
+                  defaultExpanded={false}
+                >
+                  <View style={{ gap: spacing(3) }}>
+                    {medicationReview.continuedReviewed.length > 0 && (
+                      <View>
+                        <Text style={styles.medSubheading}>Reviewed/Continued</Text>
+                        {medicationReview.continuedReviewed.map((item, idx) => (
+                          <View key={idx} style={styles.listRow}>
+                            <Ionicons name="checkmark-circle-outline" size={16} color={Colors.primary} />
+                            <View style={styles.listRowContent}>
+                              <Text style={styles.listRowText}>{item.primary}</Text>
+                              {item.secondary ? (
+                                <Text style={styles.listRowSubText}>{item.secondary}</Text>
+                              ) : null}
+                            </View>
                           </View>
-                        ) : null}
-
-                        {medicationReview.notes.length > 0 ? (
-                          <View>
-                            <Text style={styles.medSubheading}>Review Notes</Text>
-                            {medicationReview.notes.map((item: string, idx: number) => (
-                              <View key={idx} style={styles.listRow}>
-                                <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
-                                <Text style={styles.listRowText}>{item}</Text>
-                              </View>
-                            ))}
-                          </View>
-                        ) : null}
-
-                        {medicationReview.followUpNeeded ? (
-                          <View style={styles.listRow}>
-                            <Ionicons name="time-outline" size={16} color={Colors.warning} />
-                            <Text style={styles.listRowText}>
-                              Medication follow-up is needed.
-                            </Text>
-                          </View>
-                        ) : null}
+                        ))}
                       </View>
                     )}
-                  </SummarySection>
-                </View>
-              )}
 
-              {activeTab === 'transcript' && (
-                <Card style={styles.transcriptCard}>
-                  {visit.transcript ? (
-                    <Text style={styles.transcriptText}>{visit.transcript}</Text>
-                  ) : (
-                    <Text style={styles.placeholderText}>
-                      Transcript will appear here once processing is complete.
-                    </Text>
-                  )}
-                </Card>
-              )}
-
-              {activeTab === 'actions' && (
-                <Card style={styles.actionsCard}>
-                  {actionItems.length > 0 ? (
-                    actionItems.map((item, idx) => (
-                      <View key={idx} style={styles.actionRow}>
-                        <Ionicons name="ellipse-outline" size={16} color={Colors.primary} />
-                        <Text style={styles.actionText}>{item}</Text>
+                    {medicationReview.concerns.length > 0 && (
+                      <View>
+                        <Text style={styles.medSubheading}>Review Concerns</Text>
+                        {medicationReview.concerns.map((item, idx) => (
+                          <View key={idx} style={styles.listRow}>
+                            <Ionicons name="alert-circle-outline" size={16} color={Colors.warning} />
+                            <Text style={styles.listRowText}>{item}</Text>
+                          </View>
+                        ))}
                       </View>
-                    ))
-                  ) : (
-                    <Text style={styles.placeholderText}>
-                      Action items will appear here once processing is complete.
-                    </Text>
-                  )}
-                  <Pressable
-                    style={styles.manageOnWeb}
-                    onPress={openWebDashboard}
-                  >
-                    <Text style={styles.manageOnWebText}>Manage on Web Portal</Text>
-                    <Ionicons name="open-outline" size={18} color={Colors.primary} />
-                  </Pressable>
-                </Card>
+                    )}
+
+                    {medicationReview.sideEffects.length > 0 && (
+                      <View>
+                        <Text style={styles.medSubheading}>Side Effects Discussed</Text>
+                        {medicationReview.sideEffects.map((item: string, idx: number) => (
+                          <View key={idx} style={styles.listRow}>
+                            <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
+                            <Text style={styles.listRowText}>{item}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {medicationReview.notes.length > 0 && (
+                      <View>
+                        <Text style={styles.medSubheading}>Review Notes</Text>
+                        {medicationReview.notes.map((item: string, idx: number) => (
+                          <View key={idx} style={styles.listRow}>
+                            <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
+                            <Text style={styles.listRowText}>{item}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {medicationReview.followUpNeeded && (
+                      <View style={styles.listRow}>
+                        <Ionicons name="time-outline" size={16} color={Colors.warning} />
+                        <Text style={styles.listRowText}>
+                          Medication follow-up is needed.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </CollapsibleSection>
+              )}
+
+              {/* ── SECONDARY ZONE: Full Transcript (collapsed) ── */}
+              {visit.transcript && (
+                <CollapsibleSection
+                  title="Full Transcript"
+                  icon="document-text-outline"
+                  defaultExpanded={false}
+                >
+                  <Text style={styles.transcriptText}>{visit.transcript}</Text>
+                </CollapsibleSection>
               )}
             </ScrollView>
           </View>
@@ -925,29 +989,29 @@ const styles = StyleSheet.create({
   },
   metaContainer: {
     marginBottom: spacing(4),
-    gap: spacing(2),
+    gap: spacing(1),
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   metaLabel: {
     fontSize: 14,
     color: Colors.textMuted,
   },
-  metaValue: {
-    fontSize: 14,
-    color: Colors.text,
+  providerLine: {
+    fontSize: 15,
     fontWeight: '600',
+    color: Colors.text,
   },
   badge: {
-    alignSelf: 'flex-start',
     paddingHorizontal: spacing(3),
-    paddingVertical: spacing(1.5),
+    paddingVertical: spacing(1),
     borderRadius: 999,
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#fff',
     textTransform: 'uppercase',
@@ -1043,49 +1107,82 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 2,
   },
-  tabRow: {
-    flexDirection: 'row',
-    gap: spacing(3),
-    marginBottom: spacing(4),
-  },
-  tabButton: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing(2),
-    paddingVertical: spacing(3),
-    borderRadius: spacing(3),
-  },
-  tabButtonActive: {
-    backgroundColor: Colors.primary,
-  },
-  tabButtonInactive: {
+
+  /* ── Summary Hero ── */
+  summaryHero: {
     backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: spacing(5),
     borderWidth: 1,
     borderColor: Colors.stroke,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    marginBottom: spacing(4),
   },
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+  summaryHeroHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    marginBottom: spacing(3),
   },
+  summaryHeroTitle: {
+    fontSize: 18,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.text,
+  },
+  summaryHeroText: {
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: Colors.text,
+    lineHeight: 25,
+  },
+
+  /* ── Key Highlights Bar ── */
+  highlightsBar: {
+    marginBottom: spacing(5),
+    flexGrow: 0,
+  },
+  highlightsBarContent: {
+    gap: spacing(2),
+    paddingRight: spacing(2),
+  },
+  highlightChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    backgroundColor: 'rgba(64,201,208,0.12)',
+    borderRadius: 999,
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(1.5),
+  },
+  highlightChipText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
+  },
+
+  /* ── Sections ── */
   section: {
     marginBottom: spacing(4),
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing(2),
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.text,
-    marginBottom: spacing(2),
   },
   sectionCard: {
     padding: spacing(4),
     gap: spacing(3),
-  },
-  summaryText: {
-    fontSize: 15,
-    color: Colors.text,
-    lineHeight: 22,
   },
   medSubheading: {
     fontSize: 14,
@@ -1117,36 +1214,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
   },
-  transcriptCard: {
-    padding: spacing(4),
-  },
   transcriptText: {
     fontSize: 14,
     color: Colors.text,
     lineHeight: 22,
   },
-  actionsCard: {
-    padding: spacing(4),
-    gap: spacing(2),
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(2),
-  },
-  actionText: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  manageOnWeb: {
+  viewAllLink: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: spacing(2),
-    marginTop: spacing(4),
+    marginTop: spacing(3),
+    paddingTop: spacing(3),
+    borderTopWidth: 1,
+    borderTopColor: Colors.stroke,
   },
-  manageOnWebText: {
+  viewAllLinkText: {
     fontSize: 14,
     color: Colors.primary,
     fontWeight: '600',

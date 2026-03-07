@@ -369,6 +369,12 @@ export default function HomeScreen() {
     isInitialLoading,
   ]);
 
+  const latestSummaryPreview = useMemo(() => {
+    if (!latestVisit || !isVisitSummaryReady(latestVisit)) return undefined;
+    const text = (latestVisit.summary as string).trim();
+    return text.length > 80 ? text.substring(0, 80) + '…' : text;
+  }, [latestVisit, isVisitSummaryReady]);
+
   const latestVisitBadge = useMemo(() => {
     if (!latestVisit) return undefined;
 
@@ -496,6 +502,7 @@ export default function HomeScreen() {
                     countLabel={visitsError ? 'unavailable' : 'visits'}
                     emptyStateText={visitsError ? 'Unable to load. Tap to retry.' : 'Record your first visit'}
                     statusBadge={visitsError ? undefined : latestVisitBadge}
+                    subtitle={visitsError ? undefined : latestSummaryPreview}
                     icon="document-text-outline"
                     onPress={
                       visitsError

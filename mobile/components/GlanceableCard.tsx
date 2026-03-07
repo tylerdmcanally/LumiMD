@@ -12,18 +12,20 @@ export type GlanceableCardProps = {
     color: string;
   };
   emptyStateText?: string; // Friendly text when count is 0
+  subtitle?: string; // Optional preview text (e.g. latest visit summary)
   icon?: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 };
 
-export function GlanceableCard({ 
-  title, 
-  count, 
-  countLabel, 
+export function GlanceableCard({
+  title,
+  count,
+  countLabel,
   statusBadge,
   emptyStateText,
+  subtitle,
   icon = 'arrow-forward',
-  onPress 
+  onPress
 }: GlanceableCardProps) {
   const isEmpty = count === 0 && emptyStateText;
 
@@ -64,6 +66,11 @@ export function GlanceableCard({
                   {statusBadge.text}
                 </Text>
               </View>
+            ) : null}
+            {subtitle ? (
+              <Text style={styles.subtitle} numberOfLines={2}>
+                {subtitle}
+              </Text>
             ) : null}
           </View>
           
@@ -136,6 +143,13 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  subtitle: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: Colors.textMuted,
+    lineHeight: 18,
+    marginTop: spacing(1),
   },
 });
 

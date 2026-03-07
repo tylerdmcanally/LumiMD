@@ -180,6 +180,11 @@ export default function VisitsScreen() {
                       <Text style={styles.rowDate}>
                         {visit.createdAt ? dayjs(visit.createdAt).format('MMM D, YYYY h:mm A') : 'Unknown'}
                       </Text>
+                      {isSummaryReady(visit) && visit.summary && (
+                        <Text style={styles.summaryPreview} numberOfLines={2}>
+                          {visit.summary}
+                        </Text>
+                      )}
                       <Text style={styles.rowMeta}>
                         {(() => {
                           const statusKey = normalizeStatus(visit);
@@ -320,6 +325,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textMuted,
     marginBottom: spacing(1),
+  },
+  summaryPreview: {
+    fontSize: 14,
+    color: Colors.text,
+    lineHeight: 20,
+    marginTop: spacing(1),
   },
   rowMeta: {
     fontSize: 12,
