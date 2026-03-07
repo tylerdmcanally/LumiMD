@@ -37,6 +37,88 @@ function getResend(): Resend | null {
 // Web portal URL for invite links
 const WEB_PORTAL_URL = process.env.WEB_PORTAL_URL || 'https://portal.lumimd.app';
 
+// ── Reusable invite-email helper ───────────────────────────────────────────────
+
+interface SendInviteEmailParams {
+  caregiverEmail: string;
+  ownerName: string;
+  inviteToken: string;
+  inviteMessage?: string | null;
+}
+
+/**
+ * Send (or re-send) the caregiver invitation email via Resend.
+ * Returns `true` when the email is accepted by Resend, `false` otherwise.
+ */
+async function sendInviteEmail(params: SendInviteEmailParams): Promise<boolean> {
+  const { caregiverEmail, ownerName, inviteToken, inviteMessage } = params;
+  const resend = getResend();
+  if (!resend) return false;
+
+  const inviteLink = `${WEB_PORTAL_URL}/care/invite/${inviteToken}`;
+  const hasMessage = !!inviteMessage;
+  const escapedOwnerName = escapeHtml(ownerName);
+  const escapedInviteLink = escapeHtml(inviteLink);
+  const escapedInviteMessage = inviteMessage
+    ? escapeHtml(inviteMessage).replace(/\n/g, '<br>')
+    : '';
+
+  const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.5; color: #333; max-width: 600px; margin: 0 auto; padding: 16px;">
+  <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+
+    <h1 style="color: #078A94; margin: 0 0 16px 0; font-size: 22px; font-weight: 700;">
+      ${escapedOwnerName} wants to share health info with you
+    </h1>
+
+    <p style="font-size: 15px; color: #555; margin: 0 0 20px 0;">
+      You've been invited to view <strong>${escapedOwnerName}'s</strong> medical visits, medications, and care tasks on LumiMD.
+    </p>
+
+    <div style="text-align: center; margin: 24px 0;">
+      <a href="${escapedInviteLink}"
+         style="display: inline-block; background-color: #078A94; color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+        Accept Invitation
+      </a>
+    </div>
+
+    ${hasMessage ? `<div style="margin: 16px 0; padding: 12px; background-color: #f8f9fa; border-radius: 8px; border-left: 3px solid #078A94;"><p style="margin: 0; font-size: 14px; color: #555; font-style: italic;">"${escapedInviteMessage}"</p></div>` : ''}
+
+    <p style="font-size: 13px; color: #888; margin: 20px 0 0 0; padding-top: 16px; border-top: 1px solid #eee;">
+      New to LumiMD? You'll create a free account when you accept. Questions? Reply to this email.
+    </p>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const emailText = `
+${ownerName} wants to share health info with you
+
+You've been invited to view ${ownerName}'s medical visits, medications, and care tasks on LumiMD.
+${hasMessage ? `\n"${inviteMessage}"\n` : ''}
+Accept the invitation: ${inviteLink}
+
+New to LumiMD? You'll create a free account when you accept.
+  `.trim();
+
+  await resend.emails.send({
+    from: 'LumiMD <no-reply@lumimd.app>',
+    to: caregiverEmail,
+    subject: `${ownerName} wants to share their health information with you`,
+    html: emailHtml,
+    text: emailText,
+  });
+
+  return true;
+}
+
 const getDb = () => admin.firestore();
 const getShareDomainService = () => new ShareDomainService(new FirestoreShareRepository(getDb()));
 const getUserDomainService = () => new UserDomainService(new FirestoreUserRepository(getDb()));
@@ -395,165 +477,15 @@ sharesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
 
 /**
  * POST /v1/shares
- * Create a new share invitation
- * Owner invites a caregiver by email
- * Handles both existing users and users without accounts
+ * @deprecated — Use POST /v1/shares/invite instead (token-based invite system with email delivery).
+ * Kept as 410 Gone so any stale clients get a clear signal.
  */
-sharesRouter.post('/', shareLimiter, requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const ownerId = req.user!.uid;
-    const shareService = getShareDomainService();
-    const userService = getUserDomainService();
-    const data = createShareSchema.parse(req.body);
-    const caregiverEmail = normalizeEmail(data.caregiverEmail);
-
-    // Get owner info for email
-    const ownerUser = await admin.auth().getUser(ownerId);
-    const ownerEmail = ownerUser.email || '';
-    const ownerData = await userService.getById(ownerId);
-    const ownerNameRaw =
-      ownerData?.preferredName ||
-      ownerData?.firstName ||
-      ownerUser.displayName ||
-      ownerEmail.split('@')[0];
-    const ownerName = sanitizePlainText(ownerNameRaw, OWNER_NAME_MAX_LENGTH) || ownerEmail.split('@')[0] || 'Someone';
-    const shareMessage = sanitizeShareMessage(data.message);
-
-    // Prevent sharing with yourself
-    if (normalizeEmail(ownerEmail) === caregiverEmail) {
-      res.status(400).json({
-        code: 'invalid_share',
-        message: 'You cannot share with yourself',
-      });
-      return;
-    }
-
-    // Check for existing share or invite
-    const [existingInviteByLegacyEmail, existingInviteByCaregiverEmail] = await Promise.all([
-      shareService.hasPendingInviteByOwnerAndInviteeEmail(ownerId, caregiverEmail),
-      shareService.hasPendingInviteByOwnerAndCaregiverEmail(ownerId, caregiverEmail),
-    ]);
-
-    if (existingInviteByLegacyEmail || existingInviteByCaregiverEmail) {
-      res.status(409).json({
-        code: 'invite_exists',
-        message: 'An invitation has already been sent to this email',
-      });
-      return;
-    }
-
-    // Try to find existing user
-    let caregiverUserId: string | null = null;
-    try {
-      const caregiverUser = await admin.auth().getUserByEmail(caregiverEmail);
-      caregiverUserId = caregiverUser.uid;
-
-      // Check if share already exists
-      const shareId = `${ownerId}_${caregiverUserId}`;
-      const existingShare = await shareService.getById(shareId);
-      if (existingShare) {
-        const existingStatus = existingShare.status;
-        if (existingStatus === 'accepted' || existingStatus === 'pending') {
-          res.status(409).json({
-            code: 'share_exists',
-            message: 'Share already exists with this user',
-          });
-          return;
-        }
-        // If previously revoked, allow re-creating
-      }
-    } catch (error) {
-      // User doesn't exist - will create invite instead
-      caregiverUserId = null;
-    }
-
-    const now = admin.firestore.Timestamp.now();
-    const expiresAt = admin.firestore.Timestamp.fromMillis(
-      now.toMillis() + 7 * 24 * 60 * 60 * 1000, // 7 days
-    );
-
-    if (caregiverUserId) {
-      // User exists - create share directly
-      const shareId = `${ownerId}_${caregiverUserId}`;
-      const sharePayload = {
-        ownerId,
-        ownerName,
-        ownerEmail,
-        caregiverUserId,
-        caregiverEmail,
-        role: data.role,
-        status: 'pending',
-        message: shareMessage,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      await shareService.setShare(shareId, sharePayload);
-
-      // Email will be sent by frontend via Vercel API route
-      functions.logger.info(`[shares] Created share invitation from ${ownerId} to existing user ${caregiverUserId}. Email should be sent by frontend.`);
-
-      functions.logger.info(
-        `[shares] Created share invitation from ${ownerId} to existing user ${caregiverUserId}`,
-      );
-
-      res.status(201).json(serializeSharePayload(shareId, sharePayload));
-    } else {
-      // User doesn't exist - create invite
-      const inviteToken = randomBytes(32).toString('base64url');
-      const invitePayload = {
-        ownerId,
-        ownerEmail,
-        ownerName,
-        inviteeEmail: caregiverEmail,
-        caregiverEmail,
-        status: 'pending',
-        message: shareMessage,
-        role: data.role,
-        createdAt: now,
-        expiresAt,
-      };
-
-      await shareService.createInvite(inviteToken, invitePayload);
-
-      // Email will be sent by frontend via Vercel API route
-      functions.logger.info(`[shares] Created share invite from ${ownerId} to ${data.caregiverEmail} (no account yet). Email should be sent by frontend.`);
-
-      functions.logger.info(
-        `[shares] Created share invite from ${ownerId} to ${data.caregiverEmail} (no account yet)`,
-      );
-
-      res.status(201).json({
-        id: inviteToken,
-        ownerId,
-        ownerEmail,
-        ownerName,
-        caregiverEmail,
-        inviteeEmail: caregiverEmail,
-        status: 'pending',
-        message: shareMessage,
-        role: data.role,
-        createdAt: now.toDate().toISOString(),
-        expiresAt: expiresAt.toDate().toISOString(),
-        type: 'invite',
-      });
-    }
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        code: 'validation_failed',
-        message: 'Invalid request body',
-        details: error.errors,
-      });
-      return;
-    }
-
-    functions.logger.error('[shares] Error creating share:', error);
-    res.status(500).json({
-      code: 'server_error',
-      message: 'Failed to create share',
-    });
-  }
+sharesRouter.post('/', shareLimiter, requireAuth, async (_req: AuthRequest, res) => {
+  functions.logger.warn('[shares] DEPRECATED POST /v1/shares called — use POST /v1/shares/invite');
+  res.status(410).json({
+    code: 'endpoint_deprecated',
+    message: 'This endpoint has been retired. Use POST /v1/shares/invite instead.',
+  });
 });
 
 /**
@@ -1194,7 +1126,24 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       now.toMillis() + 7 * 24 * 60 * 60 * 1000 // 7 days
     );
 
-    // Create invite document
+    // Send invite email
+    let emailSent = false;
+    try {
+      emailSent = await sendInviteEmail({
+        caregiverEmail,
+        ownerName,
+        inviteToken,
+        inviteMessage,
+      });
+      if (emailSent) {
+        functions.logger.info(`[shares] Sent invite email to ${caregiverEmail}`);
+      }
+    } catch (emailError) {
+      functions.logger.error(`[shares] Failed to send invite email to ${caregiverEmail}:`, emailError);
+      // Don't fail the request - invite will still be created
+    }
+
+    // Create invite document (includes emailSent status)
     await shareService.createInvite(inviteToken, {
       ownerId,
       ownerEmail,
@@ -1204,87 +1153,13 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       status: 'pending',
       role: 'viewer',
       message: inviteMessage,
+      emailSent,
       createdAt: now,
       expiresAt,
       acceptedAt: null,
     });
 
     functions.logger.info(`[shares] Created invite ${inviteToken} from ${ownerId} to ${caregiverEmail}`);
-
-    // Send invite email directly from backend
-    const inviteLink = `${WEB_PORTAL_URL}/care/invite/${inviteToken}`;
-    let emailSent = false;
-    
-    try {
-      const resend = getResend();
-      if (resend) {
-        const hasMessage = !!inviteMessage;
-        const escapedOwnerName = escapeHtml(ownerName);
-        const escapedInviteLink = escapeHtml(inviteLink);
-        const escapedInviteMessage = inviteMessage
-          ? escapeHtml(inviteMessage).replace(/\n/g, '<br>')
-          : '';
-
-        const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.5; color: #333; max-width: 600px; margin: 0 auto; padding: 16px;">
-  <div style="background-color: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    
-    <h1 style="color: #078A94; margin: 0 0 16px 0; font-size: 22px; font-weight: 700;">
-      ${escapedOwnerName} wants to share health info with you
-    </h1>
-    
-    <p style="font-size: 15px; color: #555; margin: 0 0 20px 0;">
-      You've been invited to view <strong>${escapedOwnerName}'s</strong> medical visits, medications, and care tasks on LumiMD.
-    </p>
-
-    <div style="text-align: center; margin: 24px 0;">
-      <a href="${escapedInviteLink}" 
-         style="display: inline-block; background-color: #078A94; color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
-        Accept Invitation
-      </a>
-    </div>
-
-    ${hasMessage ? `<div style="margin: 16px 0; padding: 12px; background-color: #f8f9fa; border-radius: 8px; border-left: 3px solid #078A94;"><p style="margin: 0; font-size: 14px; color: #555; font-style: italic;">"${escapedInviteMessage}"</p></div>` : ''}
-
-    <p style="font-size: 13px; color: #888; margin: 20px 0 0 0; padding-top: 16px; border-top: 1px solid #eee;">
-      New to LumiMD? You'll create a free account when you accept. Questions? Reply to this email.
-    </p>
-  </div>
-</body>
-</html>
-        `.trim();
-
-        const emailText = `
-${ownerName} wants to share health info with you
-
-You've been invited to view ${ownerName}'s medical visits, medications, and care tasks on LumiMD.
-${hasMessage ? `\n"${inviteMessage}"\n` : ''}
-Accept the invitation: ${inviteLink}
-
-New to LumiMD? You'll create a free account when you accept.
-        `.trim();
-
-        await resend.emails.send({
-          from: 'LumiMD <no-reply@lumimd.app>',
-          to: caregiverEmail,
-          subject: `${ownerName} wants to share their health information with you`,
-          html: emailHtml,
-          text: emailText,
-        });
-
-        emailSent = true;
-        functions.logger.info(`[shares] Sent invite email to ${caregiverEmail}`);
-      }
-    } catch (emailError) {
-      functions.logger.error(`[shares] Failed to send invite email to ${caregiverEmail}:`, emailError);
-      // Don't fail the request - invite was created successfully
-    }
 
     // Return invite with email status
     res.status(201).json({
@@ -1511,6 +1386,85 @@ sharesRouter.get('/my-invites', requireAuth, async (req: AuthRequest, res) => {
       code: 'server_error',
       message: 'Failed to fetch invites',
     });
+  }
+});
+
+/**
+ * POST /v1/shares/invite/:token/resend
+ * Resend the invitation email for a pending invite.
+ * Only the invite owner may call this.
+ */
+sharesRouter.post('/invite/:token/resend', shareLimiter, requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const ownerId = req.user!.uid;
+    const { token } = req.params;
+    const shareService = getShareDomainService();
+
+    const invite = await shareService.getInviteById(token);
+
+    if (!invite) {
+      res.status(404).json({ code: 'not_found', message: 'Invitation not found' });
+      return;
+    }
+
+    // Only the owner can resend
+    if (typeof invite.ownerId !== 'string' || invite.ownerId !== ownerId) {
+      res.status(403).json({ code: 'forbidden', message: 'Only the owner can resend this invitation' });
+      return;
+    }
+
+    // Must still be pending
+    if (invite.status !== 'pending') {
+      res.status(400).json({
+        code: 'invalid_status',
+        message: `Cannot resend an invitation that is ${invite.status}`,
+      });
+      return;
+    }
+
+    // Check expiry — if past due, mark expired and return 410
+    const now = admin.firestore.Timestamp.now();
+    if (invite.expiresAt && invite.expiresAt.toMillis() < now.toMillis()) {
+      await shareService.updateInviteRecord(token, { status: 'expired' });
+      res.status(410).json({
+        code: 'invite_expired',
+        message: 'This invitation has expired. Please create a new one.',
+      });
+      return;
+    }
+
+    // Determine the caregiver email
+    const caregiverEmail = getInviteCaregiverEmail(invite as Record<string, unknown>);
+    if (!caregiverEmail) {
+      res.status(400).json({ code: 'invalid_invite', message: 'Invite is missing a caregiver email' });
+      return;
+    }
+
+    // Send the email
+    let emailSent = false;
+    try {
+      emailSent = await sendInviteEmail({
+        caregiverEmail,
+        ownerName: typeof invite.ownerName === 'string' ? invite.ownerName : 'Someone',
+        inviteToken: token,
+        inviteMessage: typeof invite.message === 'string' ? invite.message : null,
+      });
+    } catch (emailError) {
+      functions.logger.error(`[shares] Failed to resend invite email for token ${token}:`, emailError);
+    }
+
+    // Persist the result
+    await shareService.updateInviteRecord(token, {
+      emailSent,
+      lastResentAt: admin.firestore.Timestamp.now(),
+    });
+
+    functions.logger.info(`[shares] Resent invite email for token ${token}, emailSent=${emailSent}`);
+
+    res.json({ success: true, emailSent });
+  } catch (error) {
+    functions.logger.error('[shares] Error resending invite:', error);
+    res.status(500).json({ code: 'server_error', message: 'Failed to resend invitation' });
   }
 });
 

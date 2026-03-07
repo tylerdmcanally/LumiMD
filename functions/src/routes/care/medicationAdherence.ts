@@ -145,6 +145,48 @@ export function registerCareMedicationAdherenceRoutes(
                 ? Math.round((takenCount / effectiveExpected) * 100)
                 : (takenCount > 0 ? 100 : 0);
 
+            // ── Confidence computation helpers ─────────────────────────
+            type ConfidenceLevel = 'high' | 'medium' | 'low' | 'insufficient';
+            type Confidence = { level: ConfidenceLevel; factors: string[] };
+
+            function computeConfidence(
+                hasSchedule: boolean,
+                logged: number,
+                expected: number,
+                minLogsForSufficient: number = 3,
+            ): Confidence {
+                const factors: string[] = [];
+
+                if (!hasSchedule && logged < minLogsForSufficient) {
+                    factors.push('No medication schedule configured');
+                    factors.push('Very few doses logged');
+                    return { level: 'insufficient', factors };
+                }
+
+                if (!hasSchedule) {
+                    factors.push('No medication schedule — showing self-reported data only');
+                    return { level: 'low', factors };
+                }
+
+                // Has schedule — evaluate coverage
+                const coverage = expected > 0 ? logged / expected : 0;
+
+                if (coverage < 0.3) {
+                    factors.push(
+                        'Most scheduled doses have no log entry — patient may not be logging consistently',
+                    );
+                    return { level: 'low', factors };
+                }
+
+                if (coverage < 0.8) {
+                    factors.push('Some scheduled doses are unlogged');
+                    return { level: 'medium', factors };
+                }
+
+                factors.push('Schedule-based tracking with consistent logging');
+                return { level: 'high', factors };
+            }
+
             // Per-medication breakdown
             const byMedication: Array<{
                 medicationId: string;
@@ -154,6 +196,7 @@ export function registerCareMedicationAdherenceRoutes(
                 skippedDoses: number;
                 adherenceRate: number;
                 streak: number;
+                confidence: Confidence;
             }> = [];
 
             // Track medications that have logs but aren't in the active meds list
@@ -206,6 +249,7 @@ export function registerCareMedicationAdherenceRoutes(
                     skippedDoses: skipped,
                     adherenceRate: expected > 0 ? Math.round((taken / expected) * 100) : 100,
                     streak,
+                    confidence: computeConfidence(med.times.length > 0, taken + skipped, expected),
                 });
 
                 loggedMedIds.delete(medId);
@@ -229,6 +273,7 @@ export function registerCareMedicationAdherenceRoutes(
                     skippedDoses: skipped,
                     adherenceRate: total > 0 ? Math.round((taken / total) * 100) : 100,
                     streak: 0,
+                    confidence: computeConfidence(false, total, total),
                 });
             }
 
@@ -333,6 +378,20 @@ export function registerCareMedicationAdherenceRoutes(
                 patterns.insights.push('No medication schedules set up - showing logged data only');
             }
 
+            // ── Overall confidence ──────────────────────────────────────
+            const hasAnySchedule = expectedDoses > 0;
+            const logCoverage = effectiveExpected > 0 ? totalLogged / effectiveExpected : 0;
+            const overallConfidence = computeConfidence(hasAnySchedule, totalLogged, effectiveExpected);
+
+            // Find the most recent log timestamp
+            let lastLoggedAt: string | null = null;
+            if (logs.length > 0) {
+                const sortedLogs = [...logs].sort(
+                    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+                );
+                lastLoggedAt = sortedLogs[0].createdAt.toISOString();
+            }
+
             res.set('Cache-Control', 'private, max-age=30');
             res.json({
                 overall: {
@@ -341,6 +400,12 @@ export function registerCareMedicationAdherenceRoutes(
                     skippedDoses: skippedCount,
                     missedDoses: missedCount,
                     adherenceRate,
+                    confidence: overallConfidence,
+                    dataQuality: {
+                        hasSchedule: hasAnySchedule,
+                        logCoverage: Math.round(logCoverage * 100) / 100,
+                        lastLoggedAt,
+                    },
                 },
                 byMedication,
                 calendar,

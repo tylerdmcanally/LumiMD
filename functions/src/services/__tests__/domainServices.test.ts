@@ -750,6 +750,7 @@ describe('Domain services', () => {
       const repository: MedicationLogRepository = {
         listByUsers,
         listByUser,
+        create: jest.fn().mockResolvedValue({ id: 'new-log' }),
       };
 
       const service = new MedicationLogDomainService(repository);
@@ -1340,6 +1341,7 @@ describe('Domain services', () => {
       listPendingInvitesByCaregiverEmail: jest.fn(),
       listPendingInvitesByLegacyEmail: jest.fn(),
       migrateShareToCaregiver: jest.fn(),
+      revokeAcceptedInvitesByOwnerAndEmail: jest.fn().mockResolvedValue(0),
       revokeInviteAndRelatedShare: jest.fn(),
       setShare: jest.fn(),
       updateById: jest.fn(),

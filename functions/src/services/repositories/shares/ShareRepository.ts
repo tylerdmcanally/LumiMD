@@ -56,4 +56,5 @@ export interface ShareRepository {
     newSharePayload: FirebaseFirestore.DocumentData,
   ): Promise<void>;
   revokeInviteAndRelatedShare(inviteId: string, invite: ShareInviteRecord): Promise<void>;
+  revokeAcceptedInvitesByOwnerAndEmail(ownerId: string, caregiverEmail: string): Promise<number>;
 }

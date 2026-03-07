@@ -19,6 +19,7 @@ import { registerCareHealthLogRoutes } from './care/healthLogs';
 import { registerCareMedicationAdherenceRoutes } from './care/medicationAdherence';
 import { registerCareMedicationChangeRoutes } from './care/medicationChanges';
 import { registerCareMedicationStatusRoutes } from './care/medicationStatus';
+import { registerCareMessagesRoutes } from './care/messages';
 import { registerCareNotesRoutes } from './care/notes';
 import { registerCareOverviewRoutes } from './care/overview';
 import { registerCarePatientResourceRoutes } from './care/patientResources';
@@ -932,6 +933,15 @@ registerCareNotesRoutes(careRouter, {
     noteMaxLength: CARE_NOTE_MAX_LENGTH,
     pageSizeDefault: CARE_PAGE_SIZE_DEFAULT,
     pageSizeMax: CARE_PAGE_SIZE_MAX,
+});
+
+// =============================================================================
+// CAREGIVER → PATIENT MESSAGING
+// One-way messages from caregivers to patients
+// =============================================================================
+
+registerCareMessagesRoutes(careRouter, {
+    getDb,
 });
 
 // =============================================================================

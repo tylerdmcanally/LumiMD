@@ -115,6 +115,7 @@ describe('createDomainServiceContainer', () => {
     const medicationLogRepository: MedicationLogRepository = {
       listByUsers: jest.fn(),
       listByUser: jest.fn(),
+      create: jest.fn().mockResolvedValue({ id: 'new-log' }),
     };
 
     const medicationReminderRepository: MedicationReminderRepository = {

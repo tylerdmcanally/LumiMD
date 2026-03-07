@@ -1269,3 +1269,53 @@ export function useRevokeShareInvite() {
     },
   });
 }
+
+export function useResendShareInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (token: string) => api.shares.resendInvite(token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shareInvites'] });
+    },
+  });
+}
+
+// =========================================================================
+// Patient Messages (inbox from caregivers)
+// =========================================================================
+
+export function useMyMessages(options?: PaginatedHookOptions) {
+  const sessionKey = getSessionKey();
+  return useQuery({
+    queryKey: ['messages', sessionKey],
+    queryFn: () => api.messages.list({ limit: 50 }),
+    staleTime: options?.staleTime ?? 15_000,
+    gcTime: options?.gcTime ?? 5 * 60 * 1000,
+    enabled: options?.enabled,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
+export function useUnreadMessageCount(options?: { enabled?: boolean }) {
+  const sessionKey = getSessionKey();
+  return useQuery({
+    queryKey: ['messages', 'unread-count', sessionKey],
+    queryFn: () => api.messages.unreadCount(),
+    staleTime: 10_000,
+    gcTime: 60_000,
+    enabled: options?.enabled,
+    refetchInterval: 30_000, // Poll every 30s for new messages
+  });
+}
+
+export function useMarkMessageRead() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (messageId: string) => api.messages.markRead(messageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+    },
+  });
+}

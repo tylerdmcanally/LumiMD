@@ -84,6 +84,7 @@ export const NUDGE_TYPE_PRIORITY: Record<string, number> = {
     // Keep both keys for compatibility with legacy/variant producers.
     'followup': 3,
     'follow_up': 3,
+    'medication_followup': 3,
     'medication_checkin': 2,
     'condition_tracking': 1,
 };

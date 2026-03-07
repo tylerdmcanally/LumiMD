@@ -101,4 +101,9 @@ export class FirestoreMedicationLogRepository implements MedicationLogRepository
     const snapshot = await query.get();
     return snapshot.docs.map((doc) => mapMedicationLogDoc(doc));
   }
+
+  async create(payload: FirebaseFirestore.DocumentData): Promise<{ id: string }> {
+    const ref = await this.db.collection('medicationLogs').add(payload);
+    return { id: ref.id };
+  }
 }

@@ -14,8 +14,10 @@ import { NudgeResponse } from '../types/lumibot';
 import { sanitizePlainText } from '../utils/inputSanitization';
 import { NudgeDomainService } from '../services/domain/nudges/NudgeDomainService';
 import { MedicationDomainService } from '../services/domain/medications/MedicationDomainService';
+import { MedicationLogDomainService } from '../services/domain/medicationLogs/MedicationLogDomainService';
 import { FirestoreNudgeRepository } from '../services/repositories/nudges/FirestoreNudgeRepository';
 import { FirestoreMedicationRepository } from '../services/repositories/medications/FirestoreMedicationRepository';
+import { FirestoreMedicationLogRepository } from '../services/repositories/medicationLogs/FirestoreMedicationLogRepository';
 
 export const nudgesRouter = Router();
 
@@ -23,6 +25,8 @@ const getDb = () => admin.firestore();
 const getNudgeDomainService = () => new NudgeDomainService(new FirestoreNudgeRepository(getDb()));
 const getMedicationDomainService = () =>
     new MedicationDomainService(new FirestoreMedicationRepository(getDb()));
+const getMedicationLogDomainService = () =>
+    new MedicationLogDomainService(new FirestoreMedicationLogRepository(getDb()));
 const NUDGE_NOTE_MAX_LENGTH = 1000;
 const NUDGE_SIDE_EFFECT_MAX_ITEMS = 20;
 const NUDGE_SIDE_EFFECT_ITEM_MAX_LENGTH = 120;
@@ -47,6 +51,8 @@ const respondToNudgeSchema = z.object({
         // Feeling/side effects
         'good', 'okay', 'issues',
         'none', 'mild', 'concerning',
+        // Medication follow-up responses
+        'took_it', 'skipped_it',
     ]),
     note: z.string().optional(),
     sideEffects: z.array(z.string()).optional(), // Side effect IDs when having_issues
@@ -225,6 +231,69 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
         functions.logger.info(`[nudges] Nudge ${nudgeId} responded with ${data.response}`);
 
         // =========================================================================
+        // MEDICATION FOLLOW-UP: Create medication log from response
+        // =========================================================================
+        if (
+            nudgeData.type === 'medication_followup' &&
+            (data.response === 'took_it' || data.response === 'skipped_it') &&
+            nudgeData.medicationId
+        ) {
+            try {
+                const meta = nudgeData.metadata as Record<string, unknown> | undefined;
+                const scheduledDate =
+                    typeof meta?.scheduledDate === 'string'
+                        ? meta.scheduledDate
+                        : new Date().toISOString().split('T')[0];
+                const scheduledTime =
+                    typeof meta?.scheduledTime === 'string' ? meta.scheduledTime : null;
+
+                // Validate the response is within a reasonable window (4 hours)
+                const followUpWindowHours =
+                    typeof meta?.followUpWindowHours === 'number' ? meta.followUpWindowHours : 4;
+                const nudgeCreatedAt = nudgeData.createdAt?.toDate?.() || new Date();
+                const hoursSinceCreated =
+                    (Date.now() - nudgeCreatedAt.getTime()) / (1000 * 60 * 60);
+
+                if (hoursSinceCreated <= followUpWindowHours + 2) {
+                    // Allow some extra buffer beyond the window
+                    const medLogService = getMedicationLogDomainService();
+                    const logNow = admin.firestore.Timestamp.now();
+
+                    await medLogService.createLog({
+                        userId,
+                        medicationId: nudgeData.medicationId,
+                        medicationName: nudgeData.medicationName || null,
+                        action: data.response === 'took_it' ? 'taken' : 'skipped',
+                        scheduledDate,
+                        scheduledTime,
+                        source: 'nudge_response',
+                        sourceNudgeId: nudgeId,
+                        createdAt: logNow,
+                        loggedAt: logNow,
+                    });
+
+                    functions.logger.info(
+                        `[nudges] Created medication log from follow-up nudge ${nudgeId}`,
+                        {
+                            medicationId: nudgeData.medicationId,
+                            action: data.response === 'took_it' ? 'taken' : 'skipped',
+                            scheduledDate,
+                        },
+                    );
+                } else {
+                    functions.logger.warn(
+                        `[nudges] Follow-up response for ${nudgeId} outside time window (${hoursSinceCreated.toFixed(1)}h)`,
+                    );
+                }
+            } catch (logError) {
+                functions.logger.error(
+                    `[nudges] Failed to create medication log from nudge ${nudgeId}:`,
+                    logError,
+                );
+            }
+        }
+
+        // =========================================================================
         // SMART TIMING: Adjust future nudges based on response
         // =========================================================================
 
@@ -292,8 +361,13 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
 
         // Return appropriate message based on response
         let message = 'Thanks for letting us know!';
-        // Positive responses
-        if (['got_it', 'taking_it', 'good', 'none'].includes(data.response)) {
+        // Medication follow-up responses
+        if (data.response === 'took_it') {
+            message = 'Dose logged! Great job staying on track.';
+        } else if (data.response === 'skipped_it') {
+            message = 'Skipped dose recorded. Let your caregiver know if you need help.';
+            // Positive responses
+        } else if (['got_it', 'taking_it', 'good', 'none'].includes(data.response)) {
             message = 'Great! Thanks for the update.';
             // Not yet responses
         } else if (data.response === 'not_yet') {

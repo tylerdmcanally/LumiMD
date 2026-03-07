@@ -19,6 +19,7 @@ interface Visit {
     status?: string;
     processingStatus?: string;
     summary?: string | null;
+    caregiverSummary?: string | null;
     transcript?: string | null;
     transcriptText?: string | null;
     notes?: string | null;
@@ -480,6 +481,14 @@ interface ConfirmMedicationsPayload {
         changed?: ConfirmMedicationEntry[];
     };
 }
+interface CaregiverMessage {
+    id: string;
+    senderId: string;
+    senderName: string;
+    message: string;
+    readAt: string | null;
+    createdAt: string;
+}
 declare function createApiClient(config: ApiClientConfig): {
     health: () => Promise<{
         status: string;
@@ -554,14 +563,9 @@ declare function createApiClient(config: ApiClientConfig): {
     shares: {
         list: () => Promise<Share[]>;
         get: (id: string) => Promise<Share>;
-        create: (data: {
-            caregiverEmail: string;
-            message?: string;
-        }) => Promise<Share | ShareInvite>;
         update: (id: string, data: {
             status: "accepted" | "revoked";
         }) => Promise<Share>;
-        acceptInvite: (token: string) => Promise<Share>;
         getInvites: () => Promise<ShareInvite[]>;
         cancelInvite: (inviteId: string) => Promise<ShareInvite>;
         invite: (data: {
@@ -578,6 +582,10 @@ declare function createApiClient(config: ApiClientConfig): {
         myInvites: () => Promise<ShareInvite[]>;
         revokeInvite: (token: string) => Promise<{
             success: boolean;
+        }>;
+        resendInvite: (token: string) => Promise<{
+            success: boolean;
+            emailSent: boolean;
         }>;
     };
     nudges: {
@@ -606,6 +614,21 @@ declare function createApiClient(config: ApiClientConfig): {
         create: (data: CreateMedicationReminderRequest) => Promise<MedicationReminder>;
         update: (id: string, data: UpdateMedicationReminderRequest) => Promise<MedicationReminder>;
         delete: (id: string) => Promise<void>;
+    };
+    messages: {
+        list: (params?: CursorListParams) => Promise<CursorPage<CaregiverMessage>>;
+        markRead: (id: string) => Promise<CaregiverMessage>;
+        unreadCount: () => Promise<{
+            count: number;
+        }>;
+    };
+    careMessages: {
+        send: (patientId: string, data: {
+            message: string;
+        }) => Promise<CaregiverMessage & {
+            remainingToday: number;
+        }>;
+        list: (patientId: string, params?: CursorListParams) => Promise<CursorPage<CaregiverMessage>>;
     };
 };
 type ApiClient = ReturnType<typeof createApiClient>;
@@ -697,4 +720,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CalendarEventEntry, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, FOLLOW_UP_CATEGORY_LABELS, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CalendarEventEntry, type CaregiverMessage, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, FOLLOW_UP_CATEGORY_LABELS, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

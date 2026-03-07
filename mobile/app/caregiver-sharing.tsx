@@ -22,6 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   useInviteCaregiver,
   useMyShareInvites,
+  useResendShareInvite,
   useRevokeShareAccess,
   useRevokeShareInvite,
   useShares,
@@ -112,6 +113,7 @@ export default function CaregiverSharingScreen() {
   const inviteCaregiver = useInviteCaregiver();
   const revokeShareAccess = useRevokeShareAccess();
   const revokeShareInvite = useRevokeShareInvite();
+  const resendShareInvite = useResendShareInvite();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -476,7 +478,7 @@ export default function CaregiverSharingScreen() {
               </Card>
             ) : (
               pendingItems.map((item, index) => {
-                const busy = workingKey === `${item.kind}:${item.id}`;
+                const busy = workingKey === `${item.kind}:${item.id}` || workingKey === `resend:${item.id}`;
                 const sentDate = formatDate(item.createdAt);
 
                 return (
@@ -500,20 +502,50 @@ export default function CaregiverSharingScreen() {
                       <Text style={styles.footerInfo}>
                         {item.emailSent === false ? 'Email delivery needs retry' : 'Awaiting acceptance'}
                       </Text>
-                      <Pressable
-                        style={[styles.manageButton, busy && styles.disabledButton]}
-                        onPress={() => confirmCancelPending(item)}
-                        disabled={busy}
-                      >
-                        {busy ? (
-                          <ActivityIndicator size="small" color={Colors.error} />
-                        ) : (
-                          <>
-                            <Text style={styles.manageButtonTextDanger}>Cancel Invite</Text>
-                            <Ionicons name="close-circle-outline" size={16} color={Colors.error} />
-                          </>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {item.emailSent === false && item.kind === 'invite' && (
+                          <Pressable
+                            style={[styles.manageButton, busy && styles.disabledButton]}
+                            onPress={() => {
+                              setWorkingKey(`resend:${item.id}`);
+                              resendShareInvite.mutate(item.id, {
+                                onSuccess: () => {
+                                  Alert.alert('Email Sent', 'Invitation email has been resent.');
+                                  setWorkingKey(null);
+                                },
+                                onError: (err) => {
+                                  Alert.alert('Error', getErrorMessage(err, 'Failed to resend email.'));
+                                  setWorkingKey(null);
+                                },
+                              });
+                            }}
+                            disabled={busy}
+                          >
+                            {workingKey === `resend:${item.id}` ? (
+                              <ActivityIndicator size="small" color={Colors.primary} />
+                            ) : (
+                              <>
+                                <Text style={styles.manageButtonText}>Resend Email</Text>
+                                <Ionicons name="mail-outline" size={16} color={Colors.primary} />
+                              </>
+                            )}
+                          </Pressable>
                         )}
-                      </Pressable>
+                        <Pressable
+                          style={[styles.manageButton, busy && styles.disabledButton]}
+                          onPress={() => confirmCancelPending(item)}
+                          disabled={busy}
+                        >
+                          {busy ? (
+                            <ActivityIndicator size="small" color={Colors.error} />
+                          ) : (
+                            <>
+                              <Text style={styles.manageButtonTextDanger}>Cancel Invite</Text>
+                              <Ionicons name="close-circle-outline" size={16} color={Colors.error} />
+                            </>
+                          )}
+                        </Pressable>
+                      </View>
                     </View>
                   </Card>
                 );
@@ -788,6 +820,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(1),
+  },
+  manageButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.primary,
   },
   manageButtonTextDanger: {
     fontSize: 14,

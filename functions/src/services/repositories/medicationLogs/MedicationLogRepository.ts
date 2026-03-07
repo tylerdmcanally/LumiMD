@@ -27,4 +27,5 @@ export interface MedicationLogRepository {
     userIds: string[],
     options?: MedicationLogListByUsersOptions,
   ): Promise<MedicationLogRecord[]>;
+  create(payload: FirebaseFirestore.DocumentData): Promise<{ id: string }>;
 }

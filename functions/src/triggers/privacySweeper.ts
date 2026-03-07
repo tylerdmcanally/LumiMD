@@ -8,9 +8,11 @@ const db = () => admin.firestore();
 /**
  * Privacy Sweeper
  * Runs every 24 hours to ensure no sensitive data is left behind.
- * 
+ *
  * 1. Checks for "orphaned" AssemblyAI transcripts that weren't deleted
  * 2. Checks for audio files that should have been deleted but weren't
+ * 3. Expires stale pending shareInvites past their TTL
+ * 4. Hard-deletes expired/revoked shareInvites older than 30 days
  */
 export const privacyDataSweeper = onSchedule(
   {
@@ -78,5 +80,74 @@ export const privacyDataSweeper = onSchedule(
   }
 
   functions.logger.info(`[PrivacyAudit] Sweep complete. Cleaned ${cleanedTranscripts} transcripts and ${cleanedAudio} audio files.`);
+
+  // ── Phase 2: ShareInvite cleanup ──────────────────────────────────────────
+
+  const now = admin.firestore.Timestamp.now();
+  let expiredInvites = 0;
+  let deletedInvites = 0;
+
+  // 3. Mark pending invites that are past their expiresAt as expired
+  try {
+    const pendingSnapshot = await db()
+      .collection('shareInvites')
+      .where('status', '==', 'pending')
+      .where('expiresAt', '<', now)
+      .get();
+
+    const expireBatch = db().batch();
+    for (const doc of pendingSnapshot.docs) {
+      expireBatch.update(doc.ref, { status: 'expired', updatedAt: now });
+    }
+    if (!pendingSnapshot.empty) {
+      await expireBatch.commit();
+      expiredInvites = pendingSnapshot.size;
+    }
+  } catch (error) {
+    functions.logger.error('[PrivacyAudit] Failed to expire stale shareInvites:', error);
+  }
+
+  // 4. Hard-delete expired/revoked invites older than 30 days
+  try {
+    const retentionCutoff = new Date();
+    retentionCutoff.setDate(retentionCutoff.getDate() - 30);
+    const retentionTimestamp = admin.firestore.Timestamp.fromDate(retentionCutoff);
+
+    // Expired invites older than 30 days
+    const expiredSnapshot = await db()
+      .collection('shareInvites')
+      .where('status', '==', 'expired')
+      .where('createdAt', '<', retentionTimestamp)
+      .get();
+
+    // Revoked invites older than 30 days
+    const revokedSnapshot = await db()
+      .collection('shareInvites')
+      .where('status', '==', 'revoked')
+      .where('createdAt', '<', retentionTimestamp)
+      .get();
+
+    const allStaleDocs = [...expiredSnapshot.docs, ...revokedSnapshot.docs];
+
+    if (allStaleDocs.length > 0) {
+      // Firestore batch limit is 500, chunk if needed
+      const BATCH_LIMIT = 500;
+      for (let i = 0; i < allStaleDocs.length; i += BATCH_LIMIT) {
+        const chunk = allStaleDocs.slice(i, i + BATCH_LIMIT);
+        const deleteBatch = db().batch();
+        for (const doc of chunk) {
+          deleteBatch.delete(doc.ref);
+        }
+        await deleteBatch.commit();
+      }
+      deletedInvites = allStaleDocs.length;
+    }
+  } catch (error) {
+    functions.logger.error('[PrivacyAudit] Failed to purge old shareInvites:', error);
+  }
+
+  functions.logger.info(
+    `[PrivacyAudit] ShareInvite cleanup: expired ${expiredInvites} pending invites, deleted ${deletedInvites} stale invites.`,
+  );
 });
 

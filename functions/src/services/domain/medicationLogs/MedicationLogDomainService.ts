@@ -22,4 +22,8 @@ export class MedicationLogDomainService {
   ): Promise<MedicationLogRecord[]> {
     return this.medicationLogRepository.listByUsers(userIds, options);
   }
+
+  async createLog(payload: FirebaseFirestore.DocumentData): Promise<{ id: string }> {
+    return this.medicationLogRepository.create(payload);
+  }
 }

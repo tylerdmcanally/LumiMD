@@ -511,18 +511,9 @@ function createApiClient(config) {
     shares: {
       list: () => apiRequest("/v1/shares"),
       get: (id) => apiRequest(`/v1/shares/${id}`),
-      create: (data) => apiRequest("/v1/shares", {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
       update: (id, data) => apiRequest(`/v1/shares/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data)
-      }),
-      // Legacy accept-invite endpoint
-      acceptInvite: (token) => apiRequest("/v1/shares/accept-invite", {
-        method: "POST",
-        body: JSON.stringify({ token })
       }),
       getInvites: () => apiRequest("/v1/shares/invites"),
       cancelInvite: (inviteId) => apiRequest(`/v1/shares/invites/${inviteId}`, {
@@ -543,6 +534,9 @@ function createApiClient(config) {
       myInvites: () => apiRequest("/v1/shares/my-invites"),
       revokeInvite: (token) => apiRequest(`/v1/shares/revoke/${token}`, {
         method: "PATCH"
+      }),
+      resendInvite: (token) => apiRequest(`/v1/shares/invite/${token}/resend`, {
+        method: "POST"
       })
     },
     // LumiBot Nudges
@@ -605,6 +599,43 @@ function createApiClient(config) {
       delete: (id) => apiRequest(`/v1/medication-reminders/${id}`, {
         method: "DELETE"
       })
+    },
+    // Patient Messages (inbox from caregivers)
+    messages: {
+      list: (params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/messages${query ? `?${query}` : ""}`;
+        return requestCursorPage(endpoint, params?.limit);
+      },
+      markRead: (id) => apiRequest(`/v1/messages/${id}/read`, {
+        method: "PATCH"
+      }),
+      unreadCount: () => apiRequest("/v1/messages/unread-count")
+    },
+    // Caregiver → Patient messaging
+    careMessages: {
+      send: (patientId, data) => apiRequest(
+        `/v1/care/${patientId}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify(data)
+        }
+      ),
+      list: (patientId, params) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/care/${patientId}/messages${query ? `?${query}` : ""}`;
+        return requestCursorPage(endpoint, params?.limit);
+      }
     }
   };
 }

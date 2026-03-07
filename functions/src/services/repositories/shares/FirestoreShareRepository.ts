@@ -279,4 +279,27 @@ export class FirestoreShareRepository implements ShareRepository {
 
     await batch.commit();
   }
+
+  async revokeAcceptedInvitesByOwnerAndEmail(
+    ownerId: string,
+    caregiverEmail: string,
+  ): Promise<number> {
+    const snapshot = await this.db
+      .collection('shareInvites')
+      .where('ownerId', '==', ownerId)
+      .where('caregiverEmail', '==', caregiverEmail)
+      .where('status', '==', 'accepted')
+      .get();
+
+    if (snapshot.empty) return 0;
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const batch = this.db.batch();
+    for (const doc of snapshot.docs) {
+      batch.update(doc.ref, { status: 'revoked', updatedAt: now });
+    }
+    await batch.commit();
+
+    return snapshot.size;
+  }
 }

@@ -71,6 +71,15 @@ export interface ConfirmMedicationsPayload {
   };
 }
 
+export interface CaregiverMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function normalizeHeaders(headersInit?: HeadersInit): Record<string, string> {
@@ -673,21 +682,10 @@ export function createApiClient(config: ApiClientConfig) {
     shares: {
       list: () => apiRequest<Share[]>('/v1/shares'),
       get: (id: string) => apiRequest<Share>(`/v1/shares/${id}`),
-      create: (data: { caregiverEmail: string; message?: string }) =>
-        apiRequest<Share | ShareInvite>('/v1/shares', {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }),
       update: (id: string, data: { status: 'accepted' | 'revoked' }) =>
         apiRequest<Share>(`/v1/shares/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(data),
-        }),
-      // Legacy accept-invite endpoint
-      acceptInvite: (token: string) =>
-        apiRequest<Share>('/v1/shares/accept-invite', {
-          method: 'POST',
-          body: JSON.stringify({ token }),
         }),
       getInvites: () => apiRequest<ShareInvite[]>('/v1/shares/invites'),
       cancelInvite: (inviteId: string) =>
@@ -713,6 +711,10 @@ export function createApiClient(config: ApiClientConfig) {
       revokeInvite: (token: string) =>
         apiRequest<{ success: boolean }>(`/v1/shares/revoke/${token}`, {
           method: 'PATCH',
+        }),
+      resendInvite: (token: string) =>
+        apiRequest<{ success: boolean; emailSent: boolean }>(`/v1/shares/invite/${token}/resend`, {
+          method: 'POST',
         }),
     },
 
@@ -789,6 +791,48 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<void>(`/v1/medication-reminders/${id}`, {
           method: 'DELETE',
         }),
+    },
+
+    // Patient Messages (inbox from caregivers)
+    messages: {
+      list: (params?: CursorListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/messages${query ? `?${query}` : ''}`;
+        return requestCursorPage<CaregiverMessage>(endpoint, params?.limit);
+      },
+      markRead: (id: string) =>
+        apiRequest<CaregiverMessage>(`/v1/messages/${id}/read`, {
+          method: 'PATCH',
+        }),
+      unreadCount: () =>
+        apiRequest<{ count: number }>('/v1/messages/unread-count'),
+    },
+
+    // Caregiver → Patient messaging
+    careMessages: {
+      send: (patientId: string, data: { message: string }) =>
+        apiRequest<CaregiverMessage & { remainingToday: number }>(
+          `/v1/care/${patientId}/messages`,
+          {
+            method: 'POST',
+            body: JSON.stringify(data),
+          },
+        ),
+      list: (patientId: string, params?: CursorListParams) => {
+        const searchParams = new URLSearchParams();
+        appendQueryParams(searchParams, {
+          limit: params?.limit,
+          cursor: params?.cursor,
+        });
+        const query = searchParams.toString();
+        const endpoint = `/v1/care/${patientId}/messages${query ? `?${query}` : ''}`;
+        return requestCursorPage<CaregiverMessage>(endpoint, params?.limit);
+      },
     },
 
   };

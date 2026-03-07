@@ -176,6 +176,19 @@ export class ShareDomainService {
       return { outcome: 'not_found' };
     }
 
+    // When revoking a share, also revoke any accepted shareInvite docs for
+    // this owner + caregiver pair so they don't become orphaned.
+    if (isOwnerRevoking) {
+      const caregiverEmail =
+        typeof share.caregiverEmail === 'string' ? share.caregiverEmail : '';
+      if (ownerId && caregiverEmail) {
+        await this.shareRepository.revokeAcceptedInvitesByOwnerAndEmail(
+          ownerId,
+          caregiverEmail,
+        );
+      }
+    }
+
     return {
       outcome: 'updated',
       share: updatedShare,

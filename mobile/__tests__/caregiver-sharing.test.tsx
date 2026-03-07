@@ -8,6 +8,7 @@ const mockUseMyShareInvites = jest.fn();
 const mockUseInviteCaregiver = jest.fn();
 const mockUseRevokeShareAccess = jest.fn();
 const mockUseRevokeShareInvite = jest.fn();
+const mockUseResendShareInvite = jest.fn();
 
 jest.mock('../contexts/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
@@ -19,6 +20,7 @@ jest.mock('../lib/api/hooks', () => ({
   useInviteCaregiver: () => mockUseInviteCaregiver(),
   useRevokeShareAccess: () => mockUseRevokeShareAccess(),
   useRevokeShareInvite: () => mockUseRevokeShareInvite(),
+  useResendShareInvite: () => mockUseResendShareInvite(),
 }));
 
 function makeQueryState<T>(data: T, overrides?: Partial<any>) {
@@ -52,6 +54,10 @@ describe('CaregiverSharingScreen', () => {
     });
     mockUseRevokeShareInvite.mockReturnValue({
       mutateAsync: jest.fn(),
+      isPending: false,
+    });
+    mockUseResendShareInvite.mockReturnValue({
+      mutate: jest.fn(),
       isPending: false,
     });
   });

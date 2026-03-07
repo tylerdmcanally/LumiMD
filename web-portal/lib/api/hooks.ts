@@ -3091,3 +3091,104 @@ export function useUpdateRestoreAuditTriage() {
     },
   });
 }
+
+// =============================================================================
+// Caregiver Messaging
+// =============================================================================
+
+export type CaregiverMessageItem = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
+  remainingToday?: number;
+};
+
+export function useCareMessages(
+  patientId: string | undefined,
+  options?: CursorPaginationParams,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+  const limit = options?.limit ?? 20;
+  const cursor = options?.cursor ?? null;
+
+  return useQuery<CursorPageResult<CaregiverMessageItem>>({
+    queryKey: ['care-messages', currentUserId, patientId, limit, cursor],
+    staleTime: 15_000,
+    enabled: Boolean(currentUserId && patientId),
+    queryFn: async () => {
+      const token = await getAuthTokenOrThrow();
+      const params = new URLSearchParams();
+      appendCursorPaginationParams(params, { limit, cursor });
+      const queryString = params.toString();
+      const response = await fetch(
+        `${API_BASE_URL}/v1/care/${patientId}/messages${queryString ? `?${queryString}` : ''}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have access to this patient');
+        }
+        throw new Error('Failed to fetch messages');
+      }
+
+      const payload = await response.json();
+      const items = Array.isArray(payload) ? payload : [];
+      const { hasMore, nextCursor } = parseCursorPaginationHeaders(response);
+      return { items, hasMore, nextCursor };
+    },
+  });
+}
+
+export function useSendCareMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      patientId,
+      message,
+    }: {
+      patientId: string;
+      message: string;
+    }) => {
+      const token = await getAuthTokenOrThrow();
+      const response = await fetch(
+        `${API_BASE_URL}/v1/care/${patientId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ message }),
+        },
+      );
+
+      if (!response.ok) {
+        const message = await parseApiErrorMessage(response, 'Failed to send message');
+        throw new Error(message);
+      }
+
+      return response.json() as Promise<CaregiverMessageItem>;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['care-messages'],
+      });
+      toast.success('Message sent');
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to send message');
+    },
+  });
+}

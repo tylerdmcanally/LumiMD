@@ -21,6 +21,7 @@ import { medicationRemindersRouter } from './routes/medicationReminders';
 import medicationLogsRouter from './routes/medicationLogs';
 import { medicalContextRouter } from './routes/medicalContext';
 import { careRouter } from './routes/care';
+import { messagesRouter } from './routes/messages';
 import { apiLimiter } from './middlewares/rateLimit';
 import { requireHttps } from './middlewares/httpsOnly';
 import { errorHandler } from './middlewares/errorHandler';
@@ -48,6 +49,7 @@ export {
 export { analyzeMedicationSafety } from './callables/medicationSafety';
 export { privacyDataSweeper } from './triggers/privacySweeper';
 export { staleVisitSweeper } from './triggers/staleVisitSweeper';
+export { processMedicationFollowUpNudges } from './triggers/medicationFollowUpNudges';
 
 const parsePositiveInt = (value: string | undefined): number | undefined => {
   if (!value) {
@@ -208,6 +210,7 @@ app.use('/v1/medication-logs', medicationLogsRouter);
 app.use('/v1/insights', insightsRouter);
 app.use('/v1/medical-context', medicalContextRouter);
 app.use('/v1/care', careRouter);
+app.use('/v1/messages', messagesRouter);
 
 // Public shared visit links are deprecated. Visit access now requires authenticated caregiver access.
 app.get('/v1/shared/visits/:userId/:visitId', (_req, res) => {

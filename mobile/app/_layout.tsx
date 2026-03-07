@@ -142,6 +142,10 @@ function NotificationHandler() {
         // Navigate to home screen where LumiBot section will show the nudge
         console.log('[Notifications] Navigating to home for nudge:', data.nudgeId);
         router.replace('/(tabs)');
+      } else if (data?.type === 'caregiver_message') {
+        // Navigate to messages screen
+        console.log('[Notifications] Navigating to messages for caregiver message:', data.messageId);
+        router.push('/messages');
       }
     });
 
@@ -267,6 +271,13 @@ export default function RootLayout() {
               />
               <Stack.Screen
                 name="caregiver-sharing"
+                options={{
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                }}
+              />
+              <Stack.Screen
+                name="messages"
                 options={{
                   headerShown: false,
                   animation: 'slide_from_right',
