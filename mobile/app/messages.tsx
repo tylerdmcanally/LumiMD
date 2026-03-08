@@ -5,7 +5,7 @@
  * Designed for elderly users — large fonts, high contrast, simple layout.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useMyMessages } from '../lib/api/hooks';
@@ -93,13 +94,24 @@ function EmptyState() {
 
 export default function MessagesScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data, isLoading, isRefetching, refetch } = useMyMessages();
 
   const messages = data?.items ?? [];
 
+  // When the inbox is opened, the backend auto-marks messages as read.
+  // Invalidate the unread count so the home screen badge updates immediately.
+  useEffect(() => {
+    if (!isLoading && data) {
+      queryClient.invalidateQueries({ queryKey: ['messages', 'unread-count'] });
+    }
+  }, [isLoading, data, queryClient]);
+
   const handleRefresh = useCallback(async () => {
     await refetch();
-  }, [refetch]);
+    // Also refresh unread count after pull-to-refresh
+    queryClient.invalidateQueries({ queryKey: ['messages', 'unread-count'] });
+  }, [refetch, queryClient]);
 
   const renderMessage = useCallback(
     ({ item }: { item: CaregiverMessage }) => <MessageCard item={item} />,

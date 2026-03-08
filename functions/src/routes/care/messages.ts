@@ -252,7 +252,7 @@ export function registerCareMessagesRoutes(
 
             res.set('X-Has-More', hasMore ? 'true' : 'false');
             res.set('X-Next-Cursor', nextCursor || '');
-            res.set('Cache-Control', 'private, max-age=15');
+            res.set('Cache-Control', 'private, no-cache');
             res.json(messages);
         } catch (error) {
             functions.logger.error('[care][messages] Error listing messages:', error);

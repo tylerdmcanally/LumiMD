@@ -217,7 +217,7 @@ messagesRouter.get('/unread-count', requireAuth, async (req: AuthRequest, res) =
             .limit(100) // Cap for performance
             .get();
 
-        res.set('Cache-Control', 'private, max-age=10');
+        res.set('Cache-Control', 'private, no-cache');
         res.json({ count: snapshot.size });
     } catch (error) {
         functions.logger.error('[messages] Error getting unread count:', error);

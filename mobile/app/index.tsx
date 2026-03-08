@@ -501,19 +501,16 @@ export default function HomeScreen() {
                     }
                   />
 
-                  <GlanceableCard
-                    title="Messages"
-                    count={unreadCount}
-                    countLabel="unread"
-                    emptyStateText="No new messages"
-                    statusBadge={
-                      unreadCount > 0
-                        ? { text: `${unreadCount} new`, color: Colors.primary }
-                        : undefined
-                    }
-                    icon="mail-outline"
-                    onPress={() => router.push('/messages')}
-                  />
+                  {unreadCount > 0 && (
+                    <GlanceableCard
+                      title="Messages"
+                      count={unreadCount}
+                      countLabel="unread"
+                      statusBadge={{ text: `${unreadCount} new`, color: Colors.primary }}
+                      icon="mail-outline"
+                      onPress={() => router.push('/messages')}
+                    />
+                  )}
 
                   <GlanceableCard
                     title="Recent Visits"
