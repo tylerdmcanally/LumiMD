@@ -106,16 +106,13 @@ export function registerCareTrendsRoutes(
                 healthLogService.listForUser(patientId, {
                     startDate,
                     sortDirection: 'desc',
-                    includeDeleted: true,
                 }),
                 actionService.listAllForUser(patientId, {
                     sortDirection: 'desc',
-                    includeDeleted: true,
                 }),
                 visitService.listForUser(patientId, {
                     limit: 5,
                     sortDirection: 'desc',
-                    includeDeleted: true,
                 }),
                 medLogsPromise,
             ]);
@@ -273,9 +270,10 @@ export function registerCareTrendsRoutes(
                 };
             }).filter((action) => !action.deletedAt);
 
+            const todayDateStr = now.toISOString().slice(0, 10);
             const completedInPeriod = actions.filter((a) => a.completed && a.completedAt && a.completedAt >= startDate).length;
             const pending = actions.filter((a) => !a.completed).length;
-            const overdue = actions.filter((a) => !a.completed && a.dueAt && a.dueAt < now).length;
+            const overdue = actions.filter((a) => !a.completed && a.dueAt && a.dueAt.toISOString().slice(0, 10) < todayDateStr).length;
             const totalActions = actions.length;
             const completionRate = totalActions > 0 ? Math.round((actions.filter((a) => a.completed).length / totalActions) * 100) : 0;
 

@@ -59,23 +59,18 @@ export function registerCareExportSummaryRoutes(
             const [visitRecords, medicationRecords, actionRecords] = await Promise.all([
                 visitService.listAllForUser(patientId, {
                     sortDirection: 'desc',
-                    includeDeleted: true,
                 }),
                 medicationService.listAllForUser(patientId, {
-                    includeDeleted: true,
                     sortDirection: 'asc',
                     sortField: 'name',
                 }),
                 actionService.listAllForUser(patientId, {
                     sortDirection: 'desc',
-                    includeDeleted: true,
                 }),
             ]);
             perf.addQueries(3);
 
-            const visits = visitRecords
-                .filter((visit) => !visit.deletedAt)
-                .map((data) => {
+            const visits = visitRecords.map((data) => {
                 const diagnoses = Array.isArray(data.diagnoses)
                     ? data.diagnoses.filter(Boolean)
                     : Array.isArray(data.diagnosesDetailed)
@@ -102,7 +97,7 @@ export function registerCareExportSummaryRoutes(
             });
 
             const medications = medicationRecords
-                .filter((medication) => medication.active === true && !medication.deletedAt)
+                .filter((medication) => medication.active)
                 .map((data) => {
                 return {
                     name: data.name || 'Unknown',
@@ -113,7 +108,7 @@ export function registerCareExportSummaryRoutes(
             });
 
             const pendingActions = actionRecords
-                .filter((action) => action.completed === false && !action.deletedAt)
+                .filter((action) => !action.completed)
                 .map((data) => {
                 const dueDate = parseActionDueAt(data.dueAt);
                 return {

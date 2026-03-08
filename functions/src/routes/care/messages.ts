@@ -212,6 +212,7 @@ export function registerCareMessagesRoutes(
 
             res.status(201).json({
                 id: docRef.id,
+                senderId: caregiverId,
                 message: sanitizedMessage,
                 senderName,
                 createdAt: now.toDate().toISOString(),

@@ -100,11 +100,9 @@ export function registerCareSummaryRoutes(
                         .get(),
                     visitService.listAllForUser(patientId, {
                         sortDirection: 'desc',
-                        includeDeleted: true,
                     }),
                     actionService.listAllForUser(patientId, {
                         sortDirection: 'desc',
-                        includeDeleted: true,
                     }),
                 ]);
                 perf.addQueries(3);
@@ -116,11 +114,9 @@ export function registerCareSummaryRoutes(
                     medicationsSnapshot: medsSnapshot,
                 });
 
-                const lastVisit = visitRecords
-                    .filter((visit) => !visit.deletedAt)
-                    .slice(0, 5)[0];
+                const lastVisit = visitRecords.slice(0, 5)[0];
                 const openActions = actionRecords.filter(
-                    (action) => action.completed === false && !action.deletedAt,
+                    (action) => !action.completed,
                 );
                 const alerts: CareOverviewAlert[] = [];
 
@@ -133,14 +129,19 @@ export function registerCareSummaryRoutes(
                 }
 
                 const now = new Date();
+                const todayDateStr = now.toISOString().slice(0, 10);
                 openActions.forEach((data) => {
                     const dueDate = parseActionDueAt(data.dueAt);
-                    if (!dueDate || dueDate >= now) {
+                    if (!dueDate) {
+                        return;
+                    }
+                    const dueDateStr = dueDate.toISOString().slice(0, 10);
+                    if (dueDateStr >= todayDateStr) {
                         return;
                     }
 
-                    const daysOverdue = Math.floor(
-                        (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24),
+                    const daysOverdue = Math.round(
+                        (Date.parse(todayDateStr) - Date.parse(dueDateStr)) / (1000 * 60 * 60 * 24),
                     );
                     alerts.push({
                         type: 'overdue_action',

@@ -44,12 +44,12 @@ export function registerCareUpcomingActionsRoutes(
             const actionService = getActionDomainService();
             const actionRecords = await actionService.listAllForUser(patientId, {
                 sortDirection: 'desc',
-                includeDeleted: true,
             });
             perf.addQueries(1);
 
+            const todayDateStr = now.toISOString().slice(0, 10);
             const actions = actionRecords.map((data) => {
-                if (data.completed !== false || data.deletedAt) {
+                if (data.completed) {
                     return null;
                 }
                 let dueAt: Date | null = null;
@@ -57,8 +57,11 @@ export function registerCareUpcomingActionsRoutes(
                     dueAt = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? null;
                 }
 
-                const isOverdue = dueAt ? dueAt < now : false;
-                const daysUntilDue = dueAt ? Math.ceil((dueAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                const dueDateStr = dueAt ? dueAt.toISOString().slice(0, 10) : null;
+                const isOverdue = dueDateStr ? dueDateStr < todayDateStr : false;
+                const daysUntilDue = dueDateStr
+                    ? Math.round((Date.parse(dueDateStr) - Date.parse(todayDateStr)) / (1000 * 60 * 60 * 24))
+                    : null;
 
                 return {
                     id: data.id,
