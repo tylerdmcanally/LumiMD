@@ -464,7 +464,7 @@ sharesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
       res.set('X-Next-Cursor', nextCursor || '');
     }
 
-    res.set('Cache-Control', 'private, max-age=30');
+    res.set('Cache-Control', 'private, no-cache');
     res.json(responsePayload);
   } catch (error) {
     functions.logger.error('[shares] Error listing shares:', error);
@@ -553,7 +553,7 @@ sharesRouter.get('/invites', requireAuth, async (req: AuthRequest, res) => {
       res.set('X-Next-Cursor', nextCursor || '');
     }
 
-    res.set('Cache-Control', 'private, max-age=30');
+    res.set('Cache-Control', 'private, no-cache');
     res.json(responsePayload);
   } catch (error) {
     functions.logger.error('[shares] Error fetching invites:', error);
@@ -655,7 +655,7 @@ sharesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     }
     const participantShare = share!;
 
-    res.set('Cache-Control', 'private, max-age=30');
+    res.set('Cache-Control', 'private, no-cache');
     res.json(serializeSharePayload(shareId, participantShare));
   } catch (error) {
     functions.logger.error('[shares] Error getting share:', error);
@@ -1378,7 +1378,7 @@ sharesRouter.get('/my-invites', requireAuth, async (req: AuthRequest, res) => {
       res.set('X-Next-Cursor', nextCursor || '');
     }
 
-    res.set('Cache-Control', 'private, max-age=30');
+    res.set('Cache-Control', 'private, no-cache');
     res.json(responsePayload);
   } catch (error) {
     functions.logger.error('[shares] Error fetching invites:', error);

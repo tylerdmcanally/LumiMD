@@ -1251,7 +1251,33 @@ export function useRevokeShareAccess() {
   return useMutation({
     mutationFn: (shareId: string) =>
       api.shares.update(shareId, { status: 'revoked' }),
-    onSuccess: () => {
+    onMutate: async (shareId) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['shares'] });
+
+      // Snapshot current data for rollback
+      const previousShares = queryClient.getQueriesData<Share[]>({ queryKey: ['shares'] });
+
+      // Optimistically update: set the share's status to 'revoked' so
+      // the UI filter immediately removes it from the active list
+      queryClient.setQueriesData<Share[]>({ queryKey: ['shares'] }, (old) => {
+        if (!old) return old;
+        return old.map((share) =>
+          share.id === shareId ? { ...share, status: 'revoked' as const } : share,
+        );
+      });
+
+      return { previousShares };
+    },
+    onError: (_err, _shareId, context) => {
+      // Rollback on error
+      if (context?.previousShares) {
+        context.previousShares.forEach(([key, data]) => {
+          if (data) queryClient.setQueryData(key, data);
+        });
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['shares'] });
       queryClient.invalidateQueries({ queryKey: ['shareInvites'] });
     },
@@ -1263,7 +1289,29 @@ export function useRevokeShareInvite() {
 
   return useMutation({
     mutationFn: (token: string) => api.shares.revokeInvite(token),
-    onSuccess: () => {
+    onMutate: async (token) => {
+      await queryClient.cancelQueries({ queryKey: ['shareInvites'] });
+
+      const previousInvites = queryClient.getQueriesData<ShareInvite[]>({ queryKey: ['shareInvites'] });
+
+      // Optimistically remove the invite from the list
+      queryClient.setQueriesData<ShareInvite[]>({ queryKey: ['shareInvites'] }, (old) => {
+        if (!old) return old;
+        return old.map((invite) =>
+          invite.id === token ? { ...invite, status: 'revoked' as const } : invite,
+        );
+      });
+
+      return { previousInvites };
+    },
+    onError: (_err, _token, context) => {
+      if (context?.previousInvites) {
+        context.previousInvites.forEach(([key, data]) => {
+          if (data) queryClient.setQueryData(key, data);
+        });
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['shares'] });
       queryClient.invalidateQueries({ queryKey: ['shareInvites'] });
     },
