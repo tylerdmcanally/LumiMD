@@ -271,9 +271,11 @@ export default function PatientDetailPage() {
 
     // Calculate medication progress
     const medSummary = quickOverview?.todaysMeds || { total: 0, taken: 0, pending: 0, missed: 0, skipped: 0 };
-    const medProgress = medSummary.total > 0 
-        ? Math.round((medSummary.taken / medSummary.total) * 100) 
+    const medProgress = medSummary.total > 0
+        ? Math.round((medSummary.taken / medSummary.total) * 100)
         : 0;
+    const unscheduledMedications = quickOverview?.unscheduledMedications || [];
+    const lastActivity = quickOverview?.lastActivity;
 
     // Coverage and trends data
     const coverage = trendsData?.coverage;
@@ -299,6 +301,20 @@ export default function PatientDetailPage() {
                         </h1>
                         <p className="text-sm text-text-secondary">
                             Today's snapshot ({quickOverview?.date || 'today'})
+                            {lastActivity && (
+                                <span className="ml-3 inline-flex items-center gap-1.5">
+                                    <span className={cn(
+                                        'w-2 h-2 rounded-full',
+                                        (() => {
+                                            const hoursAgo = (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60);
+                                            if (hoursAgo < 4) return 'bg-success';
+                                            if (hoursAgo < 24) return 'bg-warning';
+                                            return 'bg-error';
+                                        })()
+                                    )} />
+                                    <span>Last activity {formatDistanceToNow(new Date(lastActivity), { addSuffix: true })}</span>
+                                </span>
+                            )}
                         </p>
                     </div>
                 </div>
@@ -439,6 +455,19 @@ export default function PatientDetailPage() {
                                 )}>Missed</p>
                             </div>
                         </div>
+
+                        {/* Unscheduled medications notice */}
+                        {unscheduledMedications.length > 0 && (
+                            <div className="mt-4 p-3 rounded-lg bg-warning-light/50 border border-warning/20">
+                                <p className="text-xs font-medium text-warning-dark mb-1">
+                                    {unscheduledMedications.length} medication{unscheduledMedications.length > 1 ? 's' : ''} not being tracked
+                                </p>
+                                <p className="text-xs text-text-secondary">
+                                    {unscheduledMedications.map((m) => m.medicationName).join(', ')}
+                                    {' '}&mdash; no reminder schedule set up
+                                </p>
+                            </div>
+                        )}
                     </Card>
 
                     {/* Health Snapshot */}

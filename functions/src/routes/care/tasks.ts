@@ -161,7 +161,7 @@ export function registerCareTaskRoutes(
                 }).length,
             };
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json({ tasks, summary });
         } catch (error) {
             if (error instanceof RepositoryValidationError) {

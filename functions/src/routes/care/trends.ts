@@ -310,7 +310,7 @@ export function registerCareTrendsRoutes(
                 isStale: daysWithoutVitals >= 10,
             };
 
-            res.set('Cache-Control', 'private, max-age=60');
+            res.set('Cache-Control', 'private, no-cache');
             res.json({
                 vitals: {
                     bp: bpTrend,

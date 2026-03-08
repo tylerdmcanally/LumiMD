@@ -168,7 +168,7 @@ export function registerCareExportSummaryRoutes(
                 })),
             };
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json(summary);
         } catch (error) {
             statusCode = 500;

@@ -113,7 +113,7 @@ export function registerCareNotesRoutes(
                 };
             });
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json(responsePayload);
         } catch (error) {
             if (error instanceof RepositoryValidationError) {

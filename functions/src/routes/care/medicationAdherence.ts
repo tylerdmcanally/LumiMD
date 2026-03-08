@@ -392,7 +392,7 @@ export function registerCareMedicationAdherenceRoutes(
                 lastLoggedAt = sortedLogs[0].createdAt.toISOString();
             }
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json({
                 overall: {
                     totalDoses: effectiveExpected,

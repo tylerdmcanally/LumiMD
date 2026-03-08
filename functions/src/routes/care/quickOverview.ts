@@ -102,6 +102,7 @@ export function registerCareQuickOverviewRoutes(
                 medsSnapshot,
                 reminders,
                 todayMedLogs,
+                weekMedLogs,
                 healthLogRecords,
                 recentActionRecords,
                 recentVisitsPage,
@@ -116,6 +117,10 @@ export function registerCareQuickOverviewRoutes(
                 medicationLogService.listForUser(patientId, {
                     startDate: dayWindow.startOfDayUTC,
                     endDate: dayWindow.endOfDayUTC,
+                    dateField: 'loggedAt',
+                }),
+                medicationLogService.listForUser(patientId, {
+                    startDate: weekAgo,
                     dateField: 'loggedAt',
                 }),
                 healthLogService.listForUser(patientId, {
@@ -134,7 +139,7 @@ export function registerCareQuickOverviewRoutes(
                     includeDeleted: true,
                 }),
             ]);
-            perf.addQueries(6);
+            perf.addQueries(7);
 
             const todayMedStatus = await getTodaysMedicationStatus(patientId, {
                 timezone: userTimezone,
@@ -154,43 +159,10 @@ export function registerCareQuickOverviewRoutes(
                 now,
             });
 
-            // Reuse today's logs for activity when possible and only read week logs as needed.
-            const recentMedLogById = new Map<
-                string,
-                FirebaseFirestore.DocumentData & { id: string }
-            >();
-            todayMedLogs.forEach((medicationLog) => {
-                recentMedLogById.set(medicationLog.id, medicationLog);
-            });
-
-            if (recentMedLogById.size < 5) {
-                weekLogFallbackUsed = true;
-                let recentMedLogs = await medicationLogService.listForUser(patientId, {
-                    startDate: weekAgo,
-                    dateField: 'createdAt',
-                    limit: 10,
-                }).catch(async (error) => {
-                    functions.logger.warn(
-                        '[care] quick-overview createdAt medicationLogs query failed; retrying with loggedAt',
-                        error,
-                    );
-
-                    return medicationLogService.listForUser(patientId, {
-                        startDate: weekAgo,
-                        dateField: 'loggedAt',
-                        limit: 10,
-                    });
-                });
-                perf.addQueries(1);
-
-                recentMedLogs.forEach((medicationLog) => {
-                    if (!recentMedLogById.has(medicationLog.id)) {
-                        recentMedLogById.set(medicationLog.id, medicationLog);
-                    }
-                });
-            }
-
-            const recentMedLogs = Array.from(recentMedLogById.values())
+            // Use week's medication logs for both activity and adherence
+            weekLogFallbackUsed = true;
+            const recentMedLogs = weekMedLogs
+                .slice()
                 .sort((left, right) => {
                     const leftDate =
                         toDateSafe(left.createdAt) ??
@@ -264,6 +236,32 @@ export function registerCareQuickOverviewRoutes(
                     message: 'No health readings in the past week',
                     actionUrl: `/care/${patientId}/health`,
                 });
+            }
+
+            // Check 7-day medication adherence
+            let expectedDoses = 0;
+            reminders.forEach((data) => {
+                const times = data.times || [];
+                expectedDoses += times.length * 7;
+            });
+            if (expectedDoses > 0) {
+                const takenCount = weekMedLogs.filter((l) => l.action === 'taken').length;
+                const adherenceRate = Math.round((takenCount / expectedDoses) * 100);
+                if (adherenceRate < 50) {
+                    needsAttention.push({
+                        type: 'low_adherence',
+                        priority: 'high',
+                        message: `Only ${adherenceRate}% medication adherence over the past 7 days`,
+                        actionUrl: `/care/${patientId}/adherence`,
+                    });
+                } else if (adherenceRate < 70) {
+                    needsAttention.push({
+                        type: 'declining_adherence',
+                        priority: 'medium',
+                        message: `${adherenceRate}% medication adherence over the past 7 days`,
+                        actionUrl: `/care/${patientId}/adherence`,
+                    });
+                }
             }
 
             // Sort by priority
@@ -436,11 +434,53 @@ export function registerCareQuickOverviewRoutes(
                 (a, b) => new Date(b.changeDate).getTime() - new Date(a.changeDate).getTime(),
             );
 
-            res.set('Cache-Control', 'private, max-age=30');
+            // Compute last activity from actual patient data
+            const activityTimestamps: Date[] = [];
+            if (recentMedLogs.length > 0) {
+                const logDate = toDateSafe(recentMedLogs[0].createdAt) ?? toDateSafe(recentMedLogs[0].loggedAt);
+                if (logDate) activityTimestamps.push(logDate);
+            }
+            if (activeHealthLogs.length > 0) {
+                const logDate = toDateSafe(activeHealthLogs[0].createdAt);
+                if (logDate) activityTimestamps.push(logDate);
+            }
+            if (activeRecentVisitRecords.length > 0) {
+                const visitDate = activeRecentVisitRecords[0].createdAt?.toDate?.();
+                if (visitDate) activityTimestamps.push(visitDate);
+            }
+            const lastActivity = activityTimestamps.length > 0
+                ? new Date(Math.max(...activityTimestamps.map((d) => d.getTime()))).toISOString()
+                : null;
+
+            // Identify active medications without reminder schedules
+            const scheduledMedIds = new Set<string>();
+            reminders.forEach((data) => {
+                if (typeof data.medicationId === 'string' && data.medicationId.length > 0) {
+                    scheduledMedIds.add(data.medicationId);
+                }
+            });
+            const activeMeds = medsSnapshot.docs.filter((doc) => {
+                const data = doc.data();
+                return data.active !== false && !data.deletedAt;
+            });
+            const unscheduledMedications = activeMeds
+                .filter((doc) => !scheduledMedIds.has(doc.id))
+                .map((doc) => {
+                    const data = doc.data();
+                    return {
+                        medicationId: doc.id,
+                        medicationName: data.name || 'Unknown',
+                        dose: data.dose || null,
+                    };
+                });
+
+            res.set('Cache-Control', 'private, no-cache');
             res.json({
                 date: dayWindow.todayStr,
                 needsAttention,
                 todaysMeds: todayMedStatus,
+                lastActivity,
+                unscheduledMedications,
                 recentActivity: recentActivity.slice(0, 5),
                 healthSnapshot,
                 upcomingActions: {

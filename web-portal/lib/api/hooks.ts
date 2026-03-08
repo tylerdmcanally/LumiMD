@@ -2060,6 +2060,12 @@ export type QuickOverviewData = {
       to: string;
     };
   };
+  lastActivity: string | null;
+  unscheduledMedications: Array<{
+    medicationId: string;
+    medicationName: string;
+    dose: string | null;
+  }>;
 };
 
 export function useCareQuickOverview(patientId: string | undefined) {

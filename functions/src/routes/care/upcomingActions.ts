@@ -96,7 +96,7 @@ export function registerCareUpcomingActionsRoutes(
                 dueLater: actions.filter((a) => !a.isOverdue && (a.daysUntilDue === null || a.daysUntilDue > 7)).length,
             };
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json({
                 actions: actions.slice(0, limit),
                 summary,

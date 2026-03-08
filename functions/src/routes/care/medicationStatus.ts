@@ -209,6 +209,16 @@ export function registerCareMedicationStatusRoutes(
                 // Sort by time
                 schedule.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
 
+                // Identify active medications without reminder schedules
+                const scheduledMedIds = new Set(reminderMap.keys());
+                const unscheduledMedications = medications
+                    .filter((med) => !scheduledMedIds.has(med.id))
+                    .map((med) => ({
+                        medicationId: med.id,
+                        medicationName: med.name,
+                        dose: med.dose || null,
+                    }));
+
                 const summary = await getTodaysMedicationStatus(patientId, {
                     timezone: userTimezone,
                     medicationsSnapshot: medsSnapshot,
@@ -227,10 +237,11 @@ export function registerCareMedicationStatusRoutes(
                     now,
                 });
 
-                res.set('Cache-Control', 'private, max-age=30');
+                res.set('Cache-Control', 'private, no-cache');
                 res.json({
                     date: todayStr,
                     schedule,
+                    unscheduledMedications,
                     summary,
                 });
             } catch (error) {

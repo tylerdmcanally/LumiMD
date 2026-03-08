@@ -104,7 +104,7 @@ export function registerCareMedicationChangeRoutes(
             // Sort by date (most recent first)
             changes.sort((a, b) => new Date(b.changeDate).getTime() - new Date(a.changeDate).getTime());
 
-            res.set('Cache-Control', 'private, max-age=60');
+            res.set('Cache-Control', 'private, no-cache');
             res.json({
                 changes,
                 period: {

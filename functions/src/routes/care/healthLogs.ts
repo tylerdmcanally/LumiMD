@@ -178,7 +178,7 @@ export function registerCareHealthLogRoutes(
         caution: responseLogs.filter((l) => l.alertLevel === 'caution').length,
       };
 
-      res.set('Cache-Control', 'private, max-age=30');
+      res.set('Cache-Control', 'private, no-cache');
       res.json({
         logs: responseLogs,
         summary: {

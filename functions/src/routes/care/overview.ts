@@ -71,7 +71,7 @@ export function registerCareOverviewRoutes(
             const shares = await getAcceptedSharesForCaregiver(caregiverId);
 
             if (shares.length === 0) {
-                res.set('Cache-Control', 'private, max-age=60');
+                res.set('Cache-Control', 'private, no-cache');
                 res.json({ patients: [] });
                 return;
             }
@@ -128,7 +128,7 @@ export function registerCareOverviewRoutes(
                 };
             });
 
-            res.set('Cache-Control', 'private, max-age=60');
+            res.set('Cache-Control', 'private, no-cache');
             res.json({ patients: patientsData });
         } catch (error) {
             functions.logger.error('[care] Error fetching overview:', error);

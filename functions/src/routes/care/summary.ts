@@ -149,7 +149,7 @@ export function registerCareSummaryRoutes(
                     });
                 });
 
-                res.set('Cache-Control', 'private, max-age=30');
+                res.set('Cache-Control', 'private, no-cache');
                 res.json({
                     userId: patientId,
                     name,

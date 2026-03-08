@@ -110,7 +110,7 @@ export function registerCarePatientResourceRoutes(
                 };
             });
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json(responsePayload);
         } catch (error) {
             if (error instanceof RepositoryValidationError) {
@@ -194,7 +194,7 @@ export function registerCarePatientResourceRoutes(
                 };
             });
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json(responsePayload);
         } catch (error) {
             if (error instanceof RepositoryValidationError) {
@@ -298,7 +298,7 @@ export function registerCarePatientResourceRoutes(
                 };
             });
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json(responsePayload);
         } catch (error) {
             if (error instanceof RepositoryValidationError) {
@@ -361,7 +361,7 @@ export function registerCarePatientResourceRoutes(
                     : null;
             const patientName = preferredName || (firstName ? `${firstName}${lastName ? ` ${lastName}` : ''}` : undefined);
 
-            res.set('Cache-Control', 'private, max-age=30');
+            res.set('Cache-Control', 'private, no-cache');
             res.json({
                 id: visitId,
                 status: visitData.status || undefined,
