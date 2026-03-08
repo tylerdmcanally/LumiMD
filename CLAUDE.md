@@ -95,9 +95,20 @@ Push notification to caregiver
 - `routes/actions.ts` — Action items CRUD
 - `routes/messages.ts` — Patient inbox (list, mark-read, unread count)
 - `routes/nudges.ts` — Nudge CRUD + response handler (includes `took_it`/`skipped_it` for medication follow-ups)
-- `routes/care.ts` — Caregiver route aggregator
+- `routes/care.ts` — Caregiver route aggregator + multi-patient overview
+- `routes/care/quickOverview.ts` — Individual patient snapshot
+- `routes/care/summary.ts` — Patient summary with alerts
+- `routes/care/alerts.ts` — Patient alerts (missed doses, overdue items)
+- `routes/care/tasks.ts` — Caregiver-created tasks CRUD
+- `routes/care/upcomingActions.ts` — Upcoming/overdue action items
+- `routes/care/trends.ts` — Health trends (vitals, adherence, coverage)
 - `routes/care/medicationAdherence.ts` — Adherence stats with confidence indicators
+- `routes/care/medicationStatus.ts` — Today's medication status
+- `routes/care/medicationChanges.ts` — Medication change history
 - `routes/care/messages.ts` — Caregiver → patient messaging (send + list sent, resolves sender name from share/profile/auth)
+- `routes/care/notes.ts` — Caregiver notes per patient
+- `routes/care/healthLogs.ts` — Patient health logs for caregiver view
+- `routes/care/exportSummary.ts` — Printable care summary export
 - `routes/shares.ts` — Share CRUD, invite system, `resolveCaregiverName()` helper (profile → auth → invite label → email fallback)
 - `routes/webhooks.ts` — AssemblyAI webhook receiver
 - `services/openai.ts` — GPT-4 summarization (52KB, 4-stage prompts)
@@ -127,11 +138,19 @@ Push notification to caregiver
 
 ### Web Portal (`web-portal/`)
 - `app/(protected)/` — Authenticated routes (dashboard, visits, medications, actions, ops/)
-- `app/care/[patientId]/` — Caregiver views (patient detail, adherence, messages, medications, etc.)
-- `app/care/[patientId]/messages/page.tsx` — Caregiver messaging (compose + sent history)
+- `app/care/page.tsx` — Caregiver dashboard (multi-patient overview, clickable patient cards, refresh button)
+- `app/care/[patientId]/page.tsx` — Patient detail (quick summary, trends, tasks CRUD, refresh + print summary buttons)
+- `app/care/[patientId]/actions/` — Action items list (expandable cards with details, visit link, refresh button)
+- `app/care/[patientId]/messages/` — Caregiver messaging (compose + sent history)
+- `app/care/[patientId]/adherence/` — Medication adherence with confidence indicators
+- `app/care/[patientId]/medications/` — Patient medication list
+- `app/care/[patientId]/visits/` — Visit history
+- `app/care/[patientId]/health/` — Health logs / vitals
+- `app/care/[patientId]/conditions/` — Conditions list
+- `app/care/[patientId]/providers/` — Provider list
 - `app/shared/` — Caregiver read-only view (no login required)
 - `app/api/` — Next.js API routes (auth, email)
-- `lib/api/hooks.ts` — React Query hooks (useCareMessages, useSendCareMessage, etc.)
+- `lib/api/hooks.ts` — React Query hooks (useCareOverview, useCareQuickOverview, useCareSummaryExport, useCareMessages, useSendCareMessage, etc.)
 
 ### Shared SDK (`packages/sdk/src/`)
 - `api-client.ts` — HTTP client with retry, timeout, error mapping
@@ -162,8 +181,21 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `/v1/messages` | GET | Patient inbox (caregiver messages) |
 | `/v1/messages/:id/read` | PATCH | Mark message as read |
 | `/v1/messages/unread-count` | GET | Unread message count |
+| `/v1/care/overview` | GET | Multi-patient dashboard overview |
+| `/v1/care/:patientId/quick-overview` | GET | Individual patient snapshot |
+| `/v1/care/:patientId/summary` | GET | Patient summary with alerts |
 | `/v1/care/:patientId/messages` | GET, POST | Caregiver: list sent / send message (10/day limit) |
 | `/v1/care/:patientId/medication-adherence` | GET | Adherence stats with confidence indicators |
+| `/v1/care/:patientId/actions` | GET | Patient action items (paginated) |
+| `/v1/care/:patientId/tasks` | GET, POST, PATCH, DELETE | Caregiver-created tasks (CRUD) |
+| `/v1/care/:patientId/upcoming-actions` | GET | Upcoming/overdue action items |
+| `/v1/care/:patientId/alerts` | GET | Patient alerts (missed doses, overdue actions) |
+| `/v1/care/:patientId/trends` | GET | Health trends (vitals, adherence, actions) |
+| `/v1/care/:patientId/export/summary` | GET | Printable care summary |
+| `/v1/care/:patientId/health-logs` | GET | Patient health logs |
+| `/v1/care/:patientId/notes` | GET, PUT, DELETE | Caregiver notes |
+| `/v1/care/:patientId/medication-status` | GET | Today's medication status |
+| `/v1/care/:patientId/medication-changes` | GET | Medication change history |
 | `/v1/webhooks/assemblyai` | POST | Transcription webhook |
 
 ## Security
@@ -228,6 +260,8 @@ firebase use lumimd-dev   # or lumimd (prod)
 
 ## Common Patterns
 
+**Cache-Control for mutable data:** Use `Cache-Control: private, no-cache` (NOT `max-age`). React Native's `fetch` respects HTTP cache headers, so `max-age` causes stale reads after mutations even when React Query triggers a refetch.
+
 **Pagination:** Cursor-based using Firestore `startAfter`. Always pass `cursor` param for next page.
 
 **Soft delete:** Set `deletedAt = serverTimestamp()` instead of calling `.delete()`. All queries include `.where('deletedAt', '==', null)`.
@@ -236,7 +270,13 @@ firebase use lumimd-dev   # or lumimd (prod)
 
 **Error handling (SDK):** Network errors, timeouts, 5xx → retryable. 401/403 → session expired. 429 → rate limit message.
 
-**Caregiver access:** Denormalized `shareIds` array on visits/medications. Firestore rules check `shares/{ownerId_caregiverId}` status = 'accepted'.
+**Caregiver access:** Firestore rules check `shares/{ownerId_caregiverId}` status = 'accepted'.
+
+**Date-only overdue checks:** Always compare dates as `dueDate.toISOString().slice(0, 10) < todayDateStr` (NOT `dueDate < now`). Datetime comparison causes items due today to show as overdue once server time passes the stored timestamp.
+
+**Soft-delete at query level:** Never use `includeDeleted: true` unless the endpoint specifically needs deleted records. Let the repository's `buildUserQuery` add `where('deletedAt', '==', null)` at the Firestore level rather than filtering in memory.
+
+**z-index layers:** Dialogs use `z-modal` (500). Select/popover content must use `z-[510]` or higher to render above dialog overlays.
 
 ## Key Documentation
 
@@ -250,43 +290,29 @@ firebase use lumimd-dev   # or lumimd (prod)
 
 ## Recent Changes (March 2026)
 
-### Caregiver Portal Enhancements (deployed to `lumimd-dev`)
+### Caregiver Portal (deployed to `lumimd-dev`)
 
-**Feature 2A — Adherence Confidence Indicators:**
-- `GET /v1/care/:patientId/medication-adherence` now returns `confidence: { level, factors }` per-medication and overall
-- Levels: `high` (>80% coverage), `medium` (30-80%), `low` (<30% or no schedule), `insufficient` (no reminders + <3 logs)
-- Also returns `dataQuality: { hasSchedule, logCoverage, lastLoggedAt }`
+**Features:**
+- **Full caregiver dashboard** — Multi-patient overview (`/care`), individual patient detail (`/care/:patientId`), with sub-pages for actions, medications, visits, adherence, messages, health, conditions, providers
+- **Clickable patient cards** — Card body links to patient dashboard; bottom buttons for Medications and Actions
+- **Refresh buttons** — Manual refresh on dashboard, patient detail, and actions pages (triggers React Query `refetch()`)
+- **Print/export summary** — "Print Summary" button on patient detail; fetches from `/v1/care/:patientId/export/summary` and opens a print-ready page
+- **Caregiver task management** — CRUD for caregiver-created tasks with title, description, due date, and priority selection
+- **Adherence confidence indicators** — `GET /v1/care/:patientId/medication-adherence` returns `confidence: { level, factors }` per-medication
+- **Medication follow-up nudges** — `processMedicationFollowUpNudges` trigger detects unlogged doses; `took_it`/`skipped_it` responses auto-create med logs
+- **Caregiver → patient messaging** — Full pipeline: `caregiverMessages` collection, caregiver send (10/day limit), patient inbox, push notifications, mobile + web UI
+- **Caregiver name support** — Name resolution via `resolveCaregiverName()`: profile `preferredName` → `firstName` → `displayName` → Auth `displayName` → invite label → email fallback
+- **Action item details** — Expandable cards showing type, details, notes, and "View source visit" link
 
-**Feature 2B — Medication Follow-Up Nudges:**
-- New `processMedicationFollowUpNudges` trigger (every 15 min) detects unlogged doses and sends follow-up nudges
-- Nudge responses `took_it`/`skipped_it` auto-create medication logs with `source: 'nudge_response'`
-- Respects quiet hours (9pm-8am), max 3 nudges/day, deduplication
-
-**Feature 1 — Caregiver → Patient Messaging:**
-- New `caregiverMessages` Firestore collection with 4 composite indexes
-- Caregiver routes: send (POST, rate-limited 10/day) + list sent (GET, cursor pagination)
-- Patient routes: inbox (GET, auto-marks read) + mark-read (PATCH) + unread count (GET)
-- Push notifications on new messages (`caregiver_message` type)
-- Mobile: `messages.tsx` screen (elderly-friendly, large text) + push navigation
-- Web portal: `/care/[patientId]/messages` page (compose + sent history + read receipts)
-- SDK: `messages` + `careMessages` namespaces in api-client
-
-**Feature 3 — Caregiver Name Support:**
-- `Share` and `ShareInvite` types now include `caregiverName?: string | null`
-- Mobile invite modal includes a "Caregiver Name" field (e.g. "Mom", "Dr. Smith")
-- Share acceptance resolves name via `resolveCaregiverName()`: user profile (`preferredName` → `firstName` → `displayName`) → Firebase Auth `displayName` → patient-provided invite name → email-derived fallback
-- Caregiver sharing screen shows real names with email below (active + pending)
-- Caregiver messages use the resolved name as `senderName` instead of generic "Your caregiver"
-- Push notifications show real name: "Mom sent you a message" instead of "Your caregiver sent you a message"
-- Name resolution priority in `routes/care/messages.ts`: share record `caregiverName` → user profile → Firebase Auth → email
-
-### Bug Fixes
-- **Action item completion:** Fixed query key mismatch in `useCompleteAction` mutation — was invalidating `['actions', userId]` but paginated query uses `['actions', 'cursor', sessionKey, pageSize]`. Now invalidates base `['actions']` key to match all variants.
-- **Caregiver sharing revocation not reflected in UI:** `Cache-Control: max-age=30` on all shares endpoints caused HTTP cache to serve stale data after mutations. Fixed by switching to `no-cache` + adding optimistic updates to `useRevokeShareAccess` and `useRevokeShareInvite`.
-- **Messages read/unread stale cache:** Same `Cache-Control: max-age=30` pattern on messages endpoints. Fixed with `no-cache`.
-
-### Important Caching Pattern
-API responses for mutable data should use `Cache-Control: private, no-cache` (NOT `max-age=30`). React Native's `fetch` respects HTTP cache headers, so `max-age` causes stale reads after mutations even when React Query triggers a refetch. All shares and messages endpoints have been fixed. Check other endpoints if similar stale-data bugs appear.
+**Bug Fixes:**
+- **Overdue action items showing on same day:** Datetime comparison (`dueDate < now`) marked items overdue once server time passed stored timestamp. Fixed with date-string comparison across all care routes (care.ts, quickOverview.ts, alerts.ts, tasks.ts, upcomingActions.ts, summary.ts, trends.ts, actions page)
+- **Deleted actions still appearing:** `getPendingActionsAndOverdueAlertsForPatients` in care.ts queried without `deletedAt` filter. Fixed by adding `where('deletedAt', '==', null)` and removing `includeDeleted: true` across all care routes
+- **Select dropdown hidden behind Dialog:** SelectContent z-index (50) was lower than Dialog z-modal (500). Fixed by bumping to z-[510]
+- **Missing senderId in messages POST response:** Frontend expected `senderId` but it wasn't included. Added to response
+- **Action item completion query key mismatch:** `useCompleteAction` was invalidating wrong query key. Now invalidates base `['actions']` to match all variants
+- **Caregiver sharing revocation stale UI:** `Cache-Control: max-age=30` on shares endpoints. Fixed with `no-cache` + optimistic updates
+- **Messages read/unread stale cache:** Same `max-age` issue on messages endpoints. Fixed with `no-cache`
+- **All care routes Cache-Control:** Verified all GET endpoints use `Cache-Control: private, no-cache`
 
 ### Known Pre-existing Test Failures (3)
 - `personalRNService.repositoryBridge.test.ts` — nudge dismissal counting
