@@ -101,13 +101,52 @@ export function registerCareMessagesRoutes(
                 return;
             }
 
-            // Get caregiver's display name
-            const { userService } = createDomainServiceContainer({ db });
-            const caregiverUser = await userService.getById(caregiverId);
-            const senderName =
-                (typeof caregiverUser?.displayName === 'string' && caregiverUser.displayName.trim()) ||
-                (typeof caregiverUser?.email === 'string' && caregiverUser.email) ||
-                'Your caregiver';
+            // Resolve caregiver display name from share record, profile, or auth
+            let senderName: string = 'Your caregiver';
+            try {
+                // 1. Check the share record for caregiverName (patient-chosen label)
+                const shareSnap = await db
+                    .collection('shares')
+                    .where('caregiverUserId', '==', caregiverId)
+                    .where('ownerId', '==', patientId)
+                    .where('status', '==', 'accepted')
+                    .limit(1)
+                    .get();
+
+                if (!shareSnap.empty) {
+                    const shareData = shareSnap.docs[0].data();
+                    if (typeof shareData.caregiverName === 'string' && shareData.caregiverName.trim()) {
+                        senderName = shareData.caregiverName.trim();
+                    }
+                }
+
+                // 2. If no name from share, try user profile
+                if (senderName === 'Your caregiver') {
+                    const { userService } = createDomainServiceContainer({ db });
+                    const caregiverUser = await userService.getById(caregiverId);
+                    const profileName =
+                        caregiverUser?.preferredName ||
+                        caregiverUser?.firstName ||
+                        caregiverUser?.displayName;
+                    if (typeof profileName === 'string' && profileName.trim()) {
+                        senderName = profileName.trim();
+                    } else if (typeof caregiverUser?.email === 'string' && caregiverUser.email.trim()) {
+                        senderName = caregiverUser.email.trim();
+                    }
+                }
+
+                // 3. If still generic, try Firebase Auth displayName
+                if (senderName === 'Your caregiver') {
+                    const authUser = await admin.auth().getUser(caregiverId);
+                    if (authUser.displayName && authUser.displayName.trim()) {
+                        senderName = authUser.displayName.trim();
+                    } else if (authUser.email) {
+                        senderName = authUser.email;
+                    }
+                }
+            } catch (nameError) {
+                functions.logger.warn('[care][messages] Failed to resolve caregiver name:', nameError);
+            }
 
             // Create the message document
             const now = admin.firestore.Timestamp.now();
