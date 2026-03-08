@@ -6,7 +6,6 @@ import { formatDistanceToNow } from 'date-fns';
 import {
     Users,
     AlertCircle,
-    ArrowRight,
     Loader2,
     CheckCircle,
     XCircle,
@@ -403,17 +402,6 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                     <Link href={`/care/${patient.userId}/actions`} className="flex items-center justify-center gap-1.5">
                         <ClipboardList className="h-4 w-4 shrink-0" />
                         <span>Actions</span>
-                    </Link>
-                </Button>
-                <Button
-                    variant="primary"
-                    size="sm"
-                    className="flex-1"
-                    asChild
-                >
-                    <Link href={`/care/${patient.userId}`} className="flex items-center justify-center gap-1.5">
-                        <span>Dashboard</span>
-                        <ArrowRight className="h-4 w-4 shrink-0" />
                     </Link>
                 </Button>
             </div>
