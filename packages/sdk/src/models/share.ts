@@ -7,6 +7,7 @@ export interface Share {
   ownerId: string;
   caregiverUserId: string;
   caregiverEmail: string;
+  caregiverName?: string | null;
   role: 'viewer';
   status: 'pending' | 'accepted' | 'revoked';
   message?: string | null;
@@ -23,6 +24,7 @@ export interface ShareInvite {
   ownerName: string;
   inviteeEmail?: string;      // Legacy field
   caregiverEmail?: string;    // New field from /v1/shares/invite
+  caregiverName?: string | null;  // Patient-provided label for the caregiver
   caregiverUserId?: string | null;  // Set on acceptance
   role: 'viewer';
   status: 'pending' | 'accepted' | 'expired' | 'revoked';

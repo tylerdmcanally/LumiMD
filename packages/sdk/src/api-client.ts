@@ -665,6 +665,7 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'POST',
           body: JSON.stringify({
             caregiverEmail: data.email,
+            caregiverName: data.name || undefined,
           }),
         }),
       updateCaregiver: (id: string, data: { name?: string; relationship?: string }) =>
@@ -693,7 +694,7 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'PATCH',
         }),
       // NEW: Token-based invite system
-      invite: (data: { caregiverEmail: string; message?: string }) =>
+      invite: (data: { caregiverEmail: string; caregiverName?: string; message?: string }) =>
         apiRequest<ShareInvite>('/v1/shares/invite', {
           method: 'POST',
           body: JSON.stringify(data),

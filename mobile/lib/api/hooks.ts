@@ -1236,7 +1236,7 @@ export function useInviteCaregiver() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { caregiverEmail: string; message?: string }) =>
+    mutationFn: (data: { caregiverEmail: string; caregiverName?: string; message?: string }) =>
       api.shares.invite(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shares'] });

@@ -496,7 +496,8 @@ function createApiClient(config) {
       addCaregiver: (data) => apiRequest("/v1/shares/invite", {
         method: "POST",
         body: JSON.stringify({
-          caregiverEmail: data.email
+          caregiverEmail: data.email,
+          caregiverName: data.name || void 0
         })
       }),
       updateCaregiver: (id, data) => apiRequest(`/v1/users/me/caregivers/${id}`, {

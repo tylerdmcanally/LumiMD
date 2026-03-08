@@ -259,6 +259,7 @@ interface Share {
     ownerId: string;
     caregiverUserId: string;
     caregiverEmail: string;
+    caregiverName?: string | null;
     role: 'viewer';
     status: 'pending' | 'accepted' | 'revoked';
     message?: string | null;
@@ -274,6 +275,7 @@ interface ShareInvite {
     ownerName: string;
     inviteeEmail?: string;
     caregiverEmail?: string;
+    caregiverName?: string | null;
     caregiverUserId?: string | null;
     role: 'viewer';
     status: 'pending' | 'accepted' | 'expired' | 'revoked';
@@ -570,6 +572,7 @@ declare function createApiClient(config: ApiClientConfig): {
         cancelInvite: (inviteId: string) => Promise<ShareInvite>;
         invite: (data: {
             caregiverEmail: string;
+            caregiverName?: string;
             message?: string;
         }) => Promise<ShareInvite>;
         getInviteInfo: (token: string) => Promise<{

@@ -122,6 +122,57 @@ New to LumiMD? You'll create a free account when you accept.
 const getDb = () => admin.firestore();
 const getShareDomainService = () => new ShareDomainService(new FirestoreShareRepository(getDb()));
 const getUserDomainService = () => new UserDomainService(new FirestoreUserRepository(getDb()));
+
+/**
+ * Resolve a caregiver's display name from their user profile.
+ * Falls back to the patient-provided name from the invite, then email prefix.
+ */
+async function resolveCaregiverName(
+  caregiverUserId: string,
+  inviteCaregiverName?: string | null,
+  caregiverEmail?: string | null,
+): Promise<string | null> {
+  try {
+    const userService = getUserDomainService();
+    const profile = await userService.getById(caregiverUserId);
+    if (profile) {
+      const name =
+        profile.preferredName ||
+        profile.firstName ||
+        profile.displayName;
+      if (name && typeof name === 'string' && name.trim().length > 0) {
+        return sanitizePlainText(name.trim(), 120) || null;
+      }
+    }
+
+    // Try Firebase Auth displayName
+    const authUser = await admin.auth().getUser(caregiverUserId);
+    if (authUser.displayName && authUser.displayName.trim().length > 0) {
+      return sanitizePlainText(authUser.displayName.trim(), 120) || null;
+    }
+  } catch {
+    // Ignore lookup failures — fall through to invite name
+  }
+
+  // Fall back to patient-provided name from the invite
+  if (inviteCaregiverName && typeof inviteCaregiverName === 'string' && inviteCaregiverName.trim().length > 0) {
+    return sanitizePlainText(inviteCaregiverName.trim(), 120) || null;
+  }
+
+  // Final fallback: derive from email
+  if (caregiverEmail && typeof caregiverEmail === 'string') {
+    const [localPart] = caregiverEmail.split('@');
+    if (localPart) {
+      return localPart
+        .split(/[._-]/g)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+    }
+  }
+
+  return null;
+}
 const SHARE_MESSAGE_MAX_LENGTH = 1000;
 const OWNER_NAME_MAX_LENGTH = 120;
 const SHARES_PAGE_SIZE_DEFAULT = 50;
@@ -319,8 +370,11 @@ const invalidateCaregiverShareCache = (
 // VALIDATION SCHEMAS
 // ============================================================================
 
+const CAREGIVER_NAME_MAX_LENGTH = 120;
+
 const createShareSchema = z.object({
   caregiverEmail: z.string().email(),
+  caregiverName: z.string().max(CAREGIVER_NAME_MAX_LENGTH).optional(),
   role: z.enum(['viewer']).default('viewer'), // Only viewer role supported for now
   message: z.string().max(SHARE_MESSAGE_MAX_LENGTH).optional(),
 });
@@ -788,6 +842,11 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
       // Create the share
       const shareId = `${invite.ownerId}_${userId}`;
       const now = admin.firestore.Timestamp.now();
+      const resolvedCaregiverName = await resolveCaregiverName(
+        userId,
+        typeof invite.caregiverName === 'string' ? invite.caregiverName : null,
+        inviteEmail,
+      );
       await shareService.acceptInviteAndSetShare({
         inviteId: token,
         inviteUpdates: {
@@ -802,6 +861,7 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
           ownerEmail: invite.ownerEmail,
           caregiverUserId: userId,
           caregiverEmail: inviteEmail,
+          caregiverName: resolvedCaregiverName,
           role: invite.role,
           status: 'accepted',
           message: sanitizeShareMessage(invite.message),
@@ -868,6 +928,12 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
       // Email matches - update the caregiverUserId to this user and accept
       functions.logger.info(`[shares] Email match - updating caregiverUserId from ${share.caregiverUserId} to ${userId}`);
 
+      const migrationCaregiverName = await resolveCaregiverName(
+        userId,
+        typeof share.caregiverName === 'string' ? share.caregiverName : null,
+        accessResult.shareEmail,
+      );
+
       // Also update the document ID to match new format
       const newShareId = `${share.ownerId}_${userId}`;
       await shareService.migrateShareToCaregiver({
@@ -876,6 +942,7 @@ sharesRouter.post('/accept-invite', requireAuth, async (req: AuthRequest, res) =
         newSharePayload: {
           ...share,
           caregiverUserId: userId,
+          caregiverName: migrationCaregiverName,
           status: 'accepted',
           acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1072,6 +1139,9 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       ownerEmail.split('@')[0];
     const ownerName = sanitizePlainText(ownerNameRaw, OWNER_NAME_MAX_LENGTH) || ownerEmail.split('@')[0] || 'Someone';
     const inviteMessage = sanitizeShareMessage(data.message);
+    const caregiverName = data.caregiverName
+      ? sanitizePlainText(data.caregiverName, CAREGIVER_NAME_MAX_LENGTH) || null
+      : null;
 
     // Edge case: Prevent sharing with yourself
     if (ownerEmail === caregiverEmail) {
@@ -1149,6 +1219,7 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       ownerEmail,
       ownerName,
       caregiverEmail,
+      caregiverName,
       caregiverUserId: null, // Set on acceptance
       status: 'pending',
       role: 'viewer',
@@ -1168,6 +1239,7 @@ sharesRouter.post('/invite', shareLimiter, requireAuth, async (req: AuthRequest,
       ownerEmail,
       ownerName,
       caregiverEmail,
+      caregiverName,
       status: 'pending',
       role: 'viewer',
       message: inviteMessage,
@@ -1272,6 +1344,11 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
     // Accept the invite
     const acceptedAt = admin.firestore.Timestamp.now();
     const shareId = `${invite.ownerId}_${userId}`;
+    const tokenCaregiverName = await resolveCaregiverName(
+      userId,
+      typeof invite.caregiverName === 'string' ? invite.caregiverName : null,
+      inviteEmail,
+    );
     await shareService.acceptInviteAndSetShare({
       inviteId: token,
       inviteUpdates: {
@@ -1287,6 +1364,7 @@ sharesRouter.post('/accept/:token', requireAuth, async (req: AuthRequest, res) =
         ownerEmail: invite.ownerEmail,
         caregiverUserId: userId,
         caregiverEmail: inviteEmail,
+        caregiverName: tokenCaregiverName,
         role: invite.role || 'viewer',
         status: 'accepted',
         message: sanitizeShareMessage(invite.message),

@@ -32,6 +32,7 @@ type PendingItem = {
   kind: 'share' | 'invite';
   id: string;
   email: string;
+  name?: string | null;
   createdAt?: string | null;
   emailSent?: boolean;
 };
@@ -86,6 +87,7 @@ export default function CaregiverSharingScreen() {
   const { isAuthenticated, loading: authLoading, user } = useAuth();
 
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
   const [workingKey, setWorkingKey] = useState<string | null>(null);
@@ -162,6 +164,7 @@ export default function CaregiverSharingScreen() {
         kind: 'share',
         id: share.id,
         email,
+        name: share.caregiverName,
         createdAt: share.createdAt,
       });
     });
@@ -177,6 +180,7 @@ export default function CaregiverSharingScreen() {
         kind: 'invite',
         id: invite.id,
         email,
+        name: invite.caregiverName,
         createdAt: invite.createdAt,
         emailSent: invite.emailSent,
       });
@@ -197,6 +201,7 @@ export default function CaregiverSharingScreen() {
   const closeInviteModal = () => {
     if (inviteCaregiver.isPending) return;
     setShowInviteModal(false);
+    setInviteName('');
     setInviteEmail('');
     setInviteMessage('');
   };
@@ -216,6 +221,7 @@ export default function CaregiverSharingScreen() {
     try {
       const result = await inviteCaregiver.mutateAsync({
         caregiverEmail: normalizedEmail,
+        caregiverName: inviteName.trim() || undefined,
         message: inviteMessage.trim() || undefined,
       });
 
@@ -234,10 +240,10 @@ export default function CaregiverSharingScreen() {
   };
 
   const confirmRevokeShare = (share: Share) => {
-    const email = share.caregiverEmail || 'this caregiver';
+    const label = share.caregiverName || share.caregiverEmail || 'this caregiver';
     Alert.alert(
       'Remove caregiver access',
-      `Are you sure you want to remove ${email}'s access?`,
+      `Are you sure you want to remove ${label}'s access?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -261,9 +267,10 @@ export default function CaregiverSharingScreen() {
   };
 
   const confirmCancelPending = (item: PendingItem) => {
+    const label = item.name || item.email || 'this caregiver';
     Alert.alert(
       'Cancel invitation',
-      `Cancel the invitation for ${item.email || 'this caregiver'}?`,
+      `Cancel the invitation for ${label}?`,
       [
         { text: 'Keep', style: 'cancel' },
         {
@@ -399,7 +406,7 @@ export default function CaregiverSharingScreen() {
             ) : (
               activeShares.map((share, index) => {
                 const email = share.caregiverEmail || 'caregiver';
-                const displayName = getDisplayNameFromEmail(email);
+                const displayName = share.caregiverName || getDisplayNameFromEmail(email);
                 const initials = displayName
                   .split(' ')
                   .filter(Boolean)
@@ -485,10 +492,15 @@ export default function CaregiverSharingScreen() {
                   <Card key={`${item.kind}:${item.id}`} style={[styles.caregiverCard, index > 0 && { marginTop: spacing(3) }]}>
                     <View style={styles.cardHeader}>
                       <View style={[styles.avatar, styles.avatarPending]}>
-                        <Text style={styles.avatarText}>IN</Text>
+                        <Text style={styles.avatarText}>
+                          {item.name
+                            ? item.name.split(' ').filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+                            : 'IN'}
+                        </Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.caregiverName}>{item.email || 'Invitation'}</Text>
+                        <Text style={styles.caregiverName}>{item.name || item.email || 'Invitation'}</Text>
+                        {item.name ? <Text style={styles.emailText}>{item.email}</Text> : null}
                         <Text style={styles.caregiverRelation}>
                           {sentDate ? `Sent ${sentDate}` : 'Invitation pending'}
                         </Text>
@@ -577,6 +589,18 @@ export default function CaregiverSharingScreen() {
               <Text style={styles.modalSubtitle}>
                 Enter the caregiver email address. They will receive a secure invitation.
               </Text>
+
+              <Text style={styles.inputLabel}>Caregiver Name</Text>
+              <TextInput
+                value={inviteName}
+                onChangeText={setInviteName}
+                autoCapitalize="words"
+                autoCorrect={false}
+                placeholder="e.g. Mom, Dr. Smith"
+                placeholderTextColor={Colors.textMuted}
+                style={styles.input}
+                editable={!inviteCaregiver.isPending}
+              />
 
               <Text style={styles.inputLabel}>Caregiver Email</Text>
               <TextInput
