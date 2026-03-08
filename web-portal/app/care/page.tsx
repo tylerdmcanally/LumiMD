@@ -19,6 +19,7 @@ import {
     TrendingUp,
     TrendingDown,
     Minus,
+    RefreshCw,
 } from 'lucide-react';
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
@@ -414,7 +415,7 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
 // =============================================================================
 
 export default function CareDashboardPage() {
-    const { data, isLoading, error } = useCareOverview();
+    const { data, isLoading, isFetching, error, refetch } = useCareOverview();
     const patients = data?.patients ?? [];
 
     if (isLoading) {
@@ -455,6 +456,17 @@ export default function CareDashboardPage() {
                         : 'No shared patients yet'
                 }
                 className="mb-6"
+                actions={
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => refetch()}
+                        disabled={isFetching}
+                    >
+                        <RefreshCw className={cn('h-4 w-4 mr-2', isFetching && 'animate-spin')} />
+                        {isFetching ? 'Refreshing...' : 'Refresh'}
+                    </Button>
+                }
             />
 
             {!hasPatients ? (

@@ -31,6 +31,8 @@ import {
     Zap,
     FileBarChart,
     ListTodo,
+    RefreshCw,
+    Printer,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
@@ -43,6 +45,7 @@ import {
     useCreateCareTask,
     useUpdateCareTask,
     useDeleteCareTask,
+    useCareSummaryExport,
     CareTask,
 } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
@@ -77,11 +80,201 @@ export default function PatientDetailPage() {
     const {
         data: quickOverview,
         isLoading: overviewLoading,
+        isFetching: overviewFetching,
         error: quickOverviewError,
+        refetch: refetchOverview,
     } = useCareQuickOverview(patientId);
 
     // New data hooks for enhanced features
-    const { data: trendsData, isLoading: trendsLoading } = useCareTrends(patientId, { days: 30 });
+    const { data: trendsData, isLoading: trendsLoading, refetch: refetchTrends } = useCareTrends(patientId, { days: 30 });
+    const { refetch: fetchExport, isFetching: exportFetching } = useCareSummaryExport(patientId);
+    const isRefreshing = overviewFetching && !overviewLoading;
+
+    const handleRefreshAll = React.useCallback(() => {
+        refetchOverview();
+        refetchTrends();
+    }, [refetchOverview, refetchTrends]);
+
+    const handleExportPrint = React.useCallback(async () => {
+        const result = await fetchExport();
+        const data = result.data;
+        if (!data) return;
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const doc = printWindow.document;
+        doc.open();
+
+        const style = doc.createElement('style');
+        style.textContent = [
+            'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 800px; margin: 0 auto; padding: 24px; color: #1a1a1a; }',
+            'h1 { font-size: 24px; margin-bottom: 4px; }',
+            'h2 { font-size: 18px; margin-top: 24px; border-bottom: 1px solid #e5e5e5; padding-bottom: 6px; }',
+            '.subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }',
+            '.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }',
+            '.stat { background: #f9f9f9; padding: 12px; border-radius: 6px; }',
+            '.stat-label { font-size: 12px; color: #666; text-transform: uppercase; }',
+            '.stat-value { font-size: 20px; font-weight: 600; }',
+            'table { width: 100%; border-collapse: collapse; margin: 12px 0; }',
+            'th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e5e5e5; font-size: 14px; }',
+            'th { font-weight: 600; background: #f5f5f5; }',
+            '.overdue { color: #991b1b; font-weight: 500; }',
+            '.footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #e5e5e5; font-size: 12px; color: #999; }',
+            '@media print { body { padding: 0; } }',
+        ].join('\n');
+        doc.head.appendChild(style);
+        doc.title = `Care Summary - ${data.patient.name}`;
+
+        const body = doc.body;
+        const h1 = doc.createElement('h1');
+        h1.textContent = `Care Summary: ${data.patient.name}`;
+        body.appendChild(h1);
+
+        const sub = doc.createElement('p');
+        sub.className = 'subtitle';
+        sub.textContent = `Generated ${new Date(data.generatedAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+        body.appendChild(sub);
+
+        // Stats grid
+        const statsGrid = doc.createElement('div');
+        statsGrid.className = 'stat-grid';
+        const statEntries: [string, number][] = [
+            ['Visits', data.overview.totalVisits],
+            ['Active Medications', data.overview.activeMedications],
+            ['Pending Actions', data.overview.pendingActions],
+            ['Conditions', data.overview.totalConditions],
+        ];
+        for (const [label, value] of statEntries) {
+            const stat = doc.createElement('div');
+            stat.className = 'stat';
+            const lbl = doc.createElement('div');
+            lbl.className = 'stat-label';
+            lbl.textContent = label;
+            const val = doc.createElement('div');
+            val.className = 'stat-value';
+            val.textContent = String(value);
+            stat.appendChild(lbl);
+            stat.appendChild(val);
+            statsGrid.appendChild(stat);
+        }
+        body.appendChild(statsGrid);
+
+        // Conditions
+        if (data.conditions.length > 0) {
+            const h2 = doc.createElement('h2');
+            h2.textContent = 'Conditions';
+            body.appendChild(h2);
+            const ul = doc.createElement('ul');
+            for (const c of data.conditions) {
+                const li = doc.createElement('li');
+                li.textContent = c;
+                ul.appendChild(li);
+            }
+            body.appendChild(ul);
+        }
+
+        // Medications table
+        if (data.currentMedications.length > 0) {
+            const h2 = doc.createElement('h2');
+            h2.textContent = 'Current Medications';
+            body.appendChild(h2);
+            const table = doc.createElement('table');
+            const thead = doc.createElement('thead');
+            const headerRow = doc.createElement('tr');
+            for (const col of ['Medication', 'Dosage', 'Frequency', 'Instructions']) {
+                const th = doc.createElement('th');
+                th.textContent = col;
+                headerRow.appendChild(th);
+            }
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            const tbody = doc.createElement('tbody');
+            for (const med of data.currentMedications) {
+                const tr = doc.createElement('tr');
+                for (const val of [med.name, med.dosage || '-', med.frequency || '-', med.instructions || '-']) {
+                    const td = doc.createElement('td');
+                    td.textContent = val;
+                    tr.appendChild(td);
+                }
+                tbody.appendChild(tr);
+            }
+            table.appendChild(tbody);
+            body.appendChild(table);
+        }
+
+        // Pending actions table
+        if (data.pendingActions.length > 0) {
+            const h2 = doc.createElement('h2');
+            h2.textContent = 'Pending Action Items';
+            body.appendChild(h2);
+            const table = doc.createElement('table');
+            const thead = doc.createElement('thead');
+            const headerRow = doc.createElement('tr');
+            for (const col of ['Action', 'Due Date', 'Priority']) {
+                const th = doc.createElement('th');
+                th.textContent = col;
+                headerRow.appendChild(th);
+            }
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            const tbody = doc.createElement('tbody');
+            const todayStr = new Date().toISOString().slice(0, 10);
+            for (const action of data.pendingActions) {
+                const tr = doc.createElement('tr');
+                const tdTitle = doc.createElement('td');
+                tdTitle.textContent = action.title;
+                tr.appendChild(tdTitle);
+                const tdDue = doc.createElement('td');
+                if (action.dueDate) {
+                    const dueStr = new Date(action.dueDate).toISOString().slice(0, 10);
+                    tdDue.textContent = new Date(action.dueDate).toLocaleDateString();
+                    if (dueStr < todayStr) {
+                        tdDue.classList.add('overdue');
+                        tdDue.textContent += ' (overdue)';
+                    }
+                } else {
+                    tdDue.textContent = '-';
+                }
+                tr.appendChild(tdDue);
+                const tdPri = doc.createElement('td');
+                tdPri.textContent = action.priority || 'normal';
+                tr.appendChild(tdPri);
+                tbody.appendChild(tr);
+            }
+            table.appendChild(tbody);
+            body.appendChild(table);
+        }
+
+        // Recent visits
+        if (data.recentVisits.length > 0) {
+            const h2 = doc.createElement('h2');
+            h2.textContent = 'Recent Visits';
+            body.appendChild(h2);
+            for (const visit of data.recentVisits) {
+                const h3 = doc.createElement('h3');
+                const dateLabel = visit.date ? new Date(visit.date).toLocaleDateString() : 'Unknown date';
+                h3.textContent = `${dateLabel} — ${visit.provider || 'Unknown provider'}${visit.specialty ? ` (${visit.specialty})` : ''}`;
+                body.appendChild(h3);
+                if (visit.summary) {
+                    const p = doc.createElement('p');
+                    p.style.fontSize = '14px';
+                    p.style.color = '#444';
+                    p.textContent = visit.summary;
+                    body.appendChild(p);
+                }
+            }
+        }
+
+        const footer = doc.createElement('div');
+        footer.className = 'footer';
+        footer.textContent = 'Generated by LumiMD Care Portal';
+        body.appendChild(footer);
+
+        doc.close();
+        printWindow.onload = () => printWindow.print();
+    }, [fetchExport]);
+
     const [tasksCursor, setTasksCursor] = React.useState<string | null>(null);
     const [taskItems, setTaskItems] = React.useState<CareTask[]>([]);
     const [tasksHasMore, setTasksHasMore] = React.useState(false);
@@ -292,6 +485,7 @@ export default function PatientDetailPage() {
                             <span>Back to Care Dashboard</span>
                         </Link>
                     </Button>
+                    <div className="flex items-start justify-between">
                     <div className="space-y-1">
                         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                             Patient Overview
@@ -316,6 +510,27 @@ export default function PatientDetailPage() {
                                 </span>
                             )}
                         </p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRefreshAll}
+                            disabled={isRefreshing}
+                        >
+                            <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
+                            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleExportPrint}
+                            disabled={exportFetching}
+                        >
+                            <Printer className={cn('h-4 w-4 mr-2', exportFetching && 'animate-pulse')} />
+                            {exportFetching ? 'Generating...' : 'Print Summary'}
+                        </Button>
+                    </div>
                     </div>
                 </div>
 

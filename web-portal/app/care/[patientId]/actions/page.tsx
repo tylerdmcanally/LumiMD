@@ -14,6 +14,7 @@ import {
     Circle,
     Clock,
     FileText,
+    RefreshCw,
 } from 'lucide-react';
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
@@ -38,6 +39,7 @@ export default function PatientActionsPage() {
         isLoading,
         isFetching,
         error,
+        refetch,
     } = useCareActionsPage(patientId, {
         limit: CARE_ACTIONS_PAGE_SIZE,
         cursor,
@@ -97,11 +99,11 @@ export default function PatientActionsPage() {
     const pendingActions = actions?.filter((a) => !a.completed) ?? [];
     const completedActions = actions?.filter((a) => a.completed) ?? [];
 
-    // Check for overdue
-    const now = new Date();
+    // Check for overdue (date-only comparison to avoid timezone issues)
+    const todayDateStr = new Date().toISOString().slice(0, 10);
     const isOverdue = (dueAt?: string | null) => {
         if (!dueAt) return false;
-        return new Date(dueAt) < now;
+        return new Date(dueAt).toISOString().slice(0, 10) < todayDateStr;
     };
 
     return (
@@ -119,6 +121,17 @@ export default function PatientActionsPage() {
                 title="Action Items"
                 subtitle={`${pendingActions.length} pending action${pendingActions.length !== 1 ? 's' : ''}`}
                 className="mb-8"
+                actions={
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => refetch()}
+                        disabled={isFetching}
+                    >
+                        <RefreshCw className={cn('h-4 w-4 mr-2', isFetching && 'animate-spin')} />
+                        {isFetching ? 'Refreshing...' : 'Refresh'}
+                    </Button>
+                }
             />
 
             {actions?.length === 0 ? (
