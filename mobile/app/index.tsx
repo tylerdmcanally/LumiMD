@@ -15,6 +15,7 @@ import {
   useRealtimeVisits,
   useUserProfile,
   useMedicationSchedule,
+  useUnreadMessageCount,
   cleanupOrphanedReminders,
   cleanupOrphanedNudges,
 } from '../lib/api/hooks';
@@ -76,6 +77,10 @@ export default function HomeScreen() {
     refetch: refetchSchedule,
     error: scheduleError,
   } = useMedicationSchedule(user?.uid, { enabled: isAuthenticated && Boolean(user?.uid) });
+
+  // Unread message count for Messages card
+  const { data: unreadData } = useUnreadMessageCount({ enabled: isAuthenticated });
+  const unreadCount = unreadData?.count ?? 0;
 
   // Web portal banner state - for placing "Need help?" button below cards
   const { isDismissed: webBannerDismissed, handleDismiss: dismissWebBanner, handleRestore: restoreWebBanner } = useWebPortalBannerState();
@@ -494,6 +499,20 @@ export default function HomeScreen() {
                           }
                         : () => router.push('/actions')
                     }
+                  />
+
+                  <GlanceableCard
+                    title="Messages"
+                    count={unreadCount}
+                    countLabel="unread"
+                    emptyStateText="No new messages"
+                    statusBadge={
+                      unreadCount > 0
+                        ? { text: `${unreadCount} new`, color: Colors.primary }
+                        : undefined
+                    }
+                    icon="mail-outline"
+                    onPress={() => router.push('/messages')}
                   />
 
                   <GlanceableCard
