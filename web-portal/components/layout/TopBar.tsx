@@ -38,7 +38,7 @@ export function TopBar({ onMenuClick, className }: TopBarProps) {
 
         {/* Logo */}
         <div className="flex-1 flex justify-center">
-          <span className="text-2xl font-black tracking-tight text-brand-primary leading-none">
+          <span className="text-2xl font-display font-bold tracking-tight text-brand-primary leading-none">
             LumiMD
           </span>
         </div>

@@ -135,8 +135,11 @@ export default function PatientActionsPage() {
             />
 
             {actions?.length === 0 ? (
-                <Card variant="elevated" padding="lg" className="text-center py-12">
-                    <CheckSquare className="h-12 w-12 text-text-muted mx-auto mb-4" />
+                <Card variant="elevated" padding="lg" className="text-center py-12 overflow-hidden relative">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-primary via-[#7ECDB5] to-[#E07A5F]" />
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FDF0EC] mx-auto mb-4">
+                        <CheckSquare className="h-8 w-8 text-[#E07A5F]" />
+                    </div>
                     <h2 className="text-xl font-semibold text-text-primary mb-2">
                         No action items
                     </h2>
@@ -149,7 +152,7 @@ export default function PatientActionsPage() {
                     {/* Pending Actions */}
                     {pendingActions.length > 0 && (
                         <section>
-                            <h2 className="text-sm font-medium text-text-muted uppercase tracking-wide mb-3">
+                            <h2 className="text-base font-semibold text-text-secondary uppercase tracking-wide mb-3">
                                 Pending
                             </h2>
                             <div className="space-y-3">
@@ -163,7 +166,7 @@ export default function PatientActionsPage() {
                     {/* Completed Actions */}
                     {completedActions.length > 0 && (
                         <section>
-                            <h2 className="text-sm font-medium text-text-muted uppercase tracking-wide mb-3">
+                            <h2 className="text-base font-semibold text-text-secondary uppercase tracking-wide mb-3">
                                 Completed
                             </h2>
                             <div className="space-y-3">

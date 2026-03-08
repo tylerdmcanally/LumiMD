@@ -130,7 +130,7 @@ export function TopNavigation({ onMobileMenuClick }: TopNavigationProps) {
                             href="/dashboard"
                             className="flex items-center transition-smooth hover:opacity-80"
                         >
-                            <span className="text-2xl font-black tracking-tight text-brand-primary leading-none">
+                            <span className="text-2xl font-display font-bold tracking-tight text-brand-primary leading-none">
                                 LumiMD
                             </span>
                         </Link>

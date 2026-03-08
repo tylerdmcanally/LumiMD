@@ -142,7 +142,7 @@ export default function SharedVisitPage() {
                             <span className="text-white font-bold text-lg">L</span>
                         </div>
                         <div>
-                            <h1 className="font-semibold text-text-primary">LumiMD</h1>
+                            <h1 className="font-display font-semibold text-brand-primary">LumiMD</h1>
                             <p className="text-xs text-text-muted">Shared Visit Summary</p>
                         </div>
                     </div>

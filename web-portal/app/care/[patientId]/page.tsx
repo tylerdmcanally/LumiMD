@@ -478,7 +478,7 @@ export default function PatientDetailPage() {
         <PageContainer maxWidth="2xl">
             <div className="space-y-8 animate-fade-in-up">
                 {/* Hero Header */}
-                <div className="rounded-2xl bg-hero-brand p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+                <div className="rounded-2xl bg-hero-warm p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
                     <Button variant="ghost" size="sm" asChild className="mb-3 -ml-2">
                         <Link href="/care" className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-primary">
                             <ArrowLeft className="h-4 w-4" />
@@ -602,10 +602,10 @@ export default function PatientDetailPage() {
                     <Card variant="elevated" padding="lg">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
                                     <Pill className="h-5 w-5" />
                                 </div>
-                                <h2 className="text-lg font-semibold text-text-primary">Today's Medications</h2>
+                                <h2 className="text-lg font-semibold text-text-primary">Today&apos;s Medications</h2>
                             </div>
                             <Link 
                                 href={`/care/${patientId}/medications`}
@@ -689,7 +689,7 @@ export default function PatientDetailPage() {
                     <Card variant="elevated" padding="lg">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#FDF0EC] text-[#E07A5F]">
                                     <Heart className="h-5 w-5" />
                                 </div>
                                 <h2 className="text-lg font-semibold text-text-primary">Health Snapshot</h2>
@@ -731,13 +731,16 @@ export default function PatientDetailPage() {
                     </Card>
                 </div>
 
+                {/* ── Zone divider ── */}
+                <div className="border-t border-border-subtle" />
+
                 {/* Two-column grid for Upcoming Actions + Recent Med Changes */}
                 <div className="grid gap-6 lg:grid-cols-2">
                     {/* Upcoming Action Items */}
                     <section>
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEF3D7] text-[#C68A22]">
                                     <ListTodo className="h-4 w-4" />
                                 </div>
                                 <h2 className="text-lg font-semibold text-text-primary">Upcoming Actions</h2>
@@ -820,7 +823,7 @@ export default function PatientDetailPage() {
                     <section>
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning-light text-warning-dark">
                                     <Zap className="h-4 w-4" />
                                 </div>
                                 <h2 className="text-lg font-semibold text-text-primary">Recent Med Changes</h2>
@@ -889,7 +892,7 @@ export default function PatientDetailPage() {
                 {coverage && (
                     <section>
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-info-light text-info-dark">
                                 <FileBarChart className="h-4 w-4" />
                             </div>
                             <h2 className="text-lg font-semibold text-text-primary">Data Coverage</h2>
@@ -906,7 +909,17 @@ export default function PatientDetailPage() {
                                     )}>
                                         {coverage.vitalsCoveragePercent}%
                                     </div>
-                                    <p className="text-xs text-text-muted">Vitals Logged</p>
+                                    <div className="h-1.5 bg-background-subtle rounded-full overflow-hidden mx-auto mt-1 w-4/5">
+                                        <div
+                                            className={cn(
+                                                'h-full rounded-full transition-all',
+                                                coverage.vitalsCoveragePercent >= 70 ? 'bg-success' :
+                                                coverage.vitalsCoveragePercent >= 40 ? 'bg-warning' : 'bg-error'
+                                            )}
+                                            style={{ width: `${Math.min(coverage.vitalsCoveragePercent, 100)}%` }}
+                                        />
+                                    </div>
+                                    <p className="text-xs text-text-muted mt-1">Vitals Logged</p>
                                     <p className="text-xs text-text-muted">
                                         {coverage.vitalsLogged}/{coverage.vitalsExpected} days
                                     </p>
@@ -961,7 +974,17 @@ export default function PatientDetailPage() {
                                             {adherenceTrend.direction === 'down' && <TrendingDown className="h-4 w-4 text-error" />}
                                             {adherenceTrend.direction === 'stable' && <Minus className="h-4 w-4 text-text-muted" />}
                                         </div>
-                                        <p className="text-xs text-text-muted">Adherence</p>
+                                        <div className="h-1.5 bg-background-subtle rounded-full overflow-hidden mx-auto mt-1 w-4/5">
+                                            <div
+                                                className={cn(
+                                                    'h-full rounded-full transition-all',
+                                                    adherenceTrend.current >= 80 ? 'bg-success' :
+                                                    adherenceTrend.current >= 60 ? 'bg-warning' : 'bg-error'
+                                                )}
+                                                style={{ width: `${Math.min(adherenceTrend.current, 100)}%` }}
+                                            />
+                                        </div>
+                                        <p className="text-xs text-text-muted mt-1">Adherence</p>
                                         {adherenceTrend.streak > 0 && (
                                             <p className="text-xs text-success-dark font-medium">
                                                 {adherenceTrend.streak} day streak
@@ -987,11 +1010,14 @@ export default function PatientDetailPage() {
                     </section>
                 )}
 
+                {/* ── Zone divider ── */}
+                <div className="border-t border-border-subtle" />
+
                 {/* Recent Activity */}
                 {recentActivity.length > 0 && (
                     <section>
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary">
                                 <Clock className="h-4 w-4" />
                             </div>
                             <h2 className="text-lg font-semibold text-text-primary">Recent Activity</h2>
@@ -1004,8 +1030,8 @@ export default function PatientDetailPage() {
                                             'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
                                             activity.type === 'med_taken' && 'bg-success-light text-success-dark',
                                             activity.type === 'med_skipped' && 'bg-warning-light text-warning-dark',
-                                            activity.type === 'health_log' && 'bg-background-subtle text-text-muted',
-                                            activity.type === 'visit' && 'bg-background-subtle text-text-muted'
+                                            activity.type === 'health_log' && 'bg-[#FDF0EC] text-[#E07A5F]',
+                                            activity.type === 'visit' && 'bg-brand-primary-pale text-brand-primary'
                                         )}>
                                             {activity.type === 'med_taken' && <CheckCircle className="h-5 w-5" />}
                                             {activity.type === 'med_skipped' && <XCircle className="h-5 w-5" />}
@@ -1080,7 +1106,7 @@ export default function PatientDetailPage() {
                 <section>
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background-subtle text-text-muted">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success-light text-success-dark">
                                 <CheckSquare className="h-4 w-4" />
                             </div>
                             <h2 className="text-lg font-semibold text-text-primary">My Care Tasks</h2>
@@ -1331,11 +1357,11 @@ function HealthSnapshotItem({
     const isCaution = alertLevel === 'caution';
 
     const variantClasses = {
-        brand: 'bg-background-subtle text-text-muted',
-        error: 'bg-background-subtle text-text-muted',
-        info: 'bg-background-subtle text-text-muted',
-        success: 'bg-background-subtle text-text-muted',
-        warning: 'bg-background-subtle text-text-muted',
+        brand: 'bg-brand-primary-pale text-brand-primary',
+        error: 'bg-[#FDF0EC] text-[#E07A5F]',
+        info: 'bg-info-light text-info-dark',
+        success: 'bg-success-light text-success-dark',
+        warning: 'bg-warning-light text-warning-dark',
     };
 
     return (
@@ -1385,11 +1411,11 @@ function QuickActionCard({
     variant: 'brand' | 'error' | 'info' | 'success' | 'warning';
 }) {
     const variantClasses = {
-        brand: 'bg-background-subtle text-text-muted',
-        error: 'bg-background-subtle text-text-muted',
-        info: 'bg-background-subtle text-text-muted',
-        success: 'bg-background-subtle text-text-muted',
-        warning: 'bg-background-subtle text-text-muted',
+        brand: 'bg-brand-primary-pale text-brand-primary',
+        error: 'bg-[#FDF0EC] text-[#E07A5F]',
+        info: 'bg-info-light text-info-dark',
+        success: 'bg-success-light text-success-dark',
+        warning: 'bg-warning-light text-warning-dark',
     };
 
     return (

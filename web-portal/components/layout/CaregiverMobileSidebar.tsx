@@ -64,7 +64,7 @@ export function CaregiverMobileSidebar({ open, onClose, hasPatientRole = false }
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border-light">
                     <div className="flex items-center gap-2">
-                        <span className="text-xl font-black tracking-tight text-brand-primary">
+                        <span className="text-xl font-display font-bold tracking-tight text-brand-primary">
                             LumiMD
                         </span>
                         <span className="text-xs font-medium text-text-tertiary bg-background-subtle px-2 py-0.5 rounded-full">

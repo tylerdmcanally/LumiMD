@@ -120,10 +120,10 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
                             href="/care"
                             className="flex items-center gap-2 transition-smooth hover:opacity-80"
                         >
-                            <span className="text-2xl font-black tracking-tight text-brand-primary leading-none">
+                            <span className="text-2xl font-display font-bold tracking-tight text-brand-primary leading-none">
                                 LumiMD
                             </span>
-                            <span className="hidden sm:inline-block text-sm font-medium text-text-tertiary bg-background-subtle px-2 py-0.5 rounded-full">
+                            <span className="hidden sm:inline-block text-sm font-medium text-brand-primary-dark bg-brand-primary-pale px-2.5 py-0.5 rounded-full">
                                 Care
                             </span>
                         </Link>
@@ -144,7 +144,7 @@ export function CaregiverNavigation({ onMobileMenuClick }: CaregiverNavigationPr
                                     className={cn(
                                         'flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150 border border-transparent',
                                         isActive
-                                            ? 'bg-background-subtle text-text-primary border-border-light shadow-sm'
+                                            ? 'bg-brand-primary text-white shadow-sm'
                                             : 'text-text-secondary hover:bg-hover hover:text-text-primary'
                                     )}
                                     aria-current={isActive ? 'page' : undefined}

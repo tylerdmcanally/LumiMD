@@ -76,11 +76,11 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-brand-primary-pale p-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-accent-warm-pale p-6">
       <div className="w-full max-w-md animate-fade-in-up">
         {/* Logo & Branding */}
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight text-text-primary">LumiMD</h1>
+          <h1 className="text-4xl font-display font-bold tracking-tight text-brand-primary">LumiMD</h1>
           <p className="mt-2 text-base text-text-secondary">
             Sign in to continue to your medical dashboard.
           </p>

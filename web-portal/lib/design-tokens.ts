@@ -1,6 +1,6 @@
 /**
  * LumiMD Design System - Design Tokens
- * Premium UI/UX - Soft, approachable, professional
+ * Warm Modern Health - Approachable, trustworthy, premium
  */
 
 // ============================================================================
@@ -8,7 +8,7 @@
 // ============================================================================
 
 export const colors = {
-  // Brand Colors (cyan ➝ mint gradient)
+  // Brand Colors (LumiMD cyan/teal)
   brand: {
     primary: '#40C9D0',
     primaryLight: '#5DD3D9',
@@ -19,56 +19,64 @@ export const colors = {
     accentLight: '#BEE7DF',
   },
 
-  // Background & Surface
-  background: {
-    default: '#F8FAFB',
-    subtle: '#F3F5F7',
-    white: '#FFFFFF',
+  // Warm Accent (complementary coral)
+  accentWarm: {
+    default: '#E07A5F',
+    light: '#F0A896',
+    pale: '#FDF0EC',
   },
 
-  // Text Hierarchy
+  // Background & Surface (warm neutrals)
+  background: {
+    default: '#FAFAF7',
+    subtle: '#F0EDE7',
+    white: '#FDFCF9',
+  },
+
+  // Text Hierarchy (warm charcoal)
   text: {
-    primary: '#1A2332',
-    secondary: '#4A5568',
-    tertiary: '#6B7280',
-    muted: '#9CA3AF',
+    primary: '#1F2D32',
+    secondary: '#4A5D64',
+    tertiary: '#7B8D95',
+    muted: '#A3B3BB',
     inverse: '#FFFFFF',
   },
 
-  // Status Colors (soft, approachable)
+  // Status Colors (warm-tinted)
   status: {
-    success: '#34D399',
-    successLight: '#D1FAE5',
-    successDark: '#059669',
-    warning: '#FBBF24',
-    warningLight: '#FEF3C7',
-    warningDark: '#D97706',
-    error: '#F87171',
-    errorLight: '#FEE2E2',
-    errorDark: '#DC2626',
-    info: '#60A5FA',
-    infoLight: '#DBEAFE',
-    infoDark: '#2563EB',
+    success: '#4CAF79',
+    successLight: '#E5F5EC',
+    successDark: '#2E8B57',
+    warning: '#E8A838',
+    warningLight: '#FEF3D7',
+    warningDark: '#C68A22',
+    error: '#D64545',
+    errorLight: '#FDECEC',
+    errorDark: '#B53535',
+    info: '#5B8FB8',
+    infoLight: '#E3EFF7',
+    infoDark: '#3F6E8C',
   },
 
   // Semantic Colors
   semantic: {
-    border: 'rgba(26, 35, 50, 0.08)',
-    borderLight: 'rgba(26, 35, 50, 0.04)',
-    divider: 'rgba(26, 35, 50, 0.06)',
-    overlay: 'rgba(26, 35, 50, 0.40)',
-    hover: 'rgba(64, 201, 208, 0.10)',
-    pressed: 'rgba(64, 201, 208, 0.18)',
-    focus: 'rgba(64, 201, 208, 0.26)',
+    border: 'rgba(38, 35, 28, 0.10)',
+    borderLight: 'rgba(38, 35, 28, 0.05)',
+    divider: 'rgba(38, 35, 28, 0.06)',
+    overlay: 'rgba(31, 45, 50, 0.40)',
+    hover: 'rgba(64, 201, 208, 0.08)',
+    pressed: 'rgba(64, 201, 208, 0.15)',
+    focus: 'rgba(64, 201, 208, 0.25)',
   },
 
   // Gradient Definitions
   gradients: {
-    primary: 'linear-gradient(135deg, #40C9D0 0%, #89D8C6 100%)',
-    primarySoft: 'linear-gradient(135deg, #5DD3D9 0%, #89D8C6 100%)',
+    primary: 'linear-gradient(135deg, #40C9D0 0%, #7ECDB5 100%)',
+    primarySoft: 'linear-gradient(135deg, #5DD3D9 0%, #92D8BF 100%)',
     accent: 'linear-gradient(135deg, #0A99A4 0%, #078A94 100%)',
-    warm: 'linear-gradient(135deg, #FEF3C7 0%, #FBBF24 100%)',
-    cool: 'linear-gradient(135deg, #DBEAFE 0%, #60A5FA 100%)',
+    warm: 'linear-gradient(135deg, #E8A838 0%, #E07A5F 100%)',
+    warmCta: 'linear-gradient(135deg, #E07A5F 0%, #D06A4E 100%)',
+    cool: 'linear-gradient(135deg, #E3EFF7 0%, #5B8FB8 100%)',
   },
 } as const;
 
@@ -79,7 +87,8 @@ export const colors = {
 export const typography = {
   // Font Families
   fontFamily: {
-    sans: 'var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Display", sans-serif',
+    body: 'var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Display", sans-serif',
+    display: 'var(--font-display), Georgia, "Times New Roman", serif',
     mono: 'ui-monospace, "SF Mono", Consolas, monospace',
   },
 
@@ -190,22 +199,22 @@ export const borderRadius = {
 // ============================================================================
 
 export const shadows = {
-  // Elevation shadows
-  sm: '0 2px 8px rgba(64, 201, 208, 0.05)',
-  base: '0 4px 16px rgba(64, 201, 208, 0.07)',
-  md: '0 4px 20px rgba(64, 201, 208, 0.09)',
-  lg: '0 8px 32px rgba(64, 201, 208, 0.13)',
-  xl: '0 12px 40px rgba(64, 201, 208, 0.17)',
-  '2xl': '0 20px 60px rgba(64, 201, 208, 0.21)',
+  // Elevation shadows (neutral warm)
+  sm: '0 2px 8px rgba(31, 45, 50, 0.04)',
+  base: '0 4px 16px rgba(31, 45, 50, 0.05)',
+  md: '0 4px 20px rgba(31, 45, 50, 0.07)',
+  lg: '0 8px 32px rgba(31, 45, 50, 0.09)',
+  xl: '0 12px 40px rgba(31, 45, 50, 0.12)',
+  '2xl': '0 20px 60px rgba(31, 45, 50, 0.16)',
 
   // Named shadows
-  elevated: '0 4px 20px rgba(64, 201, 208, 0.09)',
-  floating: '0 12px 40px rgba(64, 201, 208, 0.13)',
-  hover: '0 8px 32px rgba(64, 201, 208, 0.17)',
+  elevated: '0 4px 20px rgba(31, 45, 50, 0.07)',
+  floating: '0 12px 40px rgba(31, 45, 50, 0.10)',
+  hover: '0 8px 32px rgba(31, 45, 50, 0.12)',
 
   // Inner shadows
-  inner: 'inset 0 2px 4px rgba(26, 35, 50, 0.06)',
-  innerLg: 'inset 0 4px 8px rgba(26, 35, 50, 0.08)',
+  inner: 'inset 0 2px 4px rgba(31, 45, 50, 0.05)',
+  innerLg: 'inset 0 4px 8px rgba(31, 45, 50, 0.07)',
 
   // No shadow
   none: 'none',
@@ -377,4 +386,3 @@ export function transition(
 export function mediaQuery(breakpoint: keyof typeof layout.breakpoints): string {
   return `@media (min-width: ${layout.breakpoints[breakpoint]})`;
 }
-

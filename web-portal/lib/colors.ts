@@ -3,15 +3,16 @@ export const Colors = {
   secondary: '#89D8C6',
   primaryDark: '#078A94',
   accent: '#0A99A4',
-  warning: '#FBBF24',
-  error: '#F87171',
-  success: '#34D399',
-  surface: '#FFFFFF',
-  background: '#F8FAFB',
-  text: '#1A2332',
-  textMuted: '#4A5568',
-  border: 'rgba(26,35,50,0.08)',
-  stroke: 'rgba(26,35,50,0.08)',
+  warning: '#E8A838',
+  error: '#D64545',
+  success: '#4CAF79',
+  surface: '#FDFCF9',
+  background: '#FAFAF7',
+  accentWarm: '#E07A5F',
+  text: '#1F2D32',
+  textMuted: '#4A5D64',
+  border: 'rgba(38,35,28,0.10)',
+  stroke: 'rgba(38,35,28,0.10)',
 } as const;
 
 export const Radius = {
@@ -21,4 +22,3 @@ export const Radius = {
 } as const;
 
 export const spacing = (n: number) => n * 4;
-

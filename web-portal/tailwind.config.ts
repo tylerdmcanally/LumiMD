@@ -25,6 +25,13 @@ const config: Config = {
           'accent-light': 'var(--color-brand-accent-light)',
         },
 
+        // Warm Accent
+        'accent-warm': {
+          DEFAULT: 'var(--color-accent-warm)',
+          light: 'var(--color-accent-warm-light)',
+          pale: 'var(--color-accent-warm-pale)',
+        },
+
         // Background
         background: {
           DEFAULT: 'var(--color-background)',
@@ -92,23 +99,24 @@ const config: Config = {
         '3xl': '3rem',   // 48px
       },
 
-      // Box Shadow - Elevated, Premium
+      // Box Shadow - Neutral warm
       boxShadow: {
-        sm: '0 2px 8px rgba(64, 201, 208, 0.05)',
-        base: '0 4px 16px rgba(64, 201, 208, 0.07)',
-        md: '0 4px 20px rgba(64, 201, 208, 0.09)',
-        lg: '0 8px 32px rgba(64, 201, 208, 0.13)',
-        xl: '0 12px 40px rgba(64, 201, 208, 0.17)',
-        '2xl': '0 20px 60px rgba(64, 201, 208, 0.21)',
-        elevated: '0 4px 20px rgba(64, 201, 208, 0.09)',
-        floating: '0 12px 40px rgba(64, 201, 208, 0.13)',
-        hover: '0 8px 32px rgba(64, 201, 208, 0.17)',
-        inner: 'inset 0 2px 4px rgba(26, 35, 50, 0.06)',
+        sm: '0 2px 8px rgba(31, 45, 50, 0.04)',
+        base: '0 4px 16px rgba(31, 45, 50, 0.05)',
+        md: '0 4px 20px rgba(31, 45, 50, 0.07)',
+        lg: '0 8px 32px rgba(31, 45, 50, 0.09)',
+        xl: '0 12px 40px rgba(31, 45, 50, 0.12)',
+        '2xl': '0 20px 60px rgba(31, 45, 50, 0.16)',
+        elevated: '0 4px 20px rgba(31, 45, 50, 0.07)',
+        floating: '0 12px 40px rgba(31, 45, 50, 0.10)',
+        hover: '0 8px 32px rgba(31, 45, 50, 0.12)',
+        inner: 'inset 0 2px 4px rgba(31, 45, 50, 0.05)',
       },
 
-      // Font Family
+      // Font Family - Warm, Distinctive
       fontFamily: {
-        sans: ['var(--font-inter)', ...defaultTheme.fontFamily.sans],
+        sans: ['var(--font-body)', ...defaultTheme.fontFamily.sans],
+        display: ['var(--font-display)', 'Georgia', ...defaultTheme.fontFamily.serif],
         mono: ['ui-monospace', 'SF Mono', ...defaultTheme.fontFamily.mono],
       },
 

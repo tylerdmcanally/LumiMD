@@ -33,6 +33,30 @@ import {
 import { cn } from '@/lib/utils';
 
 // =============================================================================
+// Time-of-Day Greeting
+// =============================================================================
+
+function getGreeting(): { greeting: string; subtitle: string } {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+        return {
+            greeting: 'Good morning',
+            subtitle: 'Here\u2019s how your loved ones are doing today.',
+        };
+    } else if (hour < 17) {
+        return {
+            greeting: 'Good afternoon',
+            subtitle: 'Check in on your family\u2019s health updates.',
+        };
+    } else {
+        return {
+            greeting: 'Good evening',
+            subtitle: 'Here\u2019s a summary of today\u2019s care updates.',
+        };
+    }
+}
+
+// =============================================================================
 // Enhanced Alert Item Component
 // =============================================================================
 
@@ -151,13 +175,18 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
     const hasAlerts = allAlerts.length > 0;
 
     return (
-        <Card variant="elevated" padding="none" className="h-fit">
+        <Card variant="elevated" padding="none" className="h-fit overflow-hidden">
+            {/* Warm accent top strip */}
+            <div className={cn(
+                'h-1',
+                urgentCount > 0 ? 'bg-gradient-to-r from-error to-[#E07A5F]' : 'bg-gradient-to-r from-[#E8A838] to-[#E07A5F]'
+            )} />
             <div className="p-4 border-b border-border-light">
                 <div className="flex items-center justify-between">
                     <h2 className="font-semibold text-text-primary flex items-center gap-2">
                         <AlertTriangle className={cn(
                             'h-5 w-5',
-                            urgentCount > 0 ? 'text-error' : 'text-warning'
+                            urgentCount > 0 ? 'text-error' : 'text-[#E07A5F]'
                         )} />
                         Needs Attention
                     </h2>
@@ -244,10 +273,22 @@ function TrendIndicator({
 }
 
 // =============================================================================
+// Avatar Color Palettes (warm, varied)
+// =============================================================================
+
+const AVATAR_PALETTES = [
+    { bg: 'bg-brand-primary-pale', text: 'text-brand-primary' },
+    { bg: 'bg-[#FDF0EC]', text: 'text-[#D06A4E]' },
+    { bg: 'bg-[#FEF3D7]', text: 'text-[#B8892A]' },
+    { bg: 'bg-[#E3EFF7]', text: 'text-[#3F6E8C]' },
+    { bg: 'bg-[#F0E6F6]', text: 'text-[#7E4E9E]' },
+];
+
+// =============================================================================
 // Patient Card Component (Compact, information-dense)
 // =============================================================================
 
-function PatientCard({ patient }: { patient: CarePatientOverview }) {
+function PatientCard({ patient, colorIndex = 0 }: { patient: CarePatientOverview; colorIndex?: number }) {
     const { medicationsToday, pendingActions, alerts } = patient;
     const hasHighPriorityAlerts = alerts.some((a) => a.priority === 'high');
     const alertCount = alerts.length;
@@ -276,7 +317,11 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                 {/* Header */}
                 <div className="p-4 pb-3">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-primary-pale text-brand-primary text-lg font-semibold shrink-0">
+                        <div className={cn(
+                            'flex h-12 w-12 items-center justify-center rounded-full text-lg font-semibold shrink-0',
+                            AVATAR_PALETTES[colorIndex % AVATAR_PALETTES.length].bg,
+                            AVATAR_PALETTES[colorIndex % AVATAR_PALETTES.length].text
+                        )}>
                             {patient.name?.charAt(0) || '?'}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -382,7 +427,7 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
             </Link>
 
             {/* Action Buttons */}
-            <div className="border-t border-border-light p-3 flex gap-2">
+            <div className="border-t border-border-light bg-[#FDFCF9] p-3 flex gap-2">
                 <Button
                     variant="secondary"
                     size="sm"
@@ -446,41 +491,55 @@ export default function CareDashboardPage() {
 
     const hasPatients = patients.length > 0;
 
+    const { greeting, subtitle } = getGreeting();
+
     return (
         <PageContainer maxWidth="xl">
-            <PageHeader
-                title="Care Dashboard"
-                subtitle={
-                    hasPatients
-                        ? `Managing ${patients.length} family member${patients.length > 1 ? 's' : ''}`
-                        : 'No shared patients yet'
-                }
-                className="mb-6"
-                actions={
+            {/* Warm Greeting Hero */}
+            <div className="relative overflow-hidden rounded-2xl bg-hero-warm mb-8 p-6 sm:p-8">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h1 className="font-display text-2xl sm:text-3xl font-semibold text-text-primary tracking-tight">
+                            {greeting}
+                        </h1>
+                        <p className="text-text-secondary mt-1 text-sm sm:text-base">
+                            {hasPatients
+                                ? subtitle
+                                : 'No one has shared their health with you yet.'}
+                        </p>
+                        {hasPatients && (
+                            <p className="text-xs text-text-muted mt-2">
+                                Caring for {patients.length} loved one{patients.length > 1 ? 's' : ''}
+                            </p>
+                        )}
+                    </div>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => refetch()}
                         disabled={isFetching}
+                        className="self-start sm:self-center shrink-0"
                     >
                         <RefreshCw className={cn('h-4 w-4 mr-2', isFetching && 'animate-spin')} />
                         {isFetching ? 'Refreshing...' : 'Refresh'}
                     </Button>
-                }
-            />
+                </div>
+            </div>
 
             {!hasPatients ? (
                 /* Empty State */
-                <Card variant="elevated" padding="lg" className="text-center py-12">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-primary-pale mx-auto mb-4">
-                        <Users className="h-8 w-8 text-brand-primary" />
+                <Card variant="elevated" padding="lg" className="text-center py-12 overflow-hidden relative">
+                    {/* Warm decorative accent */}
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-primary via-[#7ECDB5] to-[#E07A5F]" />
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FDF0EC] mx-auto mb-4">
+                        <Users className="h-8 w-8 text-[#E07A5F]" />
                     </div>
                     <h2 className="text-xl font-semibold text-text-primary mb-2">
-                        No shared patients yet
+                        No one has shared with you yet
                     </h2>
                     <p className="text-text-secondary mb-6 max-w-md mx-auto">
-                        When someone shares their health information with you,
-                        you'll see their care overview here.
+                        When a family member shares their health information with you,
+                        you&apos;ll be able to keep up with their care from here.
                     </p>
                 </Card>
             ) : (
@@ -493,8 +552,8 @@ export default function CareDashboardPage() {
                             Family Members
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {patients.map((patient) => (
-                                <PatientCard key={patient.userId} patient={patient} />
+                            {patients.map((patient, index) => (
+                                <PatientCard key={patient.userId} patient={patient} colorIndex={index} />
                             ))}
                         </div>
                     </div>

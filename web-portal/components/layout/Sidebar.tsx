@@ -149,7 +149,7 @@ export function Sidebar() {
           href="/dashboard"
           className="flex items-center justify-center transition-smooth hover:opacity-80"
         >
-          <span className="text-[34px] font-black tracking-tight text-brand-primary leading-none">
+          <span className="text-[34px] font-display font-bold tracking-tight text-brand-primary leading-none">
             LumiMD
           </span>
         </Link>

@@ -12,6 +12,7 @@ const cardVariants = cva(
         elevated: 'shadow-floating',
         flat: 'shadow-none',
         outline: 'shadow-none border-border',
+        warm: 'shadow-elevated border-[rgba(224,122,95,0.12)] bg-accent-warm-pale',
       },
       interactive: {
         true: 'cursor-pointer hover:shadow-hover hover:-translate-y-1 hover:scale-[1.01] active:scale-100',

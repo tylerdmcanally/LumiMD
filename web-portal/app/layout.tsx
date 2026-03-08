@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Plus_Jakarta_Sans, Fraunces } from 'next/font/google';
 
 import './globals.css';
 import { cn } from '@/lib/utils';
@@ -20,9 +20,16 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-const inter = Inter({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-body',
+  display: 'swap',
+});
+
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-display',
+  display: 'swap',
 });
 
 export default function RootLayout({
@@ -32,7 +39,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn('min-h-screen bg-background text-text-primary antialiased', inter.variable)}>
+      <body className={cn('min-h-screen bg-background text-text-primary antialiased', plusJakarta.variable, fraunces.variable)}>
         <ErrorBoundary>
           <QueryProvider>{children}</QueryProvider>
           <ToastProvider />

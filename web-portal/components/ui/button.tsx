@@ -12,8 +12,10 @@ const buttonVariants = cva(
       variant: {
         primary:
           'bg-gradient-primary text-white shadow-elevated hover:shadow-hover hover:-translate-y-0.5 active:translate-y-0',
+        warm:
+          'bg-gradient-warm-cta text-white shadow-elevated hover:shadow-hover hover:-translate-y-0.5 active:translate-y-0',
         secondary:
-          'bg-surface border-2 border-brand-primary text-brand-primary shadow-base hover:bg-brand-primary-pale hover:shadow-md',
+          'bg-surface border-2 border-brand-primary/30 text-brand-primary-dark shadow-sm hover:bg-brand-primary-pale hover:border-brand-primary/50 hover:shadow-md',
         ghost:
           'text-brand-primary hover:bg-hover active:bg-pressed',
         success:

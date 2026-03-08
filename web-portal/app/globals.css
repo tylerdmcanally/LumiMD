@@ -11,7 +11,7 @@
   --app-height: 100vh;
   /* Fallback for SSR, updated on client mount */
 
-  /* Colors - Brand */
+  /* Colors - Brand (LumiMD Cyan/Teal) */
   --color-brand-primary: #40c9d0;
   --color-brand-secondary: #89d8c6;
   --color-brand-primary-dark: #078a94;
@@ -20,33 +20,38 @@
   --color-brand-primary-pale: #e1f9fa;
   --color-brand-accent-light: #bee7df;
 
-  /* Colors - Background */
-  --color-background: #f8fafb;
-  --color-background-subtle: #f3f5f7;
-  --color-surface: #ffffff;
-  --color-surface-elevated: #ffffff;
-  --color-surface-muted: #f3f5f7;
+  /* Colors - Warm Accent (complementary coral) */
+  --color-accent-warm: #E07A5F;
+  --color-accent-warm-light: #F0A896;
+  --color-accent-warm-pale: #FDF0EC;
 
-  /* Colors - Text */
-  --color-text-primary: #1a2332;
-  --color-text-secondary: #4a5568;
-  --color-text-tertiary: #6b7280;
-  --color-text-muted: #9ca3af;
+  /* Colors - Background (warm neutrals) */
+  --color-background: #FAFAF7;
+  --color-background-subtle: #F0EDE7;
+  --color-surface: #FDFCF9;
+  --color-surface-elevated: #FDFCF9;
+  --color-surface-muted: #F3EFE9;
+
+  /* Colors - Text (warm charcoal family) */
+  --color-text-primary: #1F2D32;
+  --color-text-secondary: #4A5D64;
+  --color-text-tertiary: #7B8D95;
+  --color-text-muted: #A3B3BB;
   --color-text-inverse: #ffffff;
 
   /* Colors - Status */
-  --color-success: #34d399;
-  --color-success-light: #d1fae5;
-  --color-success-dark: #059669;
-  --color-warning: #fbbf24;
-  --color-warning-light: #fef3c7;
-  --color-warning-dark: #d97706;
-  --color-error: #f87171;
-  --color-error-light: #fee2e2;
-  --color-error-dark: #dc2626;
-  --color-info: #60a5fa;
-  --color-info-light: #dbeafe;
-  --color-info-dark: #2563eb;
+  --color-success: #4CAF79;
+  --color-success-light: #E5F5EC;
+  --color-success-dark: #2E8B57;
+  --color-warning: #E8A838;
+  --color-warning-light: #FEF3D7;
+  --color-warning-dark: #C68A22;
+  --color-error: #D64545;
+  --color-error-light: #FDECEC;
+  --color-error-dark: #B53535;
+  --color-info: #5B8FB8;
+  --color-info-light: #E3EFF7;
+  --color-info-dark: #3F6E8C;
 
   /* Colors - Status Semantic Aliases */
   --color-status-success: var(--color-success);
@@ -62,27 +67,27 @@
   --color-status-info-light: var(--color-info-light);
   --color-status-info-dark: var(--color-info-dark);
 
-  /* Colors - Semantic */
-  --color-border: rgba(26, 35, 50, 0.08);
-  --color-border-light: rgba(26, 35, 50, 0.04);
-  --color-border-subtle: rgba(26, 35, 50, 0.06);
-  --color-divider: rgba(26, 35, 50, 0.06);
-  --color-overlay: rgba(26, 35, 50, 0.4);
-  --color-hover: rgba(64, 201, 208, 0.1);
-  --color-pressed: rgba(64, 201, 208, 0.18);
-  --color-focus: rgba(64, 201, 208, 0.26);
+  /* Colors - Semantic (warm neutral borders, brand-tinted interactions) */
+  --color-border: rgba(38, 35, 28, 0.10);
+  --color-border-light: rgba(38, 35, 28, 0.05);
+  --color-border-subtle: rgba(38, 35, 28, 0.06);
+  --color-divider: rgba(31, 45, 50, 0.06);
+  --color-overlay: rgba(31, 45, 50, 0.40);
+  --color-hover: rgba(64, 201, 208, 0.08);
+  --color-pressed: rgba(64, 201, 208, 0.15);
+  --color-focus: rgba(64, 201, 208, 0.25);
 
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(64, 201, 208, 0.05);
-  --shadow-base: 0 4px 16px rgba(64, 201, 208, 0.07);
-  --shadow-md: 0 4px 20px rgba(64, 201, 208, 0.09);
-  --shadow-lg: 0 8px 32px rgba(64, 201, 208, 0.13);
-  --shadow-xl: 0 12px 40px rgba(64, 201, 208, 0.17);
-  --shadow-2xl: 0 20px 60px rgba(64, 201, 208, 0.21);
-  --shadow-elevated: 0 4px 20px rgba(64, 201, 208, 0.09);
-  --shadow-floating: 0 12px 40px rgba(64, 201, 208, 0.13);
-  --shadow-hover: 0 8px 32px rgba(64, 201, 208, 0.17);
-  --shadow-inner: inset 0 2px 4px rgba(26, 35, 50, 0.06);
+  /* Shadows (neutral warm) */
+  --shadow-sm: 0 2px 8px rgba(31, 45, 50, 0.04);
+  --shadow-base: 0 4px 16px rgba(31, 45, 50, 0.05);
+  --shadow-md: 0 4px 20px rgba(31, 45, 50, 0.07);
+  --shadow-lg: 0 8px 32px rgba(31, 45, 50, 0.09);
+  --shadow-xl: 0 12px 40px rgba(31, 45, 50, 0.12);
+  --shadow-2xl: 0 20px 60px rgba(31, 45, 50, 0.16);
+  --shadow-elevated: 0 4px 20px rgba(31, 45, 50, 0.07);
+  --shadow-floating: 0 12px 40px rgba(31, 45, 50, 0.10);
+  --shadow-hover: 0 8px 32px rgba(31, 45, 50, 0.12);
+  --shadow-inner: inset 0 2px 4px rgba(31, 45, 50, 0.05);
 
   /* Border Radius */
   --radius-sm: 0.5rem;
@@ -115,9 +120,13 @@
   }
 
   body {
-    background: linear-gradient(135deg, #f8fafb 0%, #e8f7f8 50%, #f8fafb 100%);
+    background:
+      radial-gradient(ellipse at 15% 0%, rgba(64, 201, 208, 0.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 100%, rgba(126, 205, 181, 0.03) 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 40%, rgba(224, 122, 95, 0.02) 0%, transparent 55%),
+      linear-gradient(160deg, #FAF9F5 0%, #F0EDE7 50%, #FAF9F5 100%);
     color: var(--color-text-primary);
-    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    font-family: var(--font-body), -apple-system, BlinkMacSystemFont, 'Segoe UI',
       'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
       'Helvetica Neue', sans-serif;
     font-size: 16px;
@@ -145,17 +154,24 @@
     box-sizing: border-box;
   }
 
-  /* Typography */
+  /* Typography - Display headings use warm serif */
   h1,
   h2,
-  h3,
+  h3 {
+    font-family: var(--font-display), var(--font-body), Georgia, serif;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
   h4,
   h5,
   h6 {
     font-weight: 600;
     color: var(--color-text-primary);
-    letter-spacing: -0.02em;
-    line-height: 1.2;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
   }
 
   h1 {
@@ -277,39 +293,44 @@
     }
   }
 
-  /* Gradients */
+  /* Gradients - Brand (cyan → sage-green for warmth) */
   .bg-gradient-primary {
-    background-image: linear-gradient(135deg, #40c9d0 0%, #89d8c6 100%);
+    background-image: linear-gradient(135deg, #40c9d0 0%, #7ECDB5 100%);
   }
 
   .bg-gradient-primary-soft {
-    background-image: linear-gradient(135deg, #5dd3d9 0%, #89d8c6 100%);
+    background-image: linear-gradient(135deg, #5dd3d9 0%, #92D8BF 100%);
   }
 
   .bg-gradient-accent {
     background-image: linear-gradient(135deg, #0a99a4 0%, #078a94 100%);
   }
 
+  /* Gradients - Warm accent (coral) */
   .bg-gradient-warm {
-    background-image: linear-gradient(135deg, #fef3c7 0%, #fbbf24 100%);
+    background-image: linear-gradient(135deg, #E8A838 0%, #E07A5F 100%);
+  }
+
+  .bg-gradient-warm-cta {
+    background-image: linear-gradient(135deg, #E07A5F 0%, #D06A4E 100%);
   }
 
   .bg-gradient-cool {
-    background-image: linear-gradient(135deg, #dbeafe 0%, #60a5fa 100%);
+    background-image: linear-gradient(135deg, #E3EFF7 0%, #5B8FB8 100%);
   }
 
-  /* Hero Section Background */
+  /* Hero Section Background (warm ambient glow) */
   .bg-hero-warm {
-    background: linear-gradient(135deg, rgba(64, 201, 208, 0.08) 0%, rgba(137, 216, 198, 0.12) 50%, rgba(254, 243, 199, 0.08) 100%);
+    background: linear-gradient(135deg, rgba(64, 201, 208, 0.05) 0%, rgba(126, 205, 181, 0.08) 40%, rgba(224, 122, 95, 0.04) 100%);
   }
 
   .bg-hero-brand {
-    background: linear-gradient(135deg, rgba(64, 201, 208, 0.15) 0%, rgba(137, 216, 198, 0.10) 100%);
+    background: linear-gradient(135deg, rgba(64, 201, 208, 0.10) 0%, rgba(126, 205, 181, 0.06) 100%);
   }
 
   /* Text Gradients */
   .text-gradient-primary {
-    background-image: linear-gradient(135deg, #40c9d0 0%, #89d8c6 100%);
+    background-image: linear-gradient(135deg, #40c9d0 0%, #7ECDB5 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;

@@ -156,9 +156,10 @@ export default function ProvidersPage() {
 
         {/* Empty State */}
         {providers.length === 0 ? (
-          <Card variant="elevated" padding="lg" className="text-center py-16">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background-subtle mx-auto mb-4">
-              <Users className="h-8 w-8 text-text-muted" />
+          <Card variant="elevated" padding="lg" className="text-center py-16 overflow-hidden relative">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-primary via-[#7ECDB5] to-[#E07A5F]" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FDF0EC] mx-auto mb-4">
+              <Users className="h-8 w-8 text-[#E07A5F]" />
             </div>
             <h2 className="text-xl font-semibold text-text-primary mb-2">
               No providers yet
@@ -171,7 +172,7 @@ export default function ProvidersPage() {
           <div className="space-y-8">
             {providersBySpecialty.map(([specialty, specialtyProviders]) => (
               <section key={specialty}>
-                <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
+                <h2 className="text-base font-semibold text-text-secondary uppercase tracking-wide mb-3 flex items-center gap-2">
                   <Stethoscope className="h-4 w-4" />
                   {specialty}
                   <span className="text-text-tertiary font-normal">

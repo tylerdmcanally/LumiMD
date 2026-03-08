@@ -144,7 +144,7 @@ export function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps)
             className="flex items-center transition-smooth hover:opacity-80"
             onClick={onClose}
           >
-            <span className="text-[28px] font-black tracking-tight text-brand-primary leading-none">
+            <span className="text-[28px] font-display font-bold tracking-tight text-brand-primary leading-none">
               LumiMD
             </span>
           </Link>

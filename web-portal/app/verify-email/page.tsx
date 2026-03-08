@@ -60,7 +60,7 @@ function VerifyEmailContent() {
     }, [token, uid, user, router]);
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-brand-primary-pale p-6">
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-accent-warm-pale p-6">
             <div className="w-full max-w-md animate-fade-in-up">
                 <div className="mb-8 text-center">
                     <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary shadow-floating">
@@ -180,7 +180,7 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
     return (
         <React.Suspense fallback={
-            <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-brand-primary-pale">
+            <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-accent-warm-pale">
                 <Loader2 className="h-8 w-8 animate-spin text-brand-primary" />
             </div>
         }>

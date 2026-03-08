@@ -191,7 +191,7 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-brand-primary-pale p-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background-subtle to-accent-warm-pale p-6">
       <div className="w-full max-w-md animate-fade-in-up">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary shadow-floating">
