@@ -79,6 +79,7 @@ export function registerCareQuickOverviewRoutes(
             }
 
             const now = new Date();
+            const todayDateStr = now.toISOString().slice(0, 10);
             const weekAgo = new Date(now);
             weekAgo.setDate(weekAgo.getDate() - 7);
             const medChangeWindowStart = new Date(now);
@@ -131,7 +132,6 @@ export function registerCareQuickOverviewRoutes(
                 }),
                 actionService.listAllForUser(patientId, {
                     sortDirection: 'desc',
-                    includeDeleted: true,
                 }),
                 visitService.listForUser(patientId, {
                     limit: 5,
@@ -195,15 +195,16 @@ export function registerCareQuickOverviewRoutes(
             }
 
             const openActions = recentActionRecords.filter(
-                (action) => action.completed === false && !action.deletedAt,
+                (action) => !action.completed && !action.deletedAt,
             );
             const activeHealthLogs = healthLogRecords.filter((healthLog) => !healthLog.deletedAt);
             const activeRecentVisitRecords = recentVisitsPage.items.filter((visit) => !visit.deletedAt);
 
-            // Check for overdue actions
+            // Check for overdue actions (compare date portions only so items due today aren't marked overdue)
             const overdueActions = openActions.filter((data) => {
                 const dueDate = parseActionDueAt(data.dueAt);
-                return dueDate && dueDate < now;
+                if (!dueDate) return false;
+                return dueDate.toISOString().slice(0, 10) < todayDateStr;
             });
             if (overdueActions.length > 0) {
                 needsAttention.push({
@@ -350,9 +351,10 @@ export function registerCareQuickOverviewRoutes(
 
             const upcomingActions = openActions.map((data) => {
                 const dueDate = parseActionDueAt(data.dueAt);
-                const isOverdue = dueDate ? dueDate < now : false;
-                const daysUntilDue = dueDate
-                    ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : null;
+                const isOverdue = dueDateStr ? dueDateStr < todayDateStr : false;
+                const daysUntilDue = dueDateStr
+                    ? Math.round((Date.parse(dueDateStr) - Date.parse(todayDateStr)) / (1000 * 60 * 60 * 24))
                     : null;
 
                 return {

@@ -76,6 +76,7 @@ export function registerCareAlertsRoutes(
             }
 
             const now = new Date();
+            const todayDateStr = now.toISOString().slice(0, 10);
             const startDate = new Date(now);
             startDate.setDate(startDate.getDate() - days);
 
@@ -201,7 +202,7 @@ export function registerCareAlertsRoutes(
                 if (data.completed) return false;
                 if (!data.dueAt) return false;
                 const dueDate = typeof data.dueAt === 'string' ? new Date(data.dueAt) : data.dueAt.toDate?.() ?? new Date(data.dueAt);
-                return dueDate < now;
+                return dueDate.toISOString().slice(0, 10) < todayDateStr;
             });
 
             overdueActions.forEach((data) => {

@@ -533,6 +533,7 @@ async function getPendingActionsAndOverdueAlertsForPatients(patientIds: string[]
     const overdueAlertsByPatient = new Map<string, CareOverviewAlert[]>();
     const patientIdSet = new Set(patientIds);
     const now = new Date();
+    const todayDateStr = now.toISOString().slice(0, 10);
 
     patientIds.forEach((patientId) => {
         pendingActionsByPatient.set(patientId, 0);
@@ -544,25 +545,30 @@ async function getPendingActionsAndOverdueAlertsForPatients(patientIds: string[]
         const snapshot = await getDb()
             .collection('actions')
             .where('userId', 'in', patientChunk)
+            .where('deletedAt', '==', null)
             .get();
 
         snapshot.docs.forEach((doc) => {
             const data = doc.data();
             const userId = typeof data.userId === 'string' ? data.userId : null;
 
-            if (!userId || !patientIdSet.has(userId) || data.completed === true) {
+            if (!userId || !patientIdSet.has(userId) || data.completed) {
                 return;
             }
 
             pendingActionsByPatient.set(userId, (pendingActionsByPatient.get(userId) ?? 0) + 1);
 
             const dueDate = parseActionDueAt(data.dueAt);
-            if (!dueDate || dueDate >= now) {
+            if (!dueDate) {
+                return;
+            }
+            const dueDateStr = dueDate.toISOString().slice(0, 10);
+            if (dueDateStr >= todayDateStr) {
                 return;
             }
 
-            const daysOverdue = Math.floor(
-                (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24),
+            const daysOverdue = Math.round(
+                (Date.parse(todayDateStr) - Date.parse(dueDateStr)) / (1000 * 60 * 60 * 24),
             );
             const alerts = overdueAlertsByPatient.get(userId) ?? [];
             alerts.push({

@@ -271,111 +271,115 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                 <div className="absolute top-0 left-0 right-0 h-1 bg-error" />
             )}
 
-            {/* Header */}
-            <div className="p-4 pb-3">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-primary-pale text-brand-primary text-lg font-semibold shrink-0">
-                        {patient.name?.charAt(0) || '?'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-text-primary truncate">
-                            {patient.name || 'Unknown'}
-                        </h3>
-                        <p className="text-sm text-text-muted truncate">
-                            {patient.email || 'Shared with you'}
-                        </p>
+            {/* Clickable card body */}
+            <Link href={`/care/${patient.userId}`} className="block cursor-pointer">
+                {/* Header */}
+                <div className="p-4 pb-3">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-primary-pale text-brand-primary text-lg font-semibold shrink-0">
+                            {patient.name?.charAt(0) || '?'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-text-primary truncate">
+                                {patient.name || 'Unknown'}
+                            </h3>
+                            <p className="text-sm text-text-muted truncate">
+                                {patient.email || 'Shared with you'}
+                            </p>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-text-muted shrink-0" />
                     </div>
                 </div>
-            </div>
 
-            {/* Stats Grid */}
-            <div className="px-4 pb-3">
-                <div className="grid grid-cols-3 gap-2">
-                    {/* Medications */}
-                    <div className="bg-background-subtle rounded-lg p-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1 mb-1">
-                            <Pill className="h-4 w-4 text-text-muted" />
+                {/* Stats Grid */}
+                <div className="px-4 pb-3">
+                    <div className="grid grid-cols-3 gap-2">
+                        {/* Medications */}
+                        <div className="bg-background-subtle rounded-lg p-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                                <Pill className="h-4 w-4 text-text-muted" />
+                            </div>
+                            <p className="text-lg font-semibold text-text-primary">
+                                {medicationsToday.taken}/{medicationsToday.total}
+                            </p>
+                            <p className="text-xs text-text-muted">Meds Today</p>
                         </div>
-                        <p className="text-lg font-semibold text-text-primary">
-                            {medicationsToday.taken}/{medicationsToday.total}
-                        </p>
-                        <p className="text-xs text-text-muted">Meds Today</p>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="bg-background-subtle rounded-lg p-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1 mb-1">
-                            <ClipboardList className="h-4 w-4 text-text-muted" />
+                        {/* Actions */}
+                        <div className="bg-background-subtle rounded-lg p-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                                <ClipboardList className="h-4 w-4 text-text-muted" />
+                            </div>
+                            <p className={cn(
+                                'text-lg font-semibold',
+                                pendingActions > 0 ? 'text-warning' : 'text-text-primary'
+                            )}>
+                                {pendingActions}
+                            </p>
+                            <p className="text-xs text-text-muted">Actions</p>
                         </div>
-                        <p className={cn(
-                            'text-lg font-semibold',
-                            pendingActions > 0 ? 'text-warning' : 'text-text-primary'
-                        )}>
-                            {pendingActions}
-                        </p>
-                        <p className="text-xs text-text-muted">Actions</p>
-                    </div>
 
-                    {/* Alerts */}
-                    <div className="bg-background-subtle rounded-lg p-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1 mb-1">
-                            <AlertTriangle className={cn(
-                                'h-4 w-4',
-                                hasUrgent ? 'text-error' : alertCount > 0 ? 'text-warning' : 'text-text-muted'
-                            )} />
+                        {/* Alerts */}
+                        <div className="bg-background-subtle rounded-lg p-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                                <AlertTriangle className={cn(
+                                    'h-4 w-4',
+                                    hasUrgent ? 'text-error' : alertCount > 0 ? 'text-warning' : 'text-text-muted'
+                                )} />
+                            </div>
+                            <p className={cn(
+                                'text-lg font-semibold',
+                                hasUrgent ? 'text-error' : alertCount > 0 ? 'text-warning' : 'text-success'
+                            )}>
+                                {alertCount}
+                            </p>
+                            <p className="text-xs text-text-muted">Alerts</p>
                         </div>
-                        <p className={cn(
-                            'text-lg font-semibold',
-                            hasUrgent ? 'text-error' : alertCount > 0 ? 'text-warning' : 'text-success'
-                        )}>
-                            {alertCount}
-                        </p>
-                        <p className="text-xs text-text-muted">Alerts</p>
                     </div>
                 </div>
-            </div>
 
-            {/* Medication Progress Bar */}
-            <div className="px-4 pb-3">
-                {/* Fixed height status line for consistent card heights */}
-                <div className="flex items-center gap-2 text-xs mb-1.5 min-h-[18px]">
-                    {medicationsToday.taken > 0 && (
-                        <span className="flex items-center gap-1 text-success">
-                            <CheckCircle className="h-3 w-3" />
-                            {medicationsToday.taken} taken
-                        </span>
-                    )}
-                    {medicationsToday.missed > 0 && (
-                        <span className="flex items-center gap-1 text-error">
-                            <XCircle className="h-3 w-3" />
-                            {medicationsToday.missed} missed
-                        </span>
-                    )}
-                    {medicationsToday.pending > 0 && (
-                        <span className="flex items-center gap-1 text-text-muted">
-                            <Clock className="h-3 w-3" />
-                            {medicationsToday.pending} pending
-                        </span>
-                    )}
-                    {/* Show placeholder if no status to maintain height */}
-                    {medicationsToday.total === 0 && (
-                        <span className="text-text-muted">No medications today</span>
-                    )}
-                </div>
-                <div className="h-1.5 bg-background-subtle rounded-full overflow-hidden">
-                    <div
-                        className={cn(
-                            'h-full rounded-full transition-all',
-                            medicationsToday.missed > 0
-                                ? 'bg-error'
-                                : medProgress === 100
-                                    ? 'bg-success'
-                                    : 'bg-brand-primary'
+                {/* Medication Progress Bar */}
+                <div className="px-4 pb-3">
+                    {/* Fixed height status line for consistent card heights */}
+                    <div className="flex items-center gap-2 text-xs mb-1.5 min-h-[18px]">
+                        {medicationsToday.taken > 0 && (
+                            <span className="flex items-center gap-1 text-success">
+                                <CheckCircle className="h-3 w-3" />
+                                {medicationsToday.taken} taken
+                            </span>
                         )}
-                        style={{ width: `${medProgress}%` }}
-                    />
+                        {medicationsToday.missed > 0 && (
+                            <span className="flex items-center gap-1 text-error">
+                                <XCircle className="h-3 w-3" />
+                                {medicationsToday.missed} missed
+                            </span>
+                        )}
+                        {medicationsToday.pending > 0 && (
+                            <span className="flex items-center gap-1 text-text-muted">
+                                <Clock className="h-3 w-3" />
+                                {medicationsToday.pending} pending
+                            </span>
+                        )}
+                        {/* Show placeholder if no status to maintain height */}
+                        {medicationsToday.total === 0 && (
+                            <span className="text-text-muted">No medications today</span>
+                        )}
+                    </div>
+                    <div className="h-1.5 bg-background-subtle rounded-full overflow-hidden">
+                        <div
+                            className={cn(
+                                'h-full rounded-full transition-all',
+                                medicationsToday.missed > 0
+                                    ? 'bg-error'
+                                    : medProgress === 100
+                                        ? 'bg-success'
+                                        : 'bg-brand-primary'
+                            )}
+                            style={{ width: `${medProgress}%` }}
+                        />
+                    </div>
                 </div>
-            </div>
+            </Link>
 
             {/* Action Buttons */}
             <div className="border-t border-border-light p-3 flex gap-2">
@@ -404,11 +408,12 @@ function PatientCard({ patient }: { patient: CarePatientOverview }) {
                 <Button
                     variant="primary"
                     size="sm"
-                    className="px-3"
+                    className="flex-1"
                     asChild
                 >
-                    <Link href={`/care/${patient.userId}`} className="flex items-center justify-center">
-                        <ArrowRight className="h-4 w-4" />
+                    <Link href={`/care/${patient.userId}`} className="flex items-center justify-center gap-1.5">
+                        <span>Dashboard</span>
+                        <ArrowRight className="h-4 w-4 shrink-0" />
                     </Link>
                 </Button>
             </div>

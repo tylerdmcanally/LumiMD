@@ -126,6 +126,7 @@ export function registerCareTaskRoutes(
             }
 
             const now = new Date();
+            const todayDateStr = now.toISOString().slice(0, 10);
             const tasks = taskRecords.map((data) => {
                 return {
                     id: data.id,
@@ -157,7 +158,7 @@ export function registerCareTaskRoutes(
                         return false;
                     }
 
-                    return new Date(dueDate) < now;
+                    return dueDate.slice(0, 10) < todayDateStr;
                 }).length,
             };
 
