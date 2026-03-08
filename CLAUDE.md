@@ -58,8 +58,8 @@ Switch with `firebase use lumimd-dev`.
 | `medicationLogs/{id}` | Medication dose logs (taken/skipped, source: manual or nudge_response) |
 | `medicationReminders/{id}` | Reminder schedules with times + timezone |
 | `caregiverMessages/{id}` | One-way caregiver → patient messages |
-| `shares/{ownerId_cgId}` | Caregiver access (pending/accepted/revoked) |
-| `shareInvites/{token}` | Pending invite tokens |
+| `shares/{ownerId_cgId}` | Caregiver access (pending/accepted/revoked, includes `caregiverName`) |
+| `shareInvites/{token}` | Pending invite tokens (includes optional `caregiverName`) |
 | `devices/{id}` | Push notification tokens |
 | `auth_handoffs/{code}` | Temporary mobile→web auth codes (10 min TTL) |
 
@@ -97,7 +97,8 @@ Push notification to caregiver
 - `routes/nudges.ts` — Nudge CRUD + response handler (includes `took_it`/`skipped_it` for medication follow-ups)
 - `routes/care.ts` — Caregiver route aggregator
 - `routes/care/medicationAdherence.ts` — Adherence stats with confidence indicators
-- `routes/care/messages.ts` — Caregiver → patient messaging (send + list sent)
+- `routes/care/messages.ts` — Caregiver → patient messaging (send + list sent, resolves sender name from share/profile/auth)
+- `routes/shares.ts` — Share CRUD, invite system, `resolveCaregiverName()` helper (profile → auth → invite label → email fallback)
 - `routes/webhooks.ts` — AssemblyAI webhook receiver
 - `services/openai.ts` — GPT-4 summarization (52KB, 4-stage prompts)
 - `services/assemblyai.ts` — Transcription polling
@@ -118,7 +119,7 @@ Push notification to caregiver
 - `app/health.tsx` — Health log
 - `app/messages.tsx` — Patient inbox (caregiver messages, elderly-friendly large text)
 - `app/medication-schedule.tsx` — Reminder scheduling
-- `app/caregiver-sharing.tsx` — Share management
+- `app/caregiver-sharing.tsx` — Share management (invite with name, shows caregiver names)
 - `app/_layout.tsx` — Root layout + push notification routing (handles `caregiver_message` type)
 - `lib/api/hooks.ts` — React Query hooks (useRealtimeVisits, useRealtimeActiveMedications, useMyMessages, useUnreadMessageCount, etc.)
 - `lib/api/mutations.ts` — Mutations (useCompleteAction, useUpdateUserProfile, useInviteCaregiver)
@@ -270,8 +271,22 @@ firebase use lumimd-dev   # or lumimd (prod)
 - Web portal: `/care/[patientId]/messages` page (compose + sent history + read receipts)
 - SDK: `messages` + `careMessages` namespaces in api-client
 
+**Feature 3 — Caregiver Name Support:**
+- `Share` and `ShareInvite` types now include `caregiverName?: string | null`
+- Mobile invite modal includes a "Caregiver Name" field (e.g. "Mom", "Dr. Smith")
+- Share acceptance resolves name via `resolveCaregiverName()`: user profile (`preferredName` → `firstName` → `displayName`) → Firebase Auth `displayName` → patient-provided invite name → email-derived fallback
+- Caregiver sharing screen shows real names with email below (active + pending)
+- Caregiver messages use the resolved name as `senderName` instead of generic "Your caregiver"
+- Push notifications show real name: "Mom sent you a message" instead of "Your caregiver sent you a message"
+- Name resolution priority in `routes/care/messages.ts`: share record `caregiverName` → user profile → Firebase Auth → email
+
 ### Bug Fixes
 - **Action item completion:** Fixed query key mismatch in `useCompleteAction` mutation — was invalidating `['actions', userId]` but paginated query uses `['actions', 'cursor', sessionKey, pageSize]`. Now invalidates base `['actions']` key to match all variants.
+- **Caregiver sharing revocation not reflected in UI:** `Cache-Control: max-age=30` on all shares endpoints caused HTTP cache to serve stale data after mutations. Fixed by switching to `no-cache` + adding optimistic updates to `useRevokeShareAccess` and `useRevokeShareInvite`.
+- **Messages read/unread stale cache:** Same `Cache-Control: max-age=30` pattern on messages endpoints. Fixed with `no-cache`.
+
+### Important Caching Pattern
+API responses for mutable data should use `Cache-Control: private, no-cache` (NOT `max-age=30`). React Native's `fetch` respects HTTP cache headers, so `max-age` causes stale reads after mutations even when React Query triggers a refetch. All shares and messages endpoints have been fixed. Check other endpoints if similar stale-data bugs appear.
 
 ### Known Pre-existing Test Failures (3)
 - `personalRNService.repositoryBridge.test.ts` — nudge dismissal counting
