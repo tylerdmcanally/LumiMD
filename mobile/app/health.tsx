@@ -407,9 +407,7 @@ export default function HealthScreen() {
           <Ionicons name="chevron-back" size={28} color={Colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Health</Text>
-        <Pressable onPress={() => setShowLogMenu(true)} hitSlop={8}>
-          <Ionicons name="add-circle-outline" size={28} color={Colors.primary} />
-        </Pressable>
+        <View style={{ width: 28 }} />
       </View>
 
       <ScrollView
