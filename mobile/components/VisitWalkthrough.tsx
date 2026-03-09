@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    maxHeight: '85%',
+    height: '85%',
     paddingBottom: Platform.OS === 'ios' ? 34 : 16,
   },
   header: {
