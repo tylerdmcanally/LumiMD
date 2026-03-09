@@ -149,7 +149,7 @@ export function VisitWalkthrough({ visible, walkthrough, visitId, onDismiss, onF
             showsVerticalScrollIndicator={false}
           >
             {currentStep === 0 && (
-              <StepWhatHappened data={whatHappened} onFlag={onFlag} />
+              <StepWhatHappened data={whatHappened} onFlag={onFlag} onLooksGood={handleNext} />
             )}
             {currentStep === 1 && (
               <StepWhatChanged data={whatChanged} />
@@ -210,9 +210,11 @@ export function VisitWalkthrough({ visible, walkthrough, visitId, onDismiss, onF
 function StepWhatHappened({
   data,
   onFlag,
+  onLooksGood,
 }: {
   data: VisitWalkthroughType['steps']['whatHappened'];
   onFlag: () => void;
+  onLooksGood: () => void;
 }) {
   return (
     <View style={styles.stepContainer}>
@@ -256,7 +258,7 @@ function StepWhatHappened({
             <Ionicons name="flag-outline" size={18} color={Colors.coral} />
             <Text style={styles.flagButtonText}>Something seems off</Text>
           </Pressable>
-          <Pressable style={styles.looksGoodButton}>
+          <Pressable style={styles.looksGoodButton} onPress={onLooksGood}>
             <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
             <Text style={styles.looksGoodText}>Looks good</Text>
           </Pressable>
