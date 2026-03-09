@@ -16,7 +16,7 @@ type MedicationStatusResult = {
 
 type CareAlert = {
     id: string;
-    type: 'missed_dose' | 'overdue_action' | 'health_warning' | 'no_data' | 'med_change';
+    type: 'missed_dose' | 'overdue_action' | 'health_warning' | 'no_data' | 'med_change' | 'missed_checkins' | 'medication_trouble';
     severity: 'emergency' | 'high' | 'medium' | 'low';
     title: string;
     description: string;
@@ -341,6 +341,90 @@ export function registerCareAlertsRoutes(
                     });
                 }
             });
+
+            // 6. Check for missed LumiBot check-ins (unanswered nudges)
+            try {
+                const nudgeWindowStart = new Date(now);
+                nudgeWindowStart.setDate(nudgeWindowStart.getDate() - days);
+                const db = getDb();
+
+                const pendingNudgesSnapshot = await db
+                    .collection('nudges')
+                    .where('userId', '==', patientId)
+                    .where('status', 'in', ['pending', 'active'])
+                    .where('createdAt', '>=', nudgeWindowStart)
+                    .orderBy('createdAt', 'desc')
+                    .limit(20)
+                    .get();
+                perf.addQueries(1);
+
+                const staleNudges = pendingNudgesSnapshot.docs.filter((doc) => {
+                    const data = doc.data();
+                    if (data.deletedAt) return false;
+                    const createdAt = data.createdAt?.toDate?.();
+                    if (!createdAt) return false;
+                    const daysSinceCreated = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+                    return daysSinceCreated >= 3;
+                });
+
+                if (staleNudges.length >= 3) {
+                    alerts.push({
+                        id: 'missed-checkins',
+                        type: 'missed_checkins',
+                        severity: staleNudges.length >= 5 ? 'high' : 'medium',
+                        title: 'Missed Health Check-ins',
+                        description: `${staleNudges.length} LumiBot check-in${staleNudges.length > 1 ? 's' : ''} unanswered for 3+ days`,
+                        targetUrl: `/care/${patientId}/health`,
+                        timestamp: now.toISOString(),
+                        metadata: { unansweredCount: staleNudges.length },
+                    });
+                }
+
+                // 7. Check for medication trouble responses
+                const troubleNudgesSnapshot = await db
+                    .collection('nudges')
+                    .where('userId', '==', patientId)
+                    .where('status', '==', 'completed')
+                    .where('createdAt', '>=', nudgeWindowStart)
+                    .orderBy('createdAt', 'desc')
+                    .limit(50)
+                    .get();
+                perf.addQueries(1);
+
+                const troubleResponses = troubleNudgesSnapshot.docs.filter((doc) => {
+                    const data = doc.data();
+                    if (data.deletedAt) return false;
+                    const response = data.responseValue;
+                    if (typeof response === 'string') {
+                        return response === 'having_trouble' || response === 'issues' || response === 'concerning';
+                    }
+                    if (response && typeof response === 'object') {
+                        const val = (response as Record<string, unknown>).response;
+                        return val === 'having_trouble' || val === 'issues' || val === 'concerning';
+                    }
+                    return false;
+                });
+
+                troubleResponses.forEach((doc) => {
+                    const data = doc.data();
+                    const createdAt = data.createdAt?.toDate?.()?.toISOString() || now.toISOString();
+                    const medName = data.context?.medicationName || data.medicationName || 'a medication';
+                    const response = typeof data.responseValue === 'string' ? data.responseValue : (data.responseValue as Record<string, unknown>)?.response;
+
+                    alerts.push({
+                        id: `med-trouble-${doc.id}`,
+                        type: 'medication_trouble',
+                        severity: response === 'concerning' ? 'high' : 'medium',
+                        title: 'Medication Issue Reported',
+                        description: `Patient reported ${response === 'concerning' ? 'concerning side effects' : 'trouble'} with ${medName}`,
+                        targetUrl: `/care/${patientId}/health`,
+                        timestamp: createdAt,
+                        metadata: { nudgeId: doc.id, medicationName: medName, response },
+                    });
+                });
+            } catch (e) {
+                functions.logger.debug('[care] Could not check nudge-based alerts:', e);
+            }
 
             // Sort by severity then timestamp
             const severityOrder: Record<string, number> = { emergency: 0, high: 1, medium: 2, low: 3 };

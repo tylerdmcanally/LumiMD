@@ -259,12 +259,12 @@ const styles = StyleSheet.create({
   },
   collapsedType: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     letterSpacing: 0.5,
   },
   collapsedMessage: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: 'PlusJakartaSans_500Medium',
     lineHeight: 18,
   },
   // Expanded view styles
@@ -285,12 +285,12 @@ const styles = StyleSheet.create({
   },
   warningType: {
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     letterSpacing: 0.5,
   },
   severityBadge: {
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     paddingHorizontal: spacing(2),
     paddingVertical: spacing(1),
     borderRadius: spacing(1),
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   },
   warningMessage: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     lineHeight: 22,
   },
   warningDetails: {
@@ -313,11 +313,11 @@ const styles = StyleSheet.create({
   },
   conflictLabel: {
     fontSize: 13,
-    fontWeight: '500',
+    fontFamily: 'PlusJakartaSans_500Medium',
   },
   conflictValue: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
   },
   recommendationBox: {
     marginTop: spacing(2),
@@ -327,13 +327,13 @@ const styles = StyleSheet.create({
   },
   recommendationLabel: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   recommendationText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     lineHeight: 20,
   },
   dismissButton: {
@@ -347,6 +347,6 @@ const styles = StyleSheet.create({
   dismissButtonText: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });

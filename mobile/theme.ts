@@ -10,10 +10,10 @@ export const navTheme = (scheme: 'light' | 'dark' = 'light'): Theme => {
       ...baseTheme.colors,
       primary: Colors.primary,
       background: Colors.background,
-      card: Colors.surface,
+      card: Colors.surfaceWarm,
       text: Colors.text,
       border: Colors.stroke,
-      notification: Colors.accent,
+      notification: Colors.coral,
     }
   };
 };

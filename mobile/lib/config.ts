@@ -29,9 +29,9 @@ export const cfg = {
   // Feature flags
   flags: {
     sharing: true,
-    // Health metrics/logs UI is currently out of scope (HealthKit removed).
-    // If reintroduced, flip via build-time env var.
-    health: process.env.EXPO_PUBLIC_HEALTH_ENABLED === 'true',
+    // Health metrics hub — enabled by default for LumiBot v2.
+    // Override with EXPO_PUBLIC_HEALTH_ENABLED=false to disable.
+    health: process.env.EXPO_PUBLIC_HEALTH_ENABLED !== 'false',
     meds: true,
     push: true,
     mock: false,

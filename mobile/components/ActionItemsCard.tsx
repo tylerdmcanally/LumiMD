@@ -41,12 +41,12 @@ export function ActionItemsCard({ items, onAdd }: { items: ActionItem[]; onAdd: 
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  h6: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  h6: { fontSize: 16, fontFamily: 'Fraunces_600SemiBold', color: Colors.text },
   row: { flexDirection: 'row', alignItems: 'center', marginLeft: spacing(3) },
   empty: { color: Colors.textMuted },
   item: { flexDirection: 'row', alignItems: 'flex-start', padding: spacing(3), backgroundColor: Colors.background, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.stroke },
   itemIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginRight: spacing(3) },
-  itemTitle: { fontWeight: '600', color: Colors.text },
+  itemTitle: { fontFamily: 'PlusJakartaSans_600SemiBold', color: Colors.text },
   itemSub: { color: Colors.textMuted, marginTop: 2, fontSize: 13 },
   itemDue: { color: '#9ca3af', marginTop: 2, fontSize: 12 },
 });

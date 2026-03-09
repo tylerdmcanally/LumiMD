@@ -1,14 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { GradientHero, Colors, spacing } from './ui';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, spacing, Radius } from './ui';
 import { Ionicons } from '@expo/vector-icons';
 
-function getGreeting(): string {
+function getGreeting(): { greeting: string; subtitle: string } {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return { greeting: 'Good morning', subtitle: 'Start your day with clarity' };
+  if (hour < 17) return { greeting: 'Good afternoon', subtitle: 'How are you feeling today?' };
+  return { greeting: 'Good evening', subtitle: 'Take a moment to reflect' };
 }
 
 type HeroBannerProps = {
@@ -17,11 +18,19 @@ type HeroBannerProps = {
 
 export function HeroBanner({ userName }: HeroBannerProps) {
   const router = useRouter();
-  const greeting = getGreeting();
-  const displayName = userName || ''; // Already first name from API
+  const { greeting, subtitle } = getGreeting();
+  const displayName = userName || '';
 
   return (
-    <GradientHero style={styles.hero}>
+    <LinearGradient
+      colors={['#0A99A4', '#2DB5B9', '#7ECDB5']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.hero}
+    >
+      {/* Decorative overlay circle */}
+      <View style={styles.decorCircle} />
+
       <View style={styles.header}>
         <Text style={styles.brandText}>LumiMD</Text>
         <Pressable
@@ -31,54 +40,91 @@ export function HeroBanner({ userName }: HeroBannerProps) {
             pressed && styles.profileButtonPressed,
           ]}
         >
-          <Ionicons name="person-circle" size={32} color="#fff" />
+          {displayName ? (
+            <Text style={styles.avatarInitial}>
+              {displayName.charAt(0).toUpperCase()}
+            </Text>
+          ) : (
+            <Ionicons name="person" size={18} color="#fff" />
+          )}
         </Pressable>
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.subtitle}>
+        <Text style={styles.greetingText}>
           {greeting}{displayName ? `, ${displayName}` : ''}
         </Text>
+        <Text style={styles.subtitleText}>{subtitle}</Text>
       </View>
-    </GradientHero>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   hero: {
-    paddingVertical: spacing(6),
+    borderRadius: Radius.xl,
+    paddingHorizontal: spacing(6),
+    paddingTop: spacing(7),
+    paddingBottom: spacing(8),
+    overflow: 'hidden',
+    shadowColor: '#0A99A4',
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  decorCircle: {
+    position: 'absolute',
+    top: -40,
+    right: -30,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing(3),
+    marginBottom: spacing(5),
   },
   brandText: {
     color: '#fff',
-    fontSize: 28,
-    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 26,
+    fontFamily: 'Fraunces_700Bold',
     letterSpacing: -0.5,
   },
   profileButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileButtonPressed: {
     opacity: 0.7,
+    transform: [{ scale: 0.95 }],
+  },
+  avatarInitial: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_700Bold',
   },
   content: {
-    marginTop: spacing(2),
+    gap: spacing(1),
   },
-  subtitle: {
-    color: 'rgba(255,255,255,0.95)',
-    fontSize: 20,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+  greetingText: {
+    color: '#fff',
+    fontSize: 24,
+    fontFamily: 'Fraunces_600SemiBold',
     letterSpacing: -0.3,
   },
+  subtitleText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    marginTop: spacing(1),
+  },
 });
-

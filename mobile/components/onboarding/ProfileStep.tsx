@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 28,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         marginBottom: spacing(2),
     },
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     },
     label: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
     },
     required: {
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     buttonText: {
         color: '#fff',
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     backButton: {
         position: 'absolute',

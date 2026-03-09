@@ -53,7 +53,7 @@ Switch with `firebase use lumimd-dev`.
 | `visits/{id}` | Visits with status machine + AI summary |
 | `medications/{id}` | Medication list (active/inactive, safety warnings) |
 | `actions/{id}` | Action items / follow-ups |
-| `nudges/{id}` | AI health check-in prompts (includes `medication_followup` type) |
+| `nudges/{id}` | Context-rich health check-ins (medication follow-ups, symptom checks, side effects, condition reminders) |
 | `healthLogs/{id}` | Vitals / symptoms |
 | `medicationLogs/{id}` | Medication dose logs (taken/skipped, source: manual or nudge_response) |
 | `medicationReminders/{id}` | Reminder schedules with times + timezone |
@@ -78,7 +78,7 @@ Medication safety check (duplicate therapy, drug interactions, allergy alerts)
     ↓
 Firestore update (status: pending → transcribing → processing → completed)
     ↓
-Denormalization sync (copy share info to visits/meds for caregiver access)
+Post-commit ops (denormalization sync, walkthrough generation, nudge creation — parallel)
     ↓
 Push notification to caregiver
 ```
@@ -107,7 +107,8 @@ Push notification to caregiver
 - `routes/care/medicationChanges.ts` — Medication change history
 - `routes/care/messages.ts` — Caregiver → patient messaging (send + list sent, resolves sender name from share/profile/auth)
 - `routes/care/notes.ts` — Caregiver notes per patient
-- `routes/care/healthLogs.ts` — Patient health logs for caregiver view
+- `routes/care/healthLogs.ts` — Patient health logs for caregiver view (includes trend insights)
+- `routes/care/nudgeHistory.ts` — Nudge response history for caregiver view
 - `routes/care/exportSummary.ts` — Printable care summary export
 - `routes/shares.ts` — Share CRUD, invite system, `resolveCaregiverName()` helper (profile → auth → invite label → email fallback)
 - `routes/webhooks.ts` — AssemblyAI webhook receiver
@@ -116,6 +117,9 @@ Push notification to caregiver
 - `services/medicationSafety.ts` — Drug interaction checker (local CANONICAL_MEDICATIONS + optional RxNav)
 - `services/visitProcessor.ts` — Orchestrates the full processing pipeline
 - `services/denormalizationSync.ts` — Keeps caregiver-accessible fields in sync
+- `services/walkthroughGenerator.ts` — Pre-computes post-visit walkthrough from GPT-4 output
+- `services/walkthroughQA.ts` — 3-tier visit Q&A (keyword match → data match → guarded LLM)
+- `services/trendAnalyzer.ts` — Rule-based health trend detection (no AI calls)
 - `services/nudgeNotificationService.ts` — Nudge delivery + priority map
 - `services/repositories/` — Firestore data access (query building, pagination, soft-delete filtering)
 - `services/domain/` — Domain service layer (VisitDomainService, MedicationDomainService, MedicationLogDomainService, etc.)
@@ -132,6 +136,8 @@ Push notification to caregiver
 - `app/medication-schedule.tsx` — Reminder scheduling
 - `app/caregiver-sharing.tsx` — Share management (invite with name, shows caregiver names)
 - `app/_layout.tsx` — Root layout + push notification routing (handles `caregiver_message` type)
+- `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: heard → changed → next)
+- `components/lumibot/PostLogFeedback.tsx` — Post-log feedback modal with trend context
 - `lib/api/hooks.ts` — React Query hooks (useRealtimeVisits, useRealtimeActiveMedications, useMyMessages, useUnreadMessageCount, etc.)
 - `lib/api/mutations.ts` — Mutations (useCompleteAction, useUpdateUserProfile, useInviteCaregiver)
 - `contexts/` — AuthContext (global auth state)
@@ -177,6 +183,7 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `/v1/nudges` | GET, PATCH | Health check-ins (includes medication follow-up nudges) |
 | `/v1/nudges/:id/respond` | POST | Respond to nudge (`took_it`/`skipped_it` creates med log) |
 | `/v1/health-logs` | GET, POST | Vitals/symptoms |
+| `/v1/health-logs/insights` | GET | Health trend insights (rule-based) |
 | `/v1/medication-reminders` | GET, POST, PATCH, DELETE | Reminder schedules |
 | `/v1/messages` | GET | Patient inbox (caregiver messages) |
 | `/v1/messages/:id/read` | PATCH | Mark message as read |
@@ -196,6 +203,8 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `/v1/care/:patientId/notes` | GET, PUT, DELETE | Caregiver notes |
 | `/v1/care/:patientId/medication-status` | GET | Today's medication status |
 | `/v1/care/:patientId/medication-changes` | GET | Medication change history |
+| `/v1/care/:patientId/nudge-history` | GET | Nudge response history for caregivers |
+| `/v1/visits/:id/ask` | POST | Visit Q&A (walkthrough) |
 | `/v1/webhooks/assemblyai` | POST | Transcription webhook |
 
 ## Security
@@ -238,7 +247,7 @@ cd mobile && npm run ios
 
 # Backend
 cd functions && npm run build
-cd functions && npm test              # Jest (104/107 suites — 3 pre-existing failures)
+cd functions && npm test              # Jest (107 suites / 554 tests)
 firebase deploy --only functions
 
 # Web portal
@@ -278,12 +287,17 @@ firebase use lumimd-dev   # or lumimd (prod)
 
 **z-index layers:** Dialogs use `z-modal` (500). Select/popover content must use `z-[510]` or higher to render above dialog overlays.
 
+**Medical advice guardrails:** Never attribute health outcomes to specific medications. Show data and medications side by side — let the physician connect the dots. All AI-generated nudge/insight content passes through unsafe pattern regex (`since starting`, `appears to be working`, `caused by`, `you should stop/start`). Matches fall back to safe templates. Always deflect clinical questions to "your care team."
+
+**Walkthrough generation:** Walkthroughs are pre-computed during visit processing from existing GPT-4 output (zero extra LLM calls). Stored directly on the visit document. Q&A uses 3-tier approach: keyword match → data match → guarded LLM fallback.
+
 ## Key Documentation
 
 - `docs/reference/DATABASE-SCHEMA.md` — Full Firestore schema
 - `docs/TECHNICAL_OVERVIEW.md` — Architecture for non-engineers
 - `docs/reports/SYSTEM-HEALTH-REPORT.md` — Current system health status
 - `docs/CAREGIVER-ENHANCEMENTS-CHECKLIST.md` — Implementation checklist for caregiver portal features
+- `docs/archive/LUMIBOT-V2-IMPLEMENTATION-PLAN.md` — LumiBot v2 design + implementation record (all phases complete)
 - `SECURITY_AND_PRIVACY_SUMMARY.md` — Security posture and compliance
 - `docs/guides/` — Quick Start, Firebase setup, deployment checklists
 - `docs/architecture/` — System design docs
@@ -314,7 +328,39 @@ firebase use lumimd-dev   # or lumimd (prod)
 - **Messages read/unread stale cache:** Same `max-age` issue on messages endpoints. Fixed with `no-cache`
 - **All care routes Cache-Control:** Verified all GET endpoints use `Cache-Control: private, no-cache`
 
-### Known Pre-existing Test Failures (3)
-- `personalRNService.repositoryBridge.test.ts` — nudge dismissal counting
-- `insightGenerator.repositoryBridge.test.ts` — nudge context building
-- `conditionReminderService.repositoryBridge.test.ts` — condition reminder dedup
+### Web Portal Design System (March 2026)
+
+**Brand & Typography:**
+- Brand cyan: `#40C9D0` (`--color-brand-primary`)
+- Warm neutral palette: cream surfaces (`#FDFCF9`), warm borders (`rgba(38,35,28,...)`), sage gradients (`#7ECDB5`), coral accent (`#E07A5F`)
+- Fonts: Plus Jakarta Sans (`--font-body`) + Fraunces (`--font-display`)
+- Component variants via Class Variance Authority (CVA)
+
+**Design Patterns:**
+- Hero sections use `bg-hero-warm` (caregiver) or `bg-hero-brand` (sub-pages like adherence, health)
+- Empty states: gradient strip (`from-brand-primary via-[#7ECDB5] to-[#E07A5F]`), coral icon circle (`bg-[#FDF0EC] text-[#E07A5F]`), visits use cyan instead of coral
+- Section headers use semantic icon backgrounds: warning (med changes), info (data coverage), brand-primary (activity), success (care tasks)
+- Quick Action cards and Health Snapshot items use `variantClasses` map: `brand`, `error`, `info`, `success`, `warning`
+- Progress bars in Data Coverage: green/yellow/red based on thresholds
+- Zone dividers: `border-t border-border-subtle` between major content sections
+
+**Responsive Conventions:**
+- Headings: `text-2xl sm:text-3xl lg:text-4xl` (never hardcode large sizes without mobile fallback)
+- Grids: always include mobile fallback (`grid-cols-2 sm:grid-cols-4`, not bare `grid-cols-4`)
+- Fixed-width inputs/selects: use `w-full sm:w-40` pattern (not bare `w-40`)
+- Hero sections: use `rounded-2xl p-6` without negative margins (negative margins cause horizontal scroll on mobile)
+- Button groups: use `flex-col sm:flex-row` for wrapping; hide labels with `hidden sm:inline` and keep icon visible
+- Gaps: use responsive gaps (`gap-1.5 sm:gap-2`) when space is tight on mobile
+- Calendar heatmaps: reduce label widths on mobile (`w-8 sm:w-10`, `ml-10 sm:ml-12`)
+
+### LumiBot v2 (March 2026)
+
+Evolved from notification-only system into contextual health companion across all 3 surfaces (mobile, web portal, backend).
+
+**Context-rich nudges:** Every nudge carries `NudgeContext` linking back to visit, provider, diagnosis, medication, and last reading. NudgeCard displays context; PostLogFeedback shows trend after logging.
+
+**Post-visit walkthrough:** 3-step bottom-sheet overlay on visit detail (What we heard → What changed → What's next). Auto-shows on first open, re-accessible via "Review with LumiBot" button. Suggested Q&A + guarded free-form ask.
+
+**Health metrics hub:** Mobile health screen with SVG trend charts (BP/Glucose/Weight), period selector, insight cards from `trendAnalyzer.ts`, recent readings list. Linked from PostLogFeedback and home screen.
+
+**Caregiver intelligence:** Nudge response history, trend insights, symptom/side-effect timelines on patient health page. `missed_checkins` and `medication_trouble` alert types. Cross-patient Health Overview on dashboard.

@@ -94,7 +94,7 @@ export default function MedicationAdherencePage() {
     <PageContainer maxWidth="2xl">
       <div className="space-y-8 animate-fade-in-up">
         {/* Hero Header */}
-        <div className="rounded-2xl bg-hero-brand p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+        <div className="rounded-2xl bg-hero-brand p-6">
           <Button variant="ghost" size="sm" asChild className="mb-3 -ml-2">
             <Link href={`/care/${patientId}`} className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-primary">
               <ArrowLeft className="h-4 w-4" />
@@ -106,7 +106,7 @@ export default function MedicationAdherencePage() {
               <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                 Compliance Tracking
               </span>
-              <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
+              <h1 className="text-2xl font-bold text-text-primary sm:text-3xl lg:text-4xl">
                 Medication Adherence
               </h1>
               <p className="text-sm text-text-secondary mt-1">
@@ -114,7 +114,7 @@ export default function MedicationAdherencePage() {
               </p>
             </div>
             <Select value={String(dateRange)} onValueChange={(v) => setDateRange(Number(v))}>
-              <SelectTrigger className="w-40 bg-surface">
+              <SelectTrigger className="w-full sm:w-40 bg-surface">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -197,7 +197,7 @@ export default function MedicationAdherencePage() {
             {calendar.length > 0 ? (
               <div className="space-y-2">
                 {/* Day labels */}
-                <div className="flex gap-1 text-xs text-text-muted ml-12">
+                <div className="flex gap-1 text-xs text-text-muted ml-10 sm:ml-12">
                   <span className="w-7 text-center">M</span>
                   <span className="w-7 text-center">T</span>
                   <span className="w-7 text-center">W</span>
@@ -210,7 +210,7 @@ export default function MedicationAdherencePage() {
                 <div className="space-y-1">
                   {calendarWeeks.map((week, weekIdx) => (
                     <div key={weekIdx} className="flex items-center gap-1">
-                      <span className="text-xs text-text-muted w-10 text-right shrink-0">
+                      <span className="text-xs text-text-muted w-8 sm:w-10 text-right shrink-0">
                         {week[0]?.date ? format(parseISO(week[0].date), 'MMM d') : ''}
                       </span>
                       {week.map((day, dayIdx) => {

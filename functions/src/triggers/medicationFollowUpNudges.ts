@@ -187,7 +187,7 @@ export const processMedicationFollowUpNudges = onSchedule(
             const sentHHMM = `${String(sentAt.getHours()).padStart(2, '0')}:${String(sentAt.getMinutes()).padStart(2, '0')}`;
             const matchedTime = findClosestScheduledTime(reminder.times || [], sentHHMM);
 
-            // Create the follow-up nudge
+            // Create the follow-up nudge with v2 context
             await nudgeService.createRecord({
               userId,
               type: 'medication_followup',
@@ -203,6 +203,11 @@ export const processMedicationFollowUpNudges = onSchedule(
               sequenceId: `med_followup_${reminder.id}_${todayDateStr}`,
               status: 'pending',
               notificationSent: false,
+              context: {
+                medicationName: reminder.medicationName,
+                medicationDose: reminder.medicationDose || undefined,
+                trackingReason: 'to help keep your medication log accurate',
+              },
               metadata: {
                 reminderId: reminder.id,
                 scheduledTime: matchedTime || null,

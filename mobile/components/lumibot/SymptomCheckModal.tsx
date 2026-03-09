@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 18,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
     },
     scrollView: {
@@ -408,13 +408,13 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
         marginLeft: spacing(2),
     },
     sliderLabel: {
         fontSize: 24,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         textAlign: 'center',
         marginBottom: spacing(2),
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
     },
     locationChipTextSelected: {
         color: Colors.primary,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     helpText: {
         fontSize: 14,
@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     },
     yesNoText: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
     },
     yesNoTextSelected: {
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
         borderTopColor: Colors.stroke,
     },
     submitButton: {
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.accent,
         paddingVertical: spacing(4),
         borderRadius: Radius.lg,
         alignItems: 'center',
@@ -545,6 +545,6 @@ const styles = StyleSheet.create({
     submitButtonText: {
         color: '#fff',
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
 });

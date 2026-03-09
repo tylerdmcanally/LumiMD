@@ -19,6 +19,7 @@ import type {
   Nudge,
   HealthLog,
   HealthLogSummaryResponse,
+  HealthInsightsResponse,
   CreateHealthLogRequest,
   UpdateNudgeRequest,
   RespondToNudgeRequest,
@@ -38,6 +39,7 @@ export const queryKeys = {
   nudges: ['nudges'] as const,
   healthLogs: ['healthLogs'] as const,
   healthLogsSummary: ['healthLogs', 'summary'] as const,
+  healthInsights: ['healthLogs', 'insights'] as const,
 };
 
 type ApiQueryOptions<TData> = Omit<
@@ -283,6 +285,19 @@ export function createApiHooks(api: ApiClient) {
   }
 
   /**
+   * Fetch health trend insights
+   */
+  function useHealthInsights(params?: { type?: string; days?: number }, options?: ApiQueryOptions<HealthInsightsResponse>) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    return useQuery({
+      queryKey: queryKey ?? [...queryKeys.healthInsights, params],
+      queryFn: () => api.healthLogs.insights(params),
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      ...queryOptions,
+    });
+  }
+
+  /**
    * Mutation for updating nudge status
    */
   function useUpdateNudge() {
@@ -341,6 +356,7 @@ export function createApiHooks(api: ApiClient) {
     useNudges,
     useHealthLogs,
     useHealthLogsSummary,
+    useHealthInsights,
     useUpdateNudge,
     useRespondToNudge,
     useCreateHealthLog,

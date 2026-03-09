@@ -72,26 +72,30 @@ nudgesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
             limit: 10,
         });
 
-        // Transform to response format
-        const response: NudgeResponse[] = nudges.map(nudge => ({
-            id: nudge.id!,
-            userId: nudge.userId,
-            visitId: nudge.visitId,
-            type: nudge.type,
-            conditionId: nudge.conditionId,
-            medicationId: nudge.medicationId,
-            medicationName: nudge.medicationName,
-            title: nudge.title,
-            message: nudge.message,
-            actionType: nudge.actionType,
-            scheduledFor: nudge.scheduledFor.toDate().toISOString(),
-            sequenceDay: nudge.sequenceDay,
-            status: nudge.status,
-            createdAt: nudge.createdAt.toDate().toISOString(),
-        }));
+        // Transform to response format (include v2 context if present)
+        const response: NudgeResponse[] = nudges.map(nudge => {
+            const nudgeData = nudge as Record<string, any>;
+            return {
+                id: nudge.id!,
+                userId: nudge.userId,
+                visitId: nudge.visitId,
+                type: nudge.type,
+                conditionId: nudge.conditionId,
+                medicationId: nudge.medicationId,
+                medicationName: nudge.medicationName,
+                title: nudge.title,
+                message: nudge.message,
+                actionType: nudge.actionType,
+                scheduledFor: nudge.scheduledFor.toDate().toISOString(),
+                sequenceDay: nudge.sequenceDay,
+                status: nudge.status,
+                createdAt: nudge.createdAt.toDate().toISOString(),
+                ...(nudgeData.context ? { context: nudgeData.context } : {}),
+            };
+        });
 
         functions.logger.info(`[nudges] Retrieved ${response.length} active nudges for user ${userId}`);
-        res.set('Cache-Control', 'private, max-age=30');
+        res.set('Cache-Control', 'private, no-cache');
         res.json(response);
     } catch (error) {
         functions.logger.error('[nudges] Error fetching nudges:', error);
@@ -348,6 +352,10 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
                     sequenceDay: 0,
                     sequenceId: `followup_${nudgeId}`,
                     status: 'pending',
+                    context: {
+                        medicationName: nudgeData.medicationName,
+                        trackingReason: 'you mentioned having some issues — checking back in',
+                    },
                     createdAt: now,
                     updatedAt: now,
                 });
@@ -544,6 +552,10 @@ nudgesRouter.post('/:id/respond-text', requireAuth, async (req: AuthRequest, res
                     aiGenerated: true,
                     personalizedContext: followUp.reason,
                     sourceNudgeId: nudgeId,
+                    context: {
+                        ...(nudgeData.medicationName ? { medicationName: nudgeData.medicationName } : {}),
+                        trackingReason: followUp.reason || 'checking back in based on your last response',
+                    },
                     createdAt: now,
                     updatedAt: now,
                 });
@@ -658,11 +670,12 @@ nudgesRouter.get('/history', requireAuth, async (req: AuthRequest, res) => {
                 sequenceDay: data.sequenceDay,
                 status: data.status,
                 createdAt: data.createdAt?.toDate().toISOString(),
+                ...(data.context ? { context: data.context } : {}),
             };
         });
 
         functions.logger.info(`[nudges] Retrieved ${response.length} history nudges for user ${userId}`);
-        res.set('Cache-Control', 'private, max-age=30');
+        res.set('Cache-Control', 'private, no-cache');
         res.json(response);
     } catch (error) {
         functions.logger.error('[nudges] Error fetching nudge history:', error);

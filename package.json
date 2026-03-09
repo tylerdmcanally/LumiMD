@@ -12,7 +12,8 @@
     "postinstall": "npm run build -w packages/sdk --if-present"
   },
   "dependencies": {
-    "firebase-admin": "^13.6.0"
+    "firebase-admin": "^13.6.0",
+    "react-native-svg": "15.12.1"
   },
   "overrides": {
     "express": {

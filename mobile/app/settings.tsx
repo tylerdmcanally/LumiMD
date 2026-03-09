@@ -564,6 +564,14 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
 
+          {/* Medical Disclaimer (Tier 1) */}
+          <View style={styles.disclaimerSection}>
+            <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} style={{ marginBottom: spacing(1) }} />
+            <Text style={styles.disclaimerText}>
+              LumiMD is not intended to be a substitute for professional medical advice, diagnosis, or treatment.
+            </Text>
+          </View>
+
           {/* App Version */}
           <View style={styles.versionSection}>
             <Text style={styles.versionText}>LumiMD v1.0.0</Text>
@@ -590,15 +598,16 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontFamily: 'Fraunces_600SemiBold',
     color: Colors.text,
+    letterSpacing: -0.2,
   },
   section: {
     marginBottom: spacing(6),
   },
   sectionTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -623,7 +632,7 @@ const styles = StyleSheet.create({
   },
   accountName: {
     fontSize: 18,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
     marginBottom: spacing(1),
   },
@@ -647,7 +656,7 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
     marginBottom: 2,
   },
@@ -683,9 +692,21 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.error,
     marginLeft: spacing(2),
+  },
+  disclaimerSection: {
+    alignItems: 'center',
+    paddingHorizontal: spacing(6),
+    paddingTop: spacing(4),
+  },
+  disclaimerText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
   versionSection: {
     alignItems: 'center',

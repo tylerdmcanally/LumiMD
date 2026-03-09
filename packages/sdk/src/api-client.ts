@@ -10,6 +10,7 @@ import type {
   HealthLogSummaryResponse,
   CreateHealthLogRequest,
   CreateHealthLogResponse,
+  HealthInsightsResponse,
   UpdateNudgeRequest,
   RespondToNudgeRequest,
   NudgeUpdateResponse,
@@ -539,6 +540,14 @@ export function createApiClient(config: ApiClientConfig) {
             method: 'POST',
           },
         ),
+      ask: (id: string, question: string) =>
+        apiRequest<{ answer: string; source: string; disclaimer: string }>(
+          `/v1/visits/${id}/ask`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ question }),
+          },
+        ),
     },
 
     // Action Items
@@ -756,6 +765,13 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<void>(`/v1/health-logs/${id}`, {
           method: 'DELETE',
         }),
+      insights: (params?: { type?: string; days?: number }) => {
+        const searchParams = new URLSearchParams();
+        if (params?.type) searchParams.append('type', params.type);
+        if (params?.days) searchParams.append('days', String(params.days));
+        const query = searchParams.toString();
+        return apiRequest<HealthInsightsResponse>(`/v1/health-logs/insights${query ? `?${query}` : ''}`);
+      },
       summary: (days?: number) =>
         apiRequest<HealthLogSummaryResponse>(`/v1/health-logs/summary${days ? `?days=${days}` : ''}`),
       export: (days?: number) =>

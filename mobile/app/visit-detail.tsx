@@ -38,6 +38,9 @@ import {
   buildMedicationEducationMap,
 } from '../lib/utils/educationHelpers';
 import { trackEvent } from '../lib/telemetry';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { VisitWalkthrough } from '../components/VisitWalkthrough';
+import type { VisitWalkthrough as VisitWalkthroughType } from '@lumimd/sdk';
 
 dayjs.extend(relativeTime);
 
@@ -189,6 +192,9 @@ export default function VisitDetailScreen() {
 
   const [retrying, setRetrying] = useState(false);
   const [showMedicationReview, setShowMedicationReview] = useState(false);
+  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
+  const [walkthroughDismissed, setWalkthroughDismissed] = useState(false);
+  const walkthroughCheckedRef = useRef(false);
   const hadLoadFailureRef = useRef(false);
   const processingStates = ['pending', 'processing', 'transcribing', 'summarizing'];
   const queryClient = useQueryClient();
@@ -407,6 +413,44 @@ export default function VisitDetailScreen() {
       hadLoadFailureRef.current = false;
     }
   }, [error, hasLoadFailure, visit]);
+
+  // Auto-show walkthrough on first visit detail open after processing
+  useEffect(() => {
+    if (walkthroughCheckedRef.current) return;
+    if (!visit || !visitId) return;
+    if (visit.processingStatus !== 'completed') return;
+    const walkthrough = (visit as any)?.walkthrough as VisitWalkthroughType | undefined;
+    if (!walkthrough) return;
+
+    walkthroughCheckedRef.current = true;
+    AsyncStorage.getItem(`walkthrough_${visitId}`).then((dismissed) => {
+      if (dismissed) {
+        setWalkthroughDismissed(true);
+      } else {
+        setWalkthroughVisible(true);
+      }
+    });
+  }, [visit, visitId]);
+
+  const handleWalkthroughDismiss = useCallback(() => {
+    setWalkthroughVisible(false);
+    setWalkthroughDismissed(true);
+    if (visitId) {
+      AsyncStorage.setItem(`walkthrough_${visitId}`, 'true');
+    }
+  }, [visitId]);
+
+  const handleWalkthroughFlag = useCallback(() => {
+    setWalkthroughVisible(false);
+    setWalkthroughDismissed(true);
+    if (visitId) {
+      AsyncStorage.setItem(`walkthrough_${visitId}`, 'true');
+    }
+    Alert.alert(
+      'Review your summary',
+      "Take a look at the full summary above. If something doesn't match what you remember, contact your care team for follow-up.",
+    );
+  }, [visitId]);
 
   const handleRetry = async () => {
     if (!visitId) return;
@@ -654,6 +698,20 @@ export default function VisitDetailScreen() {
                   </Text>
                 )}
               </View>
+
+              {/* ── Review with LumiBot button (after walkthrough dismissed) ── */}
+              {walkthroughDismissed && (visit as any)?.walkthrough && (
+                <Pressable
+                  style={styles.lumibotButton}
+                  onPress={() => setWalkthroughVisible(true)}
+                >
+                  <View style={styles.lumibotButtonIcon}>
+                    <Ionicons name="sparkles" size={16} color="#fff" />
+                  </View>
+                  <Text style={styles.lumibotButtonText}>Review with LumiBot</Text>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+                </Pressable>
+              )}
 
               {/* ── KEY HIGHLIGHTS BAR ── */}
               {(highlightCounts.diagnoses > 0 ||
@@ -908,6 +966,16 @@ export default function VisitDetailScreen() {
           }}
         />
       )}
+      {/* LumiBot Walkthrough Overlay */}
+      {visit && (visit as any)?.walkthrough && visitId && (
+        <VisitWalkthrough
+          visible={walkthroughVisible}
+          walkthrough={(visit as any).walkthrough as VisitWalkthroughType}
+          visitId={visitId}
+          onDismiss={handleWalkthroughDismiss}
+          onFlag={handleWalkthroughFlag}
+        />
+      )}
     </ErrorBoundary>
   );
 }
@@ -925,8 +993,9 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontFamily: 'Fraunces_600SemiBold',
     color: Colors.text,
+    letterSpacing: -0.2,
   },
   loadingState: {
     flex: 1,
@@ -940,7 +1009,7 @@ const styles = StyleSheet.create({
   },
   errorTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
   },
   errorSubtitle: {
@@ -966,7 +1035,7 @@ const styles = StyleSheet.create({
   errorRetryButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   errorSecondaryButton: {
     paddingHorizontal: spacing(4),
@@ -980,7 +1049,7 @@ const styles = StyleSheet.create({
   },
   errorSecondaryButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   content: {
@@ -1002,7 +1071,7 @@ const styles = StyleSheet.create({
   },
   providerLine: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   badge: {
@@ -1012,7 +1081,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: '#fff',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -1042,7 +1111,7 @@ const styles = StyleSheet.create({
   },
   stuckTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.warning,
   },
   stuckText: {
@@ -1059,7 +1128,7 @@ const styles = StyleSheet.create({
   },
   failureTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   failureText: {
@@ -1084,7 +1153,7 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#fff',
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   medReviewBanner: {
     flexDirection: 'row',
@@ -1099,7 +1168,7 @@ const styles = StyleSheet.create({
   },
   medReviewBannerTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   medReviewBannerSubtitle: {
@@ -1117,7 +1186,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.stroke,
     borderLeftWidth: 4,
     borderLeftColor: Colors.primary,
-    shadowColor: '#000',
+    shadowColor: 'rgba(38,35,28,0.5)',
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
@@ -1177,7 +1246,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   sectionCard: {
@@ -1186,7 +1255,7 @@ const styles = StyleSheet.create({
   },
   medSubheading: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
     marginBottom: spacing(2),
   },
@@ -1232,6 +1301,32 @@ const styles = StyleSheet.create({
   viewAllLinkText: {
     fontSize: 14,
     color: Colors.primary,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  lumibotButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    backgroundColor: `${Colors.primary}10`,
+    borderRadius: Radius.md,
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(4),
+    marginBottom: spacing(3),
+    borderWidth: 1,
+    borderColor: `${Colors.primary}20`,
+  },
+  lumibotButtonIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lumibotButtonText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
   },
 });

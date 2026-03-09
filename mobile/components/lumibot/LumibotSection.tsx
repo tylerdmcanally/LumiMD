@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         fontSize: 18,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
     },
     badge: {
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     badgeText: {
         color: '#fff',
         fontSize: 12,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_700Bold',
     },
     content: {
         // Nudge cards will be rendered here

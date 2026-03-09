@@ -23,10 +23,16 @@ describe('conditionReminderService repository bridge', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-02-22T12:00:00.000Z'));
     (firestoreMock as any).Timestamp = {
       now: () => makeTimestamp('2026-02-22T12:00:00.000Z'),
       fromDate: (value: Date) => makeTimestamp(value.toISOString()),
     };
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('builds trackable user conditions from active meds and creates stale reminders', async () => {

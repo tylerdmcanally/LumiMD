@@ -1,7 +1,8 @@
 /**
  * NudgeCard Component
- * 
+ *
  * Displays a single nudge as an interactive card in the LumiBot section.
+ * v2: Shows context (visit, provider, last reading) when available.
  */
 
 import React from 'react';
@@ -50,7 +51,7 @@ function getIconColorForType(type: Nudge['type']): string {
         case 'introduction':
             return Colors.primary;
         case 'insight':
-            return Colors.accent; // Purple/accent for insights
+            return Colors.accent;
         default:
             return Colors.primary;
     }
@@ -59,6 +60,7 @@ function getIconColorForType(type: Nudge['type']): string {
 export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardProps) {
     const icon = getIconForActionType(nudge.actionType);
     const iconColor = getIconColorForType(nudge.type);
+    const ctx = nudge.context;
 
     return (
         <Card style={styles.card}>
@@ -72,6 +74,25 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                 <View style={styles.content}>
                     <Text style={styles.title}>{nudge.title}</Text>
                     <Text style={styles.message}>{nudge.message}</Text>
+
+                    {/* Context section (v2) */}
+                    {ctx && (
+                        <View style={styles.contextSection}>
+                            {ctx.lastReading && (
+                                <View style={styles.contextRow}>
+                                    <Ionicons name="pulse-outline" size={14} color={Colors.textMuted} />
+                                    <Text style={styles.contextText}>
+                                        Last reading: {ctx.lastReading.value} on {ctx.lastReading.date}
+                                    </Text>
+                                </View>
+                            )}
+                            {(ctx.readingCount !== undefined && ctx.readingCount > 0) && (
+                                <Text style={styles.contextText}>
+                                    You've logged {ctx.readingCount} reading{ctx.readingCount !== 1 ? 's' : ''} so far
+                                </Text>
+                            )}
+                        </View>
+                    )}
 
                     {/* Action Buttons */}
                     <View style={styles.actions}>
@@ -137,7 +158,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
         marginBottom: spacing(1),
     },
@@ -145,7 +166,21 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: Colors.textMuted,
         lineHeight: 20,
+        marginBottom: spacing(2),
+    },
+    contextSection: {
         marginBottom: spacing(3),
+        gap: spacing(1),
+    },
+    contextRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing(1),
+    },
+    contextText: {
+        fontSize: 13,
+        color: Colors.textMuted,
+        lineHeight: 18,
     },
     actions: {
         flexDirection: 'row',
@@ -161,7 +196,7 @@ const styles = StyleSheet.create({
     primaryButtonText: {
         color: '#fff',
         fontSize: 14,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     secondaryButton: {
         flexDirection: 'row',

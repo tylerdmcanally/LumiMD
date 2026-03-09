@@ -26,6 +26,24 @@ export type NudgeActionType =
     | 'acknowledge'
     | 'view_insight';
 
+export interface NudgeContext {
+    visitId?: string;
+    visitDate?: string;
+    providerName?: string;
+    diagnosisName?: string;
+    medicationName?: string;
+    medicationDose?: string;
+    medicationStartDate?: string;
+    daysSinceMedStart?: number;
+    lastReading?: {
+        value: string;
+        date: string;
+        alertLevel?: AlertLevel;
+    };
+    readingCount?: number;
+    trackingReason?: string;
+}
+
 export interface Nudge {
     id?: string;
     userId: string;
@@ -46,6 +64,9 @@ export interface Nudge {
     aiGenerated?: boolean;
     diagnosisExplanation?: string;  // Brief explanation of diagnosis for intro nudges
     personalizedContext?: string;   // Additional AI context for the message
+
+    // v2 Context (populated at creation, never updated)
+    context?: NudgeContext;
 
     // Scheduling
     scheduledFor: Timestamp;
@@ -81,6 +102,8 @@ export interface NudgeCreateInput {
     aiGenerated?: boolean;
     diagnosisExplanation?: string;
     personalizedContext?: string;
+    // v2 Context
+    context?: NudgeContext;
 }
 
 // =============================================================================
@@ -203,6 +226,7 @@ export interface NudgeResponse {
     sequenceDay: number;
     status: NudgeStatus;
     createdAt: string;
+    context?: NudgeContext;
 }
 
 export interface HealthLogResponse {
@@ -235,4 +259,82 @@ export interface SafetyCheckResult {
     message: string;
     shouldShowAlert: boolean;
     emergencySymptoms?: string[];
+}
+
+// =============================================================================
+// Visit Walkthrough Types (Phase 2)
+// =============================================================================
+
+export interface WalkthroughDiagnosis {
+    name: string;
+    isNew: boolean;
+    plainEnglish: string;
+}
+
+export interface WalkthroughMedicationStarted {
+    name: string;
+    dose: string;
+    frequency: string;
+    plainEnglish: string;
+    disclaimer: string;
+}
+
+export interface WalkthroughMedicationStopped {
+    name: string;
+    plainEnglish: string;
+}
+
+export interface WalkthroughMedicationChanged {
+    name: string;
+    change: string;
+    plainEnglish: string;
+}
+
+export interface WalkthroughActionItem {
+    description: string;
+    dueDate?: string;
+    type?: string;
+}
+
+export interface WalkthroughTrackingPlan {
+    what: string;
+    why: string;
+    when: string;
+}
+
+export interface WalkthroughFollowUp {
+    description: string;
+    dueBy?: string;
+}
+
+export interface WalkthroughSuggestedQuestion {
+    question: string;
+    answer: string;
+    source: 'visit_education' | 'general';
+}
+
+export interface VisitWalkthrough {
+    generatedAt: string;
+    steps: {
+        whatHappened: {
+            title: string;
+            diagnoses: WalkthroughDiagnosis[];
+            keyTopics: string[];
+            flagPrompt: string;
+        };
+        whatChanged: {
+            title: string;
+            medicationsStarted: WalkthroughMedicationStarted[];
+            medicationsStopped: WalkthroughMedicationStopped[];
+            medicationsChanged: WalkthroughMedicationChanged[];
+            newActionItems: WalkthroughActionItem[];
+        };
+        whatsNext: {
+            title: string;
+            trackingPlans: WalkthroughTrackingPlan[];
+            followUps: WalkthroughFollowUp[];
+            closingMessage: string;
+        };
+    };
+    suggestedQuestions: WalkthroughSuggestedQuestion[];
 }

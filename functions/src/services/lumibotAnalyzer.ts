@@ -11,6 +11,8 @@ import {
     Nudge,
     NudgeCreateInput,
     NudgeActionType,
+    NudgeContext,
+    AlertLevel,
 } from '../types/lumibot';
 import {
     matchDiagnosesToProtocols,
@@ -22,6 +24,8 @@ import {
 import { VisitSummaryResult, MedicationChangeEntry } from './openai';
 import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
 import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
+import { HealthLogDomainService } from './domain/healthLogs/HealthLogDomainService';
+import { FirestoreHealthLogRepository } from './repositories/healthLogs/FirestoreHealthLogRepository';
 
 
 // =============================================================================
@@ -39,6 +43,109 @@ function generateShortId(): string {
 
 const db = () => admin.firestore();
 const getNudgeDomainService = () => new NudgeDomainService(new FirestoreNudgeRepository(db()));
+const getHealthLogService = () => new HealthLogDomainService(new FirestoreHealthLogRepository(db()));
+
+// =============================================================================
+// Nudge Context Helpers (v2)
+// =============================================================================
+
+/** Map nudge action type to health log type for last-reading lookup */
+function actionTypeToHealthLogType(actionType: NudgeActionType): string | null {
+    switch (actionType) {
+        case 'log_bp': return 'bp';
+        case 'log_glucose': return 'glucose';
+        case 'log_weight': return 'weight';
+        default: return null;
+    }
+}
+
+/** Format a health log value to a human-readable string */
+function formatReadingValue(type: string, value: Record<string, unknown>): string {
+    if (type === 'bp') {
+        const sys = value.systolic;
+        const dia = value.diastolic;
+        return (typeof sys === 'number' && typeof dia === 'number') ? `${sys}/${dia}` : '';
+    }
+    if (type === 'glucose') {
+        const reading = value.reading;
+        return typeof reading === 'number' ? `${reading} mg/dL` : '';
+    }
+    if (type === 'weight') {
+        const w = value.weight;
+        const unit = value.unit || 'lbs';
+        return typeof w === 'number' ? `${w} ${unit}` : '';
+    }
+    return '';
+}
+
+/** Format a date to "March 4" style */
+function formatDateFriendly(date: Date): string {
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
+/** Build context object for a nudge. All fields are best-effort. */
+async function buildNudgeContext(params: {
+    userId: string;
+    actionType: NudgeActionType;
+    visitId?: string;
+    visitDate?: Date;
+    providerName?: string;
+    diagnosisName?: string;
+    medicationName?: string;
+    medicationDose?: string;
+    medicationStartDate?: Date;
+    trackingReason?: string;
+}): Promise<NudgeContext> {
+    const ctx: NudgeContext = {};
+
+    if (params.visitId && params.visitId !== 'follow_up' && params.visitId !== 'insight') {
+        ctx.visitId = params.visitId;
+    }
+    if (params.visitDate) ctx.visitDate = params.visitDate.toISOString();
+    if (params.providerName) ctx.providerName = params.providerName;
+    if (params.diagnosisName) ctx.diagnosisName = params.diagnosisName;
+    if (params.medicationName) ctx.medicationName = params.medicationName;
+    if (params.medicationDose) ctx.medicationDose = params.medicationDose;
+    if (params.medicationStartDate) {
+        ctx.medicationStartDate = params.medicationStartDate.toISOString();
+        ctx.daysSinceMedStart = Math.floor(
+            (Date.now() - params.medicationStartDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+    }
+    if (params.trackingReason) ctx.trackingReason = params.trackingReason;
+
+    // Fetch last reading if this is a logging nudge
+    const logType = actionTypeToHealthLogType(params.actionType);
+    if (logType) {
+        try {
+            const hlService = getHealthLogService();
+            const [lastLog, recentLogs] = await Promise.all([
+                hlService.getLastByType(params.userId, logType),
+                hlService.getRecentByType(params.userId, logType, 50),
+            ]);
+
+            if (lastLog) {
+                const rawValue = (lastLog.value && typeof lastLog.value === 'object')
+                    ? lastLog.value as Record<string, unknown>
+                    : {};
+                const formatted = formatReadingValue(logType, rawValue);
+                if (formatted) {
+                    ctx.lastReading = {
+                        value: formatted,
+                        date: formatDateFriendly(lastLog.createdAt.toDate()),
+                        alertLevel: (lastLog as Record<string, unknown>).alertLevel as AlertLevel | undefined,
+                    };
+                }
+            }
+
+            ctx.readingCount = recentLogs.length;
+        } catch (error) {
+            functions.logger.warn('[LumibotAnalyzer] Failed to fetch last reading for context:', error);
+        }
+    }
+
+    return ctx;
+}
 
 // =============================================================================
 // Rate Limiting & Deduplication Helpers
@@ -148,6 +255,11 @@ async function createNudge(input: NudgeCreateInput): Promise<string> {
     if (input.aiGenerated) nudge.aiGenerated = true;
     if (input.diagnosisExplanation) nudge.diagnosisExplanation = input.diagnosisExplanation;
     if (input.personalizedContext) nudge.personalizedContext = input.personalizedContext;
+
+    // v2 context (populated at creation, never updated)
+    if (input.context && Object.keys(input.context).length > 0) {
+        nudge.context = input.context;
+    }
 
     const nudgeService = getNudgeDomainService();
     const docRef = await nudgeService.createRecord(nudge);
@@ -297,6 +409,16 @@ async function createConditionNudges(
     const primaryTracking = protocol.tracking[0];
     const actionType = getActionTypeForTracking(primaryTracking.type);
 
+    // Build v2 context once for all nudges in this sequence
+    const context = await buildNudgeContext({
+        userId,
+        actionType,
+        visitId,
+        visitDate,
+        diagnosisName: protocol.name,
+        trackingReason: 'to help track how things are going',
+    });
+
     for (const scheduleItem of protocol.nudgeSchedule) {
         // Calculate scheduled date
         let scheduledDate = new Date(visitDate);
@@ -339,6 +461,7 @@ async function createConditionNudges(
                 sequenceDay: scheduleItem.day,
                 sequenceId,
                 aiGenerated,
+                context,
             });
             nudgesCreated++;
         }
@@ -365,6 +488,7 @@ async function createConditionNudges(
                         scheduledFor: recurringDate,
                         sequenceDay: scheduleItem.day + (scheduleItem.interval * i),
                         sequenceId,
+                        context,
                         aiGenerated,
                     });
                     nudgesCreated++;
@@ -687,6 +811,12 @@ export async function createFollowUpNudge(input: CreateFollowUpNudgeInput): Prom
         : `Your last reading was a bit high. Time for a follow-up check.`;
 
     try {
+        const context = await buildNudgeContext({
+            userId,
+            actionType,
+            trackingReason: 'your last reading was elevated — a follow-up helps track the trend',
+        });
+
         const nudgeId = await createNudge({
             userId,
             visitId: 'follow_up',
@@ -698,6 +828,7 @@ export async function createFollowUpNudge(input: CreateFollowUpNudgeInput): Prom
             scheduledFor: scheduledDate,
             sequenceDay: 0,
             sequenceId: `followup_${trackingType}_${Date.now()}`,
+            context,
         });
 
         functions.logger.info(`[LumibotAnalyzer] Created follow-up nudge for elevated ${trackingType}`, {
@@ -867,6 +998,18 @@ export async function analyzeVisitWithDelta(
                         break;
                 }
 
+                // Build v2 context for this nudge
+                const nudgeActionType = getActionTypeForNudge(rec);
+                const context = await buildNudgeContext({
+                    userId,
+                    actionType: nudgeActionType,
+                    visitId,
+                    visitDate: effectiveVisitDate,
+                    medicationName: rec.medicationName,
+                    diagnosisName: rec.conditionId,
+                    trackingReason: rec.reason,
+                });
+
                 // Create the nudge
                 await createNudge({
                     userId,
@@ -876,12 +1019,13 @@ export async function analyzeVisitWithDelta(
                     medicationName: rec.medicationName,
                     title: getNudgeTitle(rec),
                     message: getNudgeMessage(rec),
-                    actionType: getActionTypeForNudge(rec),
+                    actionType: nudgeActionType,
                     scheduledFor,
                     sequenceDay: 0,
                     sequenceId: `delta_${visitId}_${nudgesCreated}`,
                     aiGenerated: true,
                     personalizedContext: rec.reason,
+                    context,
                 });
 
                 nudgesCreated++;

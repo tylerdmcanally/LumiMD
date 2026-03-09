@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     },
     bannerTitle: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
     },
     bannerSubtitle: {

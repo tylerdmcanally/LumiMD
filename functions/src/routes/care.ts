@@ -16,6 +16,7 @@ import {
     invalidateCaregiverShareLookupCache,
 } from '../services/shareAccess';
 import { registerCareHealthLogRoutes } from './care/healthLogs';
+import { registerCareNudgeHistoryRoutes } from './care/nudgeHistory';
 import { registerCareMedicationAdherenceRoutes } from './care/medicationAdherence';
 import { registerCareMedicationChangeRoutes } from './care/medicationChanges';
 import { registerCareMedicationStatusRoutes } from './care/medicationStatus';
@@ -1106,4 +1107,13 @@ registerCareTaskRoutes(careRouter, {
     pageSizeMax: CARE_PAGE_SIZE_MAX,
     taskTitleMaxLength: CARE_TASK_TITLE_MAX_LENGTH,
     taskDescriptionMaxLength: CARE_TASK_DESCRIPTION_MAX_LENGTH,
+});
+
+// =============================================================================
+// NUDGE HISTORY API FOR CAREGIVERS
+// View LumiBot check-in history and response rates
+// =============================================================================
+
+registerCareNudgeHistoryRoutes(careRouter, {
+    getDb,
 });

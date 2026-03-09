@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     },
     logo: {
         fontSize: 42,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.primary,
         marginBottom: spacing(2),
     },
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     },
     featureTitle: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
         marginBottom: spacing(1),
     },
@@ -137,6 +137,6 @@ const styles = StyleSheet.create({
     buttonText: {
         color: '#fff',
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
 });

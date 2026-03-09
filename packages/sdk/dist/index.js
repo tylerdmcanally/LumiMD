@@ -388,6 +388,13 @@ function createApiClient(config) {
         {
           method: "POST"
         }
+      ),
+      ask: (id, question) => apiRequest(
+        `/v1/visits/${id}/ask`,
+        {
+          method: "POST",
+          body: JSON.stringify({ question })
+        }
       )
     },
     // Action Items
@@ -571,6 +578,13 @@ function createApiClient(config) {
       delete: (id) => apiRequest(`/v1/health-logs/${id}`, {
         method: "DELETE"
       }),
+      insights: (params) => {
+        const searchParams = new URLSearchParams();
+        if (params?.type) searchParams.append("type", params.type);
+        if (params?.days) searchParams.append("days", String(params.days));
+        const query = searchParams.toString();
+        return apiRequest(`/v1/health-logs/insights${query ? `?${query}` : ""}`);
+      },
       summary: (days) => apiRequest(`/v1/health-logs/summary${days ? `?days=${days}` : ""}`),
       export: (days) => apiRequest(`/v1/health-logs/export${days ? `?days=${days}` : ""}`),
       providerReport: async () => {
@@ -650,7 +664,8 @@ var queryKeys = {
   profile: ["profile"],
   nudges: ["nudges"],
   healthLogs: ["healthLogs"],
-  healthLogsSummary: ["healthLogs", "summary"]
+  healthLogsSummary: ["healthLogs", "summary"],
+  healthInsights: ["healthLogs", "insights"]
 };
 function createApiHooks(api) {
   function useVisits(options) {
@@ -813,6 +828,16 @@ function createApiHooks(api) {
       ...queryOptions
     });
   }
+  function useHealthInsights(params, options) {
+    const { queryKey, ...queryOptions } = options ?? {};
+    return reactQuery.useQuery({
+      queryKey: queryKey ?? [...queryKeys.healthInsights, params],
+      queryFn: () => api.healthLogs.insights(params),
+      staleTime: 5 * 60 * 1e3,
+      // 5 minutes
+      ...queryOptions
+    });
+  }
   function useUpdateNudge() {
     const queryClient = reactQuery.useQueryClient();
     return reactQuery.useMutation({
@@ -857,6 +882,7 @@ function createApiHooks(api) {
     useNudges,
     useHealthLogs,
     useHealthLogsSummary,
+    useHealthInsights,
     useUpdateNudge,
     useRespondToNudge,
     useCreateHealthLog

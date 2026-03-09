@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView, View, StyleSheet, Text, ActivityIndicator, Alert, RefreshControl, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, spacing } from '../components/ui';
+import { Colors, spacing, Radius } from '../components/ui';
 import { HeroBanner } from '../components/HeroBanner';
 import { WebPortalBanner, useWebPortalBannerState, NeedHelpButton } from '../components/WebPortalBanner';
 import { StartVisitCTA } from '../components/StartVisitCTA';
@@ -575,6 +575,14 @@ export default function HomeScreen() {
                     />
                   )}
 
+                  <GlanceableCard
+                    title="Health"
+                    countLabel="View trends"
+                    emptyStateText="Track your vitals and see trends"
+                    icon="pulse-outline"
+                    onPress={() => router.push('/health')}
+                  />
+
                 </>
               )}
             </View>
@@ -639,10 +647,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing(3),
   },
   sectionTitle: {
-    fontSize: 18,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 20,
+    fontFamily: 'Fraunces_600SemiBold',
     color: Colors.text,
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -659,10 +667,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(3),
-    borderRadius: spacing(3),
+    borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: `${Colors.warning}66`,
-    backgroundColor: `${Colors.warning}14`,
+    borderColor: `${Colors.warning}44`,
+    backgroundColor: `${Colors.warning}0F`,
     padding: spacing(3),
     marginBottom: spacing(3),
   },

@@ -623,14 +623,14 @@ export default function PatientVisitsPage() {
                     type="date"
                     value={filters.dateFrom}
                     onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value }))}
-                    className="w-36 h-8 text-xs"
+                    className="w-32 sm:w-36 h-8 text-xs"
                   />
                   <span className="text-text-muted">to</span>
                   <Input
                     type="date"
                     value={filters.dateTo}
                     onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value }))}
-                    className="w-36 h-8 text-xs"
+                    className="w-32 sm:w-36 h-8 text-xs"
                   />
                 </div>
 
@@ -804,7 +804,7 @@ export default function PatientVisitsPage() {
           {exportData && (
             <div className="flex-1 overflow-auto">
               {/* Summary Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
                 <StatBox label="Visits" value={exportData.overview.totalVisits} />
                 <StatBox label="Conditions" value={exportData.overview.totalConditions} />
                 <StatBox label="Providers" value={exportData.overview.totalProviders} />

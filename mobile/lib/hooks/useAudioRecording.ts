@@ -20,6 +20,7 @@ export interface UseAudioRecordingResult {
   isRecording: boolean;
   isPaused: boolean;
   autoStopReason: AutoStopReason | null;
+  metering: number | null;
 
   // Actions
   startRecording: () => Promise<void>;
@@ -40,6 +41,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
   const [uri, setUri] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [autoStopReason, setAutoStopReason] = useState<AutoStopReason | null>(null);
+  const [metering, setMetering] = useState<number | null>(null);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingStateRef = useRef<RecordingState>('idle');
@@ -77,6 +79,10 @@ export function useAudioRecording(): UseAudioRecordingResult {
     activeRecording: Audio.Recording,
     options: { reason?: AutoStopReason } = {}
   ) => {
+    // Mark stopped BEFORE async work to prevent status-update callbacks
+    // from triggering a concurrent finalization
+    recordingStateRef.current = 'stopped';
+
     clearDurationTimer();
 
     commitActiveSegment();
@@ -93,11 +99,17 @@ export function useAudioRecording(): UseAudioRecordingResult {
       }
     }
 
+    // Release the iOS audio session so a new Recording can be prepared
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch {
+      // best-effort; configureAudioMode before next start will retry
+    }
+
     const recordingUri = activeRecording.getURI() ?? null;
     setUri(recordingUri);
     setRecording(null);
     recordingRef.current = null;
-    recordingStateRef.current = 'stopped';
     accumulatedDurationRef.current = 0;
     activeSegmentStartRef.current = null;
     setRecordingState('stopped');
@@ -114,10 +126,14 @@ export function useAudioRecording(): UseAudioRecordingResult {
   };
 
   const registerRecordingStatusUpdates = (rec: Audio.Recording) => {
-    rec.setProgressUpdateInterval(500);
+    rec.setProgressUpdateInterval(200);
     rec.setOnRecordingStatusUpdate((status) => {
       if (recordingStateRef.current !== 'recording') {
         return;
+      }
+
+      if (typeof status.metering === 'number') {
+        setMetering(status.metering);
       }
 
       if (
@@ -153,6 +169,13 @@ export function useAudioRecording(): UseAudioRecordingResult {
     } finally {
       recordingRef.current = null;
       setRecording(null);
+    }
+
+    // Release iOS audio session so a new Recording can be prepared
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch {
+      // best-effort
     }
   };
 
@@ -228,13 +251,23 @@ export function useAudioRecording(): UseAudioRecordingResult {
       }
 
       setAutoStopReason(null);
-      // Configure audio
+
+      // Reset the iOS audio session to release any lingering recording,
+      // then re-enable recording mode.  The off→on cycle ensures a clean
+      // AVAudioSession even if the previous finalizeRecording failed to
+      // fully tear down.
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      } catch {
+        // best-effort
+      }
       await configureAudioMode();
 
       console.log('[Recording] Starting recording...');
 
       const recordingOptions = {
         ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        isMeteringEnabled: true,
         ios: {
           ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
           extension: '.m4a',
@@ -242,31 +275,34 @@ export function useAudioRecording(): UseAudioRecordingResult {
         },
       };
 
-      // Retry logic for createAsync - sometimes audio mode needs time to apply
+      // Retry logic for createAsync — retry on ANY error, not just
+      // "not prepared", since expo-av can surface several different
+      // messages when the native session isn't ready.
       let newRecording: Audio.Recording | null = null;
       let lastError: Error | null = null;
       const maxRetries = 3;
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          // Small delay before retry to allow audio mode to fully apply
           if (attempt > 1) {
             console.log(`[Recording] Retrying (attempt ${attempt}/${maxRetries})...`);
-            await new Promise(resolve => setTimeout(resolve, 300));
-            await configureAudioMode(); // Re-configure audio mode before retry
+            await new Promise(resolve => setTimeout(resolve, 500));
+            // Full reset cycle before retry
+            try {
+              await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+            } catch {
+              // best-effort
+            }
+            await configureAudioMode();
           }
 
           const result = await Audio.Recording.createAsync(recordingOptions);
           newRecording = result.recording;
-          break; // Success, exit retry loop
+          break; // Success
         } catch (createError: any) {
           lastError = createError;
           console.warn(`[Recording] createAsync attempt ${attempt} failed:`, createError.message);
-
-          // Only retry on "not prepared" errors
-          if (!createError.message?.includes('not prepared') && attempt < maxRetries) {
-            throw createError; // Re-throw non-retry-able errors immediately
-          }
+          // Fall through to retry on next iteration
         }
       }
 
@@ -369,6 +405,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
     setDuration(0);
     setUri(null);
     setAutoStopReason(null);
+    setMetering(null);
     accumulatedDurationRef.current = 0;
     activeSegmentStartRef.current = null;
   };
@@ -394,6 +431,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
     isRecording: recordingState === 'recording',
     isPaused: recordingState === 'paused',
     autoStopReason,
+    metering,
     hasPermission,
     requestPermission,
     startRecording,

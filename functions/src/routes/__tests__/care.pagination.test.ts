@@ -448,7 +448,7 @@ describe('care pagination', () => {
     ]);
     expect(res.headers['x-has-more']).toBe('true');
     expect(res.headers['x-next-cursor']).toBe('med-2');
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
   });
 
   it('rejects medication cursor that is missing or mismatched', async () => {
@@ -567,7 +567,7 @@ describe('care pagination', () => {
     ]);
     expect(res.headers['x-has-more']).toBe('false');
     expect(res.headers['x-next-cursor']).toBe('');
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
   });
 
   it('rejects visit cursor when cursor document is soft-deleted', async () => {
@@ -654,7 +654,7 @@ describe('care pagination', () => {
     ]);
     expect(res.headers['x-has-more']).toBe('true');
     expect(res.headers['x-next-cursor']).toBe('action-2');
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
   });
 
   it('rejects action cursor when cursor document is soft-deleted', async () => {
@@ -741,7 +741,7 @@ describe('care pagination', () => {
     ]);
     expect(pagedRes.headers['x-has-more']).toBe('true');
     expect(pagedRes.headers['x-next-cursor']).toBe('note-1');
-    expect(pagedRes.headers['cache-control']).toBe('private, max-age=30');
+    expect(pagedRes.headers['cache-control']).toBe('private, no-cache');
 
     const invalidCursorReq = createRequest({
       query: { cursor: 'note-other' },
@@ -808,7 +808,7 @@ describe('care pagination', () => {
     ]);
     expect(res.headers['x-has-more']).toBe('true');
     expect(res.headers['x-next-cursor']).toBe('task-2');
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body.summary).toMatchObject({
       pending: 1,
       inProgress: 1,
@@ -900,7 +900,7 @@ describe('care pagination', () => {
     ]);
     expect(res.headers['x-has-more']).toBe('true');
     expect(res.headers['x-next-cursor']).toBe('log-2');
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
   });
 
   it('rejects invalid health-log cursor values', async () => {
@@ -1009,7 +1009,7 @@ describe('care pagination', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body).toMatchObject({
       patient: { id: 'patient-1', name: 'Pat' },
       overview: {

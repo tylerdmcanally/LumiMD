@@ -18,6 +18,24 @@ export type NudgeActionType =
     | 'acknowledge'
     | 'view_insight';
 
+export interface NudgeContext {
+    visitId?: string;
+    visitDate?: string;
+    providerName?: string;
+    diagnosisName?: string;
+    medicationName?: string;
+    medicationDose?: string;
+    medicationStartDate?: string;
+    daysSinceMedStart?: number;
+    lastReading?: {
+        value: string;
+        date: string;
+        alertLevel?: AlertLevel;
+    };
+    readingCount?: number;
+    trackingReason?: string;
+}
+
 export interface Nudge {
     id: string;
     userId: string;
@@ -36,6 +54,7 @@ export interface Nudge {
     completedAt?: string;
     dismissedAt?: string;
     createdAt: string;
+    context?: NudgeContext;
 }
 
 export type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
@@ -146,6 +165,29 @@ export interface CreateHealthLogResponse extends HealthLog {
     shouldShowAlert?: boolean;
 }
 
+export interface TrendInsight {
+    type: 'weight' | 'bp' | 'glucose';
+    pattern: string;
+    severity: 'positive' | 'info' | 'attention' | 'concern';
+    title: string;
+    message: string;
+    data: {
+        currentValue?: number;
+        previousValue?: number;
+        changeAmount?: number;
+        changePercent?: number;
+        daysAnalyzed: number;
+        trend?: 'up' | 'down' | 'stable';
+    };
+}
+
+export interface HealthInsightsResponse {
+    insights: TrendInsight[];
+    period: string;
+    logCount: number;
+    message?: string;
+}
+
 export interface UpdateNudgeRequest {
     status: 'completed' | 'snoozed' | 'dismissed';
     snoozeDays?: number;
@@ -203,4 +245,92 @@ export interface UpdateMedicationReminderRequest {
 
 export interface MedicationRemindersResponse {
     reminders: MedicationReminder[];
+}
+
+// =============================================================================
+// Visit Walkthrough Types (Phase 2)
+// =============================================================================
+
+export interface WalkthroughDiagnosis {
+    name: string;
+    isNew: boolean;
+    plainEnglish: string;
+}
+
+export interface WalkthroughMedicationStarted {
+    name: string;
+    dose: string;
+    frequency: string;
+    plainEnglish: string;
+    disclaimer: string;
+}
+
+export interface WalkthroughMedicationStopped {
+    name: string;
+    plainEnglish: string;
+}
+
+export interface WalkthroughMedicationChanged {
+    name: string;
+    change: string;
+    plainEnglish: string;
+}
+
+export interface WalkthroughActionItem {
+    description: string;
+    dueDate?: string;
+    type?: string;
+}
+
+export interface WalkthroughTrackingPlan {
+    what: string;
+    why: string;
+    when: string;
+}
+
+export interface WalkthroughFollowUp {
+    description: string;
+    dueBy?: string;
+}
+
+export interface WalkthroughSuggestedQuestion {
+    question: string;
+    answer: string;
+    source: 'visit_education' | 'general';
+}
+
+export interface VisitWalkthrough {
+    generatedAt: string;
+    steps: {
+        whatHappened: {
+            title: string;
+            diagnoses: WalkthroughDiagnosis[];
+            keyTopics: string[];
+            flagPrompt: string;
+        };
+        whatChanged: {
+            title: string;
+            medicationsStarted: WalkthroughMedicationStarted[];
+            medicationsStopped: WalkthroughMedicationStopped[];
+            medicationsChanged: WalkthroughMedicationChanged[];
+            newActionItems: WalkthroughActionItem[];
+        };
+        whatsNext: {
+            title: string;
+            trackingPlans: WalkthroughTrackingPlan[];
+            followUps: WalkthroughFollowUp[];
+            closingMessage: string;
+        };
+    };
+    suggestedQuestions: WalkthroughSuggestedQuestion[];
+}
+
+export interface VisitAskRequest {
+    question: string;
+}
+
+export interface VisitAskResponse {
+    answer: string;
+    source: 'visit_education' | 'visit_summary' | 'ai_generated';
+    disclaimer: string;
 }

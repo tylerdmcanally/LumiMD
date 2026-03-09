@@ -121,11 +121,12 @@ export default function MedicationScheduleScreen() {
         const isOverdue = dose.status === 'overdue';
         const isTaken = dose.status === 'taken';
         const isSkipped = dose.status === 'skipped';
+        const isCompleted = isTaken || isSkipped;
 
         return (
             <View
                 key={`${dose.medicationId}-${dose.scheduledTime}`}
-                style={[styles.doseItem, !isLast && styles.doseItemBorder]}
+                style={[styles.doseItem, !isLast && styles.doseItemBorder, isOverdue && styles.doseItemOverdue]}
             >
                 <View style={styles.doseInfo}>
                     <View style={[
@@ -134,18 +135,26 @@ export default function MedicationScheduleScreen() {
                         isSkipped && styles.statusSkipped,
                         isOverdue && styles.statusOverdue,
                         isPending && styles.statusPending,
+                        isCompleted && styles.statusIconCompleted,
                     ]}>
-                        {isTaken && <Ionicons name="checkmark" size={16} color="#fff" />}
-                        {isSkipped && <Ionicons name="close" size={16} color="#fff" />}
+                        {isTaken && <Ionicons name="checkmark" size={14} color="#fff" />}
+                        {isSkipped && <Ionicons name="close" size={14} color="#fff" />}
                         {isOverdue && <Ionicons name="alert" size={16} color="#fff" />}
-                        {isPending && <Ionicons name="time-outline" size={16} color={Colors.textMuted} />}
+                        {isPending && <Ionicons name="time-outline" size={14} color={Colors.textMuted} />}
                     </View>
                     <View style={styles.doseDetails}>
-                        <Text style={styles.doseName}>{dose.name}</Text>
-                        {dose.dose && <Text style={styles.doseDosage}>{dose.dose}</Text>}
+                        <Text style={[styles.doseName, isCompleted && styles.doseNameCompleted]} numberOfLines={1}>
+                            {dose.name}
+                        </Text>
+                        {dose.dose && !isCompleted && <Text style={styles.doseDosage}>{dose.dose}</Text>}
+                        {dose.dose && isCompleted && (
+                            <Text style={styles.doseDosageCompleted}>{dose.dose}</Text>
+                        )}
                         {isOverdue && <Text style={styles.overdueText}>Overdue</Text>}
                     </View>
-                    <Text style={styles.doseTime}>{formatTime(dose.scheduledTime)}</Text>
+                    <Text style={[styles.doseTime, isCompleted && styles.doseTimeCompleted]}>
+                        {formatTime(dose.scheduledTime)}
+                    </Text>
                 </View>
 
                 {(isPending || isOverdue) && (
@@ -289,23 +298,43 @@ export default function MedicationScheduleScreen() {
                             </View>
                         ) : (
                             <>
-                                {/* Summary */}
+                                {/* Progress Summary */}
                                 <Card style={styles.summaryCard}>
-                                    <View style={styles.summaryRow}>
-                                        <View style={styles.summaryItem}>
-                                            <Text style={[styles.summaryNumber, { color: Colors.success }]}>{scheduleSummary.taken}</Text>
-                                            <Text style={styles.summaryLabel}>Taken</Text>
+                                    <View style={styles.progressHeader}>
+                                        <Text style={styles.progressTitle}>Today's Progress</Text>
+                                        <Text style={styles.progressPercent}>
+                                            {scheduleSummary.total > 0
+                                                ? `${Math.round(((scheduleSummary.taken + scheduleSummary.skipped) / scheduleSummary.total) * 100)}%`
+                                                : '0%'}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.progressBarTrack}>
+                                        {scheduleSummary.total > 0 && (
+                                            <>
+                                                <View style={[styles.progressBarFill, styles.progressBarTaken, {
+                                                    width: `${(scheduleSummary.taken / scheduleSummary.total) * 100}%`,
+                                                }]} />
+                                                <View style={[styles.progressBarFill, styles.progressBarSkipped, {
+                                                    width: `${(scheduleSummary.skipped / scheduleSummary.total) * 100}%`,
+                                                }]} />
+                                            </>
+                                        )}
+                                    </View>
+                                    <View style={styles.progressLegend}>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendDot, { backgroundColor: Colors.success }]} />
+                                            <Text style={styles.legendText}>{scheduleSummary.taken} Taken</Text>
                                         </View>
-                                        <View style={styles.summaryDivider} />
-                                        <View style={styles.summaryItem}>
-                                            <Text style={[styles.summaryNumber, { color: Colors.primary }]}>{scheduleSummary.pending}</Text>
-                                            <Text style={styles.summaryLabel}>Pending</Text>
+                                        <View style={styles.legendItem}>
+                                            <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
+                                            <Text style={styles.legendText}>{scheduleSummary.pending} Pending</Text>
                                         </View>
-                                        <View style={styles.summaryDivider} />
-                                        <View style={styles.summaryItem}>
-                                            <Text style={[styles.summaryNumber, { color: Colors.error }]}>{scheduleSummary.skipped}</Text>
-                                            <Text style={styles.summaryLabel}>Skipped</Text>
-                                        </View>
+                                        {scheduleSummary.skipped > 0 && (
+                                            <View style={styles.legendItem}>
+                                                <View style={[styles.legendDot, { backgroundColor: Colors.error }]} />
+                                                <Text style={styles.legendText}>{scheduleSummary.skipped} Skipped</Text>
+                                            </View>
+                                        )}
                                     </View>
                                 </Card>
 
@@ -389,8 +418,9 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         fontSize: 22,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
+        letterSpacing: -0.3,
     },
     centered: {
         alignItems: 'center',
@@ -442,12 +472,12 @@ const styles = StyleSheet.create({
     },
     retryButtonText: {
         fontSize: 14,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: '#fff',
     },
     emptyTitle: {
         fontSize: 18,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
     },
     emptyText: {
@@ -465,34 +495,66 @@ const styles = StyleSheet.create({
     },
     setupButtonText: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: '#fff',
     },
     summaryCard: {
         marginBottom: spacing(4),
         padding: spacing(4),
     },
-    summaryRow: {
+    progressHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-around',
+        justifyContent: 'space-between',
         alignItems: 'center',
+        marginBottom: spacing(3),
     },
-    summaryItem: {
+    progressTitle: {
+        fontSize: 15,
+        fontFamily: 'PlusJakartaSans_600SemiBold',
+        color: Colors.text,
+    },
+    progressPercent: {
+        fontSize: 20,
+        fontFamily: 'Fraunces_700Bold',
+        color: Colors.text,
+    },
+    progressBarTrack: {
+        height: 10,
+        backgroundColor: 'rgba(38,35,28,0.06)',
+        borderRadius: 5,
+        flexDirection: 'row',
+        overflow: 'hidden',
+        marginBottom: spacing(3),
+    },
+    progressBarFill: {
+        height: '100%',
+    },
+    progressBarTaken: {
+        backgroundColor: Colors.success,
+        borderTopLeftRadius: 5,
+        borderBottomLeftRadius: 5,
+    },
+    progressBarSkipped: {
+        backgroundColor: Colors.error,
+    },
+    progressLegend: {
+        flexDirection: 'row',
+        gap: spacing(4),
+    },
+    legendItem: {
+        flexDirection: 'row',
         alignItems: 'center',
+        gap: spacing(1.5),
     },
-    summaryNumber: {
-        fontSize: 28,
-        fontWeight: '700',
+    legendDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
     },
-    summaryLabel: {
+    legendText: {
         fontSize: 13,
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: Colors.textMuted,
-        marginTop: spacing(1),
-    },
-    summaryDivider: {
-        width: 1,
-        height: 40,
-        backgroundColor: Colors.border,
     },
     section: {
         marginBottom: spacing(4),
@@ -510,7 +572,7 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
     },
     sectionCount: {
@@ -528,7 +590,7 @@ const styles = StyleSheet.create({
     },
     markAllText: {
         fontSize: 13,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.success,
     },
     sectionCard: {
@@ -540,6 +602,12 @@ const styles = StyleSheet.create({
     doseItemBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: Colors.border,
+    },
+    doseItemOverdue: {
+        backgroundColor: 'rgba(248,113,113,0.04)',
+        marginHorizontal: -spacing(3),
+        paddingHorizontal: spacing(3),
+        borderRadius: Radius.sm,
     },
     doseInfo: {
         flexDirection: 'row',
@@ -565,29 +633,47 @@ const styles = StyleSheet.create({
     statusPending: {
         backgroundColor: 'rgba(100,116,139,0.15)',
     },
+    statusIconCompleted: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        opacity: 0.7,
+    },
     doseDetails: {
         flex: 1,
     },
     doseName: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
+    },
+    doseNameCompleted: {
+        color: Colors.textMuted,
     },
     doseDosage: {
         fontSize: 14,
         color: Colors.textMuted,
         marginTop: 2,
     },
+    doseDosageCompleted: {
+        fontSize: 13,
+        color: Colors.textMuted,
+        marginTop: 1,
+        opacity: 0.7,
+    },
     overdueText: {
         fontSize: 12,
         color: Colors.error,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         marginTop: 2,
     },
     doseTime: {
         fontSize: 14,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: Colors.textMuted,
+    },
+    doseTimeCompleted: {
+        opacity: 0.6,
     },
     doseActions: {
         flexDirection: 'row',
@@ -614,7 +700,7 @@ const styles = StyleSheet.create({
     },
     actionText: {
         fontSize: 13,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     // Modal styles
     modalOverlay: {
@@ -633,7 +719,7 @@ const styles = StyleSheet.create({
     },
     modalTitle: {
         fontSize: 20,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         textAlign: 'center',
         marginBottom: spacing(1),
@@ -658,7 +744,7 @@ const styles = StyleSheet.create({
     },
     snoozeOptionText: {
         fontSize: 14,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.primary,
         marginTop: spacing(1),
     },
@@ -668,7 +754,7 @@ const styles = StyleSheet.create({
     },
     cancelButtonText: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
     },
 });

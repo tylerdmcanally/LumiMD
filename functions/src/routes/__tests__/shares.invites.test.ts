@@ -456,7 +456,7 @@ describe('shares invite compatibility routes', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.get('cache-control')).toBe('private, max-age=30');
+    expect(res.get('cache-control')).toBe('private, no-cache');
     expect(Array.isArray(res.body)).toBe(true);
 
     const outgoing = (res.body as Array<RecordMap>).find((item) => item.id === 'caregiver_other');
@@ -520,7 +520,7 @@ describe('shares invite compatibility routes', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.get('cache-control')).toBe('private, max-age=30');
+    expect(res.get('cache-control')).toBe('private, no-cache');
     expect(Array.isArray(res.body)).toBe(true);
     const invites = res.body as Array<RecordMap>;
     expect(invites).toHaveLength(3);
@@ -595,7 +595,7 @@ describe('shares invite compatibility routes', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.get('cache-control')).toBe('private, max-age=30');
+    expect(res.get('cache-control')).toBe('private, no-cache');
     expect(res.body).toMatchObject({
       id: 'owner_caregiver',
       ownerId: 'owner',
@@ -642,7 +642,7 @@ describe('shares invite compatibility routes', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.get('cache-control')).toBe('private, max-age=30');
+    expect(res.get('cache-control')).toBe('private, no-cache');
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(2);
     expect(res.body[0].id).toBe('invite-newer');

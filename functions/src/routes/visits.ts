@@ -29,6 +29,7 @@ import {
   ensureVisitOwnerAccessOrReject,
   ensureVisitReadAccessOrReject,
 } from '../middlewares/visitAccess';
+import { answerVisitQuestion, type VisitQAContext } from '../services/walkthroughQA';
 
 export const visitsRouter = Router();
 
@@ -1475,6 +1476,87 @@ visitsRouter.post('/:id/share-with-caregivers', requireAuth, async (req: AuthReq
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to share visit with caregivers',
+    });
+  }
+});
+
+/**
+ * POST /v1/visits/:id/ask
+ * Ask a question about a visit (walkthrough Q&A)
+ */
+visitsRouter.post('/:id/ask', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const visitId = req.params.id;
+
+    // Validate question
+    const question = typeof req.body.question === 'string' ? req.body.question.trim() : '';
+    if (!question) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Question is required',
+      });
+      return;
+    }
+
+    if (question.length > 500) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Question must be 500 characters or less',
+      });
+      return;
+    }
+
+    // Fetch visit and verify access
+    const visitDoc = await getDb().collection('visits').doc(visitId).get();
+    if (!visitDoc.exists) {
+      res.status(404).json({ code: 'not_found', message: 'Visit not found' });
+      return;
+    }
+
+    const visitData = visitDoc.data()!;
+    if (visitData.userId !== userId) {
+      res.status(403).json({ code: 'forbidden', message: 'Not authorized' });
+      return;
+    }
+
+    if (visitData.deletedAt) {
+      res.status(404).json({ code: 'not_found', message: 'Visit not found' });
+      return;
+    }
+
+    // Build Q&A context from visit data
+    const qaContext: VisitQAContext = {
+      summary: typeof visitData.summary === 'string' ? visitData.summary : '',
+      education: {
+        diagnoses: Array.isArray(visitData.education?.diagnoses)
+          ? visitData.education.diagnoses
+          : [],
+        medications: Array.isArray(visitData.education?.medications)
+          ? visitData.education.medications
+          : [],
+      },
+      diagnoses: Array.isArray(visitData.diagnoses) ? visitData.diagnoses : [],
+      medications: {
+        started: Array.isArray(visitData.medications?.started) ? visitData.medications.started : [],
+        stopped: Array.isArray(visitData.medications?.stopped) ? visitData.medications.stopped : [],
+        changed: Array.isArray(visitData.medications?.changed) ? visitData.medications.changed : [],
+      },
+      followUps: Array.isArray(visitData.followUps) ? visitData.followUps : undefined,
+      nextSteps: Array.isArray(visitData.nextSteps) ? visitData.nextSteps : undefined,
+      visitDate: visitData.visitDate?.toDate?.()?.toISOString?.() ??
+        visitData.createdAt?.toDate?.()?.toISOString?.() ?? undefined,
+    };
+
+    const result = await answerVisitQuestion(question, qaContext);
+
+    res.set('Cache-Control', 'private, no-cache');
+    res.json(result);
+  } catch (error) {
+    functions.logger.error('[visits] Error answering visit question:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to answer question',
     });
   }
 });

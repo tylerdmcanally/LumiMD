@@ -1870,6 +1870,22 @@ export type HealthLogSummary = {
   };
 };
 
+export type CareTrendInsight = {
+  type: 'weight' | 'bp' | 'glucose';
+  pattern: string;
+  severity: 'positive' | 'info' | 'attention' | 'concern';
+  title: string;
+  message: string;
+  data: {
+    currentValue?: number;
+    previousValue?: number;
+    changeAmount?: number;
+    changePercent?: number;
+    daysAnalyzed: number;
+    trend?: 'up' | 'down' | 'stable';
+  };
+};
+
 export type CareHealthLogsResponse = {
   logs: HealthLogEntry[];
   summary: HealthLogSummary;
@@ -1878,6 +1894,7 @@ export type CareHealthLogsResponse = {
     warning: number;
     caution: number;
   };
+  insights?: CareTrendInsight[];
   period: {
     days: number;
     from: string;
@@ -2101,7 +2118,7 @@ export function useCareQuickOverview(patientId: string | undefined) {
 
 export type CareAlert = {
   id: string;
-  type: 'missed_dose' | 'overdue_action' | 'health_warning' | 'no_data' | 'med_change';
+  type: 'missed_dose' | 'overdue_action' | 'health_warning' | 'no_data' | 'med_change' | 'missed_checkins' | 'medication_trouble';
   severity: 'emergency' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -2247,6 +2264,80 @@ export function useCareTrends(
       );
 
       if (!response.ok) throw new Error('Failed to fetch trends');
+      return response.json();
+    },
+  });
+}
+
+// =============================================================================
+// Caregiver Nudge History (LumiBot Check-ins)
+// =============================================================================
+
+export type NudgeHistoryItem = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  actionType: string;
+  status: string;
+  responseValue?: string | Record<string, unknown>;
+  context?: Record<string, unknown>;
+  createdAt: string;
+  completedAt?: string;
+  dismissedAt?: string;
+};
+
+export type NudgeHistoryStats = {
+  total: number;
+  responded: number;
+  dismissed: number;
+  pending: number;
+  responseRate: number;
+};
+
+export type CareNudgeHistoryResponse = {
+  nudges: NudgeHistoryItem[];
+  stats: NudgeHistoryStats;
+  period: {
+    days: number;
+    from: string;
+    to: string;
+  };
+};
+
+export function useCareNudgeHistory(
+  patientId: string | undefined,
+  options?: { days?: number; limit?: number }
+) {
+  const days = options?.days ?? 30;
+  const limit = options?.limit ?? 50;
+
+  return useQuery<CareNudgeHistoryResponse>({
+    queryKey: ['care-nudge-history', patientId, days, limit],
+    staleTime: 60_000,
+    enabled: Boolean(patientId),
+    queryFn: async () => {
+      if (!patientId) throw new Error('Patient ID required');
+
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not authenticated');
+      const token = await user.getIdToken();
+
+      const params = new URLSearchParams();
+      params.set('days', String(days));
+      params.set('limit', String(limit));
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+      const response = await fetch(
+        `${apiUrl}/v1/care/${patientId}/nudge-history?${params.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch nudge history');
       return response.json();
     },
   });

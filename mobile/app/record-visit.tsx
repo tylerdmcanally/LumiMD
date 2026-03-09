@@ -1,6 +1,9 @@
 /**
  * Record Visit Screen
  * Audio recording interface for medical visits
+ *
+ * Flow: Start (mic) → Stop (square) → Save / Retake
+ * Pause is a secondary text action during recording.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -11,6 +14,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -26,6 +30,10 @@ import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
 const RECORDING_LIMIT_MINUTES = MAX_RECORDING_MS / (60 * 1000);
+
+const WAVEFORM_BARS = 35;
+const MIN_BAR_HEIGHT = 3;
+const MAX_BAR_HEIGHT = 48;
 
 export default function RecordVisitScreen() {
   const router = useRouter();
@@ -44,6 +52,7 @@ export default function RecordVisitScreen() {
     stopRecording,
     resetRecording,
     autoStopReason,
+    metering,
   } = useAudioRecording();
 
   const [uploading, setUploading] = useState(false);
@@ -52,13 +61,21 @@ export default function RecordVisitScreen() {
   const isIdle = recordingState === 'idle';
   const isFinished = recordingState === 'stopped';
   const longRecordingWarningShown = useRef(false);
+
+  // Waveform
+  const [waveformBars, setWaveformBars] = useState<number[]>(
+    new Array(WAVEFORM_BARS).fill(0)
+  );
+  const meteringHistoryRef = useRef<number[]>(new Array(WAVEFORM_BARS).fill(0));
+
+  // Animations
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const ringScaleAnim = useRef(new Animated.Value(1)).current;
+  const ringOpacityAnim = useRef(new Animated.Value(0)).current;
+
   const showError = (message: string) => {
     setErrorMessage(message);
   };
-
-  const isPrimaryDisabled = uploading || isFinished;
-  const primaryIconName = isRecording ? 'pause' : isPaused ? 'play' : 'mic';
-  const primaryIconColor = isRecording || isPaused ? Colors.surface : Colors.primary;
 
   const extractUserMessage = (error: unknown, fallback: string) => {
     if (error && typeof error === 'object') {
@@ -82,13 +99,14 @@ export default function RecordVisitScreen() {
     return fallback;
   };
 
-  // Format duration as MM:SS
   const formatDuration = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
+
+  // ── Handlers ─────────────────────────────────────────────
 
   const handleStartRecording = async () => {
     try {
@@ -109,45 +127,36 @@ export default function RecordVisitScreen() {
       await startRecording();
     } catch (error: any) {
       console.error('[RecordVisit] Start error:', error);
-      showError('We couldn’t start recording. Please try again.');
+      showError('We couldn\'t start recording. Please try again.');
       Alert.alert('Error', 'Failed to start recording. Please try again.');
     }
   };
 
-  const handleStopAndSave = async () => {
+  const handleStop = async () => {
     try {
       await stopRecording();
     } catch (error: any) {
       console.error('[RecordVisit] Stop error:', error);
-      showError('We couldn’t stop the recording. Please try again.');
+      showError('We couldn\'t stop the recording. Please try again.');
       Alert.alert('Error', 'Failed to stop recording. Please try again.');
     }
   };
 
-  const handlePauseToggle = async () => {
+  const handlePause = async () => {
     try {
-      if (isPaused) {
-        await resumeRecording();
-      } else {
-        await pauseRecording();
-      }
+      await pauseRecording();
     } catch (error: any) {
-      console.error('[RecordVisit] Pause/resume error:', error);
-      showError('We ran into a problem updating the recording. Please try again.');
-      Alert.alert('Recording issue', 'We couldn’t update the recording state. Please try again.');
+      console.error('[RecordVisit] Pause error:', error);
+      showError('We ran into a problem pausing. Please try again.');
     }
   };
 
-  const handlePrimaryAction = async () => {
-    if (uploading || isFinished) return;
-
-    if (isRecording || isPaused) {
-      await handlePauseToggle();
-      return;
-    }
-
-    if (isIdle) {
-      await handleStartRecording();
+  const handleResume = async () => {
+    try {
+      await resumeRecording();
+    } catch (error: any) {
+      console.error('[RecordVisit] Resume error:', error);
+      showError('We couldn\'t resume recording. Please try again.');
     }
   };
 
@@ -159,7 +168,6 @@ export default function RecordVisitScreen() {
     let uploadedStoragePath: string | null = null;
 
     try {
-      // Upload audio file
       const { downloadUrl, storagePath } = await uploadAudioFile(
         uri,
         user.uid,
@@ -171,7 +179,6 @@ export default function RecordVisitScreen() {
       console.log('[RecordVisit] Audio uploaded:', downloadUrl);
       uploadedStoragePath = storagePath;
 
-      // Create visit record
       await api.visits.create({
         audioUrl: downloadUrl,
         storagePath,
@@ -181,7 +188,6 @@ export default function RecordVisitScreen() {
 
       console.log('[RecordVisit] Visit created');
 
-      // Success!
       Alert.alert(
         'Visit Recorded',
         'Your visit has been saved and is being processed.',
@@ -196,7 +202,6 @@ export default function RecordVisitScreen() {
     } catch (error: any) {
       console.error('[RecordVisit] Upload error:', error);
 
-      // If upload succeeded but visit creation failed, delete orphaned audio.
       if (uploadedStoragePath) {
         try {
           await deleteAudioFile(uploadedStoragePath);
@@ -252,7 +257,6 @@ export default function RecordVisitScreen() {
           style: 'destructive',
           onPress: () => {
             resetRecording();
-            // If opened via widget (no back history), go to home
             if (router.canGoBack()) {
               router.back();
             } else {
@@ -264,7 +268,96 @@ export default function RecordVisitScreen() {
     );
   };
 
-  // Warn before reaching the recording cap
+  // ── Primary button config per state ──────────────────────
+
+  const getPrimaryAction = () => {
+    if (isRecording) return handleStop;
+    if (isPaused) return handleResume;
+    return handleStartRecording;
+  };
+
+  const getPrimaryIcon = (): 'stop' | 'play' | 'mic' => {
+    if (isRecording) return 'stop';
+    if (isPaused) return 'play';
+    return 'mic';
+  };
+
+  // ── Effects ──────────────────────────────────────────────
+
+  useEffect(() => {
+    if (metering != null && isRecording) {
+      const normalized = Math.min(1, Math.max(0, (metering + 60) / 60));
+      meteringHistoryRef.current = [
+        ...meteringHistoryRef.current.slice(1),
+        normalized,
+      ];
+      setWaveformBars([...meteringHistoryRef.current]);
+    }
+  }, [metering, isRecording]);
+
+  useEffect(() => {
+    if (recordingState === 'idle') {
+      meteringHistoryRef.current = new Array(WAVEFORM_BARS).fill(0);
+      setWaveformBars(new Array(WAVEFORM_BARS).fill(0));
+    }
+  }, [recordingState]);
+
+  useEffect(() => {
+    if (isRecording) {
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.2,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
+      return () => animation.stop();
+    }
+    pulseAnim.setValue(1);
+  }, [isRecording, pulseAnim]);
+
+  useEffect(() => {
+    if (isRecording) {
+      const animation = Animated.loop(
+        Animated.parallel([
+          Animated.timing(ringScaleAnim, {
+            toValue: 1.4,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(ringOpacityAnim, {
+              toValue: 0.25,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(ringOpacityAnim, {
+              toValue: 0,
+              duration: 1800,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      animation.start();
+      return () => {
+        animation.stop();
+        ringScaleAnim.setValue(1);
+        ringOpacityAnim.setValue(0);
+      };
+    }
+    ringScaleAnim.setValue(1);
+    ringOpacityAnim.setValue(0);
+  }, [isRecording, ringScaleAnim, ringOpacityAnim]);
+
   useEffect(() => {
     if (
       isRecording &&
@@ -279,14 +372,12 @@ export default function RecordVisitScreen() {
     }
   }, [duration, isRecording]);
 
-  // Reset long-recording warning when returning to idle
   useEffect(() => {
     if (recordingState === 'idle') {
       longRecordingWarningShown.current = false;
     }
   }, [recordingState]);
 
-  // Notify about auto-stop reasons
   useEffect(() => {
     if (!autoStopReason) return;
 
@@ -306,6 +397,8 @@ export default function RecordVisitScreen() {
       );
     }
   }, [autoStopReason]);
+
+  // ── Render ───────────────────────────────────────────────
 
   return (
     <ErrorBoundary
@@ -336,40 +429,102 @@ export default function RecordVisitScreen() {
 
           {/* Status */}
           <View style={styles.statusContainer}>
+            {isRecording && (
+              <Animated.View style={[styles.recordingDot, { opacity: pulseAnim }]} />
+            )}
             <Text style={styles.statusText}>
-              {recordingState === 'idle' && 'Ready to record'}
-              {recordingState === 'recording' && 'Recording...'}
-              {recordingState === 'paused' && 'Paused'}
-              {recordingState === 'stopped' && 'Recording complete'}
+              {isIdle && 'Ready to Record'}
+              {isRecording && 'Recording'}
+              {isPaused && 'Paused'}
+              {isFinished && 'Recording Complete'}
             </Text>
           </View>
 
           {/* Duration */}
           <View style={styles.durationContainer}>
             <Text style={styles.duration}>{formatDuration(duration)}</Text>
-            {isRecording && (
-              <View style={styles.recordingIndicator}>
-                <View style={styles.recordingDot} />
-              </View>
-            )}
           </View>
-          {/* Primary Control */}
-          <Pressable
-            style={[
-              styles.iconContainer,
-              isRecording && styles.iconRecording,
-              isPaused && styles.iconPaused,
-              isPrimaryDisabled && styles.iconDisabled,
-            ]}
-            onPress={handlePrimaryAction}
-            disabled={isPrimaryDisabled}
-          >
-            <Ionicons
-              name={primaryIconName}
-              size={80}
-              color={primaryIconColor}
-            />
-          </Pressable>
+
+          {/* Waveform — visible during recording & paused */}
+          {(isRecording || isPaused) ? (
+            <View style={styles.waveformContainer}>
+              {waveformBars.map((value, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.waveformBar,
+                    {
+                      height:
+                        MIN_BAR_HEIGHT + value * (MAX_BAR_HEIGHT - MIN_BAR_HEIGHT),
+                      backgroundColor: Colors.primary,
+                      opacity: isRecording ? 0.4 + value * 0.6 : 0.3,
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.waveformPlaceholder} />
+          )}
+
+          {/* ── Primary circle button (idle / recording / paused) ── */}
+          {!isFinished && (
+            <View style={styles.buttonArea}>
+              {isRecording && (
+                <Animated.View
+                  style={[
+                    styles.ringPulse,
+                    {
+                      transform: [{ scale: ringScaleAnim }],
+                      opacity: ringOpacityAnim,
+                    },
+                  ]}
+                />
+              )}
+              <Pressable
+                style={[
+                  styles.iconContainer,
+                  isRecording && styles.iconRecording,
+                  isPaused && styles.iconPaused,
+                ]}
+                onPress={getPrimaryAction()}
+                disabled={uploading}
+              >
+                <Ionicons name={getPrimaryIcon()} size={64} color="#fff" />
+              </Pressable>
+            </View>
+          )}
+
+          {/* ── Secondary text action ── */}
+          {isRecording && !uploading && (
+            <Pressable onPress={handlePause} style={styles.secondaryAction}>
+              <Ionicons name="pause" size={16} color={Colors.textMuted} />
+              <Text style={styles.secondaryActionText}>Pause</Text>
+            </Pressable>
+          )}
+          {isPaused && !uploading && (
+            <Pressable onPress={handleStop} style={styles.secondaryAction}>
+              <Ionicons name="stop-circle-outline" size={16} color={Colors.textMuted} />
+              <Text style={styles.secondaryActionText}>End Recording</Text>
+            </Pressable>
+          )}
+
+          {/* ── Finished: Save + Retake ── */}
+          {isFinished && !uploading && (
+            <View style={styles.finishedActions}>
+              <Pressable style={styles.saveButton} onPress={handleUpload}>
+                <Ionicons name="cloud-upload-outline" size={22} color="#fff" />
+                <Text style={styles.saveButtonText}>Save Visit</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => resetRecording()}
+                style={styles.secondaryAction}
+              >
+                <Ionicons name="refresh" size={16} color={Colors.textMuted} />
+                <Text style={styles.secondaryActionText}>Retake</Text>
+              </Pressable>
+            </View>
+          )}
 
           {/* Upload Progress */}
           {uploading && (
@@ -387,56 +542,12 @@ export default function RecordVisitScreen() {
               Tap the microphone to start recording your medical visit
             </Text>
           )}
-          {isPaused && !uploading && (
-            <Text style={styles.instructions}>
-              Tap the play button to resume recording or use Stop Recording to wrap up your visit
-            </Text>
-          )}
-          {isFinished && !uploading && (
-            <Text style={styles.instructions}>
-              Tap save to upload your recording or retake to start over
+          {isRecording && !uploading && (
+            <Text style={styles.instructionSubtle}>
+              Keep the app open during your visit
             </Text>
           )}
         </View>
-
-        {/* Controls */}
-        {/* Stop + Post Actions */}
-        {isFinished && !uploading && (
-          <View style={styles.controls}>
-            <Pressable
-              style={[styles.actionButton, styles.secondaryButton]}
-              onPress={() => {
-                resetRecording();
-              }}
-            >
-              <Ionicons name="refresh" size={20} color={Colors.primary} />
-              <Text style={styles.secondaryButtonText}>Retake</Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.actionButton, styles.saveButton]}
-              onPress={handleUpload}
-            >
-              <Ionicons name="checkmark" size={20} color="#fff" />
-              <Text style={styles.saveButtonText}>Save Visit</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {(recordingState === 'recording' || recordingState === 'paused') && (
-          <Pressable
-            onPress={handleStopAndSave}
-            disabled={uploading}
-            style={({ pressed }) => [
-              styles.stopBar,
-              pressed && styles.stopBarPressed,
-              uploading && styles.stopBarDisabled,
-            ]}
-          >
-            <Ionicons name="stop" size={24} color="#fff" />
-            <Text style={styles.stopBarText}>Stop Recording</Text>
-          </Pressable>
-        )}
       </SafeAreaView>
       {isRecording && <KeepDeviceAwake tag="visit-recording" />}
     </ErrorBoundary>
@@ -460,7 +571,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   content: {
@@ -469,64 +580,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing(6),
   },
-  statusContainer: {
-    marginBottom: spacing(4),
-  },
-  statusText: {
-    fontSize: 16,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
-  durationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing(8),
-  },
-  duration: {
-    fontSize: 56,
-    fontWeight: '300',
-    color: Colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  recordingIndicator: {
-    marginLeft: spacing(3),
-  },
-  recordingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.error,
-  },
-  iconContainer: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing(8),
-    gap: spacing(2),
-  },
-  iconRecording: {
-    backgroundColor: Colors.error,
-    borderWidth: 0,
-  },
-  iconPaused: {
-    backgroundColor: Colors.primary,
-    borderWidth: 0,
-  },
-  iconDisabled: {
-    opacity: 0.4,
-  },
-  uploadContainer: {
-    alignItems: 'center',
-    marginTop: spacing(4),
-  },
-  uploadText: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginTop: spacing(2),
-  },
+
+  // Error
   errorBanner: {
     width: '100%',
     flexDirection: 'row',
@@ -544,77 +599,158 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: Colors.error,
+    fontFamily: 'PlusJakartaSans_400Regular',
   },
   errorDismiss: {
     padding: spacing(1),
   },
+
+  // Status
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    marginBottom: spacing(2),
+  },
+  statusText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.error,
+  },
+
+  // Duration
+  durationContainer: {
+    marginBottom: spacing(6),
+  },
+  duration: {
+    fontSize: 52,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: Colors.text,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 2,
+  },
+
+  // Waveform
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: MAX_BAR_HEIGHT + 8,
+    gap: 3,
+    marginBottom: spacing(8),
+    paddingHorizontal: spacing(4),
+  },
+  waveformBar: {
+    width: 3,
+    borderRadius: 1.5,
+  },
+  waveformPlaceholder: {
+    height: MAX_BAR_HEIGHT + 8,
+    marginBottom: spacing(8),
+  },
+
+  // Primary button
+  buttonArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 160,
+    height: 160,
+    marginBottom: spacing(4),
+  },
+  ringPulse: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 3,
+    borderColor: Colors.error,
+  },
+  iconContainer: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconRecording: {
+    backgroundColor: Colors.error,
+  },
+  iconPaused: {
+    backgroundColor: Colors.primary,
+  },
+
+  // Secondary text-link action
+  secondaryAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(4),
+  },
+  secondaryActionText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+  },
+
+  // Finished state
+  finishedActions: {
+    alignItems: 'center',
+    gap: spacing(2),
+    width: '100%',
+    maxWidth: 300,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: spacing(4),
+    borderRadius: 16,
+    gap: spacing(2),
+    width: '100%',
+  },
+  saveButtonText: {
+    fontSize: 17,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#fff',
+  },
+
+  // Upload
+  uploadContainer: {
+    alignItems: 'center',
+    marginTop: spacing(4),
+  },
+  uploadText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: Colors.textMuted,
+    marginTop: spacing(2),
+  },
+
+  // Instructions
   instructions: {
     fontSize: 15,
+    fontFamily: 'PlusJakartaSans_400Regular',
     color: Colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
     maxWidth: 300,
   },
-  controls: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing(6),
-    paddingBottom: spacing(6),
-    gap: spacing(3),
-  },
-  secondaryButton: {
-    backgroundColor: Colors.surface,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-  },
-  stopButton: {
-    backgroundColor: Colors.error,
-  },
-  stoppedControls: {
-    flexDirection: 'row',
-    gap: spacing(3),
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing(4),
-    borderRadius: 12,
-    gap: spacing(2),
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  saveButton: {
-    backgroundColor: Colors.primary,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  stopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing(2),
-    backgroundColor: Colors.error,
-    paddingVertical: spacing(4),
-    marginHorizontal: spacing(4),
-    marginBottom: spacing(6),
-    borderRadius: 16,
-  },
-  stopBarPressed: {
-    opacity: 0.85,
-  },
-  stopBarDisabled: {
-    opacity: 0.5,
-  },
-  stopBarText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  instructionSubtle: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: Colors.textMuted,
+    textAlign: 'center',
+    opacity: 0.7,
   },
 });

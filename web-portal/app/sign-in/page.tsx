@@ -80,7 +80,7 @@ export default function SignInPage() {
       <div className="w-full max-w-md animate-fade-in-up">
         {/* Logo & Branding */}
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-display font-bold tracking-tight text-brand-primary">LumiMD</h1>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold tracking-tight text-brand-primary">LumiMD</h1>
           <p className="mt-2 text-base text-text-secondary">
             Sign in to continue to your medical dashboard.
           </p>

@@ -30,7 +30,7 @@ import {
 } from '../services/safetyChecker';
 import { resolveHealthLogDedupAction } from '../services/healthLogDedupService';
 import { createFollowUpNudge, createInsightNudge } from '../services/lumibotAnalyzer';
-import { getPrimaryInsight } from '../services/trendAnalyzer';
+import { getPrimaryInsight, analyzeTrends } from '../services/trendAnalyzer';
 import { escalatePatientFrequency } from '../triggers/personalRNEvaluation';
 import { sanitizePlainText } from '../utils/inputSanitization';
 import {
@@ -501,6 +501,62 @@ healthLogsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
         res.status(500).json({
             code: 'server_error',
             message: 'Failed to fetch health logs',
+        });
+    }
+});
+
+// =============================================================================
+// GET /v1/health-logs/insights - Get trend insights for health data
+// =============================================================================
+
+healthLogsRouter.get('/insights', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const userId = req.user!.uid;
+        const healthLogService = getHealthLogDomainService();
+        const type = req.query.type as string | undefined;
+        const days = Math.min(parseInt(req.query.days as string) || 30, 90);
+
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+
+        const logs = await healthLogService.listForUser(userId, {
+            type,
+            startDate,
+            sortDirection: 'asc',
+        });
+
+        if (logs.length < 3) {
+            res.set('Cache-Control', 'private, no-cache');
+            res.json({ insights: [], message: 'Not enough data for trend analysis yet.' });
+            return;
+        }
+
+        // Transform to format expected by trend analyzer
+        const trendLogs = logs.map((data) => ({
+            type: data.type as string,
+            value: data.value as Record<string, unknown>,
+            createdAt: (data.createdAt as admin.firestore.Timestamp).toDate(),
+        }));
+
+        const insights = analyzeTrends(trendLogs);
+
+        functions.logger.info(`[healthLogs] Generated ${insights.length} insights for user ${userId}`, {
+            days,
+            type: type || 'all',
+            logCount: logs.length,
+        });
+
+        res.set('Cache-Control', 'private, no-cache');
+        res.json({
+            insights,
+            period: `${days} days`,
+            logCount: logs.length,
+        });
+    } catch (error) {
+        functions.logger.error('[healthLogs] Error generating insights:', error);
+        res.status(500).json({
+            code: 'server_error',
+            message: 'Failed to generate health insights',
         });
     }
 });

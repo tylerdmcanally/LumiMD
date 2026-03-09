@@ -201,7 +201,7 @@ export default function SignUpPage() {
               <span className="text-2xl font-bold text-white">L</span>
             )}
           </div>
-          <h1 className="text-3xl font-bold text-text-primary">
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
             {isInviteFlow ? 'Join as a Caregiver' : 'Create your LumiMD account'}
           </h1>
           <p className="mt-1 text-sm text-text-secondary">

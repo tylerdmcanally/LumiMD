@@ -118,7 +118,7 @@ function CareSignInContent() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary shadow-floating">
             <Users className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-text-primary">Caregiver Sign In</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">Caregiver Sign In</h1>
           <p className="mt-1 text-sm text-text-secondary">
             Sign in to access shared health information.
           </p>

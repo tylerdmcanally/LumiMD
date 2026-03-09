@@ -17,6 +17,13 @@ import {
   AlertTriangle,
   Calendar,
   ArrowRight,
+  Bot,
+  CheckCircle,
+  XCircle,
+  Clock,
+  MessageCircle,
+  Pill,
+  Info,
 } from 'lucide-react';
 import {
   LineChart,
@@ -39,7 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCareHealthLogs, type HealthLogEntry } from '@/lib/api/hooks';
+import { useCareHealthLogs, useCareNudgeHistory, type HealthLogEntry, type CareTrendInsight, type NudgeHistoryItem } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
 const chartTheme = {
@@ -63,6 +70,7 @@ export default function HealthMetricsPage() {
   const [dateRange, setDateRange] = React.useState<number>(30);
 
   const { data, isLoading, error } = useCareHealthLogs(patientId, { days: dateRange });
+  const { data: nudgeData } = useCareNudgeHistory(patientId, { days: dateRange });
 
   if (isLoading) {
     return (
@@ -97,7 +105,7 @@ export default function HealthMetricsPage() {
     );
   }
 
-  const { logs, summary, alerts } = data || { logs: [], summary: null, alerts: null };
+  const { logs, summary, alerts, insights } = data || { logs: [], summary: null, alerts: null, insights: [] };
 
   // Filter logs by selected metric
   const filteredLogs = logs.filter((log) => log.type === selectedMetric);
@@ -118,7 +126,7 @@ export default function HealthMetricsPage() {
     <PageContainer maxWidth="2xl">
       <div className="space-y-8 animate-fade-in-up">
         {/* Hero Header */}
-        <div className="rounded-2xl bg-hero-brand p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+        <div className="rounded-2xl bg-hero-brand p-6">
           <Button variant="ghost" size="sm" asChild className="mb-3 -ml-2">
             <Link href={`/care/${patientId}`} className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-primary">
               <ArrowLeft className="h-4 w-4" />
@@ -130,7 +138,7 @@ export default function HealthMetricsPage() {
               <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                 Health Tracking
               </span>
-              <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
+              <h1 className="text-2xl font-bold text-text-primary sm:text-3xl lg:text-4xl">
                 Health Metrics
               </h1>
               <p className="text-sm text-text-secondary mt-1">
@@ -138,7 +146,7 @@ export default function HealthMetricsPage() {
               </p>
             </div>
             <Select value={String(dateRange)} onValueChange={(v) => setDateRange(Number(v))}>
-              <SelectTrigger className="w-40 bg-surface">
+              <SelectTrigger className="w-full sm:w-40 bg-surface">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -314,6 +322,76 @@ export default function HealthMetricsPage() {
             )}
           </Card>
         </section>
+
+        {/* Trend Insights */}
+        {insights && insights.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-brand-primary" />
+              Trend Insights
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {insights.map((insight, idx) => (
+                <InsightCard key={`${insight.type}-${insight.pattern}-${idx}`} insight={insight} />
+              ))}
+            </div>
+            <p className="text-xs text-text-muted mt-3">
+              Based on logged data. Share with the care team for clinical interpretation.
+            </p>
+          </section>
+        )}
+
+        {/* LumiBot Check-ins */}
+        {nudgeData && nudgeData.nudges.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+                <Bot className="h-5 w-5 text-brand-primary" />
+                LumiBot Check-ins
+              </h2>
+              {nudgeData.stats.total > 0 && (
+                <Badge tone="neutral" variant="soft">
+                  {nudgeData.stats.responseRate}% response rate
+                </Badge>
+              )}
+            </div>
+
+            {/* Stats row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="bg-background-subtle rounded-lg p-3 text-center">
+                <p className="text-xl font-semibold text-text-primary">{nudgeData.stats.total}</p>
+                <p className="text-xs text-text-muted">Total</p>
+              </div>
+              <div className="bg-background-subtle rounded-lg p-3 text-center">
+                <p className="text-xl font-semibold text-success">{nudgeData.stats.responded}</p>
+                <p className="text-xs text-text-muted">Responded</p>
+              </div>
+              <div className="bg-background-subtle rounded-lg p-3 text-center">
+                <p className="text-xl font-semibold text-text-secondary">{nudgeData.stats.dismissed}</p>
+                <p className="text-xs text-text-muted">Dismissed</p>
+              </div>
+              <div className="bg-background-subtle rounded-lg p-3 text-center">
+                <p className="text-xl font-semibold text-warning">{nudgeData.stats.pending}</p>
+                <p className="text-xs text-text-muted">Pending</p>
+              </div>
+            </div>
+
+            {/* Recent nudge history */}
+            <Card variant="elevated" padding="none" className="overflow-hidden">
+              <div className="divide-y divide-border-light">
+                {nudgeData.nudges.slice(0, 8).map((nudge) => (
+                  <NudgeHistoryRow key={nudge.id} nudge={nudge} />
+                ))}
+              </div>
+            </Card>
+          </section>
+        )}
+
+        {/* Symptom Check Timeline */}
+        <SymptomTimeline nudges={nudgeData?.nudges} />
+
+        {/* Side Effects Timeline */}
+        <SideEffectsTimeline nudges={nudgeData?.nudges} />
 
         {/* Recent Readings Table */}
         <section>
@@ -544,4 +622,262 @@ function getYAxisDomain(metric: MetricType): [number, number] | ['auto', 'auto']
     default:
       return ['auto', 'auto'];
   }
+}
+
+// =============================================================================
+// Trend Insight Card
+// =============================================================================
+
+function InsightCard({ insight }: { insight: CareTrendInsight }) {
+  const severityConfig = {
+    positive: { bg: 'bg-success/10', border: 'border-success/20', icon: 'text-success', iconBg: 'bg-success/20' },
+    info: { bg: 'bg-brand-primary/10', border: 'border-brand-primary/20', icon: 'text-brand-primary', iconBg: 'bg-brand-primary/20' },
+    attention: { bg: 'bg-warning/10', border: 'border-warning/20', icon: 'text-warning-dark', iconBg: 'bg-warning/20' },
+    concern: { bg: 'bg-error/10', border: 'border-error/20', icon: 'text-error', iconBg: 'bg-error/20' },
+  };
+
+  const config = severityConfig[insight.severity] || severityConfig.info;
+
+  const trendIcon = insight.data.trend === 'up'
+    ? <TrendingUp className="h-4 w-4" />
+    : insight.data.trend === 'down'
+    ? <TrendingDown className="h-4 w-4" />
+    : <Minus className="h-4 w-4" />;
+
+  return (
+    <Card variant="flat" padding="md" className={cn('border', config.bg, config.border)}>
+      <div className="flex items-start gap-3">
+        <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg shrink-0', config.iconBg, config.icon)}>
+          {trendIcon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-text-primary">{insight.title}</p>
+          <p className="text-sm text-text-secondary mt-0.5">{insight.message}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// =============================================================================
+// Nudge History Row
+// =============================================================================
+
+function NudgeHistoryRow({ nudge }: { nudge: NudgeHistoryItem }) {
+  const date = new Date(nudge.createdAt);
+  const isCompleted = nudge.status === 'completed';
+  const isDismissed = nudge.status === 'dismissed';
+  const isPending = nudge.status === 'pending' || nudge.status === 'active';
+
+  const getStatusIcon = () => {
+    if (isCompleted) return <CheckCircle className="h-4 w-4 text-success" />;
+    if (isDismissed) return <XCircle className="h-4 w-4 text-text-muted" />;
+    return <Clock className="h-4 w-4 text-warning" />;
+  };
+
+  const getResponseLabel = () => {
+    if (!nudge.responseValue) return null;
+    const val = typeof nudge.responseValue === 'string'
+      ? nudge.responseValue
+      : (nudge.responseValue as Record<string, unknown>)?.response as string | undefined;
+
+    if (!val) return null;
+    const labels: Record<string, { text: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+      got_it: { text: 'Got it', tone: 'success' },
+      taking_it: { text: 'Taking it', tone: 'success' },
+      good: { text: 'Feeling good', tone: 'success' },
+      okay: { text: 'Feeling okay', tone: 'neutral' },
+      not_yet: { text: 'Not yet', tone: 'warning' },
+      having_trouble: { text: 'Having trouble', tone: 'danger' },
+      issues: { text: 'Issues reported', tone: 'danger' },
+      none: { text: 'No side effects', tone: 'success' },
+      mild: { text: 'Mild side effects', tone: 'warning' },
+      concerning: { text: 'Concerning effects', tone: 'danger' },
+      took_it: { text: 'Took it', tone: 'success' },
+      skipped_it: { text: 'Skipped', tone: 'warning' },
+    };
+    const label = labels[val];
+    if (!label) return <Badge tone="neutral" variant="soft" size="sm">{val}</Badge>;
+    return <Badge tone={label.tone} variant="soft" size="sm">{label.text}</Badge>;
+  };
+
+  const getNudgeTypeIcon = () => {
+    switch (nudge.actionType) {
+      case 'log_bp':
+      case 'log_glucose':
+      case 'log_weight':
+        return <Heart className="h-4 w-4 text-brand-primary" />;
+      case 'symptom_check':
+        return <MessageCircle className="h-4 w-4 text-warning" />;
+      case 'side_effects':
+        return <AlertTriangle className="h-4 w-4 text-error" />;
+      case 'pickup_check':
+      case 'started_check':
+      case 'feeling_check':
+        return <Pill className="h-4 w-4 text-info" />;
+      default:
+        return <Bot className="h-4 w-4 text-text-muted" />;
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 px-5 py-3">
+      <div className="shrink-0">{getNudgeTypeIcon()}</div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-text-primary truncate">{nudge.title}</p>
+        <p className="text-xs text-text-muted truncate">{nudge.message}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {getResponseLabel()}
+        {getStatusIcon()}
+      </div>
+      <div className="text-xs text-text-muted shrink-0 w-20 text-right">
+        {format(date, 'MMM d')}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Symptom Check Timeline
+// =============================================================================
+
+function SymptomTimeline({ nudges }: { nudges?: NudgeHistoryItem[] }) {
+  const symptomNudges = (nudges || []).filter(
+    (n) => n.actionType === 'symptom_check' && n.status === 'completed' && n.responseValue
+  );
+
+  if (symptomNudges.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+        <MessageCircle className="h-5 w-5 text-warning" />
+        Symptom Check History
+      </h2>
+      <Card variant="elevated" padding="none" className="overflow-hidden">
+        <div className="divide-y divide-border-light">
+          {symptomNudges.slice(0, 10).map((nudge) => {
+            const date = new Date(nudge.completedAt || nudge.createdAt);
+            const response = nudge.responseValue;
+            const data = typeof response === 'object' ? response as Record<string, unknown> : null;
+
+            return (
+              <div key={nudge.id} className="px-5 py-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-text-primary">{nudge.title}</p>
+                  <span className="text-xs text-text-muted">{format(date, 'MMM d, h:mm a')}</span>
+                </div>
+                {data && (
+                  <div className="flex flex-wrap gap-2">
+                    {data.breathingDifficulty != null && (
+                      <Badge tone={Number(data.breathingDifficulty) >= 4 ? 'danger' : Number(data.breathingDifficulty) >= 3 ? 'warning' : 'success'} variant="soft" size="sm">
+                        Breathing: {String(data.breathingDifficulty)}/5
+                      </Badge>
+                    )}
+                    {data.swelling != null && data.swelling !== 'none' && (
+                      <Badge tone={data.swelling === 'severe' ? 'danger' : 'warning'} variant="soft" size="sm">
+                        Swelling: {String(data.swelling)}
+                      </Badge>
+                    )}
+                    {data.energyLevel != null && (
+                      <Badge tone={Number(data.energyLevel) <= 2 ? 'danger' : Number(data.energyLevel) <= 3 ? 'warning' : 'success'} variant="soft" size="sm">
+                        Energy: {String(data.energyLevel)}/5
+                      </Badge>
+                    )}
+                    {data.cough === true && (
+                      <Badge tone="warning" variant="soft" size="sm">Cough present</Badge>
+                    )}
+                    {data.orthopnea === true && (
+                      <Badge tone="danger" variant="soft" size="sm">Orthopnea</Badge>
+                    )}
+                  </div>
+                )}
+                {typeof response === 'string' && (
+                  <p className="text-sm text-text-secondary">{response}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+// =============================================================================
+// Side Effects Timeline
+// =============================================================================
+
+function SideEffectsTimeline({ nudges }: { nudges?: NudgeHistoryItem[] }) {
+  const sideEffectNudges = (nudges || []).filter(
+    (n) => n.actionType === 'side_effects' && n.status === 'completed' && n.responseValue
+  );
+
+  // Also include feeling_check with "issues" and medication trouble responses
+  const troubleNudges = (nudges || []).filter((n) => {
+    if (n.status !== 'completed' || !n.responseValue) return false;
+    const val = typeof n.responseValue === 'string'
+      ? n.responseValue
+      : (n.responseValue as Record<string, unknown>)?.response;
+    return val === 'having_trouble' || val === 'issues' || val === 'concerning';
+  });
+
+  const allRelevant = [...sideEffectNudges, ...troubleNudges]
+    .filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i) // deduplicate
+    .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+
+  if (allRelevant.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+        <AlertTriangle className="h-5 w-5 text-error" />
+        Side Effects &amp; Medication Issues
+      </h2>
+      <Card variant="elevated" padding="none" className="overflow-hidden">
+        <div className="divide-y divide-border-light">
+          {allRelevant.slice(0, 10).map((nudge) => {
+            const date = new Date(nudge.completedAt || nudge.createdAt);
+            const medName = nudge.context?.medicationName as string | undefined;
+            const response = typeof nudge.responseValue === 'string'
+              ? nudge.responseValue
+              : (nudge.responseValue as Record<string, unknown>)?.response as string | undefined;
+
+            const severityLabel = response === 'concerning'
+              ? { text: 'Concerning', tone: 'danger' as const }
+              : response === 'mild'
+              ? { text: 'Mild', tone: 'warning' as const }
+              : { text: 'Issues', tone: 'warning' as const };
+
+            return (
+              <div key={nudge.id} className="flex items-center gap-3 px-5 py-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-error/10 shrink-0">
+                  <Pill className="h-4 w-4 text-error" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text-primary">
+                    {medName || nudge.title}
+                  </p>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    {nudge.message}
+                  </p>
+                </div>
+                <Badge tone={severityLabel.tone} variant="soft" size="sm">
+                  {severityLabel.text}
+                </Badge>
+                <span className="text-xs text-text-muted shrink-0">
+                  {format(date, 'MMM d')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+      <p className="text-xs text-text-muted mt-3 flex items-start gap-1.5">
+        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        Medication side effects reported through LumiBot check-ins. Discuss with the care team.
+      </p>
+    </section>
+  );
 }

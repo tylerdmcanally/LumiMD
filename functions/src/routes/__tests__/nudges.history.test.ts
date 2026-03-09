@@ -234,7 +234,7 @@ describe('nudges history route', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body).toHaveLength(2);
     expect((res.body as Array<{ id: string }>).map((item) => item.id)).toEqual([
       'nudge-2',

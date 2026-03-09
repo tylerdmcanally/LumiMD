@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
     },
     content: {
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     },
     input: {
         fontSize: 64,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         textAlign: 'center',
         minWidth: 150,
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
     },
     unit: {
         fontSize: 24,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: Colors.textMuted,
         marginLeft: spacing(2),
         marginBottom: spacing(2),
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
         paddingTop: spacing(4),
     },
     submitButton: {
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.accent,
         paddingVertical: spacing(4),
         borderRadius: Radius.md,
         alignItems: 'center',
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     submitButtonText: {
         color: '#fff',
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     buttonPressed: {
         opacity: 0.8,

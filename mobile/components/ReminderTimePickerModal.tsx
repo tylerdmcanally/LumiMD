@@ -160,7 +160,7 @@ const pickerStyles = StyleSheet.create({
     },
     label: {
         fontSize: 11,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
@@ -187,7 +187,7 @@ const pickerStyles = StyleSheet.create({
     },
     optionText: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
     },
     optionTextSelected: {
@@ -209,7 +209,7 @@ const pickerStyles = StyleSheet.create({
     },
     periodText: {
         fontSize: 14,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
     },
     periodTextActive: {
@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
     },
     subtitle: {
@@ -496,13 +496,13 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     saveButton: {
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.accent,
         paddingHorizontal: spacing(4),
         width: 'auto',
     },
     saveText: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: '#fff',
     },
     scrollContent: {
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
     },
     timeText: {
         fontSize: 18,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
     },
     removeButton: {
@@ -573,7 +573,7 @@ const styles = StyleSheet.create({
     },
     addButtonText: {
         fontSize: 15,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: Colors.primary,
     },
     inlinePicker: {
@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
     },
     timingLabel: {
         fontSize: 11,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
@@ -607,12 +607,12 @@ const styles = StyleSheet.create({
     },
     timingOptionText: {
         fontSize: 14,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: Colors.text,
     },
     timingOptionTextSelected: {
         color: Colors.primary,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     timingHint: {
         fontSize: 12,
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     },
     anchorLabel: {
         fontSize: 11,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
         textTransform: 'uppercase',
         letterSpacing: 0.5,

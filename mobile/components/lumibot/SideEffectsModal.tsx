@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
     },
     scrollContent: {
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         fontSize: 20,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
         marginBottom: spacing(1),
     },
@@ -283,11 +283,11 @@ const styles = StyleSheet.create({
     },
     chipTextSelected: {
         color: '#fff',
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     notesLabel: {
         fontSize: 14,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: Colors.text,
         marginBottom: spacing(2),
     },
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
         borderTopColor: Colors.stroke,
     },
     submitButton: {
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.accent,
         paddingVertical: spacing(4),
         borderRadius: Radius.md,
         alignItems: 'center',
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     submitButtonText: {
         color: '#fff',
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     buttonPressed: {
         opacity: 0.8,

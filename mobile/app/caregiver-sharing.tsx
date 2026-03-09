@@ -684,8 +684,9 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
+    letterSpacing: -0.3,
   },
   addButton: {
     padding: spacing(1),
@@ -717,7 +718,7 @@ const styles = StyleSheet.create({
   },
   securityTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
     marginBottom: 2,
   },
@@ -736,7 +737,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   sectionCount: {
@@ -747,7 +748,7 @@ const styles = StyleSheet.create({
   },
   sectionCountText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
   caregiverCard: {
@@ -772,11 +773,11 @@ const styles = StyleSheet.create({
   avatarText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
   },
   caregiverName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   caregiverRelation: {
@@ -791,7 +792,7 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     textTransform: 'uppercase',
   },
   permissionsRow: {
@@ -816,7 +817,7 @@ const styles = StyleSheet.create({
   },
   permissionText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
   },
   permissionTextActive: {
@@ -847,12 +848,12 @@ const styles = StyleSheet.create({
   },
   manageButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
   manageButtonTextDanger: {
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.error,
   },
   disabledButton: {
@@ -872,7 +873,7 @@ const styles = StyleSheet.create({
   },
   addCaregiverText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
   helpText: {
@@ -890,7 +891,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   emptyBody: {
@@ -918,7 +919,7 @@ const styles = StyleSheet.create({
   },
   errorTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
   },
   errorBody: {
@@ -936,7 +937,7 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   modalOverlay: {
     flex: 1,
@@ -951,7 +952,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
   },
   modalSubtitle: {
@@ -964,7 +965,7 @@ const styles = StyleSheet.create({
     marginTop: spacing(3),
     marginBottom: spacing(1),
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
   },
   input: {
@@ -1001,7 +1002,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: Colors.text,
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   sendButton: {
     backgroundColor: Colors.primary,
@@ -1009,6 +1010,6 @@ const styles = StyleSheet.create({
   sendButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });

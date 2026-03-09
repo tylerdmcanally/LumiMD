@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     buttonText: {
         color: '#FFFFFF',
         fontSize: 13,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     // Menu styles
     menuOverlay: {
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     },
     menuTitle: {
         fontSize: 18,
-        fontWeight: '600',
+        fontFamily: 'Fraunces_600SemiBold',
         color: Colors.text,
         textAlign: 'center',
         marginBottom: spacing(4),
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     },
     menuItemText: {
         fontSize: 18,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: Colors.text,
     },
     cancelItem: {

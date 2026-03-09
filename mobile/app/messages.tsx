@@ -78,7 +78,7 @@ function EmptyState() {
   return (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconContainer}>
-        <Ionicons name="mail-outline" size={48} color={Colors.textSecondary} />
+        <Ionicons name="mail-outline" size={48} color={Colors.textMuted} />
       </View>
       <Text style={styles.emptyTitle}>No messages yet</Text>
       <Text style={styles.emptySubtitle}>
@@ -176,8 +176,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(3),
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.border,
   },
@@ -190,9 +190,10 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   headerSpacer: {
     width: 40,
@@ -201,27 +202,27 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing(4),
   },
   loadingText: {
     fontSize: 16,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
   },
   listContent: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
+    padding: spacing(4),
+    paddingBottom: spacing(6),
   },
   separator: {
-    height: spacing.sm,
+    height: spacing(3),
   },
   // Message card
   messageCard: {
-    padding: spacing.md,
+    padding: spacing(4),
   },
   messageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing(3),
   },
   avatarContainer: {
     width: 44,
@@ -230,11 +231,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: spacing.sm,
+    marginRight: spacing(3),
   },
   avatarText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: Colors.primary,
   },
   headerText: {
@@ -242,12 +243,12 @@ const styles = StyleSheet.create({
   },
   senderName: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: Colors.text,
   },
   timestamp: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
     marginTop: 2,
   },
   messageText: {
@@ -260,27 +261,27 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing(6),
   },
   emptyIconContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor: Colors.surfaceWarm,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing(4),
   },
   emptyTitle: {
     fontSize: 22,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
-    marginBottom: spacing.xs,
+    marginBottom: spacing(2),
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 16,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
   },

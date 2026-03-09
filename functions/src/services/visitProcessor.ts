@@ -9,6 +9,7 @@ import { normalizeMedicationName } from './medicationSafety';
 import { resolveActionDueDate, resolveVisitReferenceDate } from '../utils/actionDueDate';
 import { getAssemblyAIService } from './assemblyai';
 import { analyzeVisitWithDelta } from './lumibotAnalyzer';
+import { generateVisitWalkthrough } from './walkthroughGenerator';
 import { getNotificationService } from './notifications';
 import { sendVisitPdfToAllCaregivers } from './caregiverEmailService';
 import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
@@ -468,6 +469,26 @@ export async function summarizeVisit({
         if (result.sent > 0 || result.failed > 0) {
           functions.logger.info(
             `[visitProcessor] Caregiver emails for visit ${visitRef.id}: sent=${result.sent}, failed=${result.failed}`
+          );
+        }
+      })(),
+
+      // 6. LumiBot: Generate post-visit walkthrough from existing summary data
+      (async () => {
+        const walkthrough = generateVisitWalkthrough(summary);
+        if (walkthrough) {
+          await visitRef.update({ walkthrough });
+          functions.logger.info(
+            `[visitProcessor] Walkthrough generated for visit ${visitRef.id}`,
+            {
+              diagnoses: walkthrough.steps.whatHappened.diagnoses.length,
+              medsStarted: walkthrough.steps.whatChanged.medicationsStarted.length,
+              questions: walkthrough.suggestedQuestions.length,
+            }
+          );
+        } else {
+          functions.logger.info(
+            `[visitProcessor] No walkthrough generated for visit ${visitRef.id} (no meaningful content)`
           );
         }
       })(),

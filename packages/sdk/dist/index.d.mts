@@ -294,6 +294,23 @@ interface ShareInvite {
 type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight' | 'followup';
 type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
 type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'pickup_check' | 'started_check' | 'feeling_check' | 'side_effects' | 'symptom_check' | 'acknowledge' | 'view_insight';
+interface NudgeContext {
+    visitId?: string;
+    visitDate?: string;
+    providerName?: string;
+    diagnosisName?: string;
+    medicationName?: string;
+    medicationDose?: string;
+    medicationStartDate?: string;
+    daysSinceMedStart?: number;
+    lastReading?: {
+        value: string;
+        date: string;
+        alertLevel?: AlertLevel;
+    };
+    readingCount?: number;
+    trackingReason?: string;
+}
 interface Nudge {
     id: string;
     userId: string;
@@ -312,6 +329,7 @@ interface Nudge {
     completedAt?: string;
     dismissedAt?: string;
     createdAt: string;
+    context?: NudgeContext;
 }
 type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
 type HealthLogSource = 'manual' | 'nudge' | 'quick_log' | 'healthkit';
@@ -397,6 +415,27 @@ interface CreateHealthLogRequest {
 interface CreateHealthLogResponse extends HealthLog {
     shouldShowAlert?: boolean;
 }
+interface TrendInsight {
+    type: 'weight' | 'bp' | 'glucose';
+    pattern: string;
+    severity: 'positive' | 'info' | 'attention' | 'concern';
+    title: string;
+    message: string;
+    data: {
+        currentValue?: number;
+        previousValue?: number;
+        changeAmount?: number;
+        changePercent?: number;
+        daysAnalyzed: number;
+        trend?: 'up' | 'down' | 'stable';
+    };
+}
+interface HealthInsightsResponse {
+    insights: TrendInsight[];
+    period: string;
+    logCount: number;
+    message?: string;
+}
 interface UpdateNudgeRequest {
     status: 'completed' | 'snoozed' | 'dismissed';
     snoozeDays?: number;
@@ -443,6 +482,79 @@ interface UpdateMedicationReminderRequest {
 }
 interface MedicationRemindersResponse {
     reminders: MedicationReminder[];
+}
+interface WalkthroughDiagnosis {
+    name: string;
+    isNew: boolean;
+    plainEnglish: string;
+}
+interface WalkthroughMedicationStarted {
+    name: string;
+    dose: string;
+    frequency: string;
+    plainEnglish: string;
+    disclaimer: string;
+}
+interface WalkthroughMedicationStopped {
+    name: string;
+    plainEnglish: string;
+}
+interface WalkthroughMedicationChanged {
+    name: string;
+    change: string;
+    plainEnglish: string;
+}
+interface WalkthroughActionItem {
+    description: string;
+    dueDate?: string;
+    type?: string;
+}
+interface WalkthroughTrackingPlan {
+    what: string;
+    why: string;
+    when: string;
+}
+interface WalkthroughFollowUp {
+    description: string;
+    dueBy?: string;
+}
+interface WalkthroughSuggestedQuestion {
+    question: string;
+    answer: string;
+    source: 'visit_education' | 'general';
+}
+interface VisitWalkthrough {
+    generatedAt: string;
+    steps: {
+        whatHappened: {
+            title: string;
+            diagnoses: WalkthroughDiagnosis[];
+            keyTopics: string[];
+            flagPrompt: string;
+        };
+        whatChanged: {
+            title: string;
+            medicationsStarted: WalkthroughMedicationStarted[];
+            medicationsStopped: WalkthroughMedicationStopped[];
+            medicationsChanged: WalkthroughMedicationChanged[];
+            newActionItems: WalkthroughActionItem[];
+        };
+        whatsNext: {
+            title: string;
+            trackingPlans: WalkthroughTrackingPlan[];
+            followUps: WalkthroughFollowUp[];
+            closingMessage: string;
+        };
+    };
+    suggestedQuestions: WalkthroughSuggestedQuestion[];
+}
+interface VisitAskRequest {
+    question: string;
+}
+interface VisitAskResponse {
+    answer: string;
+    source: 'visit_education' | 'visit_summary' | 'ai_generated';
+    disclaimer: string;
 }
 
 /**
@@ -509,6 +621,11 @@ declare function createApiClient(config: ApiClientConfig): {
         }>;
         skipMedicationConfirmation: (id: string) => Promise<{
             success: boolean;
+        }>;
+        ask: (id: string, question: string) => Promise<{
+            answer: string;
+            source: string;
+            disclaimer: string;
         }>;
     };
     actions: {
@@ -606,6 +723,10 @@ declare function createApiClient(config: ApiClientConfig): {
         }) => Promise<HealthLog[]>;
         create: (data: CreateHealthLogRequest) => Promise<CreateHealthLogResponse>;
         delete: (id: string) => Promise<void>;
+        insights: (params?: {
+            type?: string;
+            days?: number;
+        }) => Promise<HealthInsightsResponse>;
         summary: (days?: number) => Promise<HealthLogSummaryResponse>;
         export: (days?: number) => Promise<any>;
         providerReport: () => Promise<Blob>;
@@ -650,6 +771,7 @@ declare const queryKeys: {
     nudges: readonly ["nudges"];
     healthLogs: readonly ["healthLogs"];
     healthLogsSummary: readonly ["healthLogs", "summary"];
+    healthInsights: readonly ["healthLogs", "insights"];
 };
 type ApiQueryOptions<TData> = Omit<UseQueryOptions<TData, Error, TData, QueryKey>, 'queryFn' | 'queryKey'> & {
     queryKey?: QueryKey;
@@ -682,6 +804,10 @@ declare function createApiHooks(api: ApiClient): {
         limit?: number;
     }, options?: ApiQueryOptions<HealthLog[]>) => _tanstack_react_query.UseQueryResult<HealthLog[], Error>;
     useHealthLogsSummary: (days?: number, options?: ApiQueryOptions<HealthLogSummaryResponse>) => _tanstack_react_query.UseQueryResult<HealthLogSummaryResponse, Error>;
+    useHealthInsights: (params?: {
+        type?: string;
+        days?: number;
+    }, options?: ApiQueryOptions<HealthInsightsResponse>) => _tanstack_react_query.UseQueryResult<HealthInsightsResponse, Error>;
     useUpdateNudge: () => _tanstack_react_query.UseMutationResult<NudgeUpdateResponse, Error, {
         id: string;
         data: UpdateNudgeRequest;
@@ -723,4 +849,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CalendarEventEntry, type CaregiverMessage, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, FOLLOW_UP_CATEGORY_LABELS, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CalendarEventEntry, type CaregiverMessage, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, FOLLOW_UP_CATEGORY_LABELS, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthInsightsResponse, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeContext, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type TrendInsight, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitAskRequest, type VisitAskResponse, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type VisitWalkthrough, type WalkthroughActionItem, type WalkthroughDiagnosis, type WalkthroughFollowUp, type WalkthroughMedicationChanged, type WalkthroughMedicationStarted, type WalkthroughMedicationStopped, type WalkthroughSuggestedQuestion, type WalkthroughTrackingPlan, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

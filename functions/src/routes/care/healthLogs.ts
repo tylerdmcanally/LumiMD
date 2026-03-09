@@ -4,6 +4,7 @@ import { AuthRequest, requireAuth } from '../../middlewares/auth';
 import { ensureCaregiverAccessOrReject } from '../../middlewares/caregiverAccess';
 import { createDomainServiceContainer } from '../../services/domain/serviceContainer';
 import { RepositoryValidationError } from '../../services/repositories/common/errors';
+import { analyzeTrends } from '../../services/trendAnalyzer';
 
 type RegisterCareHealthLogRoutesOptions = {
   getDb: () => FirebaseFirestore.Firestore;
@@ -178,6 +179,14 @@ export function registerCareHealthLogRoutes(
         caution: responseLogs.filter((l) => l.alertLevel === 'caution').length,
       };
 
+      // Compute trend insights from logs
+      const trendLogs = logs.map((data) => ({
+        type: data.type as string,
+        value: data.value as Record<string, unknown>,
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+      }));
+      const insights = analyzeTrends(trendLogs);
+
       res.set('Cache-Control', 'private, no-cache');
       res.json({
         logs: responseLogs,
@@ -187,6 +196,7 @@ export function registerCareHealthLogRoutes(
           weight: weightSummary,
         },
         alerts: alertCounts,
+        insights,
         period: {
           days: daysNum,
           from: startDate.toISOString(),

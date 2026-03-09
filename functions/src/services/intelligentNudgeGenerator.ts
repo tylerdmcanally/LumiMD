@@ -52,9 +52,14 @@ Safety rules:
 - Do not suggest stopping, changing, or adjusting medications
 - Do not interpret lab values or vital signs as good/bad beyond general trends
 - If user reported concerning symptoms, acknowledge but do not triage
+- Never state or imply that a medication is responsible for changes in health metrics
+- Never correlate medication start dates with trend changes
+- Never use phrases like "since starting [medication]", "[medication] appears to be working", or "[medication] is helping"
+- Present data trends factually. Let the patient's care team interpret clinical significance.
+- Always recommend consulting the care team for clinical questions
 
 Synthesize context into observations like:
-- "Your BP has been stable since starting [med] - great progress."
+- "Your BP has been steady lately — a quick reading helps keep the picture clear."
 - "I notice you haven't logged glucose in 5 days - want to do a quick check?"
 - "You mentioned some concerns recently - worth discussing at your next visit."
 
@@ -151,6 +156,21 @@ export class IntelligentNudgeGenerator {
             const hasRedFlag = redFlags.some(flag => sanitizedMessage.toLowerCase().includes(flag));
             if (hasRedFlag) {
                 functions.logger.warn('[IntelligentNudge] AI output contained red flag, using fallback');
+                return this.getFallbackNudge(purpose);
+            }
+
+            // Check for unsafe medication-attribution patterns
+            const unsafePatterns = [
+                /since (starting|beginning|taking)/i,
+                /appears to be working/i,
+                /is (working|helping|effective)/i,
+                /caused by|causing/i,
+                /you should (stop|start|increase|decrease|change)/i,
+                /diagnosis|diagnose/i,
+            ];
+            const hasUnsafePattern = unsafePatterns.some(p => p.test(sanitizedMessage));
+            if (hasUnsafePattern) {
+                functions.logger.warn('[IntelligentNudge] AI output matched unsafe pattern, using fallback');
                 return this.getFallbackNudge(purpose);
             }
 

@@ -23,6 +23,7 @@ import type {
   Nudge,
   HealthLog,
   HealthLogSummaryResponse,
+  HealthInsightsResponse,
   Share,
   ShareInvite,
 } from '@lumimd/sdk';
@@ -546,6 +547,16 @@ export function useHealthLogsSummary(
   return hooks.useHealthLogsSummary(days, {
     ...options,
     queryKey: [...queryKeys.healthLogsSummary, days ?? null, getSessionKey()],
+  });
+}
+
+export function useHealthInsights(
+  params?: { type?: string; days?: number },
+  options?: ApiHookQueryOptions<HealthInsightsResponse>,
+) {
+  return hooks.useHealthInsights(params, {
+    ...options,
+    queryKey: [...queryKeys.healthInsights, params ?? null, getSessionKey()],
   });
 }
 

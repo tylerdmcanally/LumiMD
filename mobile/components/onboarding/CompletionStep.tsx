@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 32,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         marginBottom: spacing(2),
     },
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     },
     featuresTitle: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
         marginBottom: spacing(4),
     },
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     featureText: {
         fontSize: 16,
         color: Colors.text,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
     },
     footer: {
         paddingBottom: spacing(4),
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     primaryButtonText: {
         color: '#fff',
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     secondaryButton: {
         borderWidth: 1,
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     secondaryButtonText: {
         color: Colors.text,
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     backButton: {
         position: 'absolute',

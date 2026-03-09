@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 26,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         marginBottom: spacing(2),
         textAlign: 'center',
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     },
     sectionLabel: {
         fontSize: 14,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
         marginBottom: spacing(2),
         textTransform: 'uppercase',
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
     },
     caregiverName: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
     },
     caregiverEmail: {
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
     },
     formLabel: {
         fontSize: 14,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.textMuted,
         marginBottom: spacing(3),
         textTransform: 'uppercase',
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
     },
     label: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
         marginBottom: spacing(2),
     },
@@ -532,7 +532,7 @@ const styles = StyleSheet.create({
     },
     pickerOptionTextSelected: {
         color: Colors.primary,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     addAnotherButton: {
         flexDirection: 'row',
@@ -548,7 +548,7 @@ const styles = StyleSheet.create({
     },
     addAnotherButtonText: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.primary,
     },
     footer: {
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     buttonText: {
         color: '#fff',
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     skipButton: {
         alignItems: 'center',

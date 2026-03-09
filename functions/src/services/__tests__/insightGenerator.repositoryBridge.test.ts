@@ -80,10 +80,16 @@ describe('InsightGenerator repository bridge', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-02-22T12:00:00.000Z'));
     (firestoreMock as any).Timestamp = {
       now: () => makeTimestamp('2026-02-22T12:00:00.000Z'),
       fromDate: (value: Date) => makeTimestamp(value),
     };
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('uses insight domain methods for generation checks and cached reads', async () => {

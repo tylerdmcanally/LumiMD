@@ -1,12 +1,15 @@
 /**
  * LumiBotContainer Component
- * 
+ *
  * Self-contained component that fetches nudges and manages all LumiBot interactions.
  * Uses realtime Firestore listener for instant updates when nudges are created.
+ *
+ * v2: Shows PostLogFeedback with trend context after logging readings.
  */
 
 import React, { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import { LumiBotBanner } from './LumiBotBanner';
 import { BPLogModal } from './BPLogModal';
 import { GlucoseLogModal } from './GlucoseLogModal';
@@ -17,13 +20,15 @@ import { SymptomCheckModal } from './SymptomCheckModal';
 import type { SymptomCheckValue } from './SymptomCheckModal';
 import type { SideEffectResponse } from './SideEffectsModal';
 import { SafetyAlert } from './SafetyAlert';
+import { PostLogFeedback } from './PostLogFeedback';
+import type { RecentReading } from './PostLogFeedback';
 import {
     useRealtimeNudges,
     useUpdateNudge,
     useRespondToNudge,
     useCreateHealthLog,
 } from '../../lib/api/hooks';
-import type { Nudge, AlertLevel, BloodPressureValue, GlucoseValue } from '@lumimd/sdk';
+import type { Nudge, AlertLevel, BloodPressureValue, GlucoseValue, HealthLogType } from '@lumimd/sdk';
 
 
 export interface LumiBotContainerProps {
@@ -31,7 +36,24 @@ export interface LumiBotContainerProps {
     enabled?: boolean;
 }
 
+/** Format a BP or glucose value for display */
+function formatLogValue(type: HealthLogType, value: unknown): string {
+    const v = value as Record<string, unknown>;
+    if (type === 'bp' && typeof v.systolic === 'number' && typeof v.diastolic === 'number') {
+        return `${v.systolic}/${v.diastolic}`;
+    }
+    if (type === 'glucose' && typeof v.reading === 'number') {
+        return `${v.reading} mg/dL`;
+    }
+    if (type === 'weight' && typeof v.weight === 'number') {
+        return `${v.weight} ${v.unit || 'lbs'}`;
+    }
+    return '';
+}
+
 export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerProps) {
+    const router = useRouter();
+
     // State
     const [activeBPNudge, setActiveBPNudge] = useState<Nudge | null>(null);
     const [activeGlucoseNudge, setActiveGlucoseNudge] = useState<Nudge | null>(null);
@@ -43,6 +65,15 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         level: AlertLevel;
         message: string;
     }>({ visible: false, level: 'normal', message: '' });
+
+    // v2: Post-log feedback state
+    const [postLogFeedback, setPostLogFeedback] = useState<{
+        visible: boolean;
+        currentValue: string;
+        alertLevel: AlertLevel;
+        healthLogType: HealthLogType;
+        recentReadings: RecentReading[];
+    }>({ visible: false, currentValue: '', alertLevel: 'normal', healthLogType: 'bp', recentReadings: [] });
 
     // Queries and Mutations - use realtime hook for instant updates
     const { data: nudges = [], isLoading } = useRealtimeNudges(userId, { enabled });
@@ -63,8 +94,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
     const handleRespondToNudge = useCallback((id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning'; note?: string; sideEffects?: string[] }) => {
         respondToNudge.mutate({ id, data }, {
             onSuccess: (result) => {
-                // Show confirmation with context-specific message from API
-                Alert.alert('✓ Response Recorded', result.message);
+                Alert.alert('Response Recorded', result.message);
             },
             onError: (err) => {
                 Alert.alert('Error', 'Failed to save response. Please try again.');
@@ -101,11 +131,53 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         } else if (nudge.actionType === 'symptom_check') {
             setActiveSymptomCheckNudge(nudge);
         } else {
-            // Fallback for other action types
             Alert.alert('Coming Soon', 'This log type will be available soon!');
         }
     }, []);
 
+    /** Show post-log feedback or safety alert based on alert level */
+    const showPostLogResult = useCallback((
+        type: HealthLogType,
+        value: unknown,
+        alertLevel: AlertLevel | undefined,
+        alertMessage: string | undefined,
+        shouldShowAlert: boolean | undefined,
+        nudge: Nudge | null,
+    ) => {
+        const level = alertLevel || 'normal';
+
+        // Emergency → SafetyAlert only (unchanged)
+        if (level === 'emergency' && shouldShowAlert && alertMessage) {
+            setSafetyAlert({ visible: true, level, message: alertMessage });
+            return;
+        }
+
+        // Warning with alert → SafetyAlert (keep existing behavior)
+        if (level === 'warning' && shouldShowAlert && alertMessage) {
+            setSafetyAlert({ visible: true, level, message: alertMessage });
+            return;
+        }
+
+        // Normal or caution → PostLogFeedback with context
+        const formatted = formatLogValue(type, value);
+        const recentReadings: RecentReading[] = [];
+
+        // Pull last reading from nudge context if available
+        if (nudge?.context?.lastReading) {
+            recentReadings.push({
+                value: nudge.context.lastReading.value,
+                date: nudge.context.lastReading.date,
+            });
+        }
+
+        setPostLogFeedback({
+            visible: true,
+            currentValue: formatted,
+            alertLevel: level,
+            healthLogType: type,
+            recentReadings,
+        });
+    }, []);
 
     const handleBPSubmit = useCallback(async (value: BloodPressureValue) => {
         try {
@@ -116,16 +188,9 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 source: activeBPNudge ? 'nudge' : 'manual',
             });
 
-            // Check for safety alert
-            if (result.shouldShowAlert && result.alertLevel && result.alertMessage) {
-                setSafetyAlert({
-                    visible: true,
-                    level: result.alertLevel,
-                    message: result.alertMessage,
-                });
-            }
-
+            const nudge = activeBPNudge;
             setActiveBPNudge(null);
+            showPostLogResult('bp', value, result.alertLevel, result.alertMessage, result.shouldShowAlert, nudge);
 
             return {
                 alertLevel: result.alertLevel,
@@ -137,7 +202,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             Alert.alert('Error', 'Failed to save reading. Please try again.');
             return { shouldShowAlert: false };
         }
-    }, [activeBPNudge, createHealthLog]);
+    }, [activeBPNudge, createHealthLog, showPostLogResult]);
 
     const handleGlucoseSubmit = useCallback(async (value: GlucoseValue) => {
         try {
@@ -148,16 +213,9 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 source: activeGlucoseNudge ? 'nudge' : 'manual',
             });
 
-            // Check for safety alert
-            if (result.shouldShowAlert && result.alertLevel && result.alertMessage) {
-                setSafetyAlert({
-                    visible: true,
-                    level: result.alertLevel,
-                    message: result.alertMessage,
-                });
-            }
-
+            const nudge = activeGlucoseNudge;
             setActiveGlucoseNudge(null);
+            showPostLogResult('glucose', value, result.alertLevel, result.alertMessage, result.shouldShowAlert, nudge);
 
             return {
                 alertLevel: result.alertLevel,
@@ -169,11 +227,21 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             Alert.alert('Error', 'Failed to save reading. Please try again.');
             return { shouldShowAlert: false };
         }
-    }, [activeGlucoseNudge, createHealthLog]);
+    }, [activeGlucoseNudge, createHealthLog, showPostLogResult]);
 
     const handleDismissSafetyAlert = useCallback(() => {
         setSafetyAlert({ visible: false, level: 'normal', message: '' });
     }, []);
+
+    const handleDismissPostLogFeedback = useCallback(() => {
+        setPostLogFeedback(prev => ({ ...prev, visible: false }));
+    }, []);
+
+    const handleViewTrend = useCallback(() => {
+        const type = postLogFeedback.healthLogType;
+        setPostLogFeedback(prev => ({ ...prev, visible: false }));
+        router.push({ pathname: '/health', params: { type } });
+    }, [postLogFeedback.healthLogType, router]);
 
     const handleWeightSubmit = useCallback(async (value: WeightValue) => {
         try {
@@ -184,16 +252,9 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 source: activeWeightNudge ? 'nudge' : 'manual',
             });
 
-            // Check for safety alert
-            if (result.shouldShowAlert && result.alertLevel && result.alertMessage) {
-                setSafetyAlert({
-                    visible: true,
-                    level: result.alertLevel,
-                    message: result.alertMessage,
-                });
-            }
-
+            const nudge = activeWeightNudge;
             setActiveWeightNudge(null);
+            showPostLogResult('weight', value, result.alertLevel, result.alertMessage, result.shouldShowAlert, nudge);
 
             return {
                 alertLevel: result.alertLevel,
@@ -205,7 +266,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             Alert.alert('Error', 'Failed to save reading. Please try again.');
             return { shouldShowAlert: false };
         }
-    }, [activeWeightNudge, createHealthLog]);
+    }, [activeWeightNudge, createHealthLog, showPostLogResult]);
 
     const handleSymptomCheckSubmit = useCallback(async (value: SymptomCheckValue) => {
         try {
@@ -216,7 +277,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 source: activeSymptomCheckNudge ? 'nudge' : 'manual',
             });
 
-            // Check if symptoms indicate concern
+            // Symptom checks keep the existing SafetyAlert flow (no PostLogFeedback)
             if (value.breathingDifficulty >= 4 || value.swelling === 'severe') {
                 setSafetyAlert({
                     visible: true,
@@ -292,6 +353,16 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 onDismiss={handleDismissSafetyAlert}
             />
 
+            <PostLogFeedback
+                visible={postLogFeedback.visible}
+                currentValue={postLogFeedback.currentValue}
+                alertLevel={postLogFeedback.alertLevel}
+                healthLogType={postLogFeedback.healthLogType}
+                recentReadings={postLogFeedback.recentReadings}
+                onViewTrend={handleViewTrend}
+                onDismiss={handleDismissPostLogFeedback}
+            />
+
             <SymptomCheckModal
                 visible={activeSymptomCheckNudge !== null}
                 onClose={() => setActiveSymptomCheckNudge(null)}
@@ -299,6 +370,5 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 isSubmitting={createHealthLog.isPending}
             />
         </>
-
     );
 }

@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 24,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         marginBottom: spacing(3),
         textAlign: 'center',
     },
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     emergencyButtonText: {
         color: '#fff',
         fontSize: 20,
-        fontWeight: '700',
+        fontFamily: 'PlusJakartaSans_700Bold',
     },
     dismissButton: {
         paddingVertical: spacing(3),
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     dismissButtonText: {
         fontSize: 16,
         color: Colors.text,
-        fontWeight: '500',
+        fontFamily: 'PlusJakartaSans_500Medium',
     },
     emergencyDismissText: {
         color: '#7F1D1D',

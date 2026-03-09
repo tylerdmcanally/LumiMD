@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 20,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         textAlign: 'center',
     },
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
         marginTop: spacing(3),
     },
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     },
     caregiverName: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
     },
     caregiverEmail: {
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     },
     autoShareLabel: {
         fontSize: 15,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
     },
     autoShareHint: {
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
     shareButtonText: {
         color: '#fff',
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     skipButton: {
         alignItems: 'center',

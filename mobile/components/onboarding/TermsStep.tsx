@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 28,
-        fontWeight: '700',
+        fontFamily: 'Fraunces_700Bold',
         color: Colors.text,
         marginBottom: spacing(2),
         textAlign: 'center',
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     },
     policyTitle: {
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
         color: Colors.text,
         marginBottom: 2,
     },
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     continueButtonText: {
         color: '#fff',
         fontSize: 17,
-        fontWeight: '600',
+        fontFamily: 'PlusJakartaSans_600SemiBold',
     },
     continueButtonTextDisabled: {
         color: Colors.textMuted,

@@ -478,19 +478,19 @@ export default function PatientDetailPage() {
         <PageContainer maxWidth="2xl">
             <div className="space-y-8 animate-fade-in-up">
                 {/* Hero Header */}
-                <div className="rounded-2xl bg-hero-warm p-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+                <div className="rounded-2xl bg-hero-warm p-6">
                     <Button variant="ghost" size="sm" asChild className="mb-3 -ml-2">
                         <Link href="/care" className="inline-flex items-center gap-2 text-text-secondary hover:text-brand-primary">
                             <ArrowLeft className="h-4 w-4" />
                             <span>Back to Care Dashboard</span>
                         </Link>
                     </Button>
-                    <div className="flex items-start justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="space-y-1">
                         <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                             Patient Overview
                         </span>
-                        <h1 className="text-3xl font-bold text-text-primary lg:text-4xl">
+                        <h1 className="text-2xl font-bold text-text-primary sm:text-3xl lg:text-4xl">
                             Quick Summary
                         </h1>
                         <p className="text-sm text-text-secondary">
@@ -511,7 +511,7 @@ export default function PatientDetailPage() {
                             )}
                         </p>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 shrink-0">
                         <Button
                             variant="outline"
                             size="sm"
@@ -519,7 +519,8 @@ export default function PatientDetailPage() {
                             disabled={isRefreshing}
                         >
                             <RefreshCw className={cn('h-4 w-4 mr-2', isRefreshing && 'animate-spin')} />
-                            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                            <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+                            <span className="sm:hidden sr-only">Refresh</span>
                         </Button>
                         <Button
                             variant="outline"
@@ -527,8 +528,9 @@ export default function PatientDetailPage() {
                             onClick={handleExportPrint}
                             disabled={exportFetching}
                         >
-                            <Printer className={cn('h-4 w-4 mr-2', exportFetching && 'animate-pulse')} />
-                            {exportFetching ? 'Generating...' : 'Print Summary'}
+                            <Printer className={cn('h-4 w-4 sm:mr-2', exportFetching && 'animate-pulse')} />
+                            <span className="hidden sm:inline">{exportFetching ? 'Generating...' : 'Print Summary'}</span>
+                            <span className="sm:hidden sr-only">Print</span>
                         </Button>
                     </div>
                     </div>
@@ -643,7 +645,7 @@ export default function PatientDetailPage() {
                         </div>
 
                         {/* Stats */}
-                        <div className="grid grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div className="p-3 rounded-lg bg-success-light text-center">
                                 <p className="text-xl font-bold text-success-dark">{medSummary.taken}</p>
                                 <p className="text-xs text-success-dark">Taken</p>
@@ -1056,7 +1058,7 @@ export default function PatientDetailPage() {
                 {/* Quick Actions */}
                 <section>
                     <h2 className="text-lg font-semibold text-text-primary mb-4">Quick Actions</h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-4">
                         <QuickActionCard
                             href={`/care/${patientId}/health`}
                             icon={<Heart className="h-5 w-5" />}

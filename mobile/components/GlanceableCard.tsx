@@ -1,7 +1,18 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Card, Colors, spacing } from './ui';
+import { Card, Colors, spacing, Radius } from './ui';
 import { Ionicons } from '@expo/vector-icons';
+
+/** Per-card icon color mapping for visual variety */
+const ICON_THEMES: Record<string, { bg: string; fg: string }> = {
+  'checkmark-circle-outline': { bg: Colors.coralMuted, fg: Colors.coral },         // Actions
+  'mail-outline':             { bg: 'rgba(139,92,246,0.12)', fg: '#8B5CF6' },       // Messages (purple)
+  'document-text-outline':    { bg: Colors.primaryMuted, fg: Colors.primary },      // Visits (cyan)
+  'medkit-outline':           { bg: Colors.sageMuted, fg: '#2D9D78' },              // Medications (sage)
+  'today-outline':            { bg: 'rgba(251,191,36,0.12)', fg: '#D97706' },       // Schedule (amber)
+};
+
+const DEFAULT_ICON_THEME = { bg: Colors.primaryMuted, fg: Colors.primary };
 
 export type GlanceableCardProps = {
   title: string;
@@ -11,8 +22,8 @@ export type GlanceableCardProps = {
     text: string;
     color: string;
   };
-  emptyStateText?: string; // Friendly text when count is 0
-  subtitle?: string; // Optional preview text (e.g. latest visit summary)
+  emptyStateText?: string;
+  subtitle?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 };
@@ -28,20 +39,21 @@ export function GlanceableCard({
   onPress
 }: GlanceableCardProps) {
   const isEmpty = count === 0 && emptyStateText;
+  const theme = ICON_THEMES[icon as string] || DEFAULT_ICON_THEME;
 
   return (
-    <Pressable 
+    <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.pressable,
-        pressed && styles.pressed
+        pressed && styles.pressed,
       ]}
     >
-      <Card>
+      <Card style={styles.cardOverride}>
         <View style={styles.container}>
-          {/* Soft icon container */}
-          <View style={styles.iconContainer}>
-            <Ionicons name={icon} size={22} color={Colors.primary} />
+          {/* Icon with per-card color */}
+          <View style={[styles.iconContainer, { backgroundColor: theme.bg }]}>
+            <Ionicons name={icon} size={22} color={theme.fg} />
           </View>
 
           {/* Content */}
@@ -62,6 +74,7 @@ export function GlanceableCard({
                   { backgroundColor: `${statusBadge.color}1A` },
                 ]}
               >
+                <View style={[styles.badgeDot, { backgroundColor: statusBadge.color }]} />
                 <Text style={[styles.badgeText, { color: statusBadge.color }]}>
                   {statusBadge.text}
                 </Text>
@@ -73,9 +86,11 @@ export function GlanceableCard({
               </Text>
             ) : null}
           </View>
-          
+
           {/* Chevron */}
-          <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+          <View style={styles.chevronContainer}>
+            <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+          </View>
         </View>
       </Card>
     </Pressable>
@@ -88,37 +103,42 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+    transform: [{ scale: 0.985 }],
+  },
+  cardOverride: {
+    paddingVertical: spacing(4),
+    paddingHorizontal: spacing(4),
   },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(64,201,208,0.12)', // Soft muted background
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing(3),
+    marginRight: spacing(3.5),
   },
   content: {
     flex: 1,
   },
   title: {
     fontSize: 13,
-    fontFamily: 'PlusJakartaSans_500Medium',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.textMuted,
     marginBottom: spacing(0.5),
-    letterSpacing: 0.1,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
   },
   countRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   count: {
-    fontSize: 26,
-    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 28,
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
     marginRight: spacing(1.5),
     letterSpacing: -0.5,
@@ -131,26 +151,41 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_500Medium',
-    color: Colors.text, // Darker for better readability
+    color: Colors.textWarm,
   },
   badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'flex-start',
-    marginTop: spacing(1),
+    marginTop: spacing(1.5),
     borderRadius: 999,
     paddingHorizontal: spacing(2.5),
-    paddingVertical: spacing(1.5),
+    paddingVertical: spacing(1),
+    gap: spacing(1.5),
+  },
+  badgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   badgeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   subtitle: {
     fontSize: 13,
-    fontFamily: 'PlusJakartaSans_400Regular',
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
     lineHeight: 18,
     marginTop: spacing(1),
   },
+  chevronContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.borderSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing(2),
+  },
 });
-
-

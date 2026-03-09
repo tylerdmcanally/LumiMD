@@ -373,6 +373,7 @@ describe('care quick-overview medication log query optimization', () => {
           completed: false,
           description: 'Call provider',
           dueAt: makeTimestamp('2026-02-09T14:00:00.000Z'),
+          deletedAt: null,
         },
         deletedAction: {
           userId: 'patient-1',
@@ -395,12 +396,12 @@ describe('care quick-overview medication log query optimization', () => {
 
     expect(res.statusCode).toBe(200);
     expect(harness.metrics.usersDocGets).toBe(1);
-    expect(harness.metrics.medicationLogsGets).toBe(1);
+    expect(harness.metrics.medicationLogsGets).toBe(2);
     expect(harness.metrics.getsByCollection.shares).toBe(1);
     expect(harness.metrics.getsByCollection.users).toBe(1);
     expect(harness.metrics.getsByCollection.medications).toBe(1);
     expect(harness.metrics.getsByCollection.medicationReminders).toBe(1);
-    expect(harness.metrics.getsByCollection.medicationLogs).toBe(1);
+    expect(harness.metrics.getsByCollection.medicationLogs).toBe(2);
     expect(harness.metrics.getsByCollection.healthLogs).toBe(1);
     expect(harness.metrics.getsByCollection.actions).toBe(1);
     expect(harness.metrics.getsByCollection.visits).toBe(1);

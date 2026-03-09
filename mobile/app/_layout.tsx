@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
 import { useFonts, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
+import { Fraunces_400Regular, Fraunces_600SemiBold, Fraunces_700Bold } from '@expo-google-fonts/fraunces';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -182,11 +183,14 @@ function NotificationHandler() {
 export default function RootLayout() {
   const scheme = useColorScheme();
   
-  // Load Plus Jakarta Sans fonts (non-blocking)
+  // Load fonts (non-blocking): Plus Jakarta Sans (body) + Fraunces (display)
   useFonts({
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
+    Fraunces_400Regular,
+    Fraunces_600SemiBold,
+    Fraunces_700Bold,
   });
 
   useEffect(() => {
@@ -283,6 +287,13 @@ export default function RootLayout() {
                   animation: 'slide_from_right',
                 }}
               />
+              <Stack.Screen
+                name="health"
+                options={{
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                }}
+              />
             </Stack>
           </ThemeProvider>
         </ErrorBoundary>
@@ -306,7 +317,7 @@ const styles = StyleSheet.create({
   },
   fallbackTitle: {
     fontSize: 24,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
     textAlign: 'center',
   },
@@ -325,6 +336,6 @@ const styles = StyleSheet.create({
   fallbackButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });

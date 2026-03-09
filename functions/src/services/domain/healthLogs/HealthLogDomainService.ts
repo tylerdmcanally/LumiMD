@@ -89,6 +89,37 @@ export class HealthLogDomainService {
     await this.healthLogRepository.restoreById(healthLogId, now);
   }
 
+  /**
+   * Get the most recent health log of a given type for a user.
+   * Used by nudge context population.
+   */
+  async getLastByType(
+    userId: string,
+    type: string,
+  ): Promise<HealthLogRecord | null> {
+    const results = await this.healthLogRepository.listByUser(userId, {
+      type,
+      sortDirection: 'desc',
+      limit: 1,
+    });
+    return results[0] ?? null;
+  }
+
+  /**
+   * Get recent health logs of a given type for a user (for trend display).
+   */
+  async getRecentByType(
+    userId: string,
+    type: string,
+    limit: number = 5,
+  ): Promise<HealthLogRecord[]> {
+    return this.healthLogRepository.listByUser(userId, {
+      type,
+      sortDirection: 'desc',
+      limit,
+    });
+  }
+
   async getForUser(
     userId: string,
     healthLogId: string,

@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
   needHelpText: {
     color: Colors.accent,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   banner: {
     backgroundColor: Colors.surface,
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
   },
   subtitle: {
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
   ctaText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
   helperText: {
     fontSize: 12,

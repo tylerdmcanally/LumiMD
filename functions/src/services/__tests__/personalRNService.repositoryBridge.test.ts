@@ -43,6 +43,8 @@ describe('personalRNService repository bridge', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-02-22T12:00:00.000Z'));
     (firestoreMock as any).Timestamp = {
       now: () => makeTimestamp('2026-02-22T12:00:00.000Z'),
       fromDate: (value: Date) => makeTimestamp(value),
@@ -53,6 +55,10 @@ describe('personalRNService repository bridge', () => {
         message: 'How are you feeling today?',
       })),
     });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('builds patient state and derives recent dismissals from nudges domain reads', async () => {

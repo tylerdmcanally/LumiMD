@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
   },
   fallbackTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
     textAlign: 'center',
   },
@@ -110,6 +110,6 @@ const styles = StyleSheet.create({
   fallbackButtonText: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });

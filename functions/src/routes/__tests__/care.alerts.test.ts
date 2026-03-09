@@ -351,7 +351,7 @@ describe('care alerts query reuse', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(harness.metrics.usersDocGets).toBe(1);
     expect(harness.metrics.medicationLogsGets).toBe(1);
     expect(harness.metrics.medicationsGets).toBe(1);

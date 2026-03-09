@@ -357,12 +357,14 @@ describe('care overview batching', () => {
           completed: false,
           description: 'Schedule follow-up',
           dueAt: makeTimestamp('2026-02-09T14:00:00.000Z'),
+          deletedAt: null,
         },
         action2: {
           userId: 'patient-2',
           completed: false,
           description: 'Pick up medication',
           dueAt: makeTimestamp('2026-02-12T14:00:00.000Z'),
+          deletedAt: null,
         },
       },
     });
@@ -403,6 +405,6 @@ describe('care overview batching', () => {
     expect(patient1Alerts.some((alert) => alert.type === 'overdue_action')).toBe(true);
 
     expect(harness.metrics.medicationLogsGets).toBe(1);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
   });
 });

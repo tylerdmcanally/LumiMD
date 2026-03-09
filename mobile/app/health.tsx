@@ -1,17 +1,19 @@
 /**
- * Health Details Screen
- * 
- * Shows UNIFIED health data from all sources:
- * - Manual entries (user-entered)
- * - LumiBot prompts (nudge responses)
- * 
- * All data lives in the same healthLogs collection.
+ * Health Metrics Hub
+ *
+ * Shows UNIFIED health data from all sources with trend charts,
+ * trend insights, and history sections for BP, glucose, and weight.
+ *
+ * Accepts optional navigation params:
+ *   type: 'bp' | 'glucose' | 'weight' — pre-selects the metric type
+ *   highlight: string — health log ID to scroll to (future)
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
+  Dimensions,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,15 +24,203 @@ import {
   Modal,
   TouchableOpacity,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
-import { useHealthLogs } from '../lib/api/hooks';
-import { cfg } from '../lib/config';
-import type { HealthLog, HealthLogSource, BloodPressureValue, GlucoseValue, AlertLevel } from '@lumimd/sdk';
+import { useHealthLogs, useHealthInsights } from '../lib/api/hooks';
+import type { HealthLog, HealthLogSource, TrendInsight } from '@lumimd/sdk';
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../components/lumibot';
 import type { WeightValue } from '../components/lumibot';
 import { api } from '../lib/api/client';
+import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+type MetricType = 'bp' | 'glucose' | 'weight';
+type PeriodDays = 7 | 30 | 90;
+
+const METRIC_CONFIGS: Record<MetricType, {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  label: string;
+  unit: string;
+}> = {
+  bp: { icon: 'pulse', color: '#F97316', label: 'Blood Pressure', unit: 'mmHg' },
+  glucose: { icon: 'water', color: '#8B5CF6', label: 'Blood Glucose', unit: 'mg/dL' },
+  weight: { icon: 'scale', color: '#6366F1', label: 'Weight', unit: 'lbs' },
+};
+
+// ============================================================================
+// Chart Component — Simple SVG Line Chart
+// ============================================================================
+
+interface ChartDataPoint {
+  date: Date;
+  value: number;
+  label: string;
+  value2?: number; // For BP diastolic
+}
+
+interface TrendChartProps {
+  data: ChartDataPoint[];
+  color: string;
+  color2?: string; // For BP diastolic line
+  unit: string;
+  height?: number;
+}
+
+const CHART_PADDING = { top: 20, right: 16, bottom: 30, left: 48 };
+const screenWidth = Dimensions.get('window').width;
+
+function TrendChart({ data, color, color2, unit, height = 180 }: TrendChartProps) {
+  if (data.length === 0) return null;
+
+  const chartWidth = screenWidth - spacing(8) - CHART_PADDING.left - CHART_PADDING.right - 32;
+  const chartHeight = height - CHART_PADDING.top - CHART_PADDING.bottom;
+  const totalWidth = screenWidth - spacing(8) - 32;
+
+  if (data.length === 1) {
+    return (
+      <View style={styles.singlePointContainer}>
+        <Text style={[styles.singlePointValue, { color }]}>{data[0].label}</Text>
+        <Text style={styles.singlePointUnit}>{unit}</Text>
+        <Text style={styles.singlePointDate}>
+          {data[0].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </Text>
+      </View>
+    );
+  }
+
+  // Calculate bounds
+  const allValues = data.flatMap(d => d.value2 !== undefined ? [d.value, d.value2] : [d.value]);
+  const minVal = Math.min(...allValues);
+  const maxVal = Math.max(...allValues);
+  const range = maxVal - minVal || 10;
+  const yMin = minVal - range * 0.1;
+  const yMax = maxVal + range * 0.1;
+
+  const scaleX = (i: number) => CHART_PADDING.left + (i / (data.length - 1)) * chartWidth;
+  const scaleY = (v: number) => CHART_PADDING.top + chartHeight - ((v - yMin) / (yMax - yMin)) * chartHeight;
+
+  // Build polyline points
+  const points = data.map((d, i) => `${scaleX(i)},${scaleY(d.value)}`).join(' ');
+  const points2 = color2
+    ? data.filter(d => d.value2 !== undefined).map((d) => `${scaleX(data.indexOf(d))},${scaleY(d.value2!)}`).join(' ')
+    : '';
+
+  // Y-axis labels (3 lines)
+  const yLabels = [yMax, (yMax + yMin) / 2, yMin].map(v => Math.round(v));
+
+  // X-axis labels (first, middle, last)
+  const xIndices = data.length <= 3 ? data.map((_, i) => i) : [0, Math.floor(data.length / 2), data.length - 1];
+
+  return (
+    <Svg width={totalWidth} height={height}>
+      {/* Grid lines */}
+      {yLabels.map((v, i) => (
+        <React.Fragment key={`grid-${i}`}>
+          <Line
+            x1={CHART_PADDING.left}
+            y1={scaleY(v)}
+            x2={CHART_PADDING.left + chartWidth}
+            y2={scaleY(v)}
+            stroke="rgba(0,0,0,0.06)"
+            strokeWidth={1}
+          />
+          <SvgText
+            x={CHART_PADDING.left - 8}
+            y={scaleY(v) + 4}
+            textAnchor="end"
+            fill="rgba(0,0,0,0.4)"
+            fontSize={11}
+          >
+            {v}
+          </SvgText>
+        </React.Fragment>
+      ))}
+
+      {/* X-axis labels */}
+      {xIndices.map(idx => (
+        <SvgText
+          key={`x-${idx}`}
+          x={scaleX(idx)}
+          y={height - 6}
+          textAnchor="middle"
+          fill="rgba(0,0,0,0.4)"
+          fontSize={10}
+        >
+          {data[idx].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </SvgText>
+      ))}
+
+      {/* Secondary line (diastolic for BP) */}
+      {points2 ? (
+        <Polyline
+          points={points2}
+          fill="none"
+          stroke={color2!}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={0.6}
+        />
+      ) : null}
+
+      {/* Primary line */}
+      <Polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+
+      {/* Data points */}
+      {data.map((d, i) => (
+        <Circle
+          key={`pt-${i}`}
+          cx={scaleX(i)}
+          cy={scaleY(d.value)}
+          r={3.5}
+          fill={color}
+        />
+      ))}
+    </Svg>
+  );
+}
+
+// ============================================================================
+// Insight Card
+// ============================================================================
+
+const SEVERITY_STYLES: Record<string, { bg: string; border: string; icon: keyof typeof Ionicons.glyphMap; iconColor: string }> = {
+  positive: { bg: 'rgba(34, 197, 94, 0.08)', border: 'rgba(34, 197, 94, 0.2)', icon: 'checkmark-circle', iconColor: '#22C55E' },
+  info: { bg: 'rgba(59, 130, 246, 0.08)', border: 'rgba(59, 130, 246, 0.2)', icon: 'information-circle', iconColor: '#3B82F6' },
+  attention: { bg: 'rgba(245, 158, 11, 0.08)', border: 'rgba(245, 158, 11, 0.2)', icon: 'alert-circle', iconColor: '#F59E0B' },
+  concern: { bg: 'rgba(239, 68, 68, 0.08)', border: 'rgba(239, 68, 68, 0.2)', icon: 'warning', iconColor: '#EF4444' },
+};
+
+function InsightCard({ insight }: { insight: TrendInsight }) {
+  const style = SEVERITY_STYLES[insight.severity] || SEVERITY_STYLES.info;
+
+  return (
+    <View style={[styles.insightCard, { backgroundColor: style.bg, borderColor: style.border }]}>
+      <View style={styles.insightHeader}>
+        <Ionicons name={style.icon} size={20} color={style.iconColor} />
+        <Text style={styles.insightTitle}>{insight.title}</Text>
+      </View>
+      <Text style={styles.insightMessage}>{insight.message}</Text>
+      {insight.severity !== 'positive' && (
+        <Text style={styles.insightDisclaimer}>
+          Share this pattern with your doctor.
+        </Text>
+      )}
+    </View>
+  );
+}
 
 // ============================================================================
 // Helpers
@@ -50,133 +240,41 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function getSourceIcon(source: HealthLogSource): { icon: keyof typeof Ionicons.glyphMap; color: string; label: string } {
+function getSourceLabel(source: HealthLogSource): string {
   switch (source) {
-    case 'manual':
-      return { icon: 'create-outline', color: Colors.primary, label: 'Manual Entry' };
-    case 'nudge':
-      return { icon: 'chatbubble-outline', color: '#8B5CF6', label: 'LumiBot' };
-    case 'quick_log':
-      return { icon: 'flash-outline', color: '#F59E0B', label: 'Quick Log' };
-    default:
-      return { icon: 'document-outline', color: Colors.textMuted, label: 'Logged' };
+    case 'manual': return 'Manual';
+    case 'nudge': return 'LumiBot';
+    case 'quick_log': return 'Quick Log';
+    default: return 'Logged';
   }
 }
 
-function getTypeConfig(type: string): { icon: keyof typeof Ionicons.glyphMap; color: string; label: string } {
+function formatLogValue(type: string, value: any): string {
   switch (type) {
-    case 'bp':
-      return { icon: 'pulse', color: '#F97316', label: 'Blood Pressure' };
-    case 'glucose':
-      return { icon: 'water', color: '#8B5CF6', label: 'Blood Glucose' };
-    case 'weight':
-      return { icon: 'scale', color: '#6366F1', label: 'Weight' };
-    case 'heart_rate':
-      return { icon: 'heart', color: '#EF4444', label: 'Heart Rate' };
-    case 'steps':
-      return { icon: 'footsteps', color: '#22C55E', label: 'Steps' };
-    case 'oxygen_saturation':
-      return { icon: 'fitness', color: '#3B82F6', label: 'Oxygen' };
-    default:
-      return { icon: 'analytics', color: Colors.primary, label: type };
+    case 'bp': return `${value.systolic}/${value.diastolic}`;
+    case 'glucose': return `${Math.round(value.reading)}`;
+    case 'weight': return `${value.weight}`;
+    default: return JSON.stringify(value);
   }
 }
 
-function formatValue(type: string, value: any): { main: string; unit: string } {
-  switch (type) {
-    case 'bp':
-      return { main: `${value.systolic}/${value.diastolic}`, unit: 'mmHg' };
-    case 'glucose':
-      return { main: String(Math.round(value.reading)), unit: 'mg/dL' };
-    case 'weight':
-      return { main: String(value.weight), unit: value.unit };
-    case 'heart_rate':
-      return { main: String(value.bpm), unit: 'bpm' };
-    case 'steps':
-      return { main: value.count?.toLocaleString() || '0', unit: 'steps' };
-    case 'oxygen_saturation':
-      return { main: String(value.percentage), unit: '%' };
-    default:
-      return { main: JSON.stringify(value), unit: '' };
-  }
-}
-
-// ============================================================================
-// Components
-// ============================================================================
-
-interface VitalCardProps {
-  log: HealthLog;
-  isLatest?: boolean;
-}
-
-function VitalCard({ log, isLatest }: VitalCardProps) {
-  const typeConfig = getTypeConfig(log.type);
-  const sourceConfig = getSourceIcon(log.source);
-  const formatted = formatValue(log.type, log.value);
-
-  return (
-    <Card style={[styles.vitalCard, isLatest && styles.vitalCardLatest]}>
-      <View style={styles.vitalHeader}>
-        <View style={[styles.vitalIcon, { backgroundColor: `${typeConfig.color}15` }]}>
-          <Ionicons name={typeConfig.icon} size={24} color={typeConfig.color} />
-        </View>
-        <View style={styles.vitalTitleContainer}>
-          <Text style={styles.vitalTitle}>{typeConfig.label}</Text>
-          <View style={styles.sourceRow}>
-            <Ionicons name={sourceConfig.icon} size={12} color={sourceConfig.color} />
-            <Text style={styles.sourceLabel}>{sourceConfig.label}</Text>
-            <Text style={styles.vitalTimestamp}> • {formatRelativeTime(log.createdAt)}</Text>
-          </View>
-        </View>
-        {isLatest && (
-          <View style={styles.latestBadge}>
-            <Text style={styles.latestBadgeText}>Latest</Text>
-          </View>
-        )}
-      </View>
-      
-      <View style={styles.vitalValueContainer}>
-        <Text style={[styles.vitalValue, { color: typeConfig.color }]}>{formatted.main}</Text>
-        <Text style={styles.vitalUnit}>{formatted.unit}</Text>
-      </View>
-
-      {log.alertLevel && log.alertLevel !== 'normal' && (
-        <View style={[styles.alertBadge, 
-          log.alertLevel === 'warning' && styles.alertWarning,
-          log.alertLevel === 'caution' && styles.alertCaution,
-          log.alertLevel === 'emergency' && styles.alertEmergency,
-        ]}>
-          <Ionicons 
-            name={log.alertLevel === 'emergency' ? 'warning' : 'alert-circle'} 
-            size={14} 
-            color={log.alertLevel === 'emergency' ? '#DC2626' : log.alertLevel === 'warning' ? '#F59E0B' : '#6B7280'} 
-          />
-          <Text style={styles.alertText}>{log.alertMessage || log.alertLevel}</Text>
-        </View>
-      )}
-    </Card>
-  );
-}
-
-function EmptyState() {
-  const router = useRouter();
-  
-  return (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="heart-outline" size={48} color={Colors.textMuted} />
-      <Text style={styles.emptyTitle}>No Health Data Yet</Text>
-      <Text style={styles.emptySubtitle}>
-        Log your vitals manually or respond to LumiBot check-ins.
-      </Text>
-      <Pressable 
-        style={styles.emptyButton}
-        onPress={() => router.back()}
-      >
-        <Text style={styles.emptyButtonText}>Start Logging</Text>
-      </Pressable>
-    </View>
-  );
+function logsToChartData(logs: HealthLog[], type: MetricType): ChartDataPoint[] {
+  return logs
+    .filter(l => l.type === type)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map(l => {
+      const date = new Date(l.createdAt);
+      if (type === 'bp') {
+        const v = l.value as { systolic: number; diastolic: number };
+        return { date, value: v.systolic, value2: v.diastolic, label: `${v.systolic}/${v.diastolic}` };
+      }
+      if (type === 'glucose') {
+        const v = l.value as { reading: number };
+        return { date, value: v.reading, label: `${Math.round(v.reading)}` };
+      }
+      const v = l.value as { weight: number };
+      return { date, value: v.weight, label: `${v.weight}` };
+    });
 }
 
 // ============================================================================
@@ -185,57 +283,80 @@ function EmptyState() {
 
 export default function HealthScreen() {
   const router = useRouter();
-  const healthEnabled = cfg.flags.health;
-  
-  // Logging modal state
+  const params = useLocalSearchParams<{ type?: string; highlight?: string }>();
+
+  // State
+  const [selectedType, setSelectedType] = useState<MetricType>(
+    (params.type as MetricType) || 'bp',
+  );
+  const [period, setPeriod] = useState<PeriodDays>(30);
   const [showLogMenu, setShowLogMenu] = useState(false);
   const [showBPModal, setShowBPModal] = useState(false);
   const [showGlucoseModal, setShowGlucoseModal] = useState(false);
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Collapsible sections
-  const [sourcesExpanded, setSourcesExpanded] = useState(false);
-  const [infoExpanded, setInfoExpanded] = useState(false);
-  
-  // Fetch unified health logs (all sources)
-  const { 
-    data: logs = [], 
-    isLoading, 
+
+  // Data — fetch all logs for the selected type (up to 100)
+  const startDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - period);
+    return d.toISOString();
+  }, [period]);
+
+  const {
+    data: logs = [],
+    isLoading,
     error,
-    refetch, 
-    isRefetching 
-  } = useHealthLogs({ limit: 50 }, { enabled: healthEnabled });
+    refetch,
+    isRefetching,
+  } = useHealthLogs(
+    { type: selectedType, limit: 100 },
+    { enabled: true },
+  );
+
+  const {
+    data: insightsData,
+  } = useHealthInsights(
+    { type: selectedType, days: period },
+    { enabled: true },
+  );
 
   const handleRefresh = useCallback(async () => {
     await refetch();
   }, [refetch]);
 
+  // Chart data — filter to period
+  const chartData = useMemo(() => {
+    const periodStart = new Date(startDate);
+    const filtered = logs.filter(l => new Date(l.createdAt) >= periodStart);
+    return logsToChartData(filtered, selectedType);
+  }, [logs, selectedType, startDate]);
+
+  // Recent readings (filtered by period)
+  const recentLogs = useMemo(() => {
+    const periodStart = new Date(startDate);
+    return logs
+      .filter(l => l.type === selectedType && new Date(l.createdAt) >= periodStart)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [logs, selectedType, startDate]);
+
   // Logging handlers
-  const handleLogOption = useCallback((option: 'bp' | 'glucose' | 'weight') => {
+  const handleLogOption = useCallback((option: MetricType) => {
     setShowLogMenu(false);
     if (option === 'bp') setShowBPModal(true);
     else if (option === 'glucose') setShowGlucoseModal(true);
     else if (option === 'weight') setShowWeightModal(true);
   }, []);
 
-  const handleBPSubmit = useCallback(async (value: BloodPressureValue): Promise<{
-    alertLevel?: AlertLevel;
-    alertMessage?: string;
-    shouldShowAlert?: boolean;
-  }> => {
+  const handleBPSubmit = useCallback(async (value: { systolic: number; diastolic: number; pulse?: number }) => {
     setIsSubmitting(true);
     try {
-      const response = await api.healthLogs.create({
-        type: 'bp',
-        value: { systolic: value.systolic, diastolic: value.diastolic, pulse: value.pulse },
-        source: 'manual',
-      });
+      const response = await api.healthLogs.create({ type: 'bp', value, source: 'manual' });
       Alert.alert('Success', 'Blood pressure logged successfully');
       setShowBPModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to log blood pressure. Please try again.');
       return {};
     } finally {
@@ -243,23 +364,15 @@ export default function HealthScreen() {
     }
   }, [refetch]);
 
-  const handleGlucoseSubmit = useCallback(async (value: GlucoseValue): Promise<{
-    alertLevel?: AlertLevel;
-    alertMessage?: string;
-    shouldShowAlert?: boolean;
-  }> => {
+  const handleGlucoseSubmit = useCallback(async (value: { reading: number; timing?: string }) => {
     setIsSubmitting(true);
     try {
-      const response = await api.healthLogs.create({
-        type: 'glucose',
-        value: { reading: value.reading, timing: value.timing },
-        source: 'manual',
-      });
+      const response = await api.healthLogs.create({ type: 'glucose', value, source: 'manual' });
       Alert.alert('Success', 'Blood glucose logged successfully');
       setShowGlucoseModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to log blood glucose. Please try again.');
       return {};
     } finally {
@@ -267,23 +380,15 @@ export default function HealthScreen() {
     }
   }, [refetch]);
 
-  const handleWeightSubmit = useCallback(async (value: WeightValue): Promise<{
-    alertLevel?: AlertLevel;
-    alertMessage?: string;
-    shouldShowAlert?: boolean;
-  }> => {
+  const handleWeightSubmit = useCallback(async (value: WeightValue) => {
     setIsSubmitting(true);
     try {
-      await api.healthLogs.create({
-        type: 'weight',
-        value: { weight: value.weight, unit: value.unit },
-        source: 'manual',
-      });
+      await api.healthLogs.create({ type: 'weight', value, source: 'manual' });
       Alert.alert('Success', 'Weight logged successfully');
       setShowWeightModal(false);
       refetch();
       return {};
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to log weight. Please try again.');
       return {};
     } finally {
@@ -291,63 +396,8 @@ export default function HealthScreen() {
     }
   }, [refetch]);
 
-  // Group logs by type and find latest for each
-  const groupedLogs = useMemo(() => {
-    const groups: Record<string, HealthLog[]> = {};
-    const latestByType: Record<string, HealthLog> = {};
-
-    // Filter to just the vital types we care about
-    const vitalTypes = ['bp', 'glucose', 'weight', 'heart_rate', 'steps', 'oxygen_saturation'];
-    
-    logs.forEach((log) => {
-      if (!vitalTypes.includes(log.type)) return;
-      
-      if (!groups[log.type]) {
-        groups[log.type] = [];
-        latestByType[log.type] = log;
-      }
-      groups[log.type].push(log);
-      
-      // Update latest if this one is newer
-      if (new Date(log.createdAt) > new Date(latestByType[log.type].createdAt)) {
-        latestByType[log.type] = log;
-      }
-    });
-
-    return { groups, latestByType };
-  }, [logs]);
-
-  // Get ordered list of latest readings
-  const latestReadings = useMemo(() => {
-    return Object.values(groupedLogs.latestByType)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [groupedLogs.latestByType]);
-
-  const infoDataSourcesText = 'All health data is unified from manual entries and LumiBot check-ins.';
-
-  if (!healthEnabled) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={8}>
-            <Ionicons name="chevron-back" size={28} color={Colors.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Health</Text>
-          <View style={{ width: 28 }} />
-        </View>
-
-        <View style={styles.disabledContainer}>
-          <Card style={styles.disabledCard}>
-            <Ionicons name="fitness-outline" size={28} color={Colors.textMuted} />
-            <Text style={styles.disabledTitle}>Health metrics are disabled</Text>
-            <Text style={styles.disabledSubtitle}>
-              Health metrics are out of scope for now while we focus on core workflows.
-            </Text>
-          </Card>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const config = METRIC_CONFIGS[selectedType];
+  const insights = insightsData?.insights ?? [];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -356,8 +406,10 @@ export default function HealthScreen() {
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={28} color={Colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Health Data</Text>
-        <View style={{ width: 28 }} />
+        <Text style={styles.headerTitle}>Health</Text>
+        <Pressable onPress={() => setShowLogMenu(true)} hitSlop={8}>
+          <Ionicons name="add-circle-outline" size={28} color={Colors.primary} />
+        </Pressable>
       </View>
 
       <ScrollView
@@ -371,107 +423,170 @@ export default function HealthScreen() {
           />
         }
       >
-        {/* Collapsible Data Sources */}
-        <Pressable 
-          style={styles.collapsibleHeader}
-          onPress={() => setSourcesExpanded(!sourcesExpanded)}
-        >
-            <View style={styles.collapsibleLeft}>
-              <Ionicons name="swap-horizontal" size={18} color={Colors.textMuted} />
-              <Text style={styles.collapsibleTitle}>Data Sources</Text>
-              {/* Quick status indicator */}
-              <View style={[styles.quickStatusDot, styles.sourceDotActive]} />
-            </View>
-          <Ionicons 
-            name={sourcesExpanded ? 'chevron-up' : 'chevron-down'} 
-            size={20} 
-            color={Colors.textMuted} 
-          />
-        </Pressable>
-        
-        {sourcesExpanded && (
-          <Card style={styles.statusCard}>
-            <View style={styles.sourcesList}>
-              <View style={styles.sourceItem}>
-                <View style={[styles.sourceDot, styles.sourceDotActive]} />
-                <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                <Text style={styles.sourceItemText}>Manual Entry</Text>
-                <Text style={styles.sourceStatus}>Always Available</Text>
-              </View>
-              <View style={styles.sourceItem}>
-                <View style={[styles.sourceDot, styles.sourceDotActive]} />
-                <Ionicons name="chatbubble-outline" size={16} color="#8B5CF6" />
-                <Text style={styles.sourceItemText}>LumiBot Prompts</Text>
-                <Text style={styles.sourceStatus}>Active</Text>
-              </View>
-            </View>
-          </Card>
-        )}
+        {/* Metric Type Selector */}
+        <View style={styles.typeSelector}>
+          {(Object.entries(METRIC_CONFIGS) as [MetricType, typeof config][]).map(([type, cfg]) => (
+            <Pressable
+              key={type}
+              style={[
+                styles.typeTab,
+                selectedType === type && { backgroundColor: `${cfg.color}15`, borderColor: cfg.color },
+              ]}
+              onPress={() => setSelectedType(type)}
+            >
+              <Ionicons name={cfg.icon} size={18} color={selectedType === type ? cfg.color : Colors.textMuted} />
+              <Text style={[
+                styles.typeTabText,
+                selectedType === type && { color: cfg.color, fontFamily: 'PlusJakartaSans_600SemiBold' },
+              ]}>
+                {type === 'bp' ? 'BP' : type === 'glucose' ? 'Glucose' : 'Weight'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Period Selector */}
+        <View style={styles.periodSelector}>
+          {([7, 30, 90] as PeriodDays[]).map(d => (
+            <Pressable
+              key={d}
+              style={[styles.periodTab, period === d && styles.periodTabActive]}
+              onPress={() => setPeriod(d)}
+            >
+              <Text style={[styles.periodTabText, period === d && styles.periodTabTextActive]}>
+                {d === 7 ? '7 Days' : d === 30 ? '30 Days' : '90 Days'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
         {/* Loading State */}
         {isLoading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+            <ActivityIndicator size="large" color={config.color} />
             <Text style={styles.loadingText}>Loading health data...</Text>
           </View>
         )}
 
-        {/* Empty State */}
+        {/* Error State */}
         {!isLoading && error && (
-          <View style={styles.errorContainer}>
+          <View style={styles.emptyContainer}>
             <Ionicons name="alert-circle-outline" size={40} color={Colors.error} />
-            <Text style={styles.errorTitle}>Unable to load health data</Text>
-            <Text style={styles.errorSubtitle}>Pull to refresh and try again.</Text>
+            <Text style={styles.emptyTitle}>Unable to load health data</Text>
+            <Text style={styles.emptySubtitle}>Pull to refresh and try again.</Text>
           </View>
         )}
 
-        {!isLoading && !error && latestReadings.length === 0 && <EmptyState />}
+        {/* Chart Section */}
+        {!isLoading && !error && (
+          <Card style={styles.chartCard}>
+            <View style={styles.chartHeader}>
+              <View style={[styles.chartIconBg, { backgroundColor: `${config.color}15` }]}>
+                <Ionicons name={config.icon} size={22} color={config.color} />
+              </View>
+              <View>
+                <Text style={styles.chartTitle}>{config.label}</Text>
+                {chartData.length > 0 && (
+                  <Text style={styles.chartSubtitle}>
+                    {chartData.length} reading{chartData.length !== 1 ? 's' : ''} in {period} days
+                  </Text>
+                )}
+              </View>
+            </View>
 
-        {/* Latest Readings */}
-        {!isLoading && !error && latestReadings.length > 0 && (
+            {chartData.length === 0 ? (
+              <View style={styles.noDataContainer}>
+                <Ionicons name="analytics-outline" size={36} color={Colors.textMuted} />
+                <Text style={styles.noDataText}>
+                  No {config.label.toLowerCase()} readings yet
+                </Text>
+                <Pressable
+                  style={[styles.logButton, { backgroundColor: config.color }]}
+                  onPress={() => handleLogOption(selectedType)}
+                >
+                  <Text style={styles.logButtonText}>Log {config.label}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.chartContainer}>
+                <TrendChart
+                  data={chartData}
+                  color={config.color}
+                  color2={selectedType === 'bp' ? '#FB923C' : undefined}
+                  unit={config.unit}
+                />
+                {selectedType === 'bp' && (
+                  <View style={styles.legendRow}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: config.color }]} />
+                      <Text style={styles.legendText}>Systolic</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#FB923C' }]} />
+                      <Text style={styles.legendText}>Diastolic</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+          </Card>
+        )}
+
+        {/* Trend Insights */}
+        {!isLoading && insights.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Latest Readings</Text>
-            <Text style={styles.sectionSubtitle}>
-              Your most recent data from all sources
+            <Text style={styles.sectionTitle}>Insights</Text>
+            {insights.map((insight, i) => (
+              <InsightCard key={`${insight.pattern}-${i}`} insight={insight} />
+            ))}
+            <Text style={styles.tierDisclaimer}>
+              Based on the data you've logged. Share with your doctor for clinical interpretation.
             </Text>
-            
-            {latestReadings.map((log) => (
-              <VitalCard key={log.id} log={log} isLatest />
+          </View>
+        )}
+
+        {/* Recent Readings */}
+        {!isLoading && !error && recentLogs.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent Readings</Text>
+            {recentLogs.slice(0, 10).map(log => (
+              <View key={log.id} style={styles.readingRow}>
+                <View style={styles.readingLeft}>
+                  <Text style={[styles.readingValue, { color: config.color }]}>
+                    {formatLogValue(log.type, log.value)}
+                  </Text>
+                  <Text style={styles.readingUnit}>{config.unit}</Text>
+                </View>
+                <View style={styles.readingRight}>
+                  <Text style={styles.readingTime}>{formatRelativeTime(log.createdAt)}</Text>
+                  <Text style={styles.readingSource}>{getSourceLabel(log.source)}</Text>
+                </View>
+                {log.alertLevel && log.alertLevel !== 'normal' && (
+                  <View style={[
+                    styles.alertDot,
+                    log.alertLevel === 'warning' && { backgroundColor: '#F59E0B' },
+                    log.alertLevel === 'caution' && { backgroundColor: '#F59E0B' },
+                    log.alertLevel === 'emergency' && { backgroundColor: '#EF4444' },
+                  ]} />
+                )}
+              </View>
             ))}
           </View>
         )}
 
-        {/* Collapsible Info Footer */}
-        <Pressable 
-          style={styles.infoToggle}
-          onPress={() => setInfoExpanded(!infoExpanded)}
-        >
-          <Ionicons 
-            name="information-circle-outline" 
-            size={22} 
-            color={Colors.textMuted} 
-          />
-          <Text style={styles.infoToggleText}>About this data</Text>
-          <Ionicons 
-            name={infoExpanded ? 'chevron-up' : 'chevron-down'} 
-            size={18} 
-            color={Colors.textMuted} 
-          />
-        </Pressable>
-        
-        {infoExpanded && (
-          <View style={styles.infoSection}>
-            <Text style={styles.infoText}>
-              {infoDataSourcesText}{' '}
-              Your caregivers can view this data on your shared dashboard.
-            </Text>
-          </View>
-        )}
+        {/* Tier 2 Disclaimer */}
+        <View style={styles.disclaimerSection}>
+          <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+          <Text style={styles.disclaimerText}>
+            For informational and tracking purposes only. Not medical advice.
+            Your care team can help you understand your numbers.
+          </Text>
+        </View>
       </ScrollView>
 
-      {/* Floating Action Button */}
+      {/* FAB */}
       <Pressable
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: config.color }]}
         onPress={() => setShowLogMenu(true)}
       >
         <Ionicons name="add" size={28} color="#fff" />
@@ -553,27 +668,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  disabledContainer: {
-    padding: spacing(4),
-  },
-  disabledCard: {
-    padding: spacing(5),
-    alignItems: 'center',
-    gap: spacing(2),
-  },
-  disabledTitle: {
-    fontSize: 16,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.text,
-    textAlign: 'center',
-  },
-  disabledSubtitle: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -584,69 +678,64 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   headerTitle: {
-    fontSize: 17,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 18,
+    fontFamily: 'Fraunces_600SemiBold',
     color: Colors.text,
+    letterSpacing: -0.2,
   },
   scrollContent: {
     padding: spacing(4),
-    paddingBottom: spacing(8),
+    paddingBottom: spacing(20),
   },
 
-  // Collapsible Header
-  collapsibleHeader: {
+  // Type Selector
+  typeSelector: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing(3),
-    paddingHorizontal: spacing(1),
-    marginBottom: spacing(2),
-  },
-  collapsibleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing(2),
+    marginBottom: spacing(3),
   },
-  collapsibleTitle: {
+  typeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing(1.5),
+    paddingVertical: spacing(2.5),
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  typeTabText: {
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
   },
-  quickStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
 
-  // Status Card
-  statusCard: {
+  // Period Selector
+  periodSelector: {
+    flexDirection: 'row',
+    gap: spacing(2),
     marginBottom: spacing(4),
   },
-  sourcesList: {
-    gap: spacing(2),
-  },
-  sourceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(2),
-  },
-  sourceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.textMuted,
-  },
-  sourceDotActive: {
-    backgroundColor: Colors.success,
-  },
-  sourceItemText: {
+  periodTab: {
     flex: 1,
-    fontSize: 14,
-    color: Colors.text,
+    paddingVertical: spacing(1.5),
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
   },
-  sourceStatus: {
-    fontSize: 12,
+  periodTabActive: {
+    backgroundColor: Colors.primary,
+  },
+  periodTabText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
+  },
+  periodTabTextActive: {
+    color: '#fff',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 
   // Loading
@@ -659,30 +748,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
   },
-  errorContainer: {
+
+  // Empty / Error
+  emptyContainer: {
     alignItems: 'center',
     paddingVertical: spacing(8),
     gap: spacing(2),
   },
-  errorTitle: {
-    fontSize: 16,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.text,
-  },
-  errorSubtitle: {
-    fontSize: 14,
-    color: Colors.textMuted,
-  },
-
-  // Empty State
-  emptyContainer: {
-    alignItems: 'center',
-    paddingVertical: spacing(8),
-    gap: spacing(3),
-  },
   emptyTitle: {
     fontSize: 18,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontFamily: 'Fraunces_600SemiBold',
     color: Colors.text,
   },
   emptySubtitle: {
@@ -690,16 +765,98 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
-    paddingHorizontal: spacing(4),
   },
-  emptyButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: spacing(6),
-    paddingVertical: spacing(3),
+
+  // Chart Card
+  chartCard: {
+    marginBottom: spacing(4),
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(3),
+    marginBottom: spacing(3),
+  },
+  chartIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartTitle: {
+    fontSize: 17,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.text,
+  },
+  chartSubtitle: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  chartContainer: {
+    marginHorizontal: -spacing(2),
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing(4),
+    marginTop: spacing(1),
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+
+  // Single Point
+  singlePointContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing(4),
+    gap: spacing(1),
+  },
+  singlePointValue: {
+    fontSize: 36,
+    fontFamily: 'Fraunces_700Bold',
+    letterSpacing: -1,
+  },
+  singlePointUnit: {
+    fontSize: 14,
+    color: Colors.textMuted,
+  },
+  singlePointDate: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: spacing(1),
+  },
+
+  // No Data
+  noDataContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing(4),
+    gap: spacing(2),
+  },
+  noDataText: {
+    fontSize: 15,
+    color: Colors.textMuted,
+    textAlign: 'center',
+  },
+  logButton: {
+    paddingHorizontal: spacing(5),
+    paddingVertical: spacing(2.5),
     borderRadius: Radius.lg,
-    marginTop: spacing(2),
+    marginTop: spacing(1),
   },
-  emptyButtonText: {
+  logButtonText: {
     color: '#fff',
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_600SemiBold',
@@ -711,137 +868,113 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontFamily: 'Fraunces_600SemiBold',
     color: Colors.text,
-    marginBottom: spacing(1),
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginBottom: spacing(4),
+    marginBottom: spacing(3),
+    letterSpacing: -0.2,
   },
 
-  // Vital Card
-  vitalCard: {
-    marginBottom: spacing(3),
+  // Insight Card
+  insightCard: {
+    padding: spacing(3.5),
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    marginBottom: spacing(2),
   },
-  vitalCardLatest: {
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.primary,
-  },
-  vitalHeader: {
+  insightHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing(3),
+    gap: spacing(2),
+    marginBottom: spacing(1.5),
   },
-  vitalIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing(3),
-  },
-  vitalTitleContainer: {
-    flex: 1,
-  },
-  vitalTitle: {
+  insightTitle: {
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
+    flex: 1,
   },
-  sourceRow: {
+  insightMessage: {
+    fontSize: 14,
+    color: Colors.text,
+    lineHeight: 20,
+    paddingLeft: spacing(7),
+  },
+  insightDisclaimer: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    paddingLeft: spacing(7),
+    marginTop: spacing(1.5),
+  },
+
+  // Recent Readings
+  readingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing(1),
-    marginTop: 2,
+    paddingVertical: spacing(2.5),
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  sourceLabel: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  vitalTimestamp: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  latestBadge: {
-    backgroundColor: `${Colors.primary}15`,
-    paddingHorizontal: spacing(2),
-    paddingVertical: spacing(1),
-    borderRadius: Radius.sm,
-  },
-  latestBadgeText: {
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.primary,
-  },
-  vitalValueContainer: {
+  readingLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: spacing(2),
+    gap: spacing(1),
   },
-  vitalValue: {
-    fontSize: 36,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    letterSpacing: -1,
+  readingValue: {
+    fontSize: 22,
+    fontFamily: 'Fraunces_700Bold',
+    letterSpacing: -0.5,
   },
-  vitalUnit: {
-    fontSize: 16,
-    fontFamily: 'PlusJakartaSans_500Medium',
+  readingUnit: {
+    fontSize: 13,
     color: Colors.textMuted,
   },
+  readingRight: {
+    alignItems: 'flex-end',
+  },
+  readingTime: {
+    fontSize: 13,
+    color: Colors.text,
+  },
+  readingSource: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  alertDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginLeft: spacing(2),
+    backgroundColor: '#F59E0B',
+  },
 
-  // Alert Badge
-  alertBadge: {
+  // Disclaimer
+  disclaimerSection: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(1),
+    alignItems: 'flex-start',
+    gap: spacing(2),
+    paddingTop: spacing(2),
     marginTop: spacing(2),
-    paddingHorizontal: spacing(2),
-    paddingVertical: spacing(1),
-    borderRadius: Radius.sm,
-    backgroundColor: 'rgba(107, 114, 128, 0.1)',
-    alignSelf: 'flex-start',
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
-  alertCaution: {
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-  },
-  alertWarning: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-  },
-  alertEmergency: {
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
-  },
-  alertText: {
+  disclaimerText: {
+    flex: 1,
     fontSize: 12,
     color: Colors.textMuted,
-    textTransform: 'capitalize',
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
 
-  // Info Toggle & Section
-  infoToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing(2),
-    paddingVertical: spacing(3),
-    marginTop: spacing(2),
-  },
-  infoToggleText: {
-    fontSize: 13,
+  tierDisclaimer: {
+    fontSize: 12,
     color: Colors.textMuted,
-  },
-  infoSection: {
-    backgroundColor: 'rgba(64, 201, 208, 0.08)',
-    padding: spacing(4),
-    borderRadius: Radius.lg,
-    marginTop: spacing(1),
-  },
-  infoText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    lineHeight: 18,
+    fontStyle: 'italic',
     textAlign: 'center',
+    marginTop: spacing(1),
+    lineHeight: 16,
   },
 
   // FAB
@@ -851,15 +984,14 @@ const styles = StyleSheet.create({
     right: spacing(5),
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.primary,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowRadius: 12,
+    elevation: 8,
   },
 
   // Log Menu Modal

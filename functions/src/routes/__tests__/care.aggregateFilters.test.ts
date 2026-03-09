@@ -324,7 +324,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body.changes).toHaveLength(1);
     expect(res.body.changes[0].name).toBe('Active Med');
     expect(harness.metrics.getsByCollection.shares).toBe(1);
@@ -346,6 +346,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
           completed: false,
           description: 'Call provider',
           dueAt: makeTimestamp('2026-02-09T10:00:00.000Z'),
+          deletedAt: null,
         },
         deletedAction: {
           userId: 'patient-1',
@@ -365,7 +366,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body.actions).toHaveLength(1);
     expect(res.body.actions[0].description).toBe('Call provider');
     expect(res.body.summary.overdue).toBe(1);
@@ -402,6 +403,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
           userId: 'patient-1',
           completed: false,
           dueAt: makeTimestamp('2026-02-11T10:00:00.000Z'),
+          deletedAt: null,
         },
         pendingDeleted: {
           userId: 'patient-1',
@@ -419,6 +421,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
         olderActive: {
           userId: 'patient-1',
           createdAt: makeTimestamp('2026-02-08T09:00:00.000Z'),
+          deletedAt: null,
         },
       },
     });
@@ -431,7 +434,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body.actions.pending).toBe(1);
     expect(res.body.coverage.lastVisitDate).toBe('2026-02-08T09:00:00.000Z');
     expect(harness.metrics.getsByCollection.healthLogs).toBe(1);
@@ -484,7 +487,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body.overall.takenDoses).toBe(1);
     expect(harness.metrics.getsByCollection.shares).toBe(1);
     expect(harness.metrics.getsByCollection.medicationLogs).toBe(1);
@@ -539,7 +542,7 @@ describe('care aggregate endpoints soft-delete filters', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body.overall.takenDoses).toBe(1);
     expect(harness.metrics.getsByCollection.shares).toBe(1);
     expect(harness.metrics.getsByCollection.medicationLogs).toBe(2);

@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing } from '../components/ui';
+import { Colors, spacing, Radius } from '../components/ui';
 import { resetPassword } from '../lib/auth';
 
 export default function ForgotPasswordScreen() {
@@ -177,10 +177,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 30,
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
     marginBottom: spacing(2),
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
@@ -195,24 +196,26 @@ const styles = StyleSheet.create({
     marginBottom: spacing(4),
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
     marginBottom: spacing(2),
+    letterSpacing: 0.2,
   },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.surfaceWarm,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     paddingHorizontal: spacing(4),
-    paddingVertical: spacing(3),
+    paddingVertical: spacing(3.5),
     fontSize: 16,
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.text,
   },
   errorContainer: {
-    backgroundColor: '#FEE2E2',
-    borderRadius: 8,
+    backgroundColor: Colors.coralMuted,
+    borderRadius: Radius.sm,
     padding: spacing(3),
     marginBottom: spacing(4),
   },
@@ -246,7 +249,7 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });
 

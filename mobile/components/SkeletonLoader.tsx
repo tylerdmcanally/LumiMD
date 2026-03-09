@@ -90,7 +90,7 @@ export function ListSkeleton({ count = 3 }: { count?: number }) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(45, 55, 72, 0.06)',
+    backgroundColor: 'rgba(38, 35, 28, 0.05)',
     overflow: 'hidden',
   },
   cardSkeleton: {

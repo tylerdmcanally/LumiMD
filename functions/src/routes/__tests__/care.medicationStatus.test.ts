@@ -297,7 +297,7 @@ describe('care medication-status query reuse', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
     expect(res.body).toMatchObject({
       summary: {
         total: 2,

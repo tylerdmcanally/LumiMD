@@ -4,6 +4,7 @@ export const POST_COMMIT_OPERATION_NAMES = [
   'lumibotAnalysis',
   'pushNotification',
   'caregiverEmails',
+  'walkthroughGeneration',
 ] as const;
 
 export type PostCommitOperationName = (typeof POST_COMMIT_OPERATION_NAMES)[number];
@@ -14,6 +15,7 @@ export const RETRYABLE_POST_COMMIT_OPERATIONS: ReadonlySet<PostCommitOperationNa
   'lumibotAnalysis',
   'pushNotification',
   'caregiverEmails',
+  'walkthroughGeneration',
 ]);
 
 export const POST_COMMIT_RETRY_ALERT_THRESHOLD = 3;

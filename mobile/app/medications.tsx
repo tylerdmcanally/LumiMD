@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
+  LayoutAnimation,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   Alert,
 } from 'react-native';
@@ -82,6 +84,8 @@ export default function MedicationsScreen() {
   // Reminder modal state
   const [reminderModalVisible, setReminderModalVisible] = useState(false);
   const [selectedMed, setSelectedMed] = useState<{ id: string; name: string } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedMedIds, setExpandedMedIds] = useState<Set<string>>(new Set());
 
   const {
     items: medications,
@@ -109,6 +113,16 @@ export default function MedicationsScreen() {
   const updateReminder = useUpdateMedicationReminder();
   const deleteReminder = useDeleteMedicationReminder();
   const acknowledgeWarnings = useAcknowledgeMedicationWarnings();
+
+  const toggleExpanded = useCallback((medId: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedMedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(medId)) next.delete(medId);
+      else next.add(medId);
+      return next;
+    });
+  }, []);
 
   // Get reminder for a specific medication
   const getReminderForMed = useCallback((medId: string): MedicationReminder | undefined => {
@@ -175,6 +189,35 @@ export default function MedicationsScreen() {
     [meds],
   );
 
+  const filteredActiveMeds = useMemo(() => {
+    if (!searchQuery.trim()) return activeMeds;
+    const q = searchQuery.toLowerCase();
+    return activeMeds.filter(med =>
+      med.name?.toLowerCase().includes(q) ||
+      med.dose?.toLowerCase().includes(q) ||
+      med.frequency?.toLowerCase().includes(q)
+    );
+  }, [activeMeds, searchQuery]);
+
+  const filteredInactiveMeds = useMemo(() => {
+    if (!searchQuery.trim()) return inactiveMeds;
+    const q = searchQuery.toLowerCase();
+    return inactiveMeds.filter(med =>
+      med.name?.toLowerCase().includes(q) ||
+      med.dose?.toLowerCase().includes(q)
+    );
+  }, [inactiveMeds, searchQuery]);
+
+  const medsWithReminders = useMemo(() =>
+    activeMeds.filter(med => med.id && getReminderForMed(med.id)?.enabled).length,
+    [activeMeds, getReminderForMed]
+  );
+
+  const medsWithWarnings = useMemo(() =>
+    activeMeds.filter(med => shouldShowWarningBadge(med)).length,
+    [activeMeds, shouldShowWarningBadge]
+  );
+
   const handleOpenMedication = (med: any) => {
     if (med.sourceVisitId) {
       openWebVisit(med.sourceVisitId);
@@ -184,27 +227,22 @@ export default function MedicationsScreen() {
   };
 
   const renderMedicationCard = (med: any, index: number, isActive: boolean) => {
-    const badge = getSourceBadge(med.source);
+    const medId = med.id || `${med.name}-${index}`;
+    const isExpanded = expandedMedIds.has(medId);
     const details = buildDetails(med);
-    const updatedLabel = formatDate(med.updatedAt);
     const startedLabel = formatDate(med.startedAt);
     const stoppedLabel = formatDate(med.stoppedAt);
 
-    // Get reminder for this medication
     const reminder = med.id ? getReminderForMed(med.id) : undefined;
     const hasReminder = reminder && reminder.enabled;
 
-    // Warning badge logic
     const showWarningBadge = shouldShowWarningBadge(med);
     const warnings = med.medicationWarning || [];
     const hasCriticalWarning = warnings.some((w: any) => w.severity === 'critical');
     const hasNonCriticalWarnings = warnings.some((w: any) => w.severity !== 'critical');
-    
-    // Filter warnings for display based on severity and acknowledgment
+
     const warningsToShow = warnings.filter((w: any) => {
-      // Always show critical warnings
       if (w.severity === 'critical') return true;
-      // Show non-critical only if not yet acknowledged
       return !med.warningAcknowledgedAt;
     });
 
@@ -241,137 +279,126 @@ export default function MedicationsScreen() {
       }).join(', ');
     };
 
-    // Handler to acknowledge warnings when banner is dismissed
     const handleAcknowledgeWarnings = () => {
-      console.log('[Medications] Acknowledge warnings called for', med.id, {
-        hasNonCriticalWarnings,
-        warningAcknowledgedAt: med.warningAcknowledgedAt
-      });
       if (med.id && hasNonCriticalWarnings && !med.warningAcknowledgedAt) {
-        console.log('[Medications] Calling acknowledgeWarnings.mutate for', med.id);
         acknowledgeWarnings.mutate(med.id, {
           onSuccess: () => {
-            console.log('[Medications] Successfully acknowledged warnings');
             Alert.alert('Got it', 'Warning acknowledged. It will be minimized next time.');
           },
-          onError: (error) => {
-            console.error('[Medications] Error acknowledging warnings:', error);
+          onError: () => {
             Alert.alert('Error', 'Failed to acknowledge warning. Please try again.');
           }
         });
-      } else {
-        console.log('[Medications] Skipping acknowledgment - conditions not met');
       }
     };
 
     return (
       <Pressable
-        key={med.id || `${med.name}-${index}`}
-        style={{ marginTop: index === 0 ? 0 : spacing(3) }}
-        onPress={() => handleOpenMedication(med)}
+        key={medId}
+        style={{ marginTop: index === 0 ? 0 : spacing(2) }}
+        onPress={() => toggleExpanded(medId)}
       >
-        <Card style={styles.medCard}>
-          {/* Topline: Name + Status Badge */}
-          <View style={styles.medHeader}>
-            <View style={styles.medIcon}>
-              <Ionicons name={isActive ? 'medkit' : 'medkit-outline'} size={20} color={Colors.primary} />
+        <Card style={styles.compactCard}>
+          {/* Compact row — always visible */}
+          <View style={styles.compactRow}>
+            <View style={styles.compactIcon}>
+              <Ionicons name={isActive ? 'medkit' : 'medkit-outline'} size={18} color={isActive ? Colors.primary : Colors.textMuted} />
               {showWarningBadge && (
-                <View style={[
-                  styles.warningIndicator,
-                  hasCriticalWarning && styles.warningIndicatorCritical
-                ]}>
-                  <Ionicons name="warning" size={10} color="#fff" />
+                <View style={[styles.warningDot, hasCriticalWarning && styles.warningDotCritical]} />
+              )}
+            </View>
+            <View style={styles.compactInfo}>
+              <Text style={styles.compactName} numberOfLines={1}>{med.name || 'Medication'}</Text>
+              {details.length > 0 && (
+                <Text style={styles.compactDose} numberOfLines={1}>{details.join(' · ')}</Text>
+              )}
+            </View>
+            <View style={styles.compactRight}>
+              {hasReminder && (
+                <Ionicons name="notifications" size={13} color={Colors.primary} style={{ marginRight: spacing(1.5) }} />
+              )}
+              <View style={[styles.compactBadge, { backgroundColor: isActive ? 'rgba(52,211,153,0.15)' : 'rgba(255,107,107,0.12)' }]}>
+                <Text style={[styles.compactBadgeText, { color: isActive ? Colors.success : Colors.error }]}>
+                  {isActive ? 'Active' : 'Stopped'}
+                </Text>
+              </View>
+              <Ionicons
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={Colors.textMuted}
+                style={{ marginLeft: spacing(2) }}
+              />
+            </View>
+          </View>
+
+          {/* Expanded details */}
+          {isExpanded && (
+            <View style={styles.expandedContent}>
+              {/* Warning Banner */}
+              {warningsToShow.length > 0 && (
+                <View
+                  onStartShouldSetResponder={() => true}
+                  onTouchEnd={(e) => e.stopPropagation()}
+                >
+                  <MedicationWarningBanner
+                    warnings={warningsToShow}
+                    onDismiss={hasNonCriticalWarnings && !hasCriticalWarning ? handleAcknowledgeWarnings : undefined}
+                  />
                 </View>
               )}
-            </View>
-            <Text style={styles.medName} numberOfLines={1}>{med.name || 'Medication'}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: isActive ? 'rgba(52,211,153,0.15)' : 'rgba(255,107,107,0.12)' }]}>
-              <Text style={[styles.statusLabel, { color: isActive ? Colors.success : Colors.error }]}>
-                {isActive ? 'Active' : 'Stopped'}
-              </Text>
-            </View>
-          </View>
 
-          {/* Glanceable Details Row: Dose • Frequency */}
-          {(details.length > 0) && (
-            <View style={styles.glanceRow}>
-              <Text style={styles.glanceText} numberOfLines={1}>
-                {details.join(' • ')}
-              </Text>
-            </View>
-          )}
-
-          {/* Warning Banner - Only show relevant warnings */}
-          {/* Wrapped in View with onStartShouldSetResponder to prevent parent Pressable from capturing touches */}
-          {warningsToShow.length > 0 && (
-            <View 
-              style={{ marginTop: spacing(2) }}
-              onStartShouldSetResponder={() => true}
-              onTouchEnd={(e) => e.stopPropagation()}
-            >
-              <MedicationWarningBanner 
-                warnings={warningsToShow} 
-                onDismiss={hasNonCriticalWarnings && !hasCriticalWarning ? handleAcknowledgeWarnings : undefined}
-              />
-            </View>
-          )}
-
-          {/* Reminder Row - Only show for active medications */}
-          {isActive && med.id && (
-            <View style={styles.reminderRow}>
-              <Ionicons
-                name={hasReminder ? 'notifications' : 'notifications-outline'}
-                size={18}
-                color={hasReminder ? Colors.primary : Colors.textMuted}
-              />
-              {hasReminder ? (
-                <>
-                  <Text style={styles.reminderTimeText}>
-                    {formatReminderTimes(reminder.times)}
-                  </Text>
-                  <Pressable
-                    style={styles.reminderEditButton}
-                    onPress={handleReminderPress}
-                  >
-                    <Ionicons name="pencil" size={14} color={Colors.primary} />
-                  </Pressable>
-                  <Pressable
-                    style={styles.reminderRemoveButton}
-                    onPress={handleRemoveReminder}
-                  >
-                    <Ionicons name="trash-outline" size={14} color={Colors.error} />
-                  </Pressable>
-                </>
-              ) : (
-                <Pressable
-                  style={styles.setReminderButton}
-                  onPress={handleReminderPress}
-                >
-                  <Text style={styles.setReminderText}>Set Reminder</Text>
-                </Pressable>
+              {/* Reminder Row */}
+              {isActive && med.id && (
+                <View style={styles.reminderRow}>
+                  <Ionicons
+                    name={hasReminder ? 'notifications' : 'notifications-outline'}
+                    size={16}
+                    color={hasReminder ? Colors.primary : Colors.textMuted}
+                  />
+                  {hasReminder ? (
+                    <>
+                      <Text style={styles.reminderTimeText}>
+                        {formatReminderTimes(reminder.times)}
+                      </Text>
+                      <Pressable style={styles.reminderEditButton} onPress={handleReminderPress}>
+                        <Ionicons name="pencil" size={14} color={Colors.primary} />
+                      </Pressable>
+                      <Pressable style={styles.reminderRemoveButton} onPress={handleRemoveReminder}>
+                        <Ionicons name="trash-outline" size={14} color={Colors.error} />
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Pressable style={styles.setReminderButton} onPress={handleReminderPress}>
+                      <Text style={styles.setReminderText}>Set Reminder</Text>
+                    </Pressable>
+                  )}
+                </View>
               )}
+
+              {/* Footer */}
+              <View style={styles.cardFooter}>
+                {med.source === 'visit' && med.sourceVisitId ? (
+                  <Pressable
+                    style={styles.visitLink}
+                    onPress={(e) => { e.stopPropagation(); openWebVisit(med.sourceVisitId); }}
+                  >
+                    <Ionicons name="link-outline" size={12} color={Colors.primary} />
+                    <Text style={styles.visitLinkText}>From visit</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.visitLink}>
+                    <Ionicons name="create-outline" size={12} color={Colors.textMuted} />
+                    <Text style={[styles.visitLinkText, { color: Colors.textMuted }]}>Added manually</Text>
+                  </View>
+                )}
+                {(startedLabel || stoppedLabel) && (
+                  <Text style={styles.footerDate}>
+                    {isActive ? (startedLabel ? `Started ${startedLabel}` : '') : (stoppedLabel ? `Stopped ${stoppedLabel}` : '')}
+                  </Text>
+                )}
+              </View>
             </View>
           )}
-
-          {/* Compact Footer: Source + Date */}
-          <View style={styles.cardFooter}>
-            {med.source === 'visit' && med.sourceVisitId ? (
-              <View style={styles.visitLink}>
-                <Ionicons name="link-outline" size={12} color={Colors.primary} />
-                <Text style={styles.visitLinkText}>From visit</Text>
-              </View>
-            ) : (
-              <View style={styles.visitLink}>
-                <Ionicons name="create-outline" size={12} color={Colors.textMuted} />
-                <Text style={[styles.visitLinkText, { color: Colors.textMuted }]}>Added manually</Text>
-              </View>
-            )}
-            {(startedLabel || stoppedLabel) && (
-              <Text style={styles.footerDate}>
-                {isActive ? (startedLabel ? `Started ${startedLabel}` : '') : (stoppedLabel ? `Stopped ${stoppedLabel}` : '')}
-              </Text>
-            )}
-          </View>
         </Card>
       </Pressable>
     );
@@ -538,22 +565,78 @@ export default function MedicationsScreen() {
               ) : (
 
                 <>
-                  <Text style={styles.sectionSubtitle}>
-                    Active medications automatically update as your visit summaries note changes.
-                  </Text>
+                  {/* Search Bar */}
+                  <View style={styles.searchContainer}>
+                    <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Search medications..."
+                      placeholderTextColor={Colors.textMuted}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      clearButtonMode="while-editing"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    {searchQuery.length > 0 && (
+                      <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                        <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                      </Pressable>
+                    )}
+                  </View>
+
+                  {/* Summary Strip */}
+                  {!searchQuery && (
+                    <View style={styles.summaryStrip}>
+                      <View style={styles.summaryChip}>
+                        <View style={[styles.summaryDot, { backgroundColor: Colors.success }]} />
+                        <Text style={styles.summaryChipText}>{activeMeds.length} Active</Text>
+                      </View>
+                      {medsWithReminders > 0 && (
+                        <View style={styles.summaryChip}>
+                          <Ionicons name="notifications" size={12} color={Colors.primary} />
+                          <Text style={styles.summaryChipText}>{medsWithReminders} Reminders</Text>
+                        </View>
+                      )}
+                      {medsWithWarnings > 0 && (
+                        <View style={styles.summaryChip}>
+                          <Ionicons name="warning" size={12} color={Colors.warning} />
+                          <Text style={styles.summaryChipText}>{medsWithWarnings} Warnings</Text>
+                        </View>
+                      )}
+                      {inactiveMeds.length > 0 && (
+                        <View style={styles.summaryChip}>
+                          <View style={[styles.summaryDot, { backgroundColor: Colors.textMuted }]} />
+                          <Text style={styles.summaryChipText}>{inactiveMeds.length} Stopped</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Search results count */}
+                  {searchQuery.length > 0 && (
+                    <Text style={styles.searchResultsText}>
+                      {filteredActiveMeds.length + filteredInactiveMeds.length} result{filteredActiveMeds.length + filteredInactiveMeds.length !== 1 ? 's' : ''}
+                    </Text>
+                  )}
 
                   <View style={styles.section}>
-                    {activeMeds.length === 0 ? (
+                    {filteredActiveMeds.length === 0 && !searchQuery ? (
                       <View style={styles.emptyActive}>
                         <Ionicons name="checkmark-done" size={20} color={Colors.success} />
                         <Text style={styles.emptyActiveText}>No active medications right now.</Text>
                       </View>
+                    ) : filteredActiveMeds.length === 0 && searchQuery ? (
+                      <View style={styles.emptyActive}>
+                        <Ionicons name="search-outline" size={20} color={Colors.textMuted} />
+                        <Text style={styles.emptyActiveText}>No medications match "{searchQuery}"</Text>
+                      </View>
                     ) : (
-                      activeMeds.map((med, index) => renderMedicationCard(med, index, true))
+                      filteredActiveMeds.map((med, index) => renderMedicationCard(med, index, true))
                     )}
                   </View>
 
-                  {inactiveMeds.length > 0 && (
+                  {filteredInactiveMeds.length > 0 && (
                     <Card style={styles.inactiveCard}>
                       <Pressable
                         style={styles.inactiveHeader}
@@ -563,7 +646,7 @@ export default function MedicationsScreen() {
                           <Ionicons name="archive-outline" size={18} color={Colors.textMuted} />
                           <Text style={styles.inactiveTitle}>Recently stopped</Text>
                           <View style={styles.sectionCount}>
-                            <Text style={styles.sectionCountText}>{inactiveMeds.length}</Text>
+                            <Text style={styles.sectionCountText}>{filteredInactiveMeds.length}</Text>
                           </View>
                         </View>
                         <Ionicons
@@ -574,7 +657,7 @@ export default function MedicationsScreen() {
                       </Pressable>
 
                       {showInactive &&
-                        inactiveMeds.map((med, index) => renderMedicationCard(med, index, false))}
+                        filteredInactiveMeds.map((med, index) => renderMedicationCard(med, index, false))}
                     </Card>
                   )}
                   {hasMore && (
@@ -630,8 +713,9 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 22,
-    fontFamily: 'PlusJakartaSans_700Bold',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
+    letterSpacing: -0.3,
   },
   webLink: {
     flexDirection: 'row',
@@ -643,138 +727,134 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
-  sectionSubtitle: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    color: Colors.textMuted,
-    lineHeight: 20,
-  },
   section: {
     marginTop: spacing(4),
   },
-  medCard: {
-    padding: spacing(4),
-  },
-  medHeader: {
+  // Search bar
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.stroke,
+    paddingHorizontal: spacing(3),
     marginBottom: spacing(3),
-    gap: spacing(2),
   },
-  medIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.accent,
+  searchIcon: {
+    marginRight: spacing(2),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.text,
+    paddingVertical: spacing(3),
+  },
+  searchResultsText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+    marginBottom: spacing(3),
+  },
+  // Summary strip
+  summaryStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing(2),
+    marginBottom: spacing(4),
+  },
+  summaryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(1.5),
+    backgroundColor: Colors.surface,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.stroke,
+  },
+  summaryDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  summaryChipText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textWarm,
+  },
+  // Compact medication card
+  compactCard: {
+    padding: spacing(3),
+  },
+  compactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: Colors.sageMuted,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    marginRight: spacing(3),
   },
-  warningIndicator: {
+  warningDot: {
     position: 'absolute',
     top: -2,
     right: -2,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#F59E0B', // Amber for moderate/low warnings
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#F59E0B',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: Colors.surface,
   },
-  warningIndicatorCritical: {
-    backgroundColor: Colors.error, // Red for critical warnings - always visible
+  warningDotCritical: {
+    backgroundColor: Colors.error,
   },
-  medName: {
+  compactInfo: {
     flex: 1,
-    fontSize: 17,
+    marginRight: spacing(2),
+  },
+  compactName: {
+    fontSize: 15,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.text,
-    marginHorizontal: spacing(2),
+    letterSpacing: -0.1,
   },
-  medDose: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '500',
-    marginTop: spacing(1),
+  compactDose: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+    marginTop: 2,
   },
-  badgeContainer: {
+  compactRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing(2),
   },
-  warningBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(1),
+  compactBadge: {
     paddingHorizontal: spacing(2),
     paddingVertical: spacing(1),
     borderRadius: 999,
-    backgroundColor: 'rgba(255,107,107,0.12)',
   },
-  warningBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.error,
-  },
-  statusBadge: {
-    paddingHorizontal: spacing(3),
-    paddingVertical: spacing(1.5),
-    borderRadius: 999,
-  },
-  statusLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+  compactBadgeText: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  medMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing(2),
-  },
-  sourceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(1),
-    paddingHorizontal: spacing(2),
-    paddingVertical: spacing(1),
-    borderRadius: 8,
-  },
-  sourceLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  syncedText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(2),
-    marginTop: spacing(2),
-  },
-  detailText: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    flex: 1,
-  },
-  timeline: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing(3),
+  // Expanded content
+  expandedContent: {
     marginTop: spacing(3),
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(1),
-  },
-  timelineText: {
-    fontSize: 12,
-    color: Colors.textMuted,
+    paddingTop: spacing(3),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+    gap: spacing(3),
   },
   inactiveCard: {
     marginTop: spacing(6),
@@ -804,7 +884,7 @@ const styles = StyleSheet.create({
   },
   sectionCountText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
   },
   emptyActive: {
@@ -832,7 +912,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
   },
   emptyDescription: {
@@ -853,7 +933,7 @@ const styles = StyleSheet.create({
   },
   emptyButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
   // Reminder styles
@@ -861,16 +941,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(2),
-    paddingVertical: spacing(3),
+    paddingVertical: spacing(2.5),
     paddingHorizontal: spacing(3),
-    marginBottom: spacing(3),
     backgroundColor: 'rgba(64,201,208,0.08)',
     borderRadius: Radius.md,
   },
   reminderTimeText: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.text,
   },
   reminderEditButton: {
@@ -884,32 +963,14 @@ const styles = StyleSheet.create({
   },
   setReminderText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.primary,
-  },
-  // Glanceable card styles
-  glanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing(2),
-    marginBottom: spacing(2),
-    paddingVertical: spacing(2),
-    paddingHorizontal: spacing(3),
-    backgroundColor: 'rgba(64,201,208,0.08)',
-    borderRadius: Radius.sm,
-  },
-  glanceText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.text,
-    letterSpacing: 0.2,
   },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing(3),
-    paddingTop: spacing(3),
+    paddingTop: spacing(2),
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.border,
   },
@@ -920,7 +981,7 @@ const styles = StyleSheet.create({
   },
   visitLinkText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.primary,
   },
   footerDate: {

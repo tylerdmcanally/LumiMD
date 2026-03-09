@@ -317,6 +317,7 @@ describe('care summary query reuse', () => {
           completed: false,
           description: 'Call specialist',
           dueAt: makeTimestamp('2026-02-09T14:00:00.000Z'),
+          deletedAt: null,
         },
       },
       visits: {
@@ -357,6 +358,6 @@ describe('care summary query reuse', () => {
     expect(harness.metrics.getsByCollection.medicationLogs).toBe(1);
     expect(harness.metrics.getsByCollection.actions).toBe(1);
     expect(harness.metrics.getsByCollection.visits).toBe(1);
-    expect(res.headers['cache-control']).toBe('private, max-age=30');
+    expect(res.headers['cache-control']).toBe('private, no-cache');
   });
 });

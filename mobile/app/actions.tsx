@@ -469,9 +469,10 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontFamily: 'PlusJakartaSans_700Bold',
+    fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   webLink: {
     flexDirection: 'row',
