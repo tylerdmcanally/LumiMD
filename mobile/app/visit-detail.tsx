@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Linking,
   LayoutAnimation,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -38,9 +39,13 @@ import {
   buildMedicationEducationMap,
 } from '../lib/utils/educationHelpers';
 import { trackEvent } from '../lib/telemetry';
+import { getMedlinePlusUrl } from '../lib/utils/medlineplus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VisitWalkthrough } from '../components/VisitWalkthrough';
 import type { VisitWalkthrough as VisitWalkthroughType } from '@lumimd/sdk';
+import { useCompleteAction } from '../lib/api/mutations';
+import firestore from '@react-native-firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 
 dayjs.extend(relativeTime);
 
@@ -198,6 +203,64 @@ export default function VisitDetailScreen() {
   const hadLoadFailureRef = useRef(false);
   const processingStates = ['pending', 'processing', 'transcribing', 'summarizing'];
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { mutate: toggleAction } = useCompleteAction();
+
+  // Actions linked to this visit (from the actions collection)
+  const [visitActions, setVisitActions] = useState<Map<string, { id: string; completed: boolean }>>(new Map());
+  useEffect(() => {
+    if (!visitId || !user?.uid) return;
+    const unsubscribe = firestore()
+      .collection('actions')
+      .where('userId', '==', user.uid)
+      .where('visitId', '==', visitId)
+      .where('deletedAt', '==', null)
+      .onSnapshot((snapshot) => {
+        const map = new Map<string, { id: string; completed: boolean }>();
+        snapshot?.docs.forEach((doc) => {
+          const data = doc.data();
+          const desc = (data.description ?? '').trim();
+          if (desc) {
+            map.set(desc, { id: doc.id, completed: Boolean(data.completed) });
+          }
+        });
+        setVisitActions(map);
+      });
+    return () => unsubscribe();
+  }, [visitId, user?.uid]);
+
+  const handleToggleActionItem = useCallback((actionId: string, currentlyCompleted: boolean) => {
+    // Optimistic UI update
+    setVisitActions((prev) => {
+      const next = new Map(prev);
+      for (const [key, val] of next) {
+        if (val.id === actionId) {
+          next.set(key, { ...val, completed: !currentlyCompleted });
+          break;
+        }
+      }
+      return next;
+    });
+    toggleAction(
+      { id: actionId, completed: !currentlyCompleted },
+      {
+        onError: () => {
+          // Revert on failure
+          setVisitActions((prev) => {
+            const next = new Map(prev);
+            for (const [key, val] of next) {
+              if (val.id === actionId) {
+                next.set(key, { ...val, completed: currentlyCompleted });
+                break;
+              }
+            }
+            return next;
+          });
+          Alert.alert('Error', 'Could not update this action item. Please try again.');
+        },
+      },
+    );
+  }, [toggleAction]);
 
   const {
     data: visit,
@@ -699,20 +762,6 @@ export default function VisitDetailScreen() {
                 )}
               </View>
 
-              {/* ── Review with LumiBot button (after walkthrough dismissed) ── */}
-              {walkthroughDismissed && (visit as any)?.walkthrough && (
-                <Pressable
-                  style={styles.lumibotButton}
-                  onPress={() => setWalkthroughVisible(true)}
-                >
-                  <View style={styles.lumibotButtonIcon}>
-                    <Ionicons name="sparkles" size={16} color="#fff" />
-                  </View>
-                  <Text style={styles.lumibotButtonText}>Review with LumiBot</Text>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
-                </Pressable>
-              )}
-
               {/* ── KEY HIGHLIGHTS BAR ── */}
               {(highlightCounts.diagnoses > 0 ||
                 highlightCounts.medications > 0 ||
@@ -762,12 +811,35 @@ export default function VisitDetailScreen() {
               {/* ── STRUCTURED DATA: Action Items ── */}
               {actionItems.length > 0 && (
                 <SummarySection title="Action Items" icon="checkmark-circle">
-                  {actionItems.map((item, idx) => (
-                    <View key={idx} style={styles.listRow}>
-                      <Ionicons name="ellipse-outline" size={16} color={Colors.primary} />
-                      <Text style={styles.listRowText}>{item}</Text>
-                    </View>
-                  ))}
+                  {actionItems.map((item, idx) => {
+                    const matched = visitActions.get(item);
+                    return (
+                      <Pressable
+                        key={idx}
+                        style={styles.actionItemRow}
+                        onPress={matched ? () => handleToggleActionItem(matched.id, matched.completed) : undefined}
+                        disabled={!matched}
+                      >
+                        {matched ? (
+                          <Ionicons
+                            name={matched.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={22}
+                            color={matched.completed ? Colors.success : Colors.primary}
+                          />
+                        ) : (
+                          <Ionicons name="ellipse-outline" size={16} color={Colors.primary} />
+                        )}
+                        <Text
+                          style={[
+                            styles.listRowText,
+                            matched?.completed && styles.actionItemCompleted,
+                          ]}
+                        >
+                          {item}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                   <Pressable
                     style={styles.viewAllLink}
                     onPress={() => router.push('/actions')}
@@ -787,7 +859,17 @@ export default function VisitDetailScreen() {
                       <View key={idx}>
                         <View style={styles.listRow}>
                           <Ionicons name="medical" size={16} color={Colors.primary} />
-                          <Text style={styles.listRowText}>{item}</Text>
+                          <View style={styles.listRowContent}>
+                            <Text style={styles.listRowText}>{item}</Text>
+                            <Pressable
+                              style={styles.learnMoreLink}
+                              onPress={() => Linking.openURL(getMedlinePlusUrl(item))}
+                              hitSlop={8}
+                            >
+                              <Ionicons name="open-outline" size={12} color={Colors.textMuted} />
+                              <Text style={styles.learnMoreText}>Learn more</Text>
+                            </Pressable>
+                          </View>
                         </View>
                         {edu && <DiagnosisEducationCard {...edu} />}
                       </View>
@@ -827,6 +909,14 @@ export default function VisitDetailScreen() {
                                       {item.secondary && (
                                         <Text style={styles.listRowSubText}>{item.secondary}</Text>
                                       )}
+                                      <Pressable
+                                        style={styles.learnMoreLink}
+                                        onPress={() => Linking.openURL(getMedlinePlusUrl(item.primary))}
+                                        hitSlop={8}
+                                      >
+                                        <Ionicons name="open-outline" size={12} color={Colors.textMuted} />
+                                        <Text style={styles.learnMoreText}>Learn more</Text>
+                                      </Pressable>
                                     </View>
                                   </View>
                                   {edu && <MedicationEducationCard {...edu} />}
@@ -937,6 +1027,19 @@ export default function VisitDetailScreen() {
                 </CollapsibleSection>
               )}
             </ScrollView>
+
+            {/* Floating "Review with LumiBot" pill */}
+            {!walkthroughVisible && (visit as any)?.walkthrough && visit.processingStatus === 'completed' && (
+              <Pressable
+                style={styles.floatingLumibotPill}
+                onPress={() => setWalkthroughVisible(true)}
+              >
+                <View style={styles.floatingLumibotIcon}>
+                  <Ionicons name="sparkles" size={14} color="#fff" />
+                </View>
+                <Text style={styles.floatingLumibotText}>Review with LumiBot</Text>
+              </Pressable>
+            )}
           </View>
         )}
       </SafeAreaView>
@@ -1054,7 +1157,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing(5),
-    paddingBottom: spacing(8),
+    paddingBottom: spacing(20),
   },
   metaContainer: {
     marginBottom: spacing(4),
@@ -1279,6 +1382,17 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
   },
+  learnMoreLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+    marginTop: spacing(1),
+  },
+  learnMoreText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
+  },
   placeholderText: {
     fontSize: 14,
     color: Colors.textMuted,
@@ -1303,30 +1417,46 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontFamily: 'PlusJakartaSans_600SemiBold',
   },
-  lumibotButton: {
+  floatingLumibotPill: {
+    position: 'absolute',
+    bottom: spacing(5),
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(2),
-    backgroundColor: `${Colors.primary}10`,
-    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+    borderRadius: 999,
     paddingVertical: spacing(3),
-    paddingHorizontal: spacing(4),
-    marginBottom: spacing(3),
-    borderWidth: 1,
-    borderColor: `${Colors.primary}20`,
+    paddingHorizontal: spacing(5),
+    shadowColor: Colors.accent,
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  lumibotButtonIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primary,
+  floatingLumibotIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  lumibotButtonText: {
-    flex: 1,
+  floatingLumibotText: {
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.primary,
+    color: '#fff',
+  },
+  actionItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    paddingVertical: spacing(1.5),
+    minHeight: 44,
+  },
+  actionItemCompleted: {
+    textDecorationLine: 'line-through',
+    color: Colors.textMuted,
+    opacity: 0.7,
   },
 });

@@ -17,7 +17,9 @@ import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
+import { Linking } from 'react-native';
 import { openWebMeds, openWebVisit } from '../lib/linking';
+import { getMedlinePlusUrl } from '../lib/utils/medlineplus';
 import { useAuth } from '../contexts/AuthContext';
 import {
   usePaginatedMedications,
@@ -334,6 +336,16 @@ export default function MedicationsScreen() {
           {/* Expanded details */}
           {isExpanded && (
             <View style={styles.expandedContent}>
+              {/* Learn more on MedlinePlus */}
+              <Pressable
+                style={styles.learnMoreRow}
+                onPress={(e) => { e.stopPropagation(); Linking.openURL(getMedlinePlusUrl(med.name || 'Medication')); }}
+                hitSlop={8}
+              >
+                <Ionicons name="open-outline" size={14} color={Colors.primary} />
+                <Text style={styles.learnMoreText}>Learn more on MedlinePlus</Text>
+              </Pressable>
+
               {/* Warning Banner */}
               {warningsToShow.length > 0 && (
                 <View
@@ -855,6 +867,16 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.border,
     gap: spacing(3),
+  },
+  learnMoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+  },
+  learnMoreText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.primary,
   },
   inactiveCard: {
     marginTop: spacing(6),

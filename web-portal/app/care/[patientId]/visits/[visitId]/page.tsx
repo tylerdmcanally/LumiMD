@@ -23,6 +23,7 @@ import {
   BookOpen,
   Info,
   AlertTriangle,
+  ExternalLink,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
@@ -40,6 +41,7 @@ import {
 import { useCareVisitSummary, useUpdateVisitMetadata, useCareVisits } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { getMedlinePlusUrl } from '@/lib/utils/medlineplus';
 
 const trimText = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined;
@@ -593,7 +595,18 @@ export default function CareVisitDetailPage() {
                       key={`dx-${idx}`}
                       className="rounded-2xl border border-border-light/60 bg-background-subtle/70 px-4 py-3 shadow-sm"
                     >
-                      <span className="font-medium text-text-primary">{String(diagnosis)}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-medium text-text-primary">{String(diagnosis)}</span>
+                        <a
+                          href={getMedlinePlusUrl(String(diagnosis))}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors shrink-0 mt-0.5"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Learn more
+                        </a>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -987,18 +1000,32 @@ function MedicationSection({
       </div>
       {items.length > 0 ? (
         <ul className="space-y-2">
-          {items.map((med, idx) => (
-            <li
-              key={`med-${label}-${idx}`}
-              className={cn(
-                'rounded-xl border px-3 py-2 text-sm text-text-primary',
-                styles.border,
-                styles.bg
-              )}
-            >
-              {formatMedicationDisplay(med)}
-            </li>
-          ))}
+          {items.map((med, idx) => {
+            const medName = formatMedicationDisplay(med);
+            return (
+              <li
+                key={`med-${label}-${idx}`}
+                className={cn(
+                  'rounded-xl border px-3 py-2 text-sm text-text-primary',
+                  styles.border,
+                  styles.bg
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span>{medName}</span>
+                  <a
+                    href={getMedlinePlusUrl(medName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors shrink-0 mt-0.5"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    <span className="hidden sm:inline">Learn more</span>
+                  </a>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p className="text-xs text-text-muted italic">{emptyMessage}</p>

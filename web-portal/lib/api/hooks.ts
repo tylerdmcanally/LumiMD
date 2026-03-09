@@ -1004,6 +1004,12 @@ export type CarePatientOverview = {
   }>;
   /** ISO timestamp of when patient last opened the app */
   lastActive?: string | null;
+  /** Latest vitals from health logs */
+  latestVitals?: {
+    bp?: { systolic: number; diastolic: number; loggedAt: string; alertLevel: string };
+    weight?: { value: number; unit: string; loggedAt: string };
+    glucose?: { value: number; unit: string; loggedAt: string; alertLevel: string };
+  };
 };
 
 export type CareOverviewData = {

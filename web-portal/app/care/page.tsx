@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
 import {
     Users,
     AlertCircle,
@@ -16,22 +15,17 @@ import {
     AlertTriangle,
     Heart,
     Zap,
-    TrendingUp,
-    TrendingDown,
-    Minus,
     RefreshCw,
     Activity,
 } from 'lucide-react';
-import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
+import { PageContainer } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
     useCareOverview,
-    useCareHealthLogs,
     CarePatientOverview,
     CareAlert,
-    type CareHealthLogsResponse,
 } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 
@@ -253,33 +247,6 @@ function NeedsAttentionPanel({ patients }: { patients: CarePatientOverview[] }) 
 }
 
 // =============================================================================
-// Trend Indicator Component
-// =============================================================================
-
-function TrendIndicator({ 
-    direction, 
-    size = 'sm' 
-}: { 
-    direction: 'up' | 'down' | 'stable' | null; 
-    size?: 'sm' | 'md';
-}) {
-    if (!direction) return null;
-    
-    const sizeClasses = size === 'sm' ? 'h-3 w-3' : 'h-4 w-4';
-    
-    switch (direction) {
-        case 'up':
-            return <TrendingUp className={cn(sizeClasses, 'text-error')} />;
-        case 'down':
-            return <TrendingDown className={cn(sizeClasses, 'text-success')} />;
-        case 'stable':
-            return <Minus className={cn(sizeClasses, 'text-text-muted')} />;
-        default:
-            return null;
-    }
-}
-
-// =============================================================================
 // Avatar Color Palettes (warm, varied)
 // =============================================================================
 
@@ -294,6 +261,35 @@ const AVATAR_PALETTES = [
 // =============================================================================
 // Patient Card Component (Compact, information-dense)
 // =============================================================================
+
+function formatRelativeTime(isoTimestamp: string): string {
+    const now = Date.now();
+    const then = new Date(isoTimestamp).getTime();
+    if (isNaN(then)) return 'Unknown';
+    const diffMs = now - then;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays < 14) return `${diffDays}d ago`;
+    const diffWeeks = Math.floor(diffDays / 7);
+    return `${diffWeeks}w ago`;
+}
+
+function getAlertLevelColor(level: string): string {
+    switch (level) {
+        case 'emergency':
+        case 'high':
+            return 'text-error';
+        case 'warning':
+        case 'caution':
+            return 'text-warning-dark';
+        default:
+            return 'text-success';
+    }
+}
 
 function PatientCard({ patient, colorIndex = 0 }: { patient: CarePatientOverview; colorIndex?: number }) {
     const { medicationsToday, pendingActions, alerts } = patient;
@@ -430,6 +426,37 @@ function PatientCard({ patient, colorIndex = 0 }: { patient: CarePatientOverview
                             style={{ width: `${medProgress}%` }}
                         />
                     </div>
+                </div>
+
+                {/* Vitals + Last Active */}
+                <div className="px-4 pb-3 border-t border-border-light/60 pt-3">
+                    {patient.latestVitals && (patient.latestVitals.bp || patient.latestVitals.weight || patient.latestVitals.glucose) ? (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mb-2">
+                            {patient.latestVitals.bp && (
+                                <span className={cn('flex items-center gap-1 font-medium', getAlertLevelColor(patient.latestVitals.bp.alertLevel))}>
+                                    <Heart className="h-3 w-3" />
+                                    {patient.latestVitals.bp.systolic}/{patient.latestVitals.bp.diastolic}
+                                </span>
+                            )}
+                            {patient.latestVitals.glucose && (
+                                <span className={cn('flex items-center gap-1 font-medium', getAlertLevelColor(patient.latestVitals.glucose.alertLevel))}>
+                                    <Activity className="h-3 w-3" />
+                                    {patient.latestVitals.glucose.value} mg/dL
+                                </span>
+                            )}
+                            {patient.latestVitals.weight && (
+                                <span className="flex items-center gap-1 text-text-secondary">
+                                    {patient.latestVitals.weight.value} {patient.latestVitals.weight.unit}
+                                </span>
+                            )}
+                        </div>
+                    ) : (
+                        <p className="text-xs text-text-muted mb-2">No vitals logged yet</p>
+                    )}
+                    <p className="text-xs text-text-muted flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Last active: {patient.lastActive ? formatRelativeTime(patient.lastActive) : 'Unknown'}
+                    </p>
                 </div>
             </Link>
 
@@ -576,130 +603,9 @@ export default function CareDashboardPage() {
                         </div>
                     </div>
 
-                    {/* Health Overview - cross-patient health summary */}
-                    <div className="mt-6">
-                        <HealthOverviewPanel patients={patients} />
-                    </div>
                 </>
             )}
         </PageContainer>
     );
 }
 
-// =============================================================================
-// Health Overview Panel — Cross-patient health status
-// =============================================================================
-
-function HealthOverviewPanel({ patients }: { patients: CarePatientOverview[] }) {
-    if (patients.length === 0) return null;
-
-    return (
-        <Card variant="elevated" padding="none" className="overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-brand-primary via-[#7ECDB5] to-[#E07A5F]" />
-            <div className="p-4 border-b border-border-light">
-                <h2 className="font-semibold text-text-primary flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-brand-primary" />
-                    Health Overview
-                </h2>
-                <p className="text-xs text-text-muted mt-1">
-                    Recent health status across all family members
-                </p>
-            </div>
-            <div className="divide-y divide-border-light">
-                {patients.map((patient) => (
-                    <PatientHealthRow key={patient.userId} patient={patient} />
-                ))}
-            </div>
-        </Card>
-    );
-}
-
-function PatientHealthRow({ patient }: { patient: CarePatientOverview }) {
-    const { data, isLoading } = useCareHealthLogs(patient.userId, { days: 30 });
-
-    const getHealthStatus = (healthData: CareHealthLogsResponse | undefined): {
-        status: 'good' | 'monitor' | 'attention' | 'no_data';
-        label: string;
-        details: string;
-    } => {
-        if (!healthData || healthData.logs.length === 0) {
-            return { status: 'no_data', label: 'No data', details: 'No readings in 30 days' };
-        }
-
-        const { alerts, summary, insights } = healthData;
-        const hasEmergency = alerts.emergency > 0;
-        const hasWarning = alerts.warning > 0;
-        const hasConcernInsight = insights?.some((i) => i.severity === 'concern');
-        const hasAttentionInsight = insights?.some((i) => i.severity === 'attention');
-
-        if (hasEmergency) {
-            return { status: 'attention', label: 'Needs attention', details: `${alerts.emergency} critical reading${alerts.emergency > 1 ? 's' : ''}` };
-        }
-
-        if (hasWarning || hasConcernInsight) {
-            const parts: string[] = [];
-            if (hasWarning) parts.push(`${alerts.warning} warning${alerts.warning > 1 ? 's' : ''}`);
-            if (hasConcernInsight) parts.push('concerning trend');
-            return { status: 'attention', label: 'Needs attention', details: parts.join(', ') };
-        }
-
-        if (hasAttentionInsight) {
-            return { status: 'monitor', label: 'Monitor', details: 'Trend needs watching' };
-        }
-
-        const totalReadings = healthData.logs.length;
-        const latestDate = healthData.logs[0]?.createdAt;
-        const daysSinceLatest = latestDate ? Math.floor((Date.now() - new Date(latestDate).getTime()) / (1000 * 60 * 60 * 24)) : 999;
-
-        if (daysSinceLatest >= 7) {
-            return { status: 'monitor', label: 'Monitor', details: `Last reading ${daysSinceLatest} days ago` };
-        }
-
-        return { status: 'good', label: 'Doing well', details: `${totalReadings} reading${totalReadings !== 1 ? 's' : ''} — all stable` };
-    };
-
-    const healthStatus = getHealthStatus(data);
-
-    const statusStyles = {
-        good: { icon: <CheckCircle className="h-4 w-4 text-success" />, bg: 'bg-success/10', text: 'text-success' },
-        monitor: { icon: <Clock className="h-4 w-4 text-warning" />, bg: 'bg-warning/10', text: 'text-warning-dark' },
-        attention: { icon: <AlertTriangle className="h-4 w-4 text-error" />, bg: 'bg-error/10', text: 'text-error' },
-        no_data: { icon: <Minus className="h-4 w-4 text-text-muted" />, bg: 'bg-background-subtle', text: 'text-text-muted' },
-    };
-
-    const style = statusStyles[healthStatus.status];
-
-    // Build quick vitals summary
-    const vitals: string[] = [];
-    if (data?.summary.bp.latest) {
-        vitals.push(`BP: ${data.summary.bp.latest.systolic}/${data.summary.bp.latest.diastolic}`);
-    }
-    if (data?.summary.glucose.latest) {
-        vitals.push(`Glucose: ${(data.summary.glucose.latest as { reading: number }).reading}`);
-    }
-    if (data?.summary.weight.latest) {
-        vitals.push(`Weight: ${(data.summary.weight.latest as { weight: number }).weight}`);
-    }
-
-    return (
-        <Link
-            href={`/care/${patient.userId}/health`}
-            className="flex items-center gap-3 px-4 py-3.5 hover:bg-background-subtle transition-colors"
-        >
-            <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg shrink-0', style.bg)}>
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin text-text-muted" /> : style.icon}
-            </div>
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-text-primary">{patient.name}</p>
-                    <span className={cn('text-xs font-medium', style.text)}>{healthStatus.label}</span>
-                </div>
-                <p className="text-xs text-text-muted truncate">
-                    {isLoading ? 'Loading...' : healthStatus.details}
-                    {vitals.length > 0 && ` — ${vitals.join(', ')}`}
-                </p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-text-muted shrink-0" />
-        </Link>
-    );
-}

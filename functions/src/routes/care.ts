@@ -880,6 +880,88 @@ function parseActionDueAt(rawDueAt: unknown): Date | null {
 }
 
 // =============================================================================
+// HELPER: Get latest vitals (BP, weight, glucose) for multiple patients
+// =============================================================================
+
+type LatestVitals = {
+    bp?: { systolic: number; diastolic: number; loggedAt: string; alertLevel: string };
+    weight?: { value: number; unit: string; loggedAt: string };
+    glucose?: { value: number; unit: string; loggedAt: string; alertLevel: string };
+};
+
+async function getLatestVitalsForPatients(
+    patientIds: string[],
+): Promise<Map<string, LatestVitals>> {
+    const { healthLogService } = getCareDomainServices();
+    const vitalsMap = new Map<string, LatestVitals>();
+    patientIds.forEach((id) => vitalsMap.set(id, {}));
+
+    await Promise.all(
+        patientIds.map(async (patientId) => {
+            try {
+                const recentLogs = await healthLogService.listForUser(patientId, {
+                    sortDirection: 'desc',
+                    limit: 20,
+                });
+
+                const vitals: LatestVitals = {};
+                for (const log of recentLogs) {
+                    if (log.deletedAt) continue;
+                    const loggedAt = toDateSafe(log.createdAt)?.toISOString() ?? '';
+                    const value = typeof log.value === 'object' && log.value !== null
+                        ? (log.value as Record<string, unknown>)
+                        : {};
+
+                    if (log.type === 'bp' && !vitals.bp) {
+                        const systolic = Number(value['systolic']);
+                        const diastolic = Number(value['diastolic']);
+                        if (!isNaN(systolic) && !isNaN(diastolic)) {
+                            vitals.bp = {
+                                systolic,
+                                diastolic,
+                                loggedAt,
+                                alertLevel: typeof log.alertLevel === 'string' ? log.alertLevel : 'normal',
+                            };
+                        }
+                    }
+
+                    if (log.type === 'weight' && !vitals.weight) {
+                        const weightVal = Number(value['weight']);
+                        if (!isNaN(weightVal)) {
+                            vitals.weight = {
+                                value: weightVal,
+                                unit: typeof value['unit'] === 'string' ? value['unit'] : 'lbs',
+                                loggedAt,
+                            };
+                        }
+                    }
+
+                    if (log.type === 'glucose' && !vitals.glucose) {
+                        const reading = Number(value['reading']);
+                        if (!isNaN(reading)) {
+                            vitals.glucose = {
+                                value: reading,
+                                unit: 'mg/dL',
+                                loggedAt,
+                                alertLevel: typeof log.alertLevel === 'string' ? log.alertLevel : 'normal',
+                            };
+                        }
+                    }
+
+                    if (vitals.bp && vitals.weight && vitals.glucose) break;
+                }
+
+                vitalsMap.set(patientId, vitals);
+            } catch (error) {
+                functions.logger.warn(`[care] Failed to fetch vitals for ${patientId}`, error);
+            }
+        }),
+    );
+
+    return vitalsMap;
+}
+
+// =============================================================================
 // GET /v1/care/overview
 // Aggregated data for all shared patients
 // =============================================================================
@@ -891,6 +973,7 @@ registerCareOverviewRoutes(careRouter, {
     getTodaysMedicationStatusForPatients,
     getPendingActionsAndOverdueAlertsForPatients,
     getLastActiveByPatient,
+    getLatestVitalsForPatients,
     emptyMedicationStatus,
 });
 

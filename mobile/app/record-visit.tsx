@@ -15,11 +15,13 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Linking,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing } from '../components/ui';
+import { Colors, spacing, Radius } from '../components/ui';
 import { useAudioRecording, MAX_RECORDING_MS } from '../lib/hooks/useAudioRecording';
 import { uploadAudioFile, UploadProgress, deleteAudioFile } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
@@ -58,6 +60,10 @@ export default function RecordVisitScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Consent gate: shown every time in idle state (two-party consent default).
+  // TODO: state-based consent logic can refine this — e.g., one-party states
+  // could store dismissal in AsyncStorage (`consent_card_dismissed`).
+  const [consentGiven, setConsentGiven] = useState(false);
   const isIdle = recordingState === 'idle';
   const isFinished = recordingState === 'stopped';
   const longRecordingWarningShown = useRef(false);
@@ -299,6 +305,7 @@ export default function RecordVisitScreen() {
     if (recordingState === 'idle') {
       meteringHistoryRef.current = new Array(WAVEFORM_BARS).fill(0);
       setWaveformBars(new Array(WAVEFORM_BARS).fill(0));
+      setConsentGiven(false);
     }
   }, [recordingState]);
 
@@ -427,125 +434,166 @@ export default function RecordVisitScreen() {
             </View>
           )}
 
-          {/* Status */}
-          <View style={styles.statusContainer}>
-            {isRecording && (
-              <Animated.View style={[styles.recordingDot, { opacity: pulseAnim }]} />
-            )}
-            <Text style={styles.statusText}>
-              {isIdle && 'Ready to Record'}
-              {isRecording && 'Recording'}
-              {isPaused && 'Paused'}
-              {isFinished && 'Recording Complete'}
-            </Text>
-          </View>
-
-          {/* Duration */}
-          <View style={styles.durationContainer}>
-            <Text style={styles.duration}>{formatDuration(duration)}</Text>
-          </View>
-
-          {/* Waveform — visible during recording & paused */}
-          {(isRecording || isPaused) ? (
-            <View style={styles.waveformContainer}>
-              {waveformBars.map((value, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.waveformBar,
-                    {
-                      height:
-                        MIN_BAR_HEIGHT + value * (MAX_BAR_HEIGHT - MIN_BAR_HEIGHT),
-                      backgroundColor: Colors.primary,
-                      opacity: isRecording ? 0.4 + value * 0.6 : 0.3,
-                    },
-                  ]}
-                />
-              ))}
-            </View>
-          ) : (
-            <View style={styles.waveformPlaceholder} />
+          {/* ── Consent card (idle, before consent given) ── */}
+          {isIdle && !consentGiven && (
+            <ScrollView
+              style={{ flex: 1, width: '100%' }}
+              contentContainerStyle={styles.consentScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.consentCard}>
+                <View style={styles.consentIconCircle}>
+                  <Ionicons name="people" size={28} color={Colors.coral} />
+                </View>
+                <Text style={styles.consentTitle}>Recording Consent</Text>
+                <Text style={styles.consentText}>
+                  Please confirm that everyone in the room knows this visit is being recorded.
+                </Text>
+                <Text style={styles.consentSubtext}>
+                  Recording medical visits helps ensure accuracy. All recordings are encrypted and stored securely.
+                </Text>
+                <Pressable
+                  style={styles.consentButton}
+                  onPress={() => setConsentGiven(true)}
+                >
+                  <Ionicons name="checkmark-shield" size={20} color="#fff" />
+                  <Text style={styles.consentButtonText}>Everyone Consents — Start Recording</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.privacyLink}
+                  onPress={() => Linking.openURL('https://lumimd.app/privacy')}
+                >
+                  <Ionicons name="lock-closed-outline" size={14} color={Colors.primary} />
+                  <Text style={styles.privacyLinkText}>Privacy Policy</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
           )}
 
-          {/* ── Primary circle button (idle / recording / paused) ── */}
-          {!isFinished && (
-            <View style={styles.buttonArea}>
-              {isRecording && (
-                <Animated.View
-                  style={[
-                    styles.ringPulse,
-                    {
-                      transform: [{ scale: ringScaleAnim }],
-                      opacity: ringOpacityAnim,
-                    },
-                  ]}
-                />
+          {/* ── Normal recording UI (after consent or during recording) ── */}
+          {(!isIdle || consentGiven) && (
+            <>
+              {/* Status */}
+              <View style={styles.statusContainer}>
+                {isRecording && (
+                  <Animated.View style={[styles.recordingDot, { opacity: pulseAnim }]} />
+                )}
+                <Text style={styles.statusText}>
+                  {isIdle && consentGiven && 'Ready to Record'}
+                  {isRecording && 'Recording'}
+                  {isPaused && 'Paused'}
+                  {isFinished && 'Recording Complete'}
+                </Text>
+              </View>
+
+              {/* Duration */}
+              <View style={styles.durationContainer}>
+                <Text style={styles.duration}>{formatDuration(duration)}</Text>
+              </View>
+
+              {/* Waveform — visible during recording & paused */}
+              {(isRecording || isPaused) ? (
+                <View style={styles.waveformContainer}>
+                  {waveformBars.map((value, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.waveformBar,
+                        {
+                          height:
+                            MIN_BAR_HEIGHT + value * (MAX_BAR_HEIGHT - MIN_BAR_HEIGHT),
+                          backgroundColor: Colors.primary,
+                          opacity: isRecording ? 0.4 + value * 0.6 : 0.3,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.waveformPlaceholder} />
               )}
-              <Pressable
-                style={[
-                  styles.iconContainer,
-                  isRecording && styles.iconRecording,
-                  isPaused && styles.iconPaused,
-                ]}
-                onPress={getPrimaryAction()}
-                disabled={uploading}
-              >
-                <Ionicons name={getPrimaryIcon()} size={64} color="#fff" />
-              </Pressable>
-            </View>
-          )}
 
-          {/* ── Secondary text action ── */}
-          {isRecording && !uploading && (
-            <Pressable onPress={handlePause} style={styles.secondaryAction}>
-              <Ionicons name="pause" size={16} color={Colors.textMuted} />
-              <Text style={styles.secondaryActionText}>Pause</Text>
-            </Pressable>
-          )}
-          {isPaused && !uploading && (
-            <Pressable onPress={handleStop} style={styles.secondaryAction}>
-              <Ionicons name="stop-circle-outline" size={16} color={Colors.textMuted} />
-              <Text style={styles.secondaryActionText}>End Recording</Text>
-            </Pressable>
-          )}
+              {/* ── Primary circle button (idle / recording / paused) ── */}
+              {!isFinished && (
+                <View style={styles.buttonArea}>
+                  {isRecording && (
+                    <Animated.View
+                      style={[
+                        styles.ringPulse,
+                        {
+                          transform: [{ scale: ringScaleAnim }],
+                          opacity: ringOpacityAnim,
+                        },
+                      ]}
+                    />
+                  )}
+                  <Pressable
+                    style={[
+                      styles.iconContainer,
+                      isRecording && styles.iconRecording,
+                      isPaused && styles.iconPaused,
+                    ]}
+                    onPress={getPrimaryAction()}
+                    disabled={uploading}
+                  >
+                    <Ionicons name={getPrimaryIcon()} size={64} color="#fff" />
+                  </Pressable>
+                </View>
+              )}
 
-          {/* ── Finished: Save + Retake ── */}
-          {isFinished && !uploading && (
-            <View style={styles.finishedActions}>
-              <Pressable style={styles.saveButton} onPress={handleUpload}>
-                <Ionicons name="cloud-upload-outline" size={22} color="#fff" />
-                <Text style={styles.saveButtonText}>Save Visit</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => resetRecording()}
-                style={styles.secondaryAction}
-              >
-                <Ionicons name="refresh" size={16} color={Colors.textMuted} />
-                <Text style={styles.secondaryActionText}>Retake</Text>
-              </Pressable>
-            </View>
-          )}
+              {/* ── Secondary text action ── */}
+              {isRecording && !uploading && (
+                <Pressable onPress={handlePause} style={styles.secondaryAction}>
+                  <Ionicons name="pause" size={16} color={Colors.textMuted} />
+                  <Text style={styles.secondaryActionText}>Pause</Text>
+                </Pressable>
+              )}
+              {isPaused && !uploading && (
+                <Pressable onPress={handleStop} style={styles.secondaryAction}>
+                  <Ionicons name="stop-circle-outline" size={16} color={Colors.textMuted} />
+                  <Text style={styles.secondaryActionText}>End Recording</Text>
+                </Pressable>
+              )}
 
-          {/* Upload Progress */}
-          {uploading && (
-            <View style={styles.uploadContainer}>
-              <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={styles.uploadText}>
-                Uploading... {Math.round(uploadProgress)}%
-              </Text>
-            </View>
-          )}
+              {/* ── Finished: Save + Retake ── */}
+              {isFinished && !uploading && (
+                <View style={styles.finishedActions}>
+                  <Pressable style={styles.saveButton} onPress={handleUpload}>
+                    <Ionicons name="cloud-upload-outline" size={22} color="#fff" />
+                    <Text style={styles.saveButtonText}>Save Visit</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => resetRecording()}
+                    style={styles.secondaryAction}
+                  >
+                    <Ionicons name="refresh" size={16} color={Colors.textMuted} />
+                    <Text style={styles.secondaryActionText}>Retake</Text>
+                  </Pressable>
+                </View>
+              )}
 
-          {/* Instructions */}
-          {isIdle && (
-            <Text style={styles.instructions}>
-              Tap the microphone to start recording your medical visit
-            </Text>
-          )}
-          {isRecording && !uploading && (
-            <Text style={styles.instructionSubtle}>
-              Keep the app open during your visit
-            </Text>
+              {/* Upload Progress */}
+              {uploading && (
+                <View style={styles.uploadContainer}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={styles.uploadText}>
+                    Uploading... {Math.round(uploadProgress)}%
+                  </Text>
+                </View>
+              )}
+
+              {/* Instructions */}
+              {isIdle && consentGiven && (
+                <Text style={styles.instructions}>
+                  Tap the microphone to start recording your medical visit
+                </Text>
+              )}
+              {isRecording && !uploading && (
+                <Text style={styles.instructionSubtle}>
+                  Keep the app open during your visit
+                </Text>
+              )}
+            </>
           )}
         </View>
       </SafeAreaView>
@@ -752,5 +800,81 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     opacity: 0.7,
+  },
+
+  // Consent card
+  consentScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: spacing(4),
+  },
+  consentCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: spacing(6),
+    alignItems: 'center',
+    gap: spacing(4),
+    borderWidth: 1,
+    borderColor: `${Colors.coral}25`,
+    shadowColor: 'rgba(38,35,28,0.5)',
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  consentIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: `${Colors.coral}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  consentTitle: {
+    fontSize: 20,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  consentText: {
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.text,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  consentSubtext: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  consentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.accent,
+    paddingVertical: spacing(4),
+    paddingHorizontal: spacing(5),
+    borderRadius: Radius.md,
+    gap: spacing(2),
+    width: '100%',
+    marginTop: spacing(2),
+  },
+  consentButtonText: {
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#fff',
+  },
+  privacyLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+    paddingVertical: spacing(1),
+  },
+  privacyLinkText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.primary,
   },
 });

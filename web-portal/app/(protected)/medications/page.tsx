@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pill as PillIcon, Trash2, Info, Loader2, AlertTriangle, AlertCircle, ShieldAlert, Bell, BellOff } from 'lucide-react';
+import { Plus, Pill as PillIcon, Trash2, Info, Loader2, AlertTriangle, AlertCircle, ShieldAlert, Bell, BellOff, ExternalLink } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
@@ -19,6 +19,7 @@ import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { api } from '@/lib/api/client';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { getMedlinePlusUrl } from '@/lib/utils/medlineplus';
 
 type GroupedMedications = {
   active: any[];
@@ -714,6 +715,16 @@ function MedicationRow({
                 </p>
               )
             ) : null}
+            <a
+              href={getMedlinePlusUrl(medicationName)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Learn more
+            </a>
           </div>
           <div className="mt-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-secondary lg:hidden">
             <Badge tone={isActive ? 'success' : 'neutral'} variant={isActive ? 'soft' : 'outline'} size="sm">
@@ -1018,6 +1029,18 @@ function MedicationCard({
               <span className="text-text-primary font-semibold">{frequencyLabel}</span>
             </div>
           </div>
+
+          {/* Learn more on MedlinePlus */}
+          <a
+            href={getMedlinePlusUrl(medicationName)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Learn more on MedlinePlus
+          </a>
 
           {/* Expandable details section */}
           {hasExpandableContent && (

@@ -11,12 +11,14 @@ import {
     Calendar,
     Clock,
     AlertTriangle,
+    ExternalLink,
 } from 'lucide-react';
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCareMedicationsPage, type Medication } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
+import { getMedlinePlusUrl } from '@/lib/utils/medlineplus';
 
 const CARE_MEDICATIONS_PAGE_SIZE = 50;
 
@@ -166,6 +168,15 @@ export default function PatientMedicationsPage() {
                                                         {med.notes}
                                                     </p>
                                                 )}
+                                                <a
+                                                    href={getMedlinePlusUrl(med.name)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors mt-2"
+                                                >
+                                                    <ExternalLink className="h-3 w-3" />
+                                                    Learn more on MedlinePlus
+                                                </a>
                                             </div>
                                             {med.source === 'visit' && (
                                                 <span className="text-xs px-2 py-1 rounded-full bg-background-subtle text-text-muted shrink-0">
@@ -227,6 +238,15 @@ export default function PatientMedicationsPage() {
                                                             {new Date(med.stoppedAt).toLocaleDateString()}
                                                         </div>
                                                     )}
+                                                    <a
+                                                        href={getMedlinePlusUrl(med.name)}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors mt-2"
+                                                    >
+                                                        <ExternalLink className="h-3 w-3" />
+                                                        Learn more
+                                                    </a>
                                                 </div>
                                             </div>
                                         </Card>

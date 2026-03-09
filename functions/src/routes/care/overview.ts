@@ -22,6 +22,12 @@ type CareShareRecord = {
     ownerEmail?: string | null;
 };
 
+type LatestVitals = {
+    bp?: { systolic: number; diastolic: number; loggedAt: string; alertLevel: string };
+    weight?: { value: number; unit: string; loggedAt: string };
+    glucose?: { value: number; unit: string; loggedAt: string; alertLevel: string };
+};
+
 type RegisterCareOverviewRoutesOptions = {
     getAcceptedSharesForCaregiver: (caregiverId: string) => Promise<CareShareRecord[]>;
     getPatientProfilesById: (
@@ -40,6 +46,9 @@ type RegisterCareOverviewRoutesOptions = {
         patientIds: string[],
         profilesById: Map<string, Record<string, unknown>>,
     ) => Promise<Map<string, string | null>>;
+    getLatestVitalsForPatients: (
+        patientIds: string[],
+    ) => Promise<Map<string, LatestVitals>>;
     emptyMedicationStatus: () => MedicationStatusSummary;
 };
 
@@ -58,6 +67,7 @@ export function registerCareOverviewRoutes(
         getTodaysMedicationStatusForPatients,
         getPendingActionsAndOverdueAlertsForPatients,
         getLastActiveByPatient,
+        getLatestVitalsForPatients,
         emptyMedicationStatus,
     } = options;
 
@@ -90,10 +100,12 @@ export function registerCareOverviewRoutes(
                 medicationsTodayByPatient,
                 { pendingActionsByPatient, overdueAlertsByPatient },
                 lastActiveByPatient,
+                latestVitalsByPatient,
             ] = await Promise.all([
                 getTodaysMedicationStatusForPatients(patientIds, timezoneByPatient),
                 getPendingActionsAndOverdueAlertsForPatients(patientIds),
                 getLastActiveByPatient(patientIds, profilesById),
+                getLatestVitalsForPatients(patientIds),
             ]);
 
             const patientsData = shares.map((share) => {
@@ -125,6 +137,7 @@ export function registerCareOverviewRoutes(
                     pendingActions,
                     alerts,
                     lastActive: lastActiveByPatient.get(patientId) ?? null,
+                    latestVitals: latestVitalsByPatient.get(patientId) ?? {},
                 };
             });
 

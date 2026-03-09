@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
   ArrowLeft,
+  CheckCircle,
   Copy,
   HelpCircle,
   Sparkles,
@@ -50,7 +51,15 @@ import {
 } from '@/lib/visits/status';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  query as fsQuery,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 
 type DiagnosisInsight = {
   shortSummary?: string;
@@ -148,6 +157,75 @@ export default function VisitDetailPage() {
 
   const status = visit ? normalizeVisitStatus(visit) : 'pending';
   const summaryReady = isVisitSummaryReady(visit ?? undefined);
+
+  // =========================================================================
+  // Action items linked to this visit (real-time listener)
+  // =========================================================================
+  type VisitAction = {
+    id: string;
+    description: string;
+    completed: boolean;
+    completedAt?: string | null;
+  };
+
+  const [visitActions, setVisitActions] = useState<VisitAction[]>([]);
+
+  useEffect(() => {
+    if (!visitId || !user?.uid) return;
+
+    const q = fsQuery(
+      collection(db, 'actions'),
+      where('userId', '==', user.uid),
+      where('visitId', '==', visitId),
+      where('deletedAt', '==', null),
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const actions: VisitAction[] = snapshot.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          description: typeof data.description === 'string' ? data.description : '',
+          completed: data.completed === true,
+          completedAt: typeof data.completedAt === 'string' ? data.completedAt : null,
+        };
+      });
+      setVisitActions(actions);
+    });
+
+    return unsubscribe;
+  }, [visitId, user?.uid]);
+
+  const completeActionMutation = useMutation({
+    mutationFn: async (actionId: string) => {
+      await api.actions.update(actionId, {
+        completed: true,
+        completedAt: new Date().toISOString(),
+      });
+    },
+    onMutate: async (actionId: string) => {
+      // Optimistic update
+      setVisitActions((prev) =>
+        prev.map((a) =>
+          a.id === actionId
+            ? { ...a, completed: true, completedAt: new Date().toISOString() }
+            : a,
+        ),
+      );
+    },
+    onError: (_err, actionId) => {
+      // Revert on error
+      setVisitActions((prev) =>
+        prev.map((a) =>
+          a.id === actionId ? { ...a, completed: false, completedAt: null } : a,
+        ),
+      );
+      toast.error('Failed to complete action item');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['actions'] });
+    },
+  });
 
   const updateMetadataMutation = useMutation({
     mutationFn: async ({
@@ -687,10 +765,10 @@ export default function VisitDetailPage() {
         <section className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <SummaryCard summary={summaryReady ? (visit.summary as string | undefined) : undefined} />
           <div className="space-y-6">
-            <SimpleListCard
-              title="Action items"
-              description="Clear next steps captured during your visit."
+            <ActionItemListCard
               items={nextSteps}
+              visitActions={visitActions}
+              onComplete={(actionId) => completeActionMutation.mutate(actionId)}
             />
             <SimpleListCard
               title="Ordered tests"
@@ -1057,6 +1135,84 @@ function DiagnosesCard({
             <p className="text-sm text-muted-foreground">No diagnoses recorded.</p>
           )}
         </TooltipProvider>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActionItemListCard({
+  items,
+  visitActions,
+  onComplete,
+}: {
+  items: string[];
+  visitActions: Array<{
+    id: string;
+    description: string;
+    completed: boolean;
+    completedAt?: string | null;
+  }>;
+  onComplete: (actionId: string) => void;
+}) {
+  // Match displayed follow-up text to action docs by description
+  const findMatchingAction = (displayText: string) => {
+    return visitActions.find((action) => {
+      const normAction = action.description.toLowerCase().trim();
+      const normDisplay = displayText.toLowerCase().trim();
+      return normDisplay.includes(normAction) || normAction.includes(normDisplay);
+    });
+  };
+
+  return (
+    <Card className="border border-border-light/60 bg-card shadow-soft">
+      <CardHeader className="space-y-1">
+        <CardTitle className="text-lg font-semibold text-foreground">Action items</CardTitle>
+        <p className="text-sm text-text-secondary">Clear next steps captured during your visit.</p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {items.length ? (
+          items.map((item, index) => {
+            const matchedAction = findMatchingAction(item);
+            const isCompleted = matchedAction?.completed === true;
+
+            return (
+              <div
+                key={`action-${item}-${index}`}
+                className={cn(
+                  'flex items-start gap-3 rounded-2xl border border-border-light/60 bg-background-subtle/70 px-4 py-3 text-sm shadow-sm transition-opacity',
+                  isCompleted && 'opacity-60',
+                )}
+              >
+                {matchedAction ? (
+                  <button
+                    onClick={() => !isCompleted && onComplete(matchedAction.id)}
+                    disabled={isCompleted}
+                    className={cn(
+                      'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+                      isCompleted
+                        ? 'bg-success border-success text-white cursor-default'
+                        : 'border-border-medium hover:border-brand-primary cursor-pointer',
+                    )}
+                  >
+                    {isCompleted && <CheckCircle className="h-3.5 w-3.5" />}
+                  </button>
+                ) : (
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-primary/15 text-xs font-semibold text-brand-primary">
+                    {index + 1}
+                  </span>
+                )}
+                <p className={cn(
+                  'leading-relaxed',
+                  isCompleted ? 'text-muted-foreground line-through' : 'text-foreground',
+                )}>
+                  {item}
+                </p>
+              </div>
+            );
+          })
+        ) : (
+          <p className="text-sm text-muted-foreground">No items recorded.</p>
+        )}
       </CardContent>
     </Card>
   );
