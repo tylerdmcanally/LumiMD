@@ -46,10 +46,11 @@ export function LumiBotBanner({
     onOpenSideEffectsModal,
 }: LumiBotBannerProps) {
 
-    const [isExpanded, setIsExpanded] = useState(false);
-    const [slideAnim] = useState(new Animated.Value(0));
+    const [isExpanded, setIsExpanded] = useState(nudges.length > 0);
+    const [slideAnim] = useState(new Animated.Value(nudges.length > 0 ? 1 : 0));
+    const prevNudgeCountRef = React.useRef(nudges.length);
 
-    // Animate in when nudges appear
+    // Animate in when nudges appear; auto-expand on new nudges
     useEffect(() => {
         if (nudges.length > 0) {
             Animated.spring(slideAnim, {
@@ -58,6 +59,12 @@ export function LumiBotBanner({
                 tension: 50,
                 friction: 8,
             }).start();
+
+            // Auto-expand when new nudges arrive (count increased)
+            if (nudges.length > prevNudgeCountRef.current || prevNudgeCountRef.current === 0) {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setIsExpanded(true);
+            }
         } else {
             Animated.timing(slideAnim, {
                 toValue: 0,
@@ -65,6 +72,7 @@ export function LumiBotBanner({
                 useNativeDriver: true,
             }).start();
         }
+        prevNudgeCountRef.current = nudges.length;
     }, [nudges.length, slideAnim]);
 
     const handleToggle = useCallback(() => {
@@ -232,8 +240,11 @@ export function LumiBotBanner({
                             </View>
                             <View>
                                 <Text style={styles.bannerTitle}>LumiBot</Text>
-                                <Text style={styles.bannerSubtitle}>
-                                    {nudges.length} {nudges.length === 1 ? 'item' : 'items'} for you
+                                <Text style={styles.bannerSubtitle} numberOfLines={1}>
+                                    {isExpanded
+                                        ? `${nudges.length} ${nudges.length === 1 ? 'item' : 'items'} for you`
+                                        : nudges[0]?.title || `${nudges.length} ${nudges.length === 1 ? 'item' : 'items'} for you`
+                                    }
                                 </Text>
                             </View>
                         </View>
