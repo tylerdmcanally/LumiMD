@@ -138,6 +138,10 @@ export default function RecordVisitScreen() {
   // ── Handlers ─────────────────────────────────────────────
 
   const handleStartRecording = async () => {
+    if (!consentGiven) {
+      console.warn('[RecordVisit] Attempted to start recording without consent');
+      return;
+    }
     try {
       if (!hasPermission) {
         const granted = await requestPermission();
@@ -340,8 +344,9 @@ export default function RecordVisitScreen() {
     if (recordingState === 'idle') {
       meteringHistoryRef.current = new Array(WAVEFORM_BARS).fill(0);
       setWaveformBars(new Array(WAVEFORM_BARS).fill(0));
-      setConsentGiven(false);
-      setAllPartiesConfirmed(false);
+      // Don't reset consentGiven here — if the user retakes in the same
+      // session, consent is still valid (same appointment, same people).
+      // Consent resets naturally when the component remounts (new navigation).
     }
   }, [recordingState]);
 

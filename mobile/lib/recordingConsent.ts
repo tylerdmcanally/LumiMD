@@ -11,8 +11,15 @@
 
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import auth from '@react-native-firebase/auth';
 
-const CONSENT_DISMISSED_KEY = 'lumimd:onePartyConsentDismissed';
+/** Per-user key so dismissal doesn't leak across accounts on the same device. */
+function consentDismissedKey(): string {
+  const uid = auth().currentUser?.uid;
+  return uid
+    ? `lumimd:onePartyConsentDismissed:${uid}`
+    : 'lumimd:onePartyConsentDismissed';
+}
 
 /**
  * Two-party (all-party) consent states.
@@ -89,16 +96,25 @@ export async function detectConsentRequirement(): Promise<ConsentResult> {
 /** Persist that the user has dismissed the one-party consent notice. */
 export async function dismissOnePartyNotice(): Promise<void> {
   try {
-    await AsyncStorage.setItem(CONSENT_DISMISSED_KEY, 'true');
+    await AsyncStorage.setItem(consentDismissedKey(), 'true');
   } catch (error) {
     console.warn('[recordingConsent] Failed to persist dismissal:', error);
+  }
+}
+
+/** Clear the dismissed flag (called on sign-out). */
+export async function clearOnePartyDismissal(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(consentDismissedKey());
+  } catch (error) {
+    console.warn('[recordingConsent] Failed to clear dismissal:', error);
   }
 }
 
 /** Check whether the user previously dismissed the one-party notice. */
 async function getOnePartyDismissed(): Promise<boolean> {
   try {
-    const value = await AsyncStorage.getItem(CONSENT_DISMISSED_KEY);
+    const value = await AsyncStorage.getItem(consentDismissedKey());
     return value === 'true';
   } catch {
     return false;

@@ -21,6 +21,7 @@ import {
   clearBadge,
   clearStoredPushToken,
 } from '../lib/notifications';
+import { clearOnePartyDismissal } from '../lib/recordingConsent';
 
 interface AuthContextType {
   user: FirebaseAuthTypes.User | null;
@@ -144,6 +145,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await clearStoredPushToken();
     } catch (err) {
       console.error('[AuthContext] Failed to clear local push token during sign out:', err);
+    }
+
+    try {
+      await clearOnePartyDismissal();
+    } catch (err) {
+      console.error('[AuthContext] Failed to clear consent dismissal during sign out:', err);
     }
 
     try {
