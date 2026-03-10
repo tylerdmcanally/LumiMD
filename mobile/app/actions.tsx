@@ -26,6 +26,7 @@ import { addActionToCalendar, removeCalendarEvent } from '../lib/calendar';
 import { api } from '../lib/api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getFollowUpCategoryLabel } from '@lumimd/sdk';
+import { AddActionSheet } from '../components/AddActionSheet';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';
@@ -49,6 +50,7 @@ export default function ActionsScreen() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [showCompleted, setShowCompleted] = useState(false);
   const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
+  const [addSheetVisible, setAddSheetVisible] = useState(false);
   const queryClient = useQueryClient();
   const platformKey = Platform.OS === 'ios' ? 'ios' : 'android';
 
@@ -320,6 +322,11 @@ export default function ActionsScreen() {
   };
 
   return (
+    <>
+    <AddActionSheet
+      visible={addSheetVisible}
+      onClose={() => setAddSheetVisible(false)}
+    />
     <ErrorBoundary
       title="Unable to load action items"
       description="Pull to refresh or go back to the home screen. If this continues, we'll look into it."
@@ -439,8 +446,17 @@ export default function ActionsScreen() {
             </>
           )}
         </ScrollView>
+
+        {/* Floating Action Button — Add Action Item */}
+        <Pressable
+          style={styles.fab}
+          onPress={() => setAddSheetVisible(true)}
+        >
+          <Ionicons name="add" size={28} color="#fff" />
+        </Pressable>
       </SafeAreaView>
     </ErrorBoundary>
+    </>
   );
 }
 
@@ -643,6 +659,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: spacing(6),
+    right: spacing(5),
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
 });
 

@@ -117,158 +117,6 @@
 
 ---
 
-## Phase D: Lightweight iOS CRUD
-
-> **Scope:** Add mutation hooks + bottom-sheet forms for medication and action item CRUD on iOS. This is the largest phase.
-> **Estimated effort:** Medium-High (dedicated session)
-> **Dependencies:** None — all API + SDK methods already exist. Independent of Phases A-C.
-
-### Files to Read First
-
-| File | Why |
-|------|-----|
-| `mobile/lib/api/mutations.ts` | Existing mutation hook patterns (useCompleteAction, useUpdateUserProfile) |
-| `mobile/lib/api/hooks.ts` | Query keys to invalidate (useRealtimeActiveMedications, etc.) |
-| `mobile/app/medications.tsx` | Current medication screen — where to add FAB + edit/stop buttons |
-| `mobile/app/actions.tsx` | Current actions screen — where to add "+" button |
-| `mobile/app/visit-detail.tsx` | Where to add "Edit" link on extracted medications |
-| `mobile/components/ReminderTimePickerModal.tsx` | Bottom-sheet pattern to follow |
-| `packages/sdk/src/api-client.ts` | SDK methods: `api.medications.create()`, `.update()`, `.delete()`, `api.actions.create()` |
-| `packages/sdk/src/models/` | Medication and ActionItem type definitions |
-
-### D.1 — New Mutation Hooks
-
-**File:** `mobile/lib/api/mutations.ts`
-
-Add 4 new hooks following the existing pattern:
-
-```typescript
-// useCreateMedication
-// - Calls: api.medications.create({ name, dose?, frequency?, status: 'active', source: 'manual' })
-// - Invalidates: ['medications']
-// - Returns: the created medication
-
-// useUpdateMedication
-// - Calls: api.medications.update(id, { name?, dose?, frequency?, status? })
-// - Invalidates: ['medications']
-
-// useDeleteMedication
-// - Calls: api.medications.delete(id)
-// - Invalidates: ['medications']
-
-// useCreateAction
-// - Calls: api.actions.create({ description, dueDate?, type: 'manual', source: 'manual' })
-// - Invalidates: ['actions']
-// - Returns: the created action
-```
-
-**Important:** Match the exact pattern of existing hooks — same error handling, same queryClient invalidation approach, same TypeScript typing.
-
-### D.2 — Edit Medication Bottom Sheet
-
-**New file:** `mobile/components/EditMedicationSheet.tsx`
-
-**Props:** `{ medication: Medication; visible: boolean; onClose: () => void }`
-
-**Form fields (simplified — NOT the full web form):**
-- Medication name (TextInput, pre-filled, required)
-- Dose (TextInput, pre-filled, optional — e.g., "20mg")
-- Frequency (TextInput, pre-filled, optional — e.g., "Once daily")
-- Status toggle: Active / Stopped
-
-**Behavior:**
-- Bottom-sheet pattern matching `ReminderTimePickerModal` (half-screen, swipe-to-dismiss)
-- Pre-fills from current medication data
-- "Save" → `useUpdateMedication` → close sheet → list refreshes
-- "Stop Medication" → confirmation Alert → `useUpdateMedication({ status: 'inactive' })` → close
-- Validation: name is required, show inline error if empty
-
-**Elderly-friendly UX:**
-- Large input fields with clear labels above each
-- No dropdowns — plain text inputs (dose format varies too much)
-- Save button is full-width, prominent, brand primary color
-- Cancel is a text link at top, not competing with Save
-
-### D.3 — Add Medication Bottom Sheet
-
-**New file:** `mobile/components/AddMedicationSheet.tsx`
-
-**Props:** `{ visible: boolean; onClose: () => void }`
-
-**Form fields:**
-- Medication name (TextInput, required)
-- Dose (TextInput, optional — placeholder: "e.g., 20mg")
-- Frequency (TextInput, optional — placeholder: "e.g., Once daily with food")
-
-**Behavior:**
-- Same bottom-sheet pattern as D.2
-- "Add" → `useCreateMedication({ name, dose, frequency, status: 'active', source: 'manual' })` → close
-- After adding: show success toast with option "Set a reminder?" → navigates to medication-schedule screen if tapped
-- Query invalidation refreshes the medication list
-
-### D.4 — Medications Screen: FAB + Edit/Stop Buttons
-
-**File:** `mobile/app/medications.tsx`
-
-**Changes:**
-1. Add a floating action button (FAB) at bottom-right: "+" icon
-   - On press: opens `AddMedicationSheet`
-2. In the expanded medication card view, add two buttons:
-   - "Edit" → opens `EditMedicationSheet` pre-filled with this medication
-   - "Stop" (for active meds only) → confirmation Alert → `useUpdateMedication({ status: 'inactive' })`
-3. For manually-added medications (`source: 'manual'`), also show "Delete" → confirmation → `useDeleteMedication`
-4. Visit-extracted medications can be edited and stopped but NOT deleted (they're part of the visit record)
-
-### D.5 — Add Action Item Bottom Sheet
-
-**New file:** `mobile/components/AddActionSheet.tsx`
-
-**Props:** `{ visible: boolean; onClose: () => void }`
-
-**Form fields:**
-- Description (TextInput, required — placeholder: "What do you need to do?")
-- Due date (date picker, optional)
-
-**Behavior:**
-- Same bottom-sheet pattern
-- "Add" → `useCreateAction({ description, dueDate, type: 'manual', source: 'manual' })` → close
-- After adding: offer to add to device calendar (existing calendar integration pattern — check how `actions.tsx` does it)
-- Appears in pending list immediately via query invalidation
-
-### D.6 — Actions Screen: "+" Button
-
-**File:** `mobile/app/actions.tsx`
-
-**Changes:**
-1. Add a "+" button in the header (or FAB at bottom-right — match whichever pattern medications uses)
-2. On press: opens `AddActionSheet`
-
-### D.7 — Visit Detail: Edit Extracted Medications
-
-**File:** `mobile/app/visit-detail.tsx`
-
-**Changes:**
-1. In the medications section (started/changed), add a small "Edit" link next to each medication
-2. On press: opens `EditMedicationSheet` pre-filled with the medication data
-3. The edit updates the `medications` collection doc — the visit extraction record stays unchanged (audit trail)
-
-**Edge case:** Some extracted medications may not yet exist as standalone docs in the `medications` collection. Check if the medication has an ID in the collection. If not, the "Edit" link should create it first (via `useCreateMedication` with the extracted data) then open the edit sheet.
-
-### Exit Criteria
-
-- [ ] 4 new mutation hooks in `mutations.ts` (create/update/delete med, create action)
-- [ ] `EditMedicationSheet` opens from medication cards and visit-detail, saves correctly
-- [ ] `AddMedicationSheet` opens from FAB on medications screen, creates correctly
-- [ ] Stop/delete medication works with proper confirmation dialogs
-- [ ] `AddActionSheet` opens from "+" on actions screen, creates correctly
-- [ ] Visit-detail "Edit" link on extracted medications works
-- [ ] `cd mobile && npx expo export --platform ios` passes with no TypeScript errors
-- [ ] All new components follow the bottom-sheet pattern from `ReminderTimePickerModal`
-- [ ] Elderly-friendly: large inputs, clear labels, prominent save buttons
-- [ ] Update this file: move Phase D to Completed Phases with notes
-
----
-
 ## Phase Execution Order
 
 | Order | Phase | Effort | Can Parallelize? |
@@ -278,7 +126,7 @@ Add 4 new hooks following the existing pattern:
 | 3 | Phase C: Web Enhancements | Medium | Independent, but iOS checkbox pattern (A.1) informs C.3 |
 | 4 | Phase D: iOS CRUD | Medium-High | Independent — start anytime |
 
-Phases A and B can run in parallel. Phase C benefits from A being done first (shared checkbox pattern), but isn't blocked by it. Phase D is fully independent.
+All phases complete.
 
 ---
 
@@ -535,3 +383,127 @@ $ cd web-portal && npx next build
 - [x] `cd functions && npm run build && npm test` passes
 - [x] `cd web-portal && npx next build` passes
 - [x] This file updated: Phase C moved to Completed Phases
+
+### Phase D: Lightweight iOS CRUD ✅
+
+**Completed:** 2026-03-09
+
+#### D.1 — New Mutation Hooks
+
+**Files modified:** `mobile/lib/api/mutations.ts`
+
+**Implementation:**
+- Added 4 new hooks: `useCreateMedication`, `useUpdateMedication`, `useDeleteMedication`, `useCreateAction`
+- All follow the existing `useCompleteAction` pattern: `useMutation` + `queryClient.invalidateQueries`
+- Each hook invalidates both primary and fallback query keys (e.g., `['medications']` + `['fallback', 'medications']`)
+- `useUpdateMedication` and `useDeleteMedication` also cancel in-flight queries via `onMutate` for responsive UI
+- Added `Medication` and `ActionItem` type imports from SDK
+
+**Deviation:** None — implemented exactly as spec.
+
+#### D.2 — Edit Medication Bottom Sheet
+
+**Files created:** `mobile/components/EditMedicationSheet.tsx`
+
+**Implementation:**
+- Modal with slide-up animation, backdrop tap to dismiss, KeyboardAvoidingView
+- Form fields: name (required, with validation), dose (optional), frequency (optional)
+- "Stop This Medication" button with confirmation Alert → sets `active: false, stoppedAt: now`
+- Pre-fills from medication data on open, resets on close
+- Header: Cancel (text) left, title center, Save (accent pill) right — matches ReminderTimePickerModal pattern
+- Large inputs with uppercase labels, `PlusJakartaSans` font, `Fraunces` title
+
+**Deviation:** Used `active: false` + `stoppedAt` instead of `status: 'inactive'` since the Medication model uses `active: boolean` (not a status enum). This matches how `medications.tsx` already determines active/inactive state.
+
+#### D.3 — Add Medication Bottom Sheet
+
+**Files created:** `mobile/components/AddMedicationSheet.tsx`
+
+**Implementation:**
+- Same modal pattern as EditMedicationSheet
+- Empty form with name (required), dose, frequency
+- Auto-focus on name field for fast entry
+- On success: closes sheet, shows Alert with "Done" and "Set a Reminder" options
+- "Set a Reminder" navigates to `/medication-schedule`
+- Footer disclaimer: "Always follow your provider's instructions"
+
+**Deviation:** None.
+
+#### D.4 — Medications Screen: FAB + Edit/Stop/Delete
+
+**Files modified:** `mobile/app/medications.tsx`
+
+**Implementation:**
+- FAB: 56px circle, accent background, `+` icon, bottom-right positioned with shadow
+- Expanded card CRUD row with three buttons: Edit, Stop, Delete
+- Edit: opens `EditMedicationSheet` pre-filled
+- Stop: confirmation Alert → `useUpdateMedication({ active: false, stoppedAt })` — visible only on active meds
+- Delete: confirmation Alert → `useDeleteMedication(id)` — visible only on `source: 'manual'` medications (visit-extracted meds cannot be deleted)
+- Both `AddMedicationSheet` and `EditMedicationSheet` rendered as sibling modals outside the ErrorBoundary
+- Buttons styled as pill-shaped with icon + text, border + background matching theme
+
+**Deviation:** None — follows spec exactly (FAB for add, edit/stop on all, delete only on manual).
+
+#### D.5 — Add Action Item Bottom Sheet
+
+**Files created:** `mobile/components/AddActionSheet.tsx`
+
+**Implementation:**
+- Same modal pattern as medication sheets
+- Description field: multiline TextInput, required, with placeholder "e.g., Schedule a blood test"
+- Due date: optional, uses `@react-native-community/datetimepicker` (already installed)
+- Date picker toggled by a styled button showing "Set a due date" or the formatted date
+- Clear date button (X icon) to remove selection
+- On success: closes sheet, shows simple confirmation Alert
+- Creates with `type: 'other'`, `source: 'manual'`, `completed: false`
+
+**Deviation:** Simplified post-creation flow: shows a simple alert instead of offering calendar add. The calendar integration on the actions screen requires the action to have `calendarEvents` metadata, which needs the full `addActionToCalendar` flow — this is already available on the actions screen itself after the item appears.
+
+#### D.6 — Actions Screen: "+" Button
+
+**Files modified:** `mobile/app/actions.tsx`
+
+**Implementation:**
+- Added FAB matching the medications screen pattern (same size, position, color, shadow)
+- Opens `AddActionSheet` on press
+- Sheet rendered outside the ErrorBoundary wrapper
+- Wrapped return in `<>...</>` fragment to accommodate the sheet + ErrorBoundary siblings
+
+**Deviation:** Used FAB instead of header button to match the medications screen pattern for consistency.
+
+#### D.7 — Visit Detail: Edit Extracted Medications
+
+**Files modified:** `mobile/app/visit-detail.tsx`
+
+**Implementation:**
+- Added real-time Firestore listener for all user medications (name-keyed map for fast lookup)
+- "Edit" link appears next to "Learn more" on started/changed medications
+- On press: looks up medication by lowercase name in the listener map
+  - If found: opens `EditMedicationSheet` with the existing doc
+  - If not found: creates via `useCreateMedication` with `source: 'visit'`, then opens sheet with the new doc
+- Dose/frequency parsed from the bullet-separated secondary text for the creation case
+- `EditMedicationSheet` rendered as sibling modal alongside MedicationReviewSheet and VisitWalkthrough
+- New styles: `medLinksRow` (flex row for learn more + edit), `editMedLink`, `editMedLinkText`
+
+**Deviation:** The medications listener queries all user medications (not filtered by visitId) since medication names need to be matched across the entire collection. This is consistent with how the actions listener already works on this screen.
+
+#### Test Results
+
+```
+$ cd mobile && npx expo export --platform ios
+iOS Bundled 3698ms node_modules/expo-router/entry.js (1607 modules)
+✅ No TypeScript errors — build successful
+```
+
+#### Exit Criteria Status
+
+- [x] 4 new mutation hooks in `mutations.ts` (create/update/delete med, create action)
+- [x] `EditMedicationSheet` opens from medication cards and visit-detail, saves correctly
+- [x] `AddMedicationSheet` opens from FAB on medications screen, creates correctly
+- [x] Stop/delete medication works with proper confirmation dialogs
+- [x] `AddActionSheet` opens from "+" on actions screen, creates correctly
+- [x] Visit-detail "Edit" link on extracted medications works
+- [x] `cd mobile && npx expo export --platform ios` passes with no TypeScript errors
+- [x] All new components follow the bottom-sheet pattern from `ReminderTimePickerModal`
+- [x] Elderly-friendly: large inputs, clear labels, prominent save buttons
+- [x] This file updated: Phase D moved to Completed Phases

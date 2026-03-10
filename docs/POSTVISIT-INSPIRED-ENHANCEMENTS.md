@@ -46,9 +46,9 @@ This document captures the filtered, pressure-tested set of features and pattern
 
 ## Approved Enhancements
 
-### Phase 5: iOS Enhancements
+### Phase 5: iOS Enhancements ✅ (Completed 2026-03-09)
 
-#### 5.1 — Inline Action Item Checkboxes on Visit Detail
+#### 5.1 — Inline Action Item Checkboxes on Visit Detail ✅
 
 **Problem:** Action items extracted from a visit are shown in an expandable section on visit-detail, but completing them requires navigating to the Actions screen.
 
@@ -62,7 +62,7 @@ This document captures the filtered, pressure-tested set of features and pattern
 
 **Effort:** Low (mutation already exists)
 
-#### 5.2 — Prominent "Review with LumiBot" Button
+#### 5.2 — Prominent "Review with LumiBot" Button ✅
 
 **Problem:** The walkthrough Q&A system (Phase 2) is powerful but the "Review with LumiBot" button after dismissal isn't prominent enough. PostVisit solves this with per-section "Ask" buttons, but that adds clutter and API cost.
 
@@ -77,7 +77,7 @@ This document captures the filtered, pressure-tested set of features and pattern
 
 **Effort:** Low (UI change only)
 
-#### 5.3 — Recording Consent Enhancement
+#### 5.3 — Recording Consent Enhancement ✅
 
 **Problem:** PostVisit's explicit dual-party consent card is a stronger trust signal and legal safeguard.
 
@@ -97,9 +97,9 @@ This document captures the filtered, pressure-tested set of features and pattern
 
 ---
 
-### Phase 6: Trusted Resource Links (iOS + Web)
+### Phase 6: Trusted Resource Links (iOS + Web) ✅ (Completed 2026-03-09)
 
-#### 6.1 — MedlinePlus Links for Medications and Conditions
+#### 6.1 — MedlinePlus Links for Medications and Conditions ✅
 
 **Problem:** We display medication names and education content from GPT-4 extraction (`purpose`, `sideEffects`, `whenToCallDoctor`), but don't link to trusted external sources. Medications added manually or from older visits may lack education data.
 
@@ -121,11 +121,11 @@ This document captures the filtered, pressure-tested set of features and pattern
 
 ---
 
-### Phase 7: Caregiver Dashboard — Richer Patient Cards
+### Phase 7: Caregiver Dashboard — Richer Patient Cards ✅ (Completed 2026-03-09)
 
 > Instead of three separate additions (promote alerts, inline vitals, at-a-glance summary), consolidate into one change: make the existing patient cards more information-dense.
 
-#### 7.1 — Enriched Patient Cards with Vitals + Last Active
+#### 7.1 — Enriched Patient Cards with Vitals + Last Active ✅
 
 **Problem:** Patient cards currently show med progress, action count, and alert count. Caregivers want to see "is Mom's blood pressure okay?" and "is Mom using the app?" without clicking into sub-pages. Meanwhile, the Health Overview section at the bottom shows per-patient status that overlaps with what the cards could show.
 
@@ -144,7 +144,7 @@ This document captures the filtered, pressure-tested set of features and pattern
 **Effort:** Medium
 **LLM cost:** None
 
-#### 7.2 — Inline Action Checkboxes on Web Visit Detail
+#### 7.2 — Inline Action Checkboxes on Web Visit Detail ✅
 
 **Mirror of iOS Phase 5.1 for the patient web portal.**
 
@@ -373,16 +373,16 @@ Apple Health, Epic MyChart, CVS, Quest, Aetna integrations. Requires partnership
 
 ## Implementation Priority
 
-| Priority | Item | Effort | Platform |
-|----------|------|--------|----------|
-| 1 | 5.1 Inline Action Checkboxes (iOS) | Low | iOS |
-| 2 | 5.2 Prominent "Review with LumiBot" pill | Low | iOS |
-| 3 | 5.3 Recording Consent Enhancement | Low | iOS |
-| 4 | 6.1 MedlinePlus Links (search URL, no mapping) | Low | iOS + Web |
-| 5 | 7.1 Enriched Patient Cards (vitals + last active) | Medium | Web |
-| 6 | 7.2 Inline Action Checkboxes (Web) | Low | Web |
-| 7 | Strategic: Lightweight iOS CRUD | Medium-High | iOS |
-| 8+ | Phase 8 backlog | High | Various |
+| Priority | Item | Effort | Platform | Status |
+|----------|------|--------|----------|--------|
+| 1 | 5.1 Inline Action Checkboxes (iOS) | Low | iOS | ✅ Done |
+| 2 | 5.2 Prominent "Review with LumiBot" pill | Low | iOS | ✅ Done |
+| 3 | 5.3 Recording Consent Enhancement | Low | iOS | ✅ Done |
+| 4 | 6.1 MedlinePlus Links (search URL, no mapping) | Low | iOS + Web | ✅ Done |
+| 5 | 7.1 Enriched Patient Cards (vitals + last active) | Medium | Web | ✅ Done |
+| 6 | 7.2 Inline Action Checkboxes (Web) | Low | Web | ✅ Done |
+| 7 | Strategic: Lightweight iOS CRUD | Medium-High | iOS | ✅ Done |
+| 8+ | Phase 8 backlog | High | Various | ⬜ Backlog |
 
 ## Execution Notes
 

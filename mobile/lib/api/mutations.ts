@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import auth from '@react-native-firebase/auth';
 import { api } from './client';
 import { queryKeys, sharesKey, shareInvitesKey } from './hooks';
+import type { Medication, ActionItem } from '@lumimd/sdk';
 
 interface ToggleActionInput {
   id: string;
@@ -108,6 +109,100 @@ export function useInviteCaregiver() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userSharesKey });
       queryClient.invalidateQueries({ queryKey: userShareInvitesKey });
+    },
+  });
+}
+
+// ── Medication CRUD ──
+
+interface CreateMedicationInput {
+  name: string;
+  dose?: string;
+  frequency?: string;
+  status?: string;
+  source?: 'manual' | 'visit';
+}
+
+export function useCreateMedication() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreateMedicationInput) => {
+      return api.medications.create({
+        ...data,
+        active: true,
+        source: data.source ?? 'manual',
+      } as Partial<Medication>);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.medications });
+      queryClient.invalidateQueries({ queryKey: ['fallback', 'medications'] });
+    },
+  });
+}
+
+interface UpdateMedicationInput {
+  id: string;
+  data: Partial<Medication>;
+}
+
+export function useUpdateMedication() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: UpdateMedicationInput) => {
+      return api.medications.update(id, data);
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.medications });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.medications });
+      queryClient.invalidateQueries({ queryKey: ['fallback', 'medications'] });
+    },
+  });
+}
+
+export function useDeleteMedication() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      return api.medications.delete(id);
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.medications });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.medications });
+      queryClient.invalidateQueries({ queryKey: ['fallback', 'medications'] });
+    },
+  });
+}
+
+// ── Action Item CRUD ──
+
+interface CreateActionInput {
+  description: string;
+  dueAt?: string;
+  type?: string;
+  source?: 'manual' | 'visit';
+}
+
+export function useCreateAction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreateActionInput) => {
+      return api.actions.create({
+        ...data,
+        completed: false,
+        source: data.source ?? 'manual',
+      } as Partial<ActionItem>);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.actions });
+      queryClient.invalidateQueries({ queryKey: ['fallback', 'actions'] });
     },
   });
 }

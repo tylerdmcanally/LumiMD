@@ -43,9 +43,11 @@ import { getMedlinePlusUrl } from '../lib/utils/medlineplus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VisitWalkthrough } from '../components/VisitWalkthrough';
 import type { VisitWalkthrough as VisitWalkthroughType } from '@lumimd/sdk';
-import { useCompleteAction } from '../lib/api/mutations';
+import { useCompleteAction, useCreateMedication, useUpdateMedication } from '../lib/api/mutations';
+import { EditMedicationSheet } from '../components/EditMedicationSheet';
 import firestore from '@react-native-firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import type { Medication } from '@lumimd/sdk';
 
 dayjs.extend(relativeTime);
 
@@ -205,6 +207,32 @@ export default function VisitDetailScreen() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { mutate: toggleAction } = useCompleteAction();
+  const createMedication = useCreateMedication();
+
+  // Edit medication sheet state
+  const [editSheetMed, setEditSheetMed] = useState<Medication | null>(null);
+
+  // Medications linked to this visit (from the medications collection)
+  const [visitMedications, setVisitMedications] = useState<Map<string, Medication>>(new Map());
+  useEffect(() => {
+    if (!visitId || !user?.uid) return;
+    const unsubscribe = firestore()
+      .collection('medications')
+      .where('userId', '==', user.uid)
+      .where('deletedAt', '==', null)
+      .onSnapshot((snapshot) => {
+        const map = new Map<string, Medication>();
+        snapshot?.docs.forEach((doc) => {
+          const data = doc.data();
+          const name = (data.name ?? '').trim().toLowerCase();
+          if (name) {
+            map.set(name, { id: doc.id, ...data } as Medication);
+          }
+        });
+        setVisitMedications(map);
+      });
+    return () => unsubscribe();
+  }, [visitId, user?.uid]);
 
   // Actions linked to this visit (from the actions collection)
   const [visitActions, setVisitActions] = useState<Map<string, { id: string; completed: boolean }>>(new Map());
@@ -261,6 +289,32 @@ export default function VisitDetailScreen() {
       },
     );
   }, [toggleAction]);
+
+  const handleEditExtractedMed = useCallback((medName: string, medDose?: string, medFrequency?: string) => {
+    const key = medName.trim().toLowerCase();
+    const existing = visitMedications.get(key);
+    if (existing) {
+      setEditSheetMed(existing);
+    } else {
+      // Create the medication doc first, then open edit sheet
+      createMedication.mutate(
+        {
+          name: medName,
+          dose: medDose,
+          frequency: medFrequency,
+          source: 'visit',
+        },
+        {
+          onSuccess: (created) => {
+            setEditSheetMed(created as Medication);
+          },
+          onError: () => {
+            Alert.alert('Error', 'Could not load this medication for editing.');
+          },
+        },
+      );
+    }
+  }, [visitMedications, createMedication]);
 
   const {
     data: visit,
@@ -900,6 +954,10 @@ export default function VisitDetailScreen() {
                               const edu = medicationEducationMap.get(
                                 normalizeEducationKey(item.primary),
                               );
+                              // Parse dose/frequency from secondary text
+                              const secParts = item.secondary?.split(' \u2022 ') ?? [];
+                              const extractedDose = secParts[0] || undefined;
+                              const extractedFreq = secParts[1] || undefined;
                               return (
                                 <View key={idx}>
                                   <View style={styles.listRow}>
@@ -909,14 +967,26 @@ export default function VisitDetailScreen() {
                                       {item.secondary && (
                                         <Text style={styles.listRowSubText}>{item.secondary}</Text>
                                       )}
-                                      <Pressable
-                                        style={styles.learnMoreLink}
-                                        onPress={() => Linking.openURL(getMedlinePlusUrl(item.primary))}
-                                        hitSlop={8}
-                                      >
-                                        <Ionicons name="open-outline" size={12} color={Colors.textMuted} />
-                                        <Text style={styles.learnMoreText}>Learn more</Text>
-                                      </Pressable>
+                                      <View style={styles.medLinksRow}>
+                                        <Pressable
+                                          style={styles.learnMoreLink}
+                                          onPress={() => Linking.openURL(getMedlinePlusUrl(item.primary))}
+                                          hitSlop={8}
+                                        >
+                                          <Ionicons name="open-outline" size={12} color={Colors.textMuted} />
+                                          <Text style={styles.learnMoreText}>Learn more</Text>
+                                        </Pressable>
+                                        {(typedKey === 'started' || typedKey === 'changed') && (
+                                          <Pressable
+                                            style={styles.editMedLink}
+                                            onPress={() => handleEditExtractedMed(item.primary, extractedDose, extractedFreq)}
+                                            hitSlop={8}
+                                          >
+                                            <Ionicons name="pencil-outline" size={12} color={Colors.primary} />
+                                            <Text style={styles.editMedLinkText}>Edit</Text>
+                                          </Pressable>
+                                        )}
+                                      </View>
                                     </View>
                                   </View>
                                   {edu && <MedicationEducationCard {...edu} />}
@@ -1043,6 +1113,12 @@ export default function VisitDetailScreen() {
           </View>
         )}
       </SafeAreaView>
+      {/* Edit Medication Sheet (from extracted meds) */}
+      <EditMedicationSheet
+        medication={editSheetMed}
+        visible={editSheetMed !== null}
+        onClose={() => setEditSheetMed(null)}
+      />
       {/* Medication Review Sheet (opened from banner) */}
       {visit && (
         <MedicationReviewSheet
@@ -1382,16 +1458,31 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
   },
+  medLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(4),
+    marginTop: spacing(1),
+  },
   learnMoreLink: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(1),
-    marginTop: spacing(1),
   },
   learnMoreText: {
     fontSize: 12,
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
+  },
+  editMedLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+  },
+  editMedLinkText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
   },
   placeholderText: {
     fontSize: 14,

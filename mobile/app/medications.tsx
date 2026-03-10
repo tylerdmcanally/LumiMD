@@ -32,7 +32,10 @@ import {
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
 import { ReminderTimePickerModal } from '../components/ReminderTimePickerModal';
-import type { MedicationReminder } from '@lumimd/sdk';
+import { EditMedicationSheet } from '../components/EditMedicationSheet';
+import { AddMedicationSheet } from '../components/AddMedicationSheet';
+import { useUpdateMedication, useDeleteMedication } from '../lib/api/mutations';
+import type { Medication, MedicationReminder } from '@lumimd/sdk';
 
 const resolveDeviceTimezone = (): string | null => {
   try {
@@ -88,6 +91,12 @@ export default function MedicationsScreen() {
   const [selectedMed, setSelectedMed] = useState<{ id: string; name: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedMedIds, setExpandedMedIds] = useState<Set<string>>(new Set());
+
+  // CRUD sheet state
+  const [addSheetVisible, setAddSheetVisible] = useState(false);
+  const [editSheetMed, setEditSheetMed] = useState<Medication | null>(null);
+  const updateMedication = useUpdateMedication();
+  const deleteMedication = useDeleteMedication();
 
   const {
     items: medications,
@@ -387,6 +396,73 @@ export default function MedicationsScreen() {
                 </View>
               )}
 
+              {/* CRUD Action Buttons */}
+              <View style={styles.crudRow}>
+                <Pressable
+                  style={styles.crudButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setEditSheetMed(med as Medication);
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.crudButtonText}>Edit</Text>
+                </Pressable>
+
+                {isActive && (
+                  <Pressable
+                    style={styles.crudButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Alert.alert(
+                        'Stop Medication',
+                        `Stop taking ${med.name}? This will move it to your inactive list.`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Stop',
+                            style: 'destructive',
+                            onPress: () => {
+                              updateMedication.mutate({
+                                id: med.id,
+                                data: { active: false, stoppedAt: new Date().toISOString() },
+                              });
+                            },
+                          },
+                        ],
+                      );
+                    }}
+                  >
+                    <Ionicons name="close-circle-outline" size={16} color={Colors.warning} />
+                    <Text style={[styles.crudButtonText, { color: Colors.warning }]}>Stop</Text>
+                  </Pressable>
+                )}
+
+                {med.source === 'manual' && (
+                  <Pressable
+                    style={styles.crudButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Alert.alert(
+                        'Delete Medication',
+                        `Remove ${med.name} from your list? This cannot be undone.`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: () => deleteMedication.mutate(med.id),
+                          },
+                        ],
+                      );
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                    <Text style={[styles.crudButtonText, { color: Colors.error }]}>Delete</Text>
+                  </Pressable>
+                )}
+              </View>
+
               {/* Footer */}
               <View style={styles.cardFooter}>
                 {med.source === 'visit' && med.sourceVisitId ? (
@@ -510,6 +586,19 @@ export default function MedicationsScreen() {
 
   return (
     <>
+      {/* Add Medication Sheet */}
+      <AddMedicationSheet
+        visible={addSheetVisible}
+        onClose={() => setAddSheetVisible(false)}
+      />
+
+      {/* Edit Medication Sheet */}
+      <EditMedicationSheet
+        medication={editSheetMed}
+        visible={editSheetMed !== null}
+        onClose={() => setEditSheetMed(null)}
+      />
+
       {/* Reminder Time Picker Modal */}
       <ReminderTimePickerModal
         visible={reminderModalVisible}
@@ -692,6 +781,14 @@ export default function MedicationsScreen() {
                 </>
               )}
             </ScrollView>
+
+            {/* Floating Action Button — Add Medication */}
+            <Pressable
+              style={styles.fab}
+              onPress={() => setAddSheetVisible(true)}
+            >
+              <Ionicons name="add" size={28} color="#fff" />
+            </Pressable>
           </View>
         </SafeAreaView>
       </ErrorBoundary>
@@ -1030,5 +1127,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.primary,
+  },
+  // CRUD action buttons in expanded card
+  crudRow: {
+    flexDirection: 'row',
+    gap: spacing(2),
+  },
+  crudButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    paddingVertical: spacing(2),
+    paddingHorizontal: spacing(3),
+    borderRadius: Radius.md,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  crudButtonText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
+  },
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: spacing(6),
+    right: spacing(5),
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
 });

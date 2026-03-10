@@ -298,6 +298,8 @@ firebase use lumimd-dev   # or lumimd (prod)
 - `docs/reports/SYSTEM-HEALTH-REPORT.md` — Current system health status
 - `docs/CAREGIVER-ENHANCEMENTS-CHECKLIST.md` — Implementation checklist for caregiver portal features
 - `docs/archive/LUMIBOT-V2-IMPLEMENTATION-PLAN.md` — LumiBot v2 design + implementation record (all phases complete)
+- `docs/POSTVISIT-ENHANCEMENTS-PROMPT.md` — PostVisit-inspired enhancements execution guide (Phases A-C complete, Phase D next)
+- `docs/POSTVISIT-INSPIRED-ENHANCEMENTS.md` — PostVisit-inspired enhancements planning doc (Phases 5-7 complete, Strategic CRUD next)
 - `SECURITY_AND_PRIVACY_SUMMARY.md` — Security posture and compliance
 - `docs/guides/` — Quick Start, Firebase setup, deployment checklists
 - `docs/architecture/` — System design docs
@@ -364,3 +366,30 @@ Evolved from notification-only system into contextual health companion across al
 **Health metrics hub:** Mobile health screen with SVG trend charts (BP/Glucose/Weight), period selector, insight cards from `trendAnalyzer.ts`, recent readings list. Linked from PostLogFeedback and home screen.
 
 **Caregiver intelligence:** Nudge response history, trend insights, symptom/side-effect timelines on patient health page. `missed_checkins` and `medication_trouble` alert types. Cross-patient Health Overview on dashboard.
+
+### PostVisit-Inspired Enhancements (March 2026)
+
+Phases A-D complete.
+
+**Phase A — iOS Quick Wins:**
+- Inline action item checkboxes on visit-detail (real-time Firestore listener + `useCompleteAction`, matched by description text)
+- Sticky floating "Review with LumiBot" pill (always visible on completed visits with walkthrough data)
+- Recording consent card gate on record-visit (two-party default, coral icon, privacy policy link)
+
+**Phase B — MedlinePlus Resource Links:**
+- `getMedlinePlusUrl(name)` utility (mobile + web) → `https://medlineplus.gov/search/?query=...`
+- "Learn more" links on visit-detail diagnoses/medications (iOS + web), medication screens (iOS + web patient + caregiver)
+
+**Phase C — Web Portal Enhancements:**
+- `/v1/care/overview` extended with `latestVitals` (BP, weight, glucose from recent health logs)
+- Patient cards on caregiver dashboard enriched with vitals row + last active indicator; `HealthOverviewPanel` removed
+- Inline action checkboxes on web visit detail (`/visits/[id]`) with real-time Firestore listener + optimistic updates
+
+**Phase D — Lightweight iOS CRUD:**
+- Mutation hooks: `useCreateMedication`, `useUpdateMedication`, `useDeleteMedication`, `useCreateAction`
+- `EditMedicationSheet` bottom-sheet (name, dose, frequency, stop medication)
+- `AddMedicationSheet` bottom-sheet with post-add reminder navigation
+- `AddActionSheet` bottom-sheet with optional date picker
+- Medications screen: FAB for add, Edit/Stop/Delete in expanded cards (delete only for `source: 'manual'`)
+- Actions screen: FAB for add action items
+- Visit-detail: "Edit" links on started/changed medications (auto-creates doc if not in collection)
