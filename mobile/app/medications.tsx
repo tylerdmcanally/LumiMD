@@ -628,10 +628,7 @@ export default function MedicationsScreen() {
                 <Ionicons name="chevron-back" size={28} color={Colors.text} />
               </Pressable>
               <Text style={styles.headerTitle}>Medications</Text>
-              <Pressable onPress={openWebMeds} style={styles.webLink}>
-                <Ionicons name="open-outline" size={18} color={Colors.primary} />
-                <Text style={styles.webLinkText}>Manage on Web</Text>
-              </Pressable>
+              <View style={{ width: 28 }} />
             </View>
 
             <ScrollView
@@ -650,18 +647,14 @@ export default function MedicationsScreen() {
                   variant="error"
                   icon="cloud-offline-outline"
                   title="Unable to load medications"
-                  description="We couldn't sync your medication list. Pull down to refresh or visit the web portal."
-                  actionLabel="Open Web Portal"
-                  onAction={openWebMeds}
+                  description="We couldn't sync your medication list. Pull down to refresh."
                 />
               ) : meds.length === 0 ? (
                 <EmptyState
                   variant="empty"
                   icon="medkit-outline"
                   title="No medications yet"
-                  description="Start a visit or add medications in your web portal to see them here."
-                  actionLabel="Open Web Portal"
-                  onAction={openWebMeds}
+                  description="Record a visit or tap + to add medications."
                 />
               ) : (
 
@@ -780,6 +773,12 @@ export default function MedicationsScreen() {
                   )}
                 </>
               )}
+
+              {/* Subtle web portal footer link */}
+              <Pressable onPress={openWebMeds} style={styles.portalFooter}>
+                <Ionicons name="open-outline" size={14} color={Colors.textMuted} />
+                <Text style={styles.portalFooterText}>Open in web portal</Text>
+              </Pressable>
             </ScrollView>
 
             {/* Floating Action Button — Add Medication */}
@@ -826,15 +825,18 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: -0.3,
   },
-  webLink: {
+  portalFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing(1),
+    justifyContent: 'center',
+    gap: spacing(1.5),
+    paddingVertical: spacing(5),
+    marginBottom: spacing(10),
   },
-  webLinkText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.primary,
+  portalFooterText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
   },
   section: {
     marginTop: spacing(4),

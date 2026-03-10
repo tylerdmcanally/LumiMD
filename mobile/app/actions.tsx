@@ -345,10 +345,7 @@ export default function ActionsScreen() {
             <View style={styles.headerTitleContainer}>
               <Text style={styles.title}>Action Items</Text>
             </View>
-            <Pressable style={styles.webLink} onPress={openWebActions}>
-              <Ionicons name="open-outline" size={18} color={Colors.primary} />
-              <Text style={styles.webLinkText}>Manage on Web</Text>
-            </Pressable>
+            <View style={{ width: 24 }} />
           </View>
 
           <Text style={styles.subtitle}>
@@ -445,6 +442,12 @@ export default function ActionsScreen() {
               )}
             </>
           )}
+
+          {/* Subtle web portal footer link */}
+          <Pressable onPress={openWebActions} style={styles.portalFooter}>
+            <Ionicons name="open-outline" size={14} color={Colors.textMuted} />
+            <Text style={styles.portalFooterText}>Open in web portal</Text>
+          </Pressable>
         </ScrollView>
 
         {/* Floating Action Button — Add Action Item */}
@@ -490,15 +493,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: -0.3,
   },
-  webLink: {
+  portalFooter: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing(1.5),
+    paddingVertical: spacing(5),
+    marginBottom: spacing(10),
   },
-  webLinkText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.primary,
+  portalFooterText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
   },
   subtitle: {
     fontSize: 14,

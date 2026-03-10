@@ -299,19 +299,7 @@ export default function VisitsScreen() {
               </Pressable>
               <Text style={styles.title}>Visits</Text>
             </View>
-            <Pressable
-              style={styles.webLink}
-              onPress={() => {
-                if (sortedVisits[0]?.id) {
-                  openWebVisit(sortedVisits[0].id);
-                } else {
-                  openWebDashboard();
-                }
-              }}
-            >
-              <Ionicons name="open-outline" size={18} color={Colors.primary} />
-              <Text style={styles.webLinkText}>Web</Text>
-            </Pressable>
+            <View style={{ width: 24 }} />
           </View>
         </View>
 
@@ -447,6 +435,21 @@ export default function VisitsScreen() {
               )}
             </>
           )}
+
+          {/* Subtle web portal footer link */}
+          <Pressable
+            onPress={() => {
+              if (sortedVisits[0]?.id) {
+                openWebVisit(sortedVisits[0].id);
+              } else {
+                openWebDashboard();
+              }
+            }}
+            style={styles.portalFooter}
+          >
+            <Ionicons name="open-outline" size={14} color={Colors.textMuted} />
+            <Text style={styles.portalFooterText}>Open in web portal</Text>
+          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </ErrorBoundary>
@@ -487,15 +490,18 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: -0.3,
   },
-  webLink: {
+  portalFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing(1),
+    justifyContent: 'center',
+    gap: spacing(1.5),
+    paddingVertical: spacing(5),
+    marginBottom: spacing(4),
   },
-  webLinkText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.primary,
+  portalFooterText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
   },
   scrollContent: {
     paddingHorizontal: spacing(5),
