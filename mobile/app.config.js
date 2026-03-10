@@ -34,6 +34,8 @@ module.exports = {
           'LumiMD needs access to your microphone to record your medical visits.',
         NSCalendarsUsageDescription:
           'LumiMD needs access to your calendar to add action items as reminders for follow-up appointments and medical tasks.',
+        NSLocationWhenInUseUsageDescription:
+          'LumiMD uses your location to determine recording consent requirements for your state.',
         ITSAppUsesNonExemptEncryption: false,
         UIBackgroundModes: ['audio', 'remote-notification'],
       },
@@ -50,6 +52,8 @@ module.exports = {
         'android.permission.MODIFY_AUDIO_SETTINGS',
         'android.permission.READ_CALENDAR',
         'android.permission.WRITE_CALENDAR',
+        'android.permission.ACCESS_COARSE_LOCATION',
+        'android.permission.ACCESS_FINE_LOCATION',
       ],
     },
     scheme: 'lumimd',
@@ -75,6 +79,13 @@ module.exports = {
         {
           calendarPermission:
             'Allow LumiMD to add action items to your calendar as reminders.',
+        },
+      ],
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission:
+            'Allow LumiMD to determine recording consent requirements for your state.',
         },
       ],
       'expo-font',

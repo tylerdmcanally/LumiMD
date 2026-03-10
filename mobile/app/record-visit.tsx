@@ -6,7 +6,7 @@
  * Pause is a secondary text action during recording.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api/client';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
+import {
+  detectConsentRequirement,
+  dismissOnePartyNotice,
+  type ConsentRequirement,
+} from '../lib/recordingConsent';
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes
@@ -60,10 +65,13 @@ export default function RecordVisitScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // Consent gate: shown every time in idle state (two-party consent default).
-  // TODO: state-based consent logic can refine this — e.g., one-party states
-  // could store dismissal in AsyncStorage (`consent_card_dismissed`).
+
+  // Location-based consent flow
+  const [consentReq, setConsentReq] = useState<ConsentRequirement | null>(null);
+  const [detectedState, setDetectedState] = useState<string | null>(null);
+  const [consentLoading, setConsentLoading] = useState(true);
   const [consentGiven, setConsentGiven] = useState(false);
+  const [allPartiesConfirmed, setAllPartiesConfirmed] = useState(false);
   const isIdle = recordingState === 'idle';
   const isFinished = recordingState === 'stopped';
   const longRecordingWarningShown = useRef(false);
@@ -82,6 +90,21 @@ export default function RecordVisitScreen() {
   const showError = (message: string) => {
     setErrorMessage(message);
   };
+
+  // Detect consent requirement on mount
+  const detectConsent = useCallback(async () => {
+    setConsentLoading(true);
+    const result = await detectConsentRequirement();
+    setConsentReq(result.requirement);
+    setDetectedState(result.detectedState);
+
+    // One-party state + previously dismissed → skip consent card
+    if (result.requirement === 'one-party' && result.previouslyDismissed) {
+      setConsentGiven(true);
+    }
+
+    setConsentLoading(false);
+  }, []);
 
   const extractUserMessage = (error: unknown, fallback: string) => {
     if (error && typeof error === 'object') {
@@ -190,6 +213,14 @@ export default function RecordVisitScreen() {
         storagePath,
         status: 'processing',
         notes: '',
+        consentMetadata: {
+          type: consentReq ?? 'unknown',
+          state: detectedState,
+          allPartiesConfirmed: consentReq === 'two-party' || consentReq === 'unknown'
+            ? allPartiesConfirmed
+            : undefined,
+          timestamp: new Date().toISOString(),
+        },
       });
 
       console.log('[RecordVisit] Visit created');
@@ -290,6 +321,11 @@ export default function RecordVisitScreen() {
 
   // ── Effects ──────────────────────────────────────────────
 
+  // Detect consent requirement on mount
+  useEffect(() => {
+    void detectConsent();
+  }, [detectConsent]);
+
   useEffect(() => {
     if (metering != null && isRecording) {
       const normalized = Math.min(1, Math.max(0, (metering + 60) / 60));
@@ -306,6 +342,7 @@ export default function RecordVisitScreen() {
       meteringHistoryRef.current = new Array(WAVEFORM_BARS).fill(0);
       setWaveformBars(new Array(WAVEFORM_BARS).fill(0));
       setConsentGiven(false);
+      setAllPartiesConfirmed(false);
     }
   }, [recordingState]);
 
@@ -441,32 +478,109 @@ export default function RecordVisitScreen() {
               contentContainerStyle={styles.consentScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.consentCard}>
-                <View style={styles.consentIconCircle}>
-                  <Ionicons name="people" size={28} color={Colors.coral} />
+              {consentLoading ? (
+                <View style={styles.consentCard}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={styles.consentSubtext}>Checking recording consent requirements…</Text>
                 </View>
-                <Text style={styles.consentTitle}>Recording Consent</Text>
-                <Text style={styles.consentText}>
-                  Please confirm that everyone in the room knows this visit is being recorded.
-                </Text>
-                <Text style={styles.consentSubtext}>
-                  Recording medical visits helps ensure accuracy. All recordings are encrypted and stored securely.
-                </Text>
-                <Pressable
-                  style={styles.consentButton}
-                  onPress={() => setConsentGiven(true)}
-                >
-                  <Ionicons name="checkmark-shield" size={20} color="#fff" />
-                  <Text style={styles.consentButtonText}>Everyone Consents — Start Recording</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.privacyLink}
-                  onPress={() => Linking.openURL('https://lumimd.app/privacy')}
-                >
-                  <Ionicons name="lock-closed-outline" size={14} color={Colors.primary} />
-                  <Text style={styles.privacyLinkText}>Privacy Policy</Text>
-                </Pressable>
-              </View>
+              ) : consentReq === 'one-party' ? (
+                /* ── One-party state: recommendation notice ── */
+                <View style={styles.consentCard}>
+                  <View style={styles.consentIconCircle}>
+                    <Ionicons name="information-circle" size={28} color={Colors.primary} />
+                  </View>
+                  <Text style={styles.consentTitle}>Recording Notice</Text>
+                  {detectedState && (
+                    <View style={styles.stateBadge}>
+                      <Ionicons name="location" size={14} color={Colors.textMuted} />
+                      <Text style={styles.stateBadgeText}>{detectedState} — one-party consent state</Text>
+                    </View>
+                  )}
+                  <Text style={styles.consentText}>
+                    Your state does not require all-party consent, but we recommend letting your provider know you're recording.
+                  </Text>
+                  <Text style={styles.consentSubtext}>
+                    All recordings are encrypted and stored securely.
+                  </Text>
+                  <Pressable
+                    style={styles.consentButton}
+                    onPress={() => setConsentGiven(true)}
+                  >
+                    <Ionicons name="mic" size={20} color="#fff" />
+                    <Text style={styles.consentButtonText}>Continue to Record</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.dismissLink}
+                    onPress={() => {
+                      void dismissOnePartyNotice();
+                      setConsentGiven(true);
+                    }}
+                  >
+                    <Text style={styles.dismissLinkText}>Don't show this again</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.privacyLink}
+                    onPress={() => Linking.openURL('https://lumimd.app/privacy')}
+                  >
+                    <Ionicons name="lock-closed-outline" size={14} color={Colors.primary} />
+                    <Text style={styles.privacyLinkText}>Privacy Policy</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                /* ── Two-party state or unknown: require explicit confirmation ── */
+                <View style={styles.consentCard}>
+                  <View style={[styles.consentIconCircle, { backgroundColor: `${Colors.coral}15` }]}>
+                    <Ionicons name="people" size={28} color={Colors.coral} />
+                  </View>
+                  <Text style={styles.consentTitle}>Recording Consent Required</Text>
+                  {detectedState && (
+                    <View style={styles.stateBadge}>
+                      <Ionicons name="location" size={14} color={Colors.textMuted} />
+                      <Text style={styles.stateBadgeText}>{detectedState} — all-party consent state</Text>
+                    </View>
+                  )}
+                  {!detectedState && consentReq === 'unknown' && (
+                    <View style={styles.stateBadge}>
+                      <Ionicons name="location-outline" size={14} color={Colors.textMuted} />
+                      <Text style={styles.stateBadgeText}>Location unavailable — defaulting to all-party consent</Text>
+                    </View>
+                  )}
+                  <Text style={styles.consentText}>
+                    Your state requires all parties to consent to being recorded. Please confirm everyone in the room knows this visit will be recorded.
+                  </Text>
+                  <Pressable
+                    style={styles.checkboxRow}
+                    onPress={() => setAllPartiesConfirmed((prev) => !prev)}
+                  >
+                    <View style={[styles.checkbox, allPartiesConfirmed && styles.checkboxChecked]}>
+                      {allPartiesConfirmed && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    </View>
+                    <Text style={styles.checkboxLabel}>
+                      I confirm all parties have consented to this recording
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.consentButton, !allPartiesConfirmed && styles.consentButtonDisabled]}
+                    onPress={() => {
+                      if (allPartiesConfirmed) setConsentGiven(true);
+                    }}
+                    disabled={!allPartiesConfirmed}
+                  >
+                    <Ionicons name="shield-checkmark" size={20} color="#fff" />
+                    <Text style={styles.consentButtonText}>Everyone Consents — Start Recording</Text>
+                  </Pressable>
+                  <Text style={styles.consentSubtext}>
+                    All recordings are encrypted and stored securely.
+                  </Text>
+                  <Pressable
+                    style={styles.privacyLink}
+                    onPress={() => Linking.openURL('https://lumimd.app/privacy')}
+                  >
+                    <Ionicons name="lock-closed-outline" size={14} color={Colors.primary} />
+                    <Text style={styles.privacyLinkText}>Privacy Policy</Text>
+                  </Pressable>
+                </View>
+              )}
             </ScrollView>
           )}
 
@@ -815,7 +929,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing(4),
     borderWidth: 1,
-    borderColor: `${Colors.coral}25`,
+    borderColor: Colors.border,
     shadowColor: 'rgba(38,35,28,0.5)',
     shadowOpacity: 0.08,
     shadowRadius: 16,
@@ -825,7 +939,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: `${Colors.coral}15`,
+    backgroundColor: `${Colors.primary}15`,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -834,6 +948,20 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_700Bold',
     color: Colors.text,
     textAlign: 'center',
+  },
+  stateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+    backgroundColor: Colors.background,
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(1.5),
+    borderRadius: Radius.full,
+  },
+  stateBadgeText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
   },
   consentText: {
     fontSize: 16,
@@ -849,6 +977,38 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
   },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(3),
+    width: '100%',
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(4),
+    backgroundColor: Colors.background,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.textMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  checkboxLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.text,
+    lineHeight: 22,
+  },
   consentButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -861,10 +1021,21 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: spacing(2),
   },
+  consentButtonDisabled: {
+    opacity: 0.4,
+  },
   consentButtonText: {
     fontSize: 16,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
+  },
+  dismissLink: {
+    paddingVertical: spacing(1),
+  },
+  dismissLinkText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.textMuted,
   },
   privacyLink: {
     flexDirection: 'row',

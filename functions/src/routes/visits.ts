@@ -165,11 +165,19 @@ const processingStatusEnum = z.enum([
   'failed',
 ]);
 
+const consentMetadataSchema = z.object({
+  type: z.enum(['one-party', 'two-party', 'unknown']),
+  state: z.string().nullable().optional(),
+  allPartiesConfirmed: z.boolean().optional(),
+  timestamp: z.string(),
+}).optional();
+
 const createVisitSchema = z.object({
   audioUrl: z.string().optional(),
   storagePath: z.string().optional(),
   notes: z.string().optional(),
   status: z.enum(['recording', 'processing', 'completed', 'failed']).default('recording'),
+  consentMetadata: consentMetadataSchema,
 });
 
 const updateVisitSchema = z.object({
@@ -733,6 +741,7 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       deletedBy: null,
       createdAt: now,
       updatedAt: now,
+      ...(data.consentMetadata ? { consentMetadata: data.consentMetadata } : {}),
     });
 
     functions.logger.info(`[visits] Created visit ${visit.id} for user ${userId}`);
