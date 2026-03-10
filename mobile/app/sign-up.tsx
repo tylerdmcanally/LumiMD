@@ -131,14 +131,6 @@ export default function SignUpScreen() {
           >
             {/* Brand Header */}
             <View style={styles.header}>
-              <View style={styles.logoContainer}>
-                <LinearGradient
-                  colors={[Colors.sage, '#40C9D0']}
-                  style={styles.logoBadge}
-                >
-                  <Ionicons name="person-add" size={22} color="#fff" />
-                </LinearGradient>
-              </View>
               <Text style={styles.logo}>Join LumiMD</Text>
               <Text style={styles.tagline}>Create your health companion</Text>
             </View>
@@ -316,29 +308,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing(7),
   },
-  logoContainer: {
-    marginBottom: spacing(4),
-  },
-  logoBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.sage,
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-  },
   logo: {
-    fontSize: 30,
+    fontSize: 40,
     fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
-    marginBottom: spacing(1.5),
+    marginBottom: spacing(2),
     letterSpacing: -0.5,
   },
   tagline: {
-    fontSize: 15,
+    fontSize: 18,
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
   },

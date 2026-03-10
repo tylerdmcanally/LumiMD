@@ -124,14 +124,6 @@ export default function SignInScreen() {
           >
             {/* Brand Header */}
             <View style={styles.header}>
-              <View style={styles.logoContainer}>
-                <LinearGradient
-                  colors={['#0A99A4', '#40C9D0']}
-                  style={styles.logoBadge}
-                >
-                  <Ionicons name="heart" size={24} color="#fff" />
-                </LinearGradient>
-              </View>
               <Text style={styles.logo}>LumiMD</Text>
               <Text style={styles.tagline}>Welcome back</Text>
             </View>
@@ -294,29 +286,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing(8),
   },
-  logoContainer: {
-    marginBottom: spacing(4),
-  },
-  logoBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0A99A4',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-  },
   logo: {
-    fontSize: 34,
+    fontSize: 40,
     fontFamily: 'Fraunces_700Bold',
     color: Colors.text,
-    marginBottom: spacing(1.5),
+    marginBottom: spacing(2),
     letterSpacing: -0.5,
   },
   tagline: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
   },

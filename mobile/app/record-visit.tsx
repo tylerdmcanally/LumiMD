@@ -510,13 +510,16 @@ export default function RecordVisitScreen() {
                     <Text style={styles.consentButtonText}>Continue to Record</Text>
                   </Pressable>
                   <Pressable
-                    style={styles.dismissLink}
+                    style={styles.dismissRow}
                     onPress={() => {
                       void dismissOnePartyNotice();
                       setConsentGiven(true);
                     }}
                   >
-                    <Text style={styles.dismissLinkText}>Don't show this again</Text>
+                    <View style={styles.dismissCheckbox}>
+                      <Ionicons name="checkmark" size={14} color={Colors.textMuted} />
+                    </View>
+                    <Text style={styles.dismissRowText}>Don't show this again</Text>
                   </Pressable>
                   <Pressable
                     style={styles.privacyLink}
@@ -1029,13 +1032,27 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#fff',
   },
-  dismissLink: {
-    paddingVertical: spacing(1),
+  dismissRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
+    paddingVertical: spacing(2),
+    marginTop: spacing(1),
   },
-  dismissLinkText: {
-    fontSize: 13,
+  dismissCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dismissRowText: {
+    fontSize: 14,
     fontFamily: 'PlusJakartaSans_500Medium',
-    color: Colors.textMuted,
+    color: Colors.text,
   },
   privacyLink: {
     flexDirection: 'row',
