@@ -451,5 +451,18 @@ Before deploying to production:
 
 ---
 
-**Built with ❤️ for LumiMD** | Last updated: November 2025
+## Web Portal Sign-In Options (March 2026)
+
+The handoff flow above is one of several ways users can access the web portal:
+
+| Method | Who | How |
+|--------|-----|-----|
+| **Email/password** | All users | Direct sign-in at `lumimd.app/sign-in` |
+| **Google Sign-In** | Google users | `signInWithPopup` on web sign-in/sign-up pages |
+| **Mobile handoff** | All users (esp. Apple) | Settings → Web Access → Open Web Portal (this flow) |
+| **Set password** | Apple/Google-only users | Settings → Web Access → Set Password for Web → then email/password sign-in |
+
+Apple Sign-In is not available directly on web. Apple users should use the handoff flow or set a web password via mobile settings.
+
+**Built with ❤️ for LumiMD** | Last updated: March 2026
 

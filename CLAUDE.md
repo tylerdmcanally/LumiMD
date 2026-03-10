@@ -138,6 +138,7 @@ Push notification to caregiver
 - `app/_layout.tsx` — Root layout + push notification routing (handles `caregiver_message` type)
 - `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: heard → changed → next)
 - `components/lumibot/PostLogFeedback.tsx` — Post-log feedback modal with trend context
+- `lib/auth.ts` — Firebase auth helpers (`hasPasswordProvider()`, `linkEmailPassword()` for adding web password to Apple/Google-only accounts)
 - `lib/api/hooks.ts` — React Query hooks (useRealtimeVisits, useRealtimeActiveMedications, useMyMessages, useUnreadMessageCount, etc.)
 - `lib/api/mutations.ts` — Mutations (useCompleteAction, useUpdateUserProfile, useInviteCaregiver)
 - `contexts/` — AuthContext (global auth state)
@@ -154,8 +155,13 @@ Push notification to caregiver
 - `app/care/[patientId]/health/` — Health logs / vitals
 - `app/care/[patientId]/conditions/` — Conditions list
 - `app/care/[patientId]/providers/` — Provider list
+- `app/sign-in/page.tsx` — Patient sign-in (email/password + Google + Apple guidance + app handoff)
+- `app/sign-up/page.tsx` — Patient sign-up (email/password + Google with terms gate)
+- `app/care/sign-in/page.tsx` — Caregiver sign-in (email/password + Google, requires invite token)
+- `app/care/sign-up/page.tsx` — Caregiver sign-up (email/password + Google with terms gate, requires invite token)
 - `app/shared/` — Caregiver read-only view (no login required)
 - `app/api/` — Next.js API routes (auth, email)
+- `lib/auth/errors.ts` — Shared Firebase auth error code → user-friendly message mapping
 - `lib/api/hooks.ts` — React Query hooks (useCareOverview, useCareQuickOverview, useCareSummaryExport, useCareMessages, useSendCareMessage, etc.)
 
 ### Shared SDK (`packages/sdk/src/`)
@@ -219,9 +225,13 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 
 ## Authentication Flow
 
-1. **Mobile/Web:** Firebase Auth (email/password). JWT attached as `Authorization: Bearer`
-2. **Caregiver:** Gets invited by owner → creates account → accepts share → Firestore rules grant read access
-3. **Mobile↔Web handoff:** Owner creates temp code via `/v1/auth/create-handoff` (10 min TTL); web exchanges via `/v1/auth/exchange-handoff`
+1. **Mobile:** Firebase Auth (email/password, Google, Apple). JWT attached as `Authorization: Bearer`
+2. **Web portal (patient):** Email/password or Google Sign-In via `signInWithPopup`. New Google users auto-provisioned with `roles: ['patient']`
+3. **Web portal (caregiver):** Email/password or Google Sign-In. Invite token accepted after auth. `email_mismatch` triggers sign-out + error
+4. **Caregiver:** Gets invited by owner → creates account → accepts share → Firestore rules grant read access
+5. **Mobile↔Web handoff:** Owner creates temp code via `/v1/auth/create-handoff` (5 min TTL); web exchanges via `/v1/auth/exchange-handoff` → `signInWithCustomToken`. Works for all auth providers (email, Google, Apple)
+6. **Apple users on web:** No direct Apple Sign-In on web. Use mobile handoff (Settings → Web Access → Open Web Portal) or set a password via Settings → Web Access → Set Password for Web, then sign in with email/password
+7. **Auth error handling:** All web auth pages use shared `getAuthErrorMessage()` from `web-portal/lib/auth/errors.ts` for consistent Firebase error mapping
 
 ## Scheduled Functions (Triggers)
 
@@ -366,6 +376,20 @@ Evolved from notification-only system into contextual health companion across al
 **Health metrics hub:** Mobile health screen with SVG trend charts (BP/Glucose/Weight), period selector, insight cards from `trendAnalyzer.ts`, recent readings list. Linked from PostLogFeedback and home screen.
 
 **Caregiver intelligence:** Nudge response history, trend insights, symptom/side-effect timelines on patient health page. `missed_checkins` and `medication_trouble` alert types. Cross-patient Health Overview on dashboard.
+
+### Web Portal Auth & Apple Sign-In Web Access (March 2026)
+
+**Problem:** Apple Sign-In users on mobile had no way to access the web portal directly — web only supported email/password login.
+
+**Solution:**
+- **Google Sign-In on web** — Added `signInWithPopup` + `GoogleAuthProvider` to all 4 web auth pages (sign-in, sign-up, care/sign-in, care/sign-up)
+- **Terms gating on sign-up** — Google Sign-Up requires Terms + Privacy checkboxes before proceeding (records legal assent with `source: 'signup_web_google'`)
+- **New-user role provisioning** — If a user hits Sign In (not Sign Up) with Google and it creates a new account, auto-sets `roles: ['patient']` via `getAdditionalUserInfo(result).isNewUser`
+- **Caregiver invite token flow** — Google Sign-In on care pages accepts invite token after auth; `email_mismatch` triggers sign-out + user-friendly error
+- **Shared error handling** — `web-portal/lib/auth/errors.ts` maps Firebase error codes (popup-closed, account-exists-with-different-credential, popup-blocked, etc.) to user-friendly messages across all auth pages
+- **Mobile "Web Access" settings** — New section in `mobile/app/settings.tsx` with "Open Web Portal" (uses existing handoff) and "Set Password for Web" (uses `linkWithCredential` to add email/password provider to Apple/Google-only accounts)
+- **Private relay email warning** — Coral-colored warning when Apple private relay email detected (`@privaterelay.appleid.com`)
+- **Apple guidance cards** — All web sign-in pages show Apple Sign-In guidance: "In the LumiMD app, go to Settings > Web Access > Open Web Portal to sign in automatically"
 
 ### PostVisit-Inspired Enhancements (March 2026)
 

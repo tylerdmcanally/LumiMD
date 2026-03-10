@@ -2,7 +2,7 @@
 
 > How the marketing site, web portal, and legal pages are organized and deployed.
 
-**Last Updated:** January 9, 2026
+**Last Updated:** March 10, 2026
 
 ---
 
@@ -33,10 +33,15 @@ Both are deployed to Vercel from the same domain but are **separate projects**.
 │   │   ├── (protected)/     # Authenticated routes (dashboard, visits)
 │   │   ├── privacy/         # Privacy Policy page
 │   │   ├── terms/           # Terms of Service page
-│   │   ├── sign-in/         # Login page
-│   │   ├── sign-up/         # Registration page
+│   │   ├── sign-in/         # Patient login (email + Google)
+│   │   ├── sign-up/         # Patient registration (email + Google)
+│   │   ├── care/sign-in/    # Caregiver login (email + Google, requires invite token)
+│   │   ├── care/sign-up/    # Caregiver registration (email + Google, requires invite token)
+│   │   ├── auth/handoff/    # Mobile→web seamless auth (custom token exchange)
 │   │   ├── shared/          # Caregiver view (read-only)
 │   │   └── api/             # API routes (email, auth)
+│   ├── lib/
+│   │   └── auth/errors.ts   # Shared Firebase auth error → user message mapping
 │   └── components/          # React components
 ```
 
@@ -55,8 +60,11 @@ Both are deployed to Vercel from the same domain but are **separate projects**.
 |-----|--------|-------|
 | `lumimd.app/privacy` | `app/privacy/page.tsx` | **Privacy Policy** |
 | `lumimd.app/terms` | `app/terms/page.tsx` | **Terms of Service** |
-| `lumimd.app/sign-in` | `app/sign-in/page.tsx` | Login |
-| `lumimd.app/sign-up` | `app/sign-up/page.tsx` | Registration |
+| `lumimd.app/sign-in` | `app/sign-in/page.tsx` | Patient login (email + Google) |
+| `lumimd.app/sign-up` | `app/sign-up/page.tsx` | Patient registration (email + Google) |
+| `lumimd.app/care/sign-in?token=…` | `app/care/sign-in/page.tsx` | Caregiver login (email + Google) |
+| `lumimd.app/care/sign-up?token=…` | `app/care/sign-up/page.tsx` | Caregiver registration (email + Google) |
+| `lumimd.app/auth/handoff?code=…` | `app/auth/handoff/page.tsx` | Mobile→web seamless auth |
 | `lumimd.app/dashboard` | `app/(protected)/dashboard/page.tsx` | User dashboard |
 | `lumimd.app/visits` | `app/(protected)/visits/page.tsx` | Visit list |
 | `lumimd.app/visits/[id]` | `app/(protected)/visits/[id]/page.tsx` | Visit detail |

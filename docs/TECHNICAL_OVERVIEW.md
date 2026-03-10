@@ -2,7 +2,7 @@
 
 > **For:** Non-engineer founders and stakeholders  
 > **Purpose:** Understand how LumiMD works under the hood  
-> **Last Updated:** January 2026
+> **Last Updated:** March 2026
 
 ---
 
@@ -313,17 +313,20 @@ Additional endpoints are available for medication logs, care views, insights, an
 ### How Sign-Up Works
 
 ```
-1. User enters email + password in mobile app
-   └── File: mobile/app/sign-up.tsx
+1. User enters email + password (or taps Google/Apple sign-in)
+   └── Mobile: mobile/app/sign-up.tsx (email, Google, Apple)
+   └── Web: web-portal/app/sign-up/page.tsx (email, Google)
 
-2. App calls Firebase Auth createUserWithEmailAndPassword()
-   └── Firebase creates account, returns userId
+2. App calls Firebase Auth:
+   └── createUserWithEmailAndPassword() for email
+   └── signInWithPopup(GoogleAuthProvider) for Google (web)
+   └── Google.signIn() / Apple.signIn() for mobile
 
 3. App calls GET /v1/users/me to bootstrap Firestore profile
    └── File: functions/src/routes/users.ts
 
 4. App calls POST /v1/users/push-tokens to enable notifications
-   └── Expo push token registered
+   └── Expo push token registered (mobile only)
 
 5. User is now logged in
 ```
@@ -331,16 +334,54 @@ Additional endpoints are available for medication logs, care views, insights, an
 ### How Login Works
 
 ```
-1. User enters email + password
-   └── File: mobile/app/sign-in.tsx
+1. User enters email + password (or taps Google/Apple)
+   └── Mobile: mobile/app/sign-in.tsx
+   └── Web: web-portal/app/sign-in/page.tsx (email + Google)
+   └── Caregiver web: web-portal/app/care/sign-in/page.tsx (email + Google)
 
-2. App calls Firebase Auth signInWithEmailAndPassword()
+2. App calls Firebase Auth:
+   └── signInWithEmailAndPassword() for email
+   └── signInWithPopup(GoogleAuthProvider) for Google (web)
    └── Firebase returns ID token (JWT)
 
 3. ID token stored in app memory
    └── Auto-refreshes every hour
 
 4. All API calls include: Authorization: Bearer <id_token>
+```
+
+### Mobile → Web Handoff (for Apple Sign-In users)
+
+```
+1. User opens mobile app Settings → Web Access → Open Web Portal
+   └── File: mobile/app/settings.tsx
+
+2. App creates handoff code via POST /v1/auth/create-handoff
+   └── Code stored in Firestore with 5-min TTL
+
+3. Browser opens lumimd.app/auth/handoff?code=xyz
+   └── File: web-portal/app/auth/handoff/page.tsx
+
+4. Web exchanges code via POST /v1/auth/exchange-handoff
+   └── Returns custom Firebase token
+
+5. signInWithCustomToken(token) → user is authenticated
+   └── Works regardless of original auth provider (email, Google, Apple)
+```
+
+### Setting a Web Password (Apple/Google-only users)
+
+```
+1. User opens mobile Settings → Web Access → Set Password for Web
+   └── File: mobile/app/settings.tsx
+
+2. User enters and confirms new password
+
+3. App calls linkWithCredential(EmailAuthProvider.credential)
+   └── File: mobile/lib/auth.ts → linkEmailPassword()
+   └── Adds email/password provider to existing Apple/Google account
+
+4. User can now sign in directly on web with email + password
 ```
 
 ### How API Verifies Authentication

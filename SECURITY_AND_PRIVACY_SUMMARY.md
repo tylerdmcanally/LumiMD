@@ -145,8 +145,10 @@ User Device (viewing data)
 ## Authentication & Authorization
 
 ### Authentication (Firebase Auth)
-- Email/password
-- OAuth providers (Google, Apple)
+- Email/password (mobile + web)
+- Google Sign-In (mobile + web via `signInWithPopup`)
+- Apple Sign-In (mobile only; web access via handoff or set-password flow)
+- Mobile→web handoff (one-time code, 5 min TTL, `signInWithCustomToken`)
 - JWT tokens with expiration
 - Token revocation supported
 
