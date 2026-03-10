@@ -84,6 +84,46 @@ export function onAuthStateChange(callback: (user: FirebaseAuthTypes.User | null
 }
 
 /**
+ * Check if the current user has a password (email/password) provider linked.
+ */
+export function hasPasswordProvider(): boolean {
+  const user = auth().currentUser;
+  if (!user) return false;
+  return user.providerData.some((p) => p.providerId === 'password');
+}
+
+/**
+ * Link an email/password credential to the current user.
+ * Allows Apple/Google-only users to set a password for web portal access.
+ */
+export async function linkEmailPassword(
+  email: string,
+  password: string,
+): Promise<{ error: string | null }> {
+  const user = auth().currentUser;
+  if (!user) return { error: 'Not signed in' };
+
+  try {
+    const credential = auth.EmailAuthProvider.credential(email, password);
+    await user.linkWithCredential(credential);
+    return { error: null };
+  } catch (error: any) {
+    console.error('[auth] Link email/password error:', error);
+
+    if (error.code === 'auth/email-already-in-use') {
+      return { error: 'This email is already associated with another account.' };
+    }
+    if (error.code === 'auth/weak-password') {
+      return { error: 'Password is too weak. Please use at least 6 characters.' };
+    }
+    if (error.code === 'auth/provider-already-linked') {
+      return { error: 'A password is already set for this account.' };
+    }
+    return { error: error.message || 'Failed to set password. Please try again.' };
+  }
+}
+
+/**
  * Send password reset email
  */
 export async function resetPassword(email: string) {

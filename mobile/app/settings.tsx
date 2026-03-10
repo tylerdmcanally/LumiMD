@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share, Platform, TextInput } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPasswordProvider, linkEmailPassword } from '../lib/auth';
+import { openWebDashboard } from '../lib/linking';
 import { cfg } from '../lib/config';
 import {
   clearStoredPushToken,
@@ -37,6 +39,18 @@ export default function SettingsScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(true);
+  const [hasPassword, setHasPassword] = useState(true);
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+
+  // Check if user has a password provider linked
+  useEffect(() => {
+    if (user) {
+      setHasPassword(hasPasswordProvider());
+    }
+  }, [user]);
 
   // Check notification permission status on mount
   useEffect(() => {
@@ -203,6 +217,44 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleSetPassword = async () => {
+    if (!newPassword.trim() || !confirmNewPassword.trim()) {
+      Alert.alert('Required', 'Please fill in both password fields.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert('Mismatch', 'Passwords do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert('Too short', 'Password must be at least 6 characters.');
+      return;
+    }
+
+    const email = user?.email;
+    if (!email) {
+      Alert.alert('No email', 'Your account does not have an email address. Please contact support.');
+      return;
+    }
+
+    setIsSettingPassword(true);
+    const { error } = await linkEmailPassword(email, newPassword);
+    setIsSettingPassword(false);
+
+    if (error) {
+      Alert.alert('Unable to set password', error);
+    } else {
+      setHasPassword(true);
+      setShowSetPassword(false);
+      setNewPassword('');
+      setConfirmNewPassword('');
+      Alert.alert(
+        'Password set!',
+        `You can now sign in to the web portal at lumimd.app with ${email} and your new password.`,
+      );
+    }
+  };
+
   const openLink = (url: string) => {
     Linking.openURL(url);
   };
@@ -350,6 +402,103 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               </View>
+            </Card>
+          </View>
+
+          {/* Web Access Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Web Access</Text>
+
+            <Card style={styles.card}>
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => openWebDashboard()}
+              >
+                <View style={styles.settingIcon}>
+                  <Ionicons name="globe-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.linkLabel, { marginLeft: 0 }]}>Open Web Portal</Text>
+                  <Text style={styles.settingDescription}>
+                    View your dashboard in the browser
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={20} color={Colors.textMuted} />
+              </Pressable>
+
+              {!hasPassword && (
+                <>
+                  <View style={styles.divider} />
+
+                  {!showSetPassword ? (
+                    <Pressable
+                      style={styles.linkRow}
+                      onPress={() => setShowSetPassword(true)}
+                    >
+                      <View style={styles.settingIcon}>
+                        <Ionicons name="key-outline" size={22} color={Colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.linkLabel, { marginLeft: 0 }]}>Set Password for Web</Text>
+                        <Text style={styles.settingDescription}>
+                          Add a password so you can sign in directly on the web
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                    </Pressable>
+                  ) : (
+                    <View style={styles.setPasswordContainer}>
+                      <Text style={styles.setPasswordLabel}>
+                        Set a password for {user?.email}
+                      </Text>
+                      {user?.email?.includes('privaterelay.appleid.com') && (
+                        <Text style={[styles.setPasswordLabel, { color: Colors.coral, marginBottom: spacing(2) }]}>
+                          Note: This is your Apple private relay email. You'll need to use this exact address to sign in on the web.
+                        </Text>
+                      )}
+                      <TextInput
+                        style={styles.passwordInput}
+                        placeholder="New password"
+                        placeholderTextColor={Colors.textMuted}
+                        secureTextEntry
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                        autoCapitalize="none"
+                      />
+                      <TextInput
+                        style={styles.passwordInput}
+                        placeholder="Confirm password"
+                        placeholderTextColor={Colors.textMuted}
+                        secureTextEntry
+                        value={confirmNewPassword}
+                        onChangeText={setConfirmNewPassword}
+                        autoCapitalize="none"
+                      />
+                      <View style={styles.setPasswordButtons}>
+                        <Pressable
+                          style={styles.cancelButton}
+                          onPress={() => {
+                            setShowSetPassword(false);
+                            setNewPassword('');
+                            setConfirmNewPassword('');
+                          }}
+                        >
+                          <Text style={styles.cancelButtonText}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.saveButton, isSettingPassword && { opacity: 0.5 }]}
+                          onPress={handleSetPassword}
+                          disabled={isSettingPassword}
+                        >
+                          <Text style={styles.saveButtonText}>
+                            {isSettingPassword ? 'Setting...' : 'Set Password'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
+                </>
+              )}
             </Card>
           </View>
 
@@ -715,5 +864,50 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 13,
     color: Colors.textMuted,
+  },
+  setPasswordContainer: {
+    padding: spacing(4),
+  },
+  setPasswordLabel: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    marginBottom: spacing(3),
+  },
+  passwordInput: {
+    borderWidth: 1,
+    borderColor: Colors.stroke,
+    borderRadius: Radius.md,
+    padding: spacing(3),
+    fontSize: 16,
+    color: Colors.text,
+    marginBottom: spacing(3),
+    backgroundColor: Colors.background,
+  },
+  setPasswordButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing(3),
+    marginTop: spacing(1),
+  },
+  cancelButton: {
+    paddingVertical: spacing(2.5),
+    paddingHorizontal: spacing(4),
+    borderRadius: Radius.md,
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    color: Colors.textMuted,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  saveButton: {
+    paddingVertical: spacing(2.5),
+    paddingHorizontal: spacing(4),
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primary,
+  },
+  saveButtonText: {
+    fontSize: 15,
+    color: '#fff',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });
