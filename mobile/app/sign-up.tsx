@@ -3,7 +3,7 @@
  * Warm aesthetic matching sign-in design
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,18 +19,61 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { isAppleSignInAvailable } from '../lib/appleAuth';
 
 import { Colors, spacing, Radius } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, signInGoogle, signInApple } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState('');
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable);
+  }, []);
+
+  const isDisabled = loading || socialLoading !== null;
+
+  const handleGoogleSignUp = async () => {
+    setError('');
+    setSocialLoading('google');
+    try {
+      const { error: googleError } = await signInGoogle();
+      if (googleError) {
+        if (googleError !== 'Sign in was cancelled') setError(googleError);
+        setSocialLoading(null);
+        return;
+      }
+      router.replace('/onboarding');
+    } catch {
+      setError('An unexpected error occurred');
+      setSocialLoading(null);
+    }
+  };
+
+  const handleAppleSignUp = async () => {
+    setError('');
+    setSocialLoading('apple');
+    try {
+      const { error: appleError } = await signInApple();
+      if (appleError) {
+        if (appleError !== 'Sign in was cancelled') setError(appleError);
+        setSocialLoading(null);
+        return;
+      }
+      router.replace('/onboarding');
+    } catch {
+      setError('An unexpected error occurred');
+      setSocialLoading(null);
+    }
+  };
 
   const handleSignUp = async () => {
     if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
@@ -116,7 +159,7 @@ export default function SignUpScreen() {
                     autoCorrect={false}
                     keyboardType="email-address"
                     textContentType="emailAddress"
-                    editable={!loading}
+                    editable={!isDisabled}
                   />
                 </View>
               </View>
@@ -135,7 +178,7 @@ export default function SignUpScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     textContentType="newPassword"
-                    editable={!loading}
+                    editable={!isDisabled}
                   />
                 </View>
               </View>
@@ -154,7 +197,7 @@ export default function SignUpScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     textContentType="newPassword"
-                    editable={!loading}
+                    editable={!isDisabled}
                   />
                 </View>
               </View>
@@ -167,9 +210,9 @@ export default function SignUpScreen() {
               ) : null}
 
               <TouchableOpacity
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, isDisabled && styles.buttonDisabled]}
                 onPress={handleSignUp}
-                disabled={loading}
+                disabled={isDisabled}
                 activeOpacity={0.85}
               >
                 <LinearGradient
@@ -191,6 +234,49 @@ export default function SignUpScreen() {
               </Text>
             </View>
 
+            {/* Social Sign-Up */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or sign up with</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <View style={styles.socialRow}>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={handleGoogleSignUp}
+                disabled={isDisabled}
+                activeOpacity={0.85}
+              >
+                {socialLoading === 'google' ? (
+                  <ActivityIndicator size="small" color={Colors.text} />
+                ) : (
+                  <>
+                    <Text style={styles.socialIcon}>G</Text>
+                    <Text style={styles.socialButtonText}>Google</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {appleAvailable && (
+                <TouchableOpacity
+                  style={[styles.socialButton, styles.appleButton]}
+                  onPress={handleAppleSignUp}
+                  disabled={isDisabled}
+                  activeOpacity={0.85}
+                >
+                  {socialLoading === 'apple' ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="logo-apple" size={20} color="#fff" />
+                      <Text style={[styles.socialButtonText, styles.appleButtonText]}>Apple</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
             {/* Divider */}
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
@@ -202,7 +288,7 @@ export default function SignUpScreen() {
             <TouchableOpacity
               style={styles.signInButton}
               onPress={() => router.back()}
-              disabled={loading}
+              disabled={isDisabled}
             >
               <Text style={styles.signInText}>Sign In</Text>
             </TouchableOpacity>
@@ -357,6 +443,40 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
     paddingHorizontal: spacing(3),
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: spacing(3),
+    marginBottom: spacing(6),
+  },
+  socialButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing(2),
+    paddingVertical: spacing(3.5),
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  socialIcon: {
+    fontSize: 18,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: Colors.text,
+  },
+  socialButtonText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.text,
+  },
+  appleButton: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  appleButtonText: {
+    color: '#fff',
   },
   signInButton: {
     alignItems: 'center',

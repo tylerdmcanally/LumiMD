@@ -12,6 +12,8 @@ import {
   signUpWithEmail,
   signOut as authSignOut,
 } from '../lib/auth';
+import { signInWithGoogle } from '../lib/googleAuth';
+import { signInWithApple } from '../lib/appleAuth';
 import {
   unregisterAllPushTokens,
   cancelAllScheduledNotifications,
@@ -25,6 +27,8 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  signInGoogle: () => Promise<{ error: string | null }>;
+  signInApple: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -85,6 +89,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signInGoogle = async () => {
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) {
+        return { error };
+      }
+      return { error: null };
+    } catch (err: any) {
+      return { error: err.message || 'Failed to sign in with Google' };
+    }
+  };
+
+  const signInApple = async () => {
+    try {
+      const { error } = await signInWithApple();
+      if (error) {
+        return { error };
+      }
+      return { error: null };
+    } catch (err: any) {
+      return { error: err.message || 'Failed to sign in with Apple' };
+    }
+  };
+
   const signOut = async () => {
     // Run all cleanup steps independently so one failure doesn't skip the rest.
     try {
@@ -131,6 +159,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     signIn,
     signUp,
+    signInGoogle,
+    signInApple,
     signOut,
     isAuthenticated: user !== null,
   };

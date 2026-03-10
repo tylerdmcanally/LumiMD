@@ -3,7 +3,7 @@
  * Warm aesthetic with Fraunces display font
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,18 +19,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { isAppleSignInAvailable } from '../lib/appleAuth';
 
 import { Colors, spacing, Radius } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, signInGoogle, signInApple } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState('');
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable);
+  }, []);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
@@ -62,6 +69,42 @@ export default function SignInScreen() {
   const handleForgotPassword = () => {
     router.push('/forgot-password');
   };
+
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setSocialLoading('google');
+    try {
+      const { error: googleError } = await signInGoogle();
+      if (googleError) {
+        if (googleError !== 'Sign in was cancelled') setError(googleError);
+        setSocialLoading(null);
+        return;
+      }
+      router.replace('/');
+    } catch {
+      setError('An unexpected error occurred');
+      setSocialLoading(null);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setError('');
+    setSocialLoading('apple');
+    try {
+      const { error: appleError } = await signInApple();
+      if (appleError) {
+        if (appleError !== 'Sign in was cancelled') setError(appleError);
+        setSocialLoading(null);
+        return;
+      }
+      router.replace('/');
+    } catch {
+      setError('An unexpected error occurred');
+      setSocialLoading(null);
+    }
+  };
+
+  const isDisabled = loading || socialLoading !== null;
 
   return (
     <LinearGradient
@@ -109,7 +152,7 @@ export default function SignInScreen() {
                     autoCorrect={false}
                     keyboardType="email-address"
                     textContentType="emailAddress"
-                    editable={!loading}
+                    editable={!isDisabled}
                   />
                 </View>
               </View>
@@ -128,7 +171,7 @@ export default function SignInScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     textContentType="password"
-                    editable={!loading}
+                    editable={!isDisabled}
                   />
                 </View>
               </View>
@@ -141,9 +184,9 @@ export default function SignInScreen() {
               ) : null}
 
               <TouchableOpacity
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, isDisabled && styles.buttonDisabled]}
                 onPress={handleSignIn}
-                disabled={loading}
+                disabled={isDisabled}
                 activeOpacity={0.85}
               >
                 <LinearGradient
@@ -163,10 +206,53 @@ export default function SignInScreen() {
               <TouchableOpacity
                 style={styles.forgotPassword}
                 onPress={handleForgotPassword}
-                disabled={loading}
+                disabled={isDisabled}
               >
                 <Text style={styles.forgotPasswordText}>Forgot password?</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Social Sign-In */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or continue with</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <View style={styles.socialRow}>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={handleGoogleSignIn}
+                disabled={isDisabled}
+                activeOpacity={0.85}
+              >
+                {socialLoading === 'google' ? (
+                  <ActivityIndicator size="small" color={Colors.text} />
+                ) : (
+                  <>
+                    <Text style={styles.socialIcon}>G</Text>
+                    <Text style={styles.socialButtonText}>Google</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {appleAvailable && (
+                <TouchableOpacity
+                  style={[styles.socialButton, styles.appleButton]}
+                  onPress={handleAppleSignIn}
+                  disabled={isDisabled}
+                  activeOpacity={0.85}
+                >
+                  {socialLoading === 'apple' ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="logo-apple" size={20} color="#fff" />
+                      <Text style={[styles.socialButtonText, styles.appleButtonText]}>Apple</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Divider */}
@@ -180,7 +266,7 @@ export default function SignInScreen() {
             <TouchableOpacity
               style={styles.signUpButton}
               onPress={() => router.push('/sign-up')}
-              disabled={loading}
+              disabled={isDisabled}
             >
               <Text style={styles.signUpText}>Create an Account</Text>
             </TouchableOpacity>
@@ -336,6 +422,40 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.textMuted,
     paddingHorizontal: spacing(3),
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: spacing(3),
+    marginBottom: spacing(6),
+  },
+  socialButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing(2),
+    paddingVertical: spacing(3.5),
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  socialIcon: {
+    fontSize: 18,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: Colors.text,
+  },
+  socialButtonText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.text,
+  },
+  appleButton: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  appleButtonText: {
+    color: '#fff',
   },
   signUpButton: {
     alignItems: 'center',

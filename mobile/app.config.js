@@ -29,6 +29,9 @@ module.exports = {
       appleTeamId: '42M6N2GJD2',
       googleServicesFile: './GoogleService-Info.plist',
       associatedDomains: ['applinks:lumimd.app'],
+      entitlements: {
+        'com.apple.developer.applesignin': ['Default'],
+      },
       infoPlist: {
         NSMicrophoneUsageDescription:
           'LumiMD needs access to your microphone to record your medical visits.',
@@ -88,6 +91,7 @@ module.exports = {
             'Allow LumiMD to determine recording consent requirements for your state.',
         },
       ],
+      'expo-apple-authentication',
       'expo-font',
       'expo-web-browser',
       [
