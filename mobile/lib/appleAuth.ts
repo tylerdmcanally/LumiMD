@@ -76,9 +76,8 @@ export async function isAppleSignInAvailable(): Promise<boolean> {
  */
 function generateNonce(length: number): string {
   const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+  const values = Crypto.getRandomBytes(length);
   let result = '';
-  const values = new Uint8Array(length);
-  globalThis.crypto.getRandomValues(values);
   for (let i = 0; i < length; i++) {
     result += charset[values[i] % charset.length];
   }
