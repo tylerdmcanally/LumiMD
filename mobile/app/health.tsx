@@ -364,7 +364,7 @@ export default function HealthScreen() {
     }
   }, [refetch]);
 
-  const handleGlucoseSubmit = useCallback(async (value: { reading: number; timing?: string }) => {
+  const handleGlucoseSubmit = useCallback(async (value: { reading: number; timing?: 'fasting' | 'before_meal' | 'after_meal' | 'bedtime' | 'random' }) => {
     setIsSubmitting(true);
     try {
       const response = await api.healthLogs.create({ type: 'glucose', value, source: 'manual' });

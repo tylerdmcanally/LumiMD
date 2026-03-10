@@ -427,6 +427,17 @@ export default function HomeScreen() {
     return null;
   }
 
+  // While profile is loading for the first time, or the profile is incomplete
+  // (onboarding redirect will fire via useEffect), show a loading state instead
+  // of briefly flashing the dashboard.
+  if ((profileLoading && !profile) || (profile && profile.complete !== true)) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <ErrorBoundary title="Unable to load your dashboard" description="Try refreshing the home screen. If this keeps happening, please force close and reopen the app.">
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>

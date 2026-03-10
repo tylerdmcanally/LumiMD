@@ -26,7 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { signUp, signInGoogle, signInApple } = useAuth();
+  const { signUp, signInGoogle, signInApple, isAuthenticated, loading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -38,6 +38,14 @@ export default function SignUpScreen() {
   useEffect(() => {
     isAppleSignInAvailable().then(setAppleAvailable);
   }, []);
+
+  // Guard: if already authenticated (e.g. deep link, nav stack glitch),
+  // redirect to home which handles onboarding/dashboard routing.
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.replace('/');
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   const isDisabled = loading || socialLoading !== null;
 

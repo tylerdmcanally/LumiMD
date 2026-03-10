@@ -57,8 +57,25 @@ export function useUpdateUserProfile() {
     mutationFn: async (payload: UpdateProfileInput) => {
       return api.user.updateProfile(payload);
     },
+    onMutate: async (payload) => {
+      // Optimistically update profile cache so navigation guards see the new
+      // values immediately (e.g. complete: true prevents onboarding re-trigger).
+      await queryClient.cancelQueries({ queryKey: profileKey });
+      const previousProfile = queryClient.getQueryData(profileKey);
+      queryClient.setQueryData(profileKey, (old: any) => ({
+        ...old,
+        ...payload,
+      }));
+      return { previousProfile };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileKey });
+    },
+    onError: (_err, _payload, context) => {
+      // Rollback optimistic update on failure
+      if (context?.previousProfile) {
+        queryClient.setQueryData(profileKey, context.previousProfile);
+      }
     },
   });
 }

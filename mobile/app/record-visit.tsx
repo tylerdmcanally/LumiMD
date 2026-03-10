@@ -294,11 +294,10 @@ export default function RecordVisitScreen() {
           style: 'destructive',
           onPress: () => {
             resetRecording();
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/');
-            }
+            // Always navigate to home. Using replace guarantees we land on
+            // the dashboard regardless of the nav stack (e.g. when arriving
+            // from onboarding's "Start first recording" flow).
+            router.replace('/');
           },
         },
       ]
@@ -959,7 +958,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     paddingHorizontal: spacing(3),
     paddingVertical: spacing(1.5),
-    borderRadius: Radius.full,
+    borderRadius: 9999,
   },
   stateBadgeText: {
     fontSize: 12,

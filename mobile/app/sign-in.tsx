@@ -26,7 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn, signInGoogle, signInApple } = useAuth();
+  const { signIn, signInGoogle, signInApple, isAuthenticated, loading: authLoading } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,6 +38,14 @@ export default function SignInScreen() {
   useEffect(() => {
     isAppleSignInAvailable().then(setAppleAvailable);
   }, []);
+
+  // Guard: if already authenticated (e.g. deep link, nav stack glitch),
+  // redirect to home which handles onboarding/dashboard routing.
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.replace('/');
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {

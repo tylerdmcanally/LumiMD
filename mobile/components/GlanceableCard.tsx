@@ -16,7 +16,7 @@ const DEFAULT_ICON_THEME = { bg: Colors.primaryMuted, fg: Colors.primary };
 
 export type GlanceableCardProps = {
   title: string;
-  count: number;
+  count?: number;
   countLabel: string;
   statusBadge?: {
     text: string;
@@ -63,7 +63,7 @@ export function GlanceableCard({
               <Text style={styles.emptyText}>{emptyStateText}</Text>
             ) : (
               <View style={styles.countRow}>
-                <Text style={styles.count}>{count}</Text>
+                {count != null && <Text style={styles.count}>{count}</Text>}
                 <Text style={styles.countLabel}>{countLabel}</Text>
               </View>
             )}
