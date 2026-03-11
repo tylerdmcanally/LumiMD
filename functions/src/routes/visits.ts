@@ -1105,6 +1105,102 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
+    // Determine if this is a document-based visit (AVS photo/PDF) or audio-based
+    const rawDocPath = visit.documentStoragePath;
+    const hasDocumentPaths = rawDocPath && (!Array.isArray(rawDocPath) || rawDocPath.length > 0);
+
+    if (hasDocumentPaths) {
+      // Document-based visit — re-trigger document extraction
+      const updatedVisit = await visitService.updateRecord(visitId, {
+        processingStatus: 'processing',
+        status: 'processing',
+        processingError: admin.firestore.FieldValue.delete(),
+        summary: admin.firestore.FieldValue.delete(),
+        diagnoses: [],
+        medications: { started: [], stopped: [], changed: [] },
+        imaging: [],
+        nextSteps: [],
+        processedAt: null,
+        lastRetryAt: now,
+        retryCount: admin.firestore.FieldValue.increment(1),
+        updatedAt: now,
+        medicationConfirmationStatus: admin.firestore.FieldValue.delete(),
+        medicationConfirmationRequestedAt: admin.firestore.FieldValue.delete(),
+        medicationConfirmedAt: admin.firestore.FieldValue.delete(),
+        pendingMedicationChanges: admin.firestore.FieldValue.delete(),
+        confirmedMedicationChanges: admin.firestore.FieldValue.delete(),
+      });
+
+      if (!updatedVisit) {
+        res.status(404).json({ code: 'not_found', message: 'Visit not found' });
+        return;
+      }
+
+      // Respond immediately, then re-run document extraction async
+      res.json(serializeVisitForResponse(updatedVisit));
+
+      const documentPaths: string[] = Array.isArray(rawDocPath) ? rawDocPath : [rawDocPath];
+      const bucketName = storageConfig.bucket;
+      const bucket = admin.storage().bucket(bucketName);
+
+      (async () => {
+        try {
+          const signedUrls: string[] = [];
+          for (const docPath of documentPaths) {
+            const file = bucket.file(docPath);
+            const [signedUrl] = await file.getSignedUrl({
+              action: 'read',
+              expires: Date.now() + 15 * 60 * 1000,
+            });
+            signedUrls.push(signedUrl);
+          }
+
+          const container = createDomainServiceContainer({ db: getDb() });
+          const knownMeds = await container.medicationService.listAllForUser(userId, { sortDirection: 'asc' });
+          const knownMedicationNames = knownMeds
+            .map((m: Record<string, unknown>) => m.name as string)
+            .filter((name: string | undefined): name is string => !!name);
+
+          const openAI = getOpenAIService();
+          const result = await openAI.extractFromDocument(signedUrls, { knownMedications: knownMedicationNames });
+
+          const extractedTextParts: string[] = [];
+          if (result.summary) extractedTextParts.push(result.summary);
+          if (result.diagnoses?.length) extractedTextParts.push('Diagnoses: ' + result.diagnoses.join(', '));
+
+          await visitService.updateRecord(visitId, {
+            transcriptText: extractedTextParts.join('\n\n'),
+            summary: result.summary,
+            caregiverSummary: result.caregiverSummary,
+            diagnoses: result.diagnoses,
+            diagnosesDetailed: result.diagnosesDetailed,
+            medications: result.medications,
+            imaging: result.imaging,
+            testsOrdered: result.testsOrdered,
+            nextSteps: result.nextSteps,
+            followUps: result.followUps,
+            medicationReview: result.medicationReview,
+            education: result.education,
+            extractionVersion: result.extractionVersion,
+            promptMeta: result.promptMeta,
+            processingStatus: 'summarizing',
+            updatedAt: admin.firestore.Timestamp.now(),
+          });
+
+          functions.logger.info(`[visits] Document extraction retry complete for visit ${visitId}`);
+        } catch (error) {
+          functions.logger.error(`[visits] Document extraction retry failed for visit ${visitId}`, error);
+          await visitService.updateRecord(visitId, {
+            status: 'failed',
+            processingStatus: 'failed',
+            processingError: error instanceof Error ? error.message : 'Document extraction retry failed',
+            updatedAt: admin.firestore.Timestamp.now(),
+          }).catch(() => {});
+        }
+      })();
+      return;
+    }
+
     const storagePath =
       visit.storagePath || decodeStoragePathFromAudioUrl(visit.audioUrl) || null;
 

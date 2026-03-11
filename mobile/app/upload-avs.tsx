@@ -20,7 +20,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -39,6 +39,8 @@ interface SelectedDocument {
 
 export default function UploadAVSScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ visitId?: string }>();
+  const existingVisitId = params.visitId; // Set when adding AVS to an existing recording visit
   const { user } = useAuth();
 
   const [state, setState] = useState<ScreenState>('choose');
@@ -194,23 +196,38 @@ export default function UploadAVSScreen() {
       const documentType = firstDoc.contentType === 'application/pdf' ? 'avs_pdf' as const : 'avs_photo' as const;
       const source = firstDoc.contentType === 'application/pdf' ? 'avs_pdf' as const : 'avs_photo' as const;
 
-      // Create visit record — single path for single file, array for multi
       const documentStoragePath = storagePaths.length === 1 ? storagePaths[0] : storagePaths;
 
-      const visit = await api.visits.create({
-        status: 'processing',
-        source,
-        documentStoragePath,
-        documentType,
-      });
+      let targetVisitId: string;
+
+      if (existingVisitId) {
+        // Attach AVS to an existing recording visit
+        await api.visits.update(existingVisitId, {
+          documentStoragePath,
+          documentType,
+          status: 'processing',
+        });
+        targetVisitId = existingVisitId;
+      } else {
+        // Create a new standalone AVS visit
+        const visit = await api.visits.create({
+          status: 'processing',
+          source,
+          documentStoragePath,
+          documentType,
+        });
+        targetVisitId = visit.id;
+      }
 
       // Trigger document processing
-      await api.visits.processDocument(visit.id);
+      await api.visits.processDocument(targetVisitId);
 
       Alert.alert(
         'Processing Your Summary',
-        `We're reading your ${totalFiles > 1 ? `${totalFiles}-page ` : ''}visit summary now. You'll see the results in your visit list shortly.`,
-        [{ text: 'OK', onPress: () => router.replace('/') }]
+        existingVisitId
+          ? 'We\'re reading your visit summary and merging it with your recording. You\'ll see updated results shortly.'
+          : `We're reading your ${totalFiles > 1 ? `${totalFiles}-page ` : ''}visit summary now. You'll see the results in your visit list shortly.`,
+        [{ text: 'OK', onPress: () => router.replace(existingVisitId ? `/visit-detail?id=${existingVisitId}` : '/') }]
       );
     } catch (error) {
       console.error('[UploadAVS] Upload/processing error:', error);

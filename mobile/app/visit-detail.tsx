@@ -201,6 +201,7 @@ export default function VisitDetailScreen() {
   const [showMedicationReview, setShowMedicationReview] = useState(false);
   const [walkthroughVisible, setWalkthroughVisible] = useState(false);
   const [walkthroughDismissed, setWalkthroughDismissed] = useState(false);
+  const [avsPromptDismissed, setAvsPromptDismissed] = useState(false);
   const walkthroughCheckedRef = useRef(false);
   const hadLoadFailureRef = useRef(false);
   const processingStates = ['pending', 'processing', 'transcribing', 'summarizing'];
@@ -549,6 +550,33 @@ export default function VisitDetailScreen() {
     });
   }, [visit, visitId]);
 
+  // Check if AVS prompt was previously dismissed for this visit
+  useEffect(() => {
+    if (!visitId) return;
+    AsyncStorage.getItem(`avs_prompt_${visitId}`).then((dismissed) => {
+      if (dismissed) setAvsPromptDismissed(true);
+    });
+  }, [visitId]);
+
+  const handleDismissAvsPrompt = useCallback(() => {
+    setAvsPromptDismissed(true);
+    if (visitId) {
+      AsyncStorage.setItem(`avs_prompt_${visitId}`, 'true');
+    }
+  }, [visitId]);
+
+  const handleAddAvs = useCallback(() => {
+    if (visitId) {
+      router.push({ pathname: '/upload-avs', params: { visitId } });
+    }
+  }, [visitId, router]);
+
+  // Show AVS prompt only for completed recording-only visits without AVS data
+  const showAvsPrompt = visit
+    && visit.processingStatus === 'completed'
+    && (visit.source === 'recording' || !visit.source)
+    && !avsPromptDismissed;
+
   const handleWalkthroughDismiss = useCallback(() => {
     setWalkthroughVisible(false);
     setWalkthroughDismissed(true);
@@ -797,6 +825,36 @@ export default function VisitDetailScreen() {
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
                 </Pressable>
+              )}
+
+              {/* AVS add prompt — recording-only completed visits */}
+              {showAvsPrompt && (
+                <Card style={styles.avsPromptCard}>
+                  <View style={styles.avsPromptContent}>
+                    <View style={styles.avsPromptIcon}>
+                      <Ionicons name="document-text-outline" size={22} color={Colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.avsPromptTitle}>Have your After Visit Summary?</Text>
+                      <Text style={styles.avsPromptText}>
+                        Adding it improves medication and diagnosis accuracy.
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.avsPromptActions}>
+                    <Pressable style={styles.avsPromptAddButton} onPress={handleAddAvs}>
+                      <Ionicons name="camera-outline" size={16} color="#fff" />
+                      <Text style={styles.avsPromptAddText}>Add AVS</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.avsPromptDismissButton}
+                      onPress={handleDismissAvsPrompt}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.avsPromptDismissText}>Dismiss</Text>
+                    </Pressable>
+                  </View>
+                </Card>
               )}
 
               {/* ── PRIMARY ZONE: Summary Hero ── */}
@@ -1549,5 +1607,64 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: Colors.textMuted,
     opacity: 0.7,
+  },
+  // AVS prompt banner
+  avsPromptCard: {
+    marginBottom: spacing(4),
+    padding: spacing(4),
+    backgroundColor: 'rgba(64,201,208,0.06)',
+    borderColor: 'rgba(64,201,208,0.2)',
+  },
+  avsPromptContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing(3),
+    marginBottom: spacing(3),
+  },
+  avsPromptIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(64,201,208,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avsPromptTitle: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  avsPromptText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  avsPromptActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(3),
+    marginLeft: 52,
+  },
+  avsPromptAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    backgroundColor: Colors.primary,
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(2),
+    borderRadius: Radius.sm,
+  },
+  avsPromptAddText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#fff',
+  },
+  avsPromptDismissButton: {
+    paddingVertical: spacing(2),
+  },
+  avsPromptDismissText: {
+    fontSize: 14,
+    color: Colors.textMuted,
   },
 });

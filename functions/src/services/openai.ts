@@ -1358,7 +1358,7 @@ export class OpenAIService {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      timeout: 60000,
+      timeout: 180000, // 3 min — Vision extraction with multi-page images needs more time
     });
   }
 
@@ -1892,9 +1892,16 @@ export class OpenAIService {
     contentBlocks.push({
       type: 'text',
       text: [
-        'Extract all clinical data from the document image(s) above.',
-        'This is an After Visit Summary (AVS) or medical document.',
-        'Extract the same structured JSON as you would from a transcript.',
+        `The ${urls.length > 1 ? urls.length + ' images above are pages of the SAME' : 'image above is a'} medical document (After Visit Summary / AVS).`,
+        urls.length > 1 ? `You MUST read ALL ${urls.length} pages thoroughly. Each page may contain different sections — medications are often on a later page.` : '',
+        '',
+        'Extract ALL clinical data into structured JSON. Pay particular attention to:',
+        '- MEDICATIONS: List every medication mentioned. Categorize as started (new), stopped (discontinued), or changed (dose/frequency modified).',
+        '  If the document has a "Current Medications" or "Medication List" section, those are STARTED medications unless the patient was already taking them.',
+        '  If you see a medication with a dose and frequency, include it in started[] even if it is labeled "continue".',
+        '- DIAGNOSES: Every diagnosis, assessment, or problem mentioned, with ICD codes if visible.',
+        '- FOLLOW-UPS: Lab orders, referrals, return visits, imaging — anything the patient needs to do next.',
+        '- VITALS: Blood pressure, weight, heart rate, temperature, etc.',
         '',
         'Known patient medications (use these spellings whenever possible):',
         knownMedicationText,
@@ -1903,7 +1910,7 @@ export class OpenAIService {
         CANONICAL_GLOSSARY_TEXT,
         '',
         'Respond with JSON only.',
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
     });
 
     const messages = [
@@ -1913,12 +1920,14 @@ export class OpenAIService {
           `Prompt version: ${EXTRACTION_PROMPT_VERSION}`,
           EXTRACTION_STAGE_SYSTEM_PROMPT,
           '',
-          'IMPORTANT: You are reading a medical document IMAGE, not a transcript.',
+          `IMPORTANT: You are reading ${urls.length > 1 ? urls.length + ' pages of a' : 'a'} medical document IMAGE, not a transcript.`,
+          urls.length > 1 ? `There are ${urls.length} page images. You MUST examine EVERY page — medications, labs, and follow-ups are often on pages 2+.` : '',
           'Extract all visible text and clinical data from the document.',
           'Pay special attention to: medication lists with exact names/doses,',
           'diagnoses with ICD codes if visible, vitals, lab results,',
           'follow-up instructions, and provider information.',
-        ].join('\n'),
+          'Do NOT skip any medication you see — even "continue" medications should be listed in started[].',
+        ].filter(Boolean).join('\n'),
       },
       {
         role: 'user' as const,

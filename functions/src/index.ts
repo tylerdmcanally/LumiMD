@@ -237,7 +237,7 @@ app.use(errorHandler);
 export const api = onRequest(
   {
     region: 'us-central1',
-    timeoutSeconds: 60,
+    timeoutSeconds: 300,
     memory: '512MiB',
     maxInstances: 40,
   },
