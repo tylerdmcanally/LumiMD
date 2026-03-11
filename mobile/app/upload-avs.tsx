@@ -3,7 +3,9 @@
  * Allows patients to photograph an After Visit Summary or upload a PDF
  * to extract structured visit data via GPT-4o Vision.
  *
- * Flow: Choose method → Capture/Pick → Preview → Upload → Processing
+ * Supports multi-page AVS: users can capture/select multiple photos before uploading.
+ *
+ * Flow: Choose method → Capture/Pick → Preview (add more) → Upload all → Processing
  */
 
 import React, { useState, useCallback } from 'react';
@@ -40,9 +42,23 @@ export default function UploadAVSScreen() {
   const { user } = useAuth();
 
   const [state, setState] = useState<ScreenState>('choose');
-  const [document, setDocument] = useState<SelectedDocument | null>(null);
+  const [documents, setDocuments] = useState<SelectedDocument[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Whether we're in image mode (multi-page) or PDF mode (single file)
+  const isPdfMode = documents.length > 0 && documents[0].contentType === 'application/pdf';
+
+  const addImageDocument = useCallback((asset: ImagePicker.ImagePickerAsset) => {
+    const contentType = asset.mimeType === 'image/png' ? 'image/png' as const : 'image/jpeg' as const;
+    const doc: SelectedDocument = {
+      uri: asset.uri,
+      contentType,
+      fileName: asset.fileName || undefined,
+    };
+    setDocuments(prev => [...prev, doc]);
+    setState('preview');
+  }, []);
 
   const handleCamera = useCallback(async () => {
     try {
@@ -62,20 +78,13 @@ export default function UploadAVSScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const contentType = asset.mimeType === 'image/png' ? 'image/png' as const : 'image/jpeg' as const;
-        setDocument({
-          uri: asset.uri,
-          contentType,
-          fileName: asset.fileName || undefined,
-        });
-        setState('preview');
+        addImageDocument(result.assets[0]);
       }
     } catch (error) {
       console.error('[UploadAVS] Camera error:', error);
       Alert.alert('Error', 'Could not open camera. Please try again.');
     }
-  }, []);
+  }, [addImageDocument]);
 
   const handleGallery = useCallback(async () => {
     try {
@@ -92,16 +101,17 @@ export default function UploadAVSScreen() {
         mediaTypes: ['images'],
         quality: 0.9,
         allowsEditing: false,
+        allowsMultipleSelection: true,
+        selectionLimit: 10,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const contentType = asset.mimeType === 'image/png' ? 'image/png' as const : 'image/jpeg' as const;
-        setDocument({
+      if (!result.canceled && result.assets.length > 0) {
+        const newDocs: SelectedDocument[] = result.assets.map(asset => ({
           uri: asset.uri,
-          contentType,
+          contentType: asset.mimeType === 'image/png' ? 'image/png' as const : 'image/jpeg' as const,
           fileName: asset.fileName || undefined,
-        });
+        }));
+        setDocuments(prev => [...prev, ...newDocs]);
         setState('preview');
       }
     } catch (error) {
@@ -119,11 +129,11 @@ export default function UploadAVSScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        setDocument({
+        setDocuments([{
           uri: asset.uri,
           contentType: 'application/pdf',
           fileName: asset.name || undefined,
-        });
+        }]);
         setState('preview');
       }
     } catch (error) {
@@ -132,51 +142,74 @@ export default function UploadAVSScreen() {
     }
   }, []);
 
-  const handleRetake = useCallback(() => {
-    setDocument(null);
+  const handleRemovePage = useCallback((index: number) => {
+    setDocuments(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0) {
+        setState('choose');
+      }
+      return next;
+    });
+  }, []);
+
+  const handleStartOver = useCallback(() => {
+    setDocuments([]);
     setState('choose');
     setUploadProgress(0);
     setErrorMessage('');
   }, []);
 
   const handleUpload = useCallback(async () => {
-    if (!document || !user) return;
+    if (documents.length === 0 || !user) return;
 
     setState('uploading');
     setUploadProgress(0);
 
     try {
-      // Upload to Firebase Storage
-      const uploaded = await uploadDocumentFile(
-        document.uri,
-        user.uid,
-        document.contentType,
-        (progress: UploadProgress) => {
-          setUploadProgress(Math.round(progress.progress));
-        }
-      );
+      const totalFiles = documents.length;
+      const storagePaths: string[] = [];
 
+      // Upload each file
+      for (let i = 0; i < totalFiles; i++) {
+        const doc = documents[i];
+        const uploaded = await uploadDocumentFile(
+          doc.uri,
+          user.uid,
+          doc.contentType,
+          (progress: UploadProgress) => {
+            // Weighted progress across all files
+            const fileWeight = 1 / totalFiles;
+            const overallProgress = (i * fileWeight + (progress.progress / 100) * fileWeight) * 100;
+            setUploadProgress(Math.round(overallProgress));
+          }
+        );
+        storagePaths.push(uploaded.storagePath);
+      }
+
+      setUploadProgress(100);
       setState('processing');
 
       // Determine source type
-      const documentType = document.contentType === 'application/pdf' ? 'avs_pdf' as const : 'avs_photo' as const;
-      const source = document.contentType === 'application/pdf' ? 'avs_pdf' as const : 'avs_photo' as const;
+      const firstDoc = documents[0];
+      const documentType = firstDoc.contentType === 'application/pdf' ? 'avs_pdf' as const : 'avs_photo' as const;
+      const source = firstDoc.contentType === 'application/pdf' ? 'avs_pdf' as const : 'avs_photo' as const;
 
-      // Create visit record
+      // Create visit record — single path for single file, array for multi
+      const documentStoragePath = storagePaths.length === 1 ? storagePaths[0] : storagePaths;
+
       const visit = await api.visits.create({
         status: 'processing',
         source,
-        documentStoragePath: uploaded.storagePath,
+        documentStoragePath,
         documentType,
       });
 
       // Trigger document processing
       await api.visits.processDocument(visit.id);
 
-      // Navigate home — user will see the visit processing in their visit list
       Alert.alert(
         'Processing Your Summary',
-        'We\'re reading your visit summary now. You\'ll see the results in your visit list shortly.',
+        `We're reading your ${totalFiles > 1 ? `${totalFiles}-page ` : ''}visit summary now. You'll see the results in your visit list shortly.`,
         [{ text: 'OK', onPress: () => router.replace('/') }]
       );
     } catch (error) {
@@ -185,7 +218,7 @@ export default function UploadAVSScreen() {
       setErrorMessage(message);
       setState('error');
     }
-  }, [document, user, router]);
+  }, [documents, user, router]);
 
   const renderChooseScreen = () => (
     <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -195,7 +228,7 @@ export default function UploadAVSScreen() {
         </View>
         <Text style={styles.heading}>Upload Visit Summary</Text>
         <Text style={styles.subheading}>
-          Take a photo of your After Visit Summary or upload a PDF from your patient portal.
+          Take photos of your After Visit Summary or upload a PDF from your patient portal.
         </Text>
       </View>
 
@@ -210,7 +243,7 @@ export default function UploadAVSScreen() {
           </View>
           <View style={styles.optionText}>
             <Text style={styles.optionTitle}>Take a Photo</Text>
-            <Text style={styles.optionDesc}>Hold phone flat over the document</Text>
+            <Text style={styles.optionDesc}>Photograph each page of your summary</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#999" />
         </Pressable>
@@ -218,14 +251,14 @@ export default function UploadAVSScreen() {
         <Pressable
           style={({ pressed }) => [styles.optionCard, pressed && styles.optionPressed]}
           onPress={handleGallery}
-          accessibilityLabel="Choose a photo from your library"
+          accessibilityLabel="Choose photos from your library"
         >
           <View style={[styles.optionIcon, { backgroundColor: 'rgba(64,201,208,0.1)' }]}>
             <Ionicons name="images-outline" size={28} color={Colors.primary} />
           </View>
           <View style={styles.optionText}>
             <Text style={styles.optionTitle}>Choose from Photos</Text>
-            <Text style={styles.optionDesc}>Select an existing photo</Text>
+            <Text style={styles.optionDesc}>Select one or more existing photos</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#999" />
         </Pressable>
@@ -249,7 +282,7 @@ export default function UploadAVSScreen() {
       <View style={styles.tipBox}>
         <Ionicons name="bulb-outline" size={18} color={Colors.primary} style={{ marginTop: 2 }} />
         <Text style={styles.tipText}>
-          For best results, make sure the text is clear and readable. Good lighting and a flat surface help with photos.
+          For multi-page summaries, take a photo of each page. You can add pages one at a time before uploading.
         </Text>
       </View>
     </ScrollView>
@@ -257,36 +290,71 @@ export default function UploadAVSScreen() {
 
   const renderPreview = () => (
     <View style={styles.previewContainer}>
-      {document?.contentType === 'application/pdf' ? (
+      {isPdfMode ? (
+        /* PDF single-file preview */
         <View style={styles.pdfPreview}>
           <Ionicons name="document-text" size={64} color={Colors.primary} />
-          <Text style={styles.pdfFileName}>{document.fileName || 'Selected PDF'}</Text>
+          <Text style={styles.pdfFileName}>{documents[0].fileName || 'Selected PDF'}</Text>
         </View>
       ) : (
-        <Image
-          source={{ uri: document?.uri }}
-          style={styles.previewImage}
-          resizeMode="contain"
-        />
+        /* Multi-image preview grid */
+        <ScrollView style={styles.imageGrid} contentContainerStyle={styles.imageGridContent}>
+          <Text style={styles.pageCountLabel}>
+            {documents.length} {documents.length === 1 ? 'page' : 'pages'}
+          </Text>
+
+          <View style={styles.thumbnailGrid}>
+            {documents.map((doc, index) => (
+              <View key={`${doc.uri}-${index}`} style={styles.thumbnailWrapper}>
+                <Image source={{ uri: doc.uri }} style={styles.thumbnail} resizeMode="cover" />
+                <View style={styles.pageNumberBadge}>
+                  <Text style={styles.pageNumberText}>{index + 1}</Text>
+                </View>
+                <Pressable
+                  style={styles.removeBadge}
+                  onPress={() => handleRemovePage(index)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close-circle" size={22} color="#E07A5F" />
+                </Pressable>
+              </View>
+            ))}
+
+            {/* Add more button */}
+            <Pressable
+              style={styles.addMoreTile}
+              onPress={() => {
+                Alert.alert('Add Page', 'How would you like to add another page?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Take Photo', onPress: handleCamera },
+                  { text: 'From Photos', onPress: handleGallery },
+                ]);
+              }}
+            >
+              <Ionicons name="add-circle-outline" size={32} color={Colors.primary} />
+              <Text style={styles.addMoreText}>Add page</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       )}
 
       <View style={styles.previewQuestion}>
         <Text style={styles.previewQuestionText}>
-          {document?.contentType === 'application/pdf'
+          {isPdfMode
             ? 'Upload this document?'
-            : 'Is the text readable?'}
+            : documents.length === 1
+              ? 'Is the text readable? Add more pages if needed.'
+              : `Ready to upload ${documents.length} pages?`}
         </Text>
       </View>
 
       <View style={styles.previewActions}>
         <Pressable
           style={[styles.previewButton, styles.retakeButton]}
-          onPress={handleRetake}
+          onPress={handleStartOver}
         >
           <Ionicons name="refresh-outline" size={20} color="#666" />
-          <Text style={styles.retakeText}>
-            {document?.contentType === 'application/pdf' ? 'Choose Different' : 'Retake'}
-          </Text>
+          <Text style={styles.retakeText}>Start Over</Text>
         </Pressable>
 
         <Pressable
@@ -294,7 +362,9 @@ export default function UploadAVSScreen() {
           onPress={handleUpload}
         >
           <Ionicons name="cloud-upload-outline" size={20} color="#fff" />
-          <Text style={styles.uploadText}>Upload</Text>
+          <Text style={styles.uploadText}>
+            Upload{documents.length > 1 ? ` (${documents.length})` : ''}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -303,7 +373,9 @@ export default function UploadAVSScreen() {
   const renderUploading = () => (
     <View style={styles.statusContainer}>
       <ActivityIndicator size="large" color={Colors.primary} />
-      <Text style={styles.statusTitle}>Uploading...</Text>
+      <Text style={styles.statusTitle}>
+        Uploading{documents.length > 1 ? ` ${documents.length} pages` : ''}...
+      </Text>
       <View style={styles.progressBar}>
         <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
       </View>
@@ -328,7 +400,7 @@ export default function UploadAVSScreen() {
       </View>
       <Text style={styles.statusTitle}>Something went wrong</Text>
       <Text style={styles.statusSubtext}>{errorMessage}</Text>
-      <Pressable style={styles.retryButton} onPress={handleRetake}>
+      <Pressable style={styles.retryButton} onPress={handleStartOver}>
         <Text style={styles.retryText}>Try Again</Text>
       </Pressable>
     </View>
@@ -474,11 +546,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing(4),
   },
-  previewImage: {
-    flex: 1,
-    borderRadius: Radius.lg,
-    backgroundColor: '#f0f0f0',
-  },
   pdfPreview: {
     flex: 1,
     alignItems: 'center',
@@ -492,14 +559,83 @@ const styles = StyleSheet.create({
     color: '#333',
     marginTop: spacing(3),
   },
+  imageGrid: {
+    flex: 1,
+  },
+  imageGridContent: {
+    paddingBottom: spacing(2),
+  },
+  pageCountLabel: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#555',
+    marginBottom: spacing(3),
+    textAlign: 'center',
+  },
+  thumbnailGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing(3),
+  },
+  thumbnailWrapper: {
+    width: '47%',
+    aspectRatio: 3 / 4,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    backgroundColor: '#f0f0f0',
+  },
+  thumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  pageNumberBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageNumberText: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  removeBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#fff',
+    borderRadius: 11,
+  },
+  addMoreTile: {
+    width: '47%',
+    aspectRatio: 3 / 4,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: 'rgba(64,201,208,0.3)',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing(2),
+  },
+  addMoreText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.primary,
+  },
   previewQuestion: {
     alignItems: 'center',
     marginVertical: spacing(4),
   },
   previewQuestionText: {
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: '#1a1a1a',
+    textAlign: 'center',
   },
   previewActions: {
     flexDirection: 'row',

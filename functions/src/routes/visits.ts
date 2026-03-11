@@ -183,7 +183,7 @@ const createVisitSchema = z.object({
   status: z.enum(['recording', 'processing', 'completed', 'failed']).default('recording'),
   consentMetadata: consentMetadataSchema,
   source: visitSourceEnum.optional(),
-  documentStoragePath: z.string().optional(),
+  documentStoragePath: z.union([z.string(), z.array(z.string())]).optional(),
   documentType: visitDocumentTypeEnum.optional(),
 });
 
@@ -1601,15 +1601,18 @@ visitsRouter.post('/:id/process-document', requireAuth, async (req: AuthRequest,
     if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) return;
     if (res.headersSent) return;
 
-    // Validate document path exists
-    const documentPath = visit.documentStoragePath;
-    if (!documentPath) {
+    // Validate document path(s) exist
+    const rawDocPath = visit.documentStoragePath;
+    if (!rawDocPath || (Array.isArray(rawDocPath) && rawDocPath.length === 0)) {
       res.status(400).json({
         code: 'missing_document',
         message: 'Visit has no associated document to process',
       });
       return;
     }
+
+    // Normalize to array
+    const documentPaths: string[] = Array.isArray(rawDocPath) ? rawDocPath : [rawDocPath];
 
     // Prevent re-processing a completed visit
     if (visit.processingStatus === 'completed') {
@@ -1624,38 +1627,25 @@ visitsRouter.post('/:id/process-document', requireAuth, async (req: AuthRequest,
     const bucketName = storageConfig.bucket;
     const bucket = admin.storage().bucket(bucketName);
 
-    // Generate signed URL(s) for the document
-    const file = bucket.file(documentPath);
-    const [fileExists] = await file.exists();
-    if (!fileExists) {
-      res.status(404).json({
-        code: 'document_not_found',
-        message: 'Document file not found in storage',
-      });
-      return;
-    }
+    // Generate signed URL(s) for all document files
+    const signedUrls: string[] = [];
 
-    const [metadata] = await file.getMetadata();
-    const contentType = metadata.contentType || '';
-    const isPdf = contentType === 'application/pdf';
+    for (const docPath of documentPaths) {
+      const file = bucket.file(docPath);
+      const [fileExists] = await file.exists();
+      if (!fileExists) {
+        res.status(404).json({
+          code: 'document_not_found',
+          message: `Document file not found in storage: ${docPath}`,
+        });
+        return;
+      }
 
-    let signedUrls: string[];
-
-    if (isPdf) {
-      // For PDFs, generate a single signed URL — GPT-4o can handle PDF directly
-      // via base64 or URL. We'll use URL approach.
       const [signedUrl] = await file.getSignedUrl({
         action: 'read',
         expires: Date.now() + 15 * 60 * 1000, // 15 min TTL
       });
-      signedUrls = [signedUrl];
-    } else {
-      // Single image
-      const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 15 * 60 * 1000,
-      });
-      signedUrls = [signedUrl];
+      signedUrls.push(signedUrl);
     }
 
     // Update visit status to processing

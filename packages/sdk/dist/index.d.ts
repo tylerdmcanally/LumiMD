@@ -42,7 +42,7 @@ interface Visit {
     audioUrl?: string | null;
     duration?: number | null;
     source?: VisitSource;
-    documentStoragePath?: string | null;
+    documentStoragePath?: string | string[] | null;
     documentType?: VisitDocumentType | null;
     medicationConfirmationStatus?: MedicationConfirmationStatus;
     medicationConfirmationRequestedAt?: string | null;

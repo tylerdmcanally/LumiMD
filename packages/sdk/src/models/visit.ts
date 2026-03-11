@@ -45,7 +45,7 @@ export interface Visit {
   duration?: number | null;
   // Data source tracking
   source?: VisitSource;
-  documentStoragePath?: string | null;
+  documentStoragePath?: string | string[] | null;
   documentType?: VisitDocumentType | null;
   // Medication confirmation flow
   medicationConfirmationStatus?: MedicationConfirmationStatus;
