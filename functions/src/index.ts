@@ -50,6 +50,8 @@ export { analyzeMedicationSafety } from './callables/medicationSafety';
 export { privacyDataSweeper } from './triggers/privacySweeper';
 export { staleVisitSweeper } from './triggers/staleVisitSweeper';
 export { processMedicationFollowUpNudges } from './triggers/medicationFollowUpNudges';
+export { processActionItemReminderNudges } from './triggers/actionItemReminderNudges';
+export { processActionOverdueNotifier } from './triggers/actionOverdueNotifier';
 
 const parsePositiveInt = (value: string | undefined): number | undefined => {
   if (!value) {

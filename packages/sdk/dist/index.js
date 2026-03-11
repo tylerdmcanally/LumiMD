@@ -395,6 +395,12 @@ function createApiClient(config) {
           method: "POST",
           body: JSON.stringify({ question })
         }
+      ),
+      processDocument: (id) => apiRequest(
+        `/v1/visits/${id}/process-document`,
+        {
+          method: "POST"
+        }
       )
     },
     // Action Items

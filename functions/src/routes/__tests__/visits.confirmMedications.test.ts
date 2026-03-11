@@ -17,6 +17,8 @@ jest.mock('../../services/medicationSync', () => ({
 jest.mock('../../services/medicationSafety', () => ({
   runMedicationSafetyChecks: jest.fn(async () => []),
   addSafetyWarningsToEntry: jest.fn((entry: unknown) => entry),
+  CANONICAL_MEDICATIONS: {},
+  ALIAS_TO_CANONICAL: {},
 }));
 
 type RecordMap = Record<string, any>;

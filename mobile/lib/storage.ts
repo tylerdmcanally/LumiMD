@@ -77,6 +77,67 @@ export async function uploadAudioFile(
 }
 
 /**
+ * Upload a document file (image or PDF) to Firebase Storage
+ * Returns the download URL and storage path
+ */
+export interface UploadedDocument {
+  downloadUrl: string;
+  storagePath: string;
+}
+
+export async function uploadDocumentFile(
+  uri: string,
+  userId: string,
+  contentType: 'image/jpeg' | 'image/png' | 'application/pdf',
+  onProgress?: (progress: UploadProgress) => void
+): Promise<UploadedDocument> {
+  try {
+    const timestamp = Date.now();
+    const ext = contentType === 'application/pdf' ? 'pdf' : contentType === 'image/png' ? 'png' : 'jpg';
+    const filename = `visits/${userId}/${timestamp}.${ext}`;
+
+    const storageRef = storage().ref(filename);
+
+    const uploadTask = storageRef.putFile(uri, {
+      contentType,
+    });
+
+    return new Promise((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = {
+            bytesTransferred: snapshot.bytesTransferred,
+            totalBytes: snapshot.totalBytes,
+            progress: (snapshot.bytesTransferred / snapshot.totalBytes) * 100,
+          };
+          onProgress?.(progress);
+        },
+        (error) => {
+          console.error('[Storage] Document upload error:', error);
+          reject(error);
+        },
+        async () => {
+          try {
+            const downloadURL = await storageRef.getDownloadURL();
+            console.log('[Storage] Document upload complete:', downloadURL);
+            resolve({
+              downloadUrl: downloadURL,
+              storagePath: filename,
+            });
+          } catch (error) {
+            reject(error);
+          }
+        }
+      );
+    });
+  } catch (error) {
+    console.error('[Storage] Document upload failed:', error);
+    throw error;
+  }
+}
+
+/**
  * Delete audio file from Firebase Storage
  */
 export async function deleteAudioFile(url: string): Promise<void> {

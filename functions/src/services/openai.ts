@@ -8,6 +8,7 @@ import {
   EXTRACTION_PROMPT_VERSION,
   EXTRACTION_SCHEMA_VERSION,
   EXTRACTION_STAGE_SCHEMA,
+  EXTRACTION_STAGE_SYSTEM_PROMPT,
   LEGACY_PROMPT_VERSION,
   LEGACY_STAGE_SCHEMA,
   SUMMARY_PROMPT_VERSION,
@@ -1813,6 +1814,241 @@ export class OpenAIService {
         latencyMs: legacyResponse.latencyMs,
       });
       throw new Error('OpenAI returned an invalid JSON response');
+    }
+  }
+
+  /**
+   * Request a JSON completion with vision (multi-part) messages.
+   * Uses gpt-4o for vision capability.
+   */
+  private async requestVisionJsonCompletion(
+    messages: Array<{
+      role: 'system' | 'user';
+      content: string | Array<{ type: string; text?: string; image_url?: { url: string; detail: string } }>;
+    }>,
+    temperature = 0.2,
+  ): Promise<{ content: string; latencyMs: number }> {
+    const requestStartedAt = Date.now();
+    const response = await withRetry(
+      async () =>
+        await this.client.post('/chat/completions', {
+          model: 'gpt-4o',
+          store: false,
+          temperature,
+          response_format: { type: 'json_object' },
+          messages,
+        }),
+      {
+        shouldRetry: shouldRetryOpenAIRequest,
+      },
+    );
+
+    const latencyMs = Date.now() - requestStartedAt;
+    const content = response.data?.choices?.[0]?.message?.content?.trim() ?? '';
+
+    return { content, latencyMs };
+  }
+
+  /**
+   * Extract structured visit data from a document image (AVS photo or PDF page).
+   * Uses GPT-4o vision to read the document and extract the same structured data
+   * as summarizeTranscript().
+   *
+   * @param signedUrls - One or more signed URLs for document images
+   * @param options - Optional known medications for context
+   */
+  async extractFromDocument(
+    signedUrls: string | string[],
+    options?: { knownMedications?: string[] },
+  ): Promise<VisitSummaryResult> {
+    const urls = Array.isArray(signedUrls) ? signedUrls : [signedUrls];
+    if (urls.length === 0) {
+      throw new Error('At least one document URL is required');
+    }
+
+    const knownMedicationList = Array.isArray(options?.knownMedications)
+      ? options!.knownMedications.filter(
+          (name) => typeof name === 'string' && name.trim().length > 0,
+        )
+      : [];
+
+    const knownMedicationText = formatMedicationReferenceList(knownMedicationList);
+
+    // Build vision content blocks: images + text prompt
+    const contentBlocks: Array<{ type: string; text?: string; image_url?: { url: string; detail: string } }> = [];
+
+    // Add each document page as an image_url block
+    for (const url of urls) {
+      contentBlocks.push({
+        type: 'image_url',
+        image_url: {
+          url,
+          detail: 'high',
+        },
+      });
+    }
+
+    // Add the text prompt (same context as transcript extraction, but adapted for document)
+    contentBlocks.push({
+      type: 'text',
+      text: [
+        'Extract all clinical data from the document image(s) above.',
+        'This is an After Visit Summary (AVS) or medical document.',
+        'Extract the same structured JSON as you would from a transcript.',
+        '',
+        'Known patient medications (use these spellings whenever possible):',
+        knownMedicationText,
+        '',
+        'Common medication glossary (brand ↔ generic hints; use for spell-checking and spelling corrections):',
+        CANONICAL_GLOSSARY_TEXT,
+        '',
+        'Respond with JSON only.',
+      ].join('\n'),
+    });
+
+    const messages = [
+      {
+        role: 'system' as const,
+        content: [
+          `Prompt version: ${EXTRACTION_PROMPT_VERSION}`,
+          EXTRACTION_STAGE_SYSTEM_PROMPT,
+          '',
+          'IMPORTANT: You are reading a medical document IMAGE, not a transcript.',
+          'Extract all visible text and clinical data from the document.',
+          'Pay special attention to: medication lists with exact names/doses,',
+          'diagnoses with ICD codes if visible, vitals, lab results,',
+          'follow-up instructions, and provider information.',
+        ].join('\n'),
+      },
+      {
+        role: 'user' as const,
+        content: contentBlocks,
+      },
+    ];
+
+    try {
+      functions.logger.info('[OpenAI] Starting document extraction via GPT-4o Vision', {
+        pageCount: urls.length,
+        promptVersion: EXTRACTION_PROMPT_VERSION,
+      });
+
+      const extractionResponse = await this.requestVisionJsonCompletion(messages);
+
+      if (!extractionResponse.content) {
+        throw new Error('Vision extraction returned empty content');
+      }
+
+      const rawJson = extractJsonBlock(extractionResponse.content);
+      const parsed = JSON.parse(rawJson);
+      const { record, warnings, isValidObject } = validateTopLevelSchema(
+        parsed,
+        EXTRACTION_STAGE_SCHEMA,
+      );
+
+      if (!isValidObject || !record) {
+        throw new Error('Vision extraction payload is not a valid JSON object');
+      }
+
+      const validationWarnings = warnings.map((w) => w.message);
+
+      const medications = ensureMedicationsObject(record.medications);
+      const diagnosesDetailed = ensureDiagnosesDetailed(record.diagnosesDetailed);
+      const testsOrdered = ensureTestsOrdered(record.testsOrdered);
+      const followUps = ensureFollowUps(record.followUps);
+      const medicationReview = ensureMedicationReviewObject(record.medicationReview);
+      const diagnoses = deriveLegacyDiagnoses(
+        ensureArrayOfStrings(record.diagnoses),
+        diagnosesDetailed,
+      );
+      const imaging = deriveLegacyImaging(
+        ensureArrayOfStrings(record.imaging),
+        testsOrdered,
+      );
+
+      const extraction: StructuredVisitExtraction = {
+        diagnoses,
+        diagnosesDetailed,
+        medications,
+        imaging,
+        testsOrdered,
+        followUps,
+        medicationReview,
+        extractionVersion: 'v2_structured',
+        validationWarnings,
+        latencyMs: extractionResponse.latencyMs,
+      };
+
+      functions.logger.info('[OpenAI] Document extraction complete', {
+        pageCount: urls.length,
+        latencyMs: extractionResponse.latencyMs,
+        diagnosisCount: diagnoses.length,
+        startedMedicationCount: medications.started.length,
+        stoppedMedicationCount: medications.stopped.length,
+        changedMedicationCount: medications.changed.length,
+        followUpCount: followUps.length,
+      });
+
+      // Run summary stage on the extraction
+      let summaryStage: SummaryStageOutput;
+      try {
+        summaryStage = await this.runSummaryStage(extraction);
+      } catch (error) {
+        functions.logger.warn(
+          '[OpenAI] Summary stage failed for document extraction. Continuing with extraction-only output.',
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+        summaryStage = {
+          summary: '',
+          caregiverSummary: '',
+          nextSteps: [],
+          education: { diagnoses: [], medications: [] },
+          validationWarnings: ['Summary stage failed; returned extraction-only payload.'],
+          latencyMs: 0,
+        };
+      }
+
+      const refinedMedications = refineMedicationsWithKnownNames(
+        extraction.medications,
+        knownMedicationList,
+      );
+
+      const allWarnings = [
+        ...extraction.validationWarnings,
+        ...summaryStage.validationWarnings,
+      ];
+
+      const promptMeta: VisitPromptMeta = {
+        ...ensurePromptMeta(undefined, 'gpt-4o', VISIT_PROMPT_VERSION),
+        extractionLatencyMs: extraction.latencyMs,
+        summaryLatencyMs: summaryStage.latencyMs,
+        latencyMs: extraction.latencyMs + summaryStage.latencyMs,
+        fallbackUsed: false,
+      };
+      if (allWarnings.length > 0) {
+        promptMeta.validationWarnings = allWarnings;
+      }
+
+      return {
+        summary: summaryStage.summary,
+        caregiverSummary: summaryStage.caregiverSummary,
+        diagnoses: extraction.diagnoses,
+        diagnosesDetailed: extraction.diagnosesDetailed,
+        medications: refinedMedications,
+        imaging: extraction.imaging,
+        testsOrdered: extraction.testsOrdered,
+        nextSteps: deriveLegacyNextSteps(summaryStage.nextSteps, extraction.followUps),
+        followUps: extraction.followUps,
+        medicationReview: extraction.medicationReview,
+        education: summaryStage.education,
+        extractionVersion: 'v2_structured',
+        promptMeta,
+      };
+    } catch (error) {
+      functions.logger.error('[OpenAI] Document extraction failed', {
+        error: error instanceof Error ? error.message : String(error),
+        pageCount: urls.length,
+      });
+      throw error;
     }
   }
 }

@@ -32,7 +32,7 @@ export interface LumiBotBannerProps {
     nudges: Nudge[];
     isLoading: boolean;
     onUpdateNudge: (id: string, data: { status: 'snoozed' | 'dismissed'; snoozeDays?: number }) => void;
-    onRespondToNudge: (id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning'; note?: string }) => void;
+    onRespondToNudge: (id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later'; note?: string }) => void;
     onOpenLogModal: (nudge: Nudge) => void;
     onOpenSideEffectsModal: (nudge: Nudge) => void;
 }
@@ -161,6 +161,27 @@ export function LumiBotBanner({
                     {
                         text: '👍 None',
                         onPress: () => onRespondToNudge(nudge.id, { response: 'none' }),
+                    },
+                ],
+            );
+        } else if (nudge.actionType === 'action_followup_response') {
+            // Action item follow-up: Done / Remind me later / Not yet
+            Alert.alert(
+                nudge.title,
+                nudge.message,
+                [
+                    {
+                        text: 'Not yet',
+                        style: 'cancel',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'not_yet' }),
+                    },
+                    {
+                        text: 'Remind me later',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'remind_later' }),
+                    },
+                    {
+                        text: 'Done',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'done' }),
                     },
                 ],
             );

@@ -2,6 +2,15 @@
  * Visit Model
  */
 
+export type VisitSource =
+  | 'recording'
+  | 'avs_photo'
+  | 'avs_pdf'
+  | 'recording+avs'
+  | 'manual';
+
+export type VisitDocumentType = 'avs_photo' | 'avs_pdf';
+
 export interface Visit {
   id: string;
   userId: string;
@@ -34,6 +43,10 @@ export interface Visit {
   education?: VisitEducation;
   audioUrl?: string | null;
   duration?: number | null;
+  // Data source tracking
+  source?: VisitSource;
+  documentStoragePath?: string | null;
+  documentType?: VisitDocumentType | null;
   // Medication confirmation flow
   medicationConfirmationStatus?: MedicationConfirmationStatus;
   medicationConfirmationRequestedAt?: string | null;

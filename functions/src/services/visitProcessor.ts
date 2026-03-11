@@ -312,9 +312,42 @@ export async function summarizeVisit({
       .filter((record): record is ExistingMedicationRecord => record !== null);
     const knownMedicationNames = knownMedicationRecords.map((record) => record.name);
 
-    const summary = await openAI.summarizeTranscript(sanitizedTranscript, {
-      knownMedications: knownMedicationNames,
-    });
+    // Check if extraction data was pre-computed (e.g., from AVS document extraction).
+    // If so, skip the OpenAI call and use the existing data.
+    const isPreExtracted = visitData.source &&
+      ['avs_photo', 'avs_pdf', 'recording+avs'].includes(visitData.source) &&
+      visitData.summary &&
+      visitData.medications;
+
+    let summary: VisitSummaryResult;
+    if (isPreExtracted) {
+      functions.logger.info(
+        `[visitProcessor] Using pre-extracted data for visit ${visitRef.id} (source: ${visitData.source})`,
+      );
+      summary = {
+        summary: visitData.summary || '',
+        caregiverSummary: visitData.caregiverSummary || '',
+        diagnoses: visitData.diagnoses || [],
+        diagnosesDetailed: visitData.diagnosesDetailed || [],
+        medications: visitData.medications || { started: [], stopped: [], changed: [] },
+        imaging: visitData.imaging || [],
+        testsOrdered: visitData.testsOrdered || [],
+        nextSteps: visitData.nextSteps || [],
+        followUps: visitData.followUps || [],
+        medicationReview: visitData.medicationReview || {
+          reviewed: false, continued: [], continuedReviewed: [],
+          adherenceConcerns: [], reviewConcerns: [], sideEffectsDiscussed: [],
+          followUpNeeded: false, notes: [],
+        },
+        education: visitData.education || { diagnoses: [], medications: [] },
+        extractionVersion: visitData.extractionVersion || 'v2_structured',
+        promptMeta: visitData.promptMeta,
+      };
+    } else {
+      summary = await openAI.summarizeTranscript(sanitizedTranscript, {
+        knownMedications: knownMedicationNames,
+      });
+    }
     const syncReadyMedications = reconcileContinuedMedications(
       summary.medications,
       summary.medicationReview,

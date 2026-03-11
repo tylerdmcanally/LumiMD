@@ -12,6 +12,12 @@ export interface CalendarEventEntry {
   removedAt?: string;
 }
 
+export interface CaregiverNotificationEntry {
+  caregiverId: string;
+  notifiedAt: string;
+  daysOverdue: number;
+}
+
 export interface ActionItem {
   id: string;
   userId: string;
@@ -27,6 +33,7 @@ export interface ActionItem {
   type?: FollowUpCategory | null;
   details?: string | null;
   calendarEvents?: Record<string, CalendarEventEntry> | null;
+  caregiverNotifications?: CaregiverNotificationEntry[];
   [key: string]: unknown;
 }
 

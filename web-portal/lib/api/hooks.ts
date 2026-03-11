@@ -3295,3 +3295,67 @@ export function useSendCareMessage() {
     },
   });
 }
+
+// =============================================================================
+// Per-visit follow-through checklist
+// =============================================================================
+
+export type FollowThroughItem = {
+  id: string;
+  type: 'medication_started' | 'medication_stopped' | 'medication_changed' | 'action_item';
+  description: string;
+  status: 'completed' | 'pending' | 'overdue';
+  dueAt: string | null;
+  completedAt: string | null;
+  details: Record<string, unknown> | null;
+};
+
+export type FollowThroughData = {
+  items: FollowThroughItem[];
+  summary: {
+    total: number;
+    completed: number;
+    overdue: number;
+    pending: number;
+  };
+};
+
+export function useCareFollowThrough(
+  patientId: string | undefined,
+  visitId: string | undefined,
+  options?: QueryEnabledOptions<FollowThroughData>,
+) {
+  const viewing = useViewingSafe();
+  const currentUserId = viewing?.viewingUserId ?? null;
+
+  return useQuery<FollowThroughData>({
+    queryKey: ['care-follow-through', patientId ?? 'unknown', visitId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(currentUserId && patientId && visitId),
+    ...options,
+    queryFn: async () => {
+      if (!patientId || !visitId) {
+        throw new Error('Patient ID and visit ID required');
+      }
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+
+      const token = await user.getIdToken();
+      const response = await fetch(
+        `${API_BASE_URL}/v1/care/${patientId}/visits/${visitId}/follow-through`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (!response.ok) {
+        const message = await parseApiErrorMessage(response, 'Failed to fetch follow-through');
+        throw new Error(message);
+      }
+
+      return response.json() as Promise<FollowThroughData>;
+    },
+  });
+}

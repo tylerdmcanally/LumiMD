@@ -53,6 +53,8 @@ const respondToNudgeSchema = z.object({
         'none', 'mild', 'concerning',
         // Medication follow-up responses
         'took_it', 'skipped_it',
+        // Action item follow-up responses
+        'done', 'remind_later',
     ]),
     note: z.string().optional(),
     sideEffects: z.array(z.string()).optional(), // Side effect IDs when having_issues
@@ -298,6 +300,71 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
         }
 
         // =========================================================================
+        // ACTION ITEM FOLLOW-UP: Handle action item responses
+        // =========================================================================
+        if (
+            nudgeData.type === 'action_reminder' &&
+            nudgeData.actionType === 'action_followup_response'
+        ) {
+            const actionContext = nudgeData.context as Record<string, unknown> | undefined;
+            const actionId = (actionContext?.actionId || nudgeData.metadata?.actionId) as string | undefined;
+
+            if (actionId) {
+                try {
+                    if (data.response === 'done') {
+                        // Mark action item as completed
+                        const actionRef = getDb().collection('actions').doc(actionId);
+                        const actionDoc = await actionRef.get();
+                        if (actionDoc.exists && actionDoc.data()?.userId === userId) {
+                            await actionRef.update({
+                                completed: true,
+                                completedAt: admin.firestore.Timestamp.now(),
+                                updatedAt: admin.firestore.Timestamp.now(),
+                            });
+                            functions.logger.info(
+                                `[nudges] Marked action ${actionId} as completed via nudge response`,
+                            );
+                        }
+                    } else if (data.response === 'remind_later') {
+                        // Snooze: create a new nudge for 24 hours from now
+                        const snoozeDate = new Date();
+                        snoozeDate.setHours(snoozeDate.getHours() + 24);
+
+                        await nudgeService.createRecord({
+                            userId,
+                            type: 'action_reminder',
+                            title: nudgeData.title || 'Follow-up reminder',
+                            message: nudgeData.message || 'Checking back on your follow-up.',
+                            actionType: 'action_followup_response',
+                            scheduledFor: admin.firestore.Timestamp.fromDate(snoozeDate),
+                            sequenceDay: 0,
+                            sequenceId: `action_snooze_${actionId}_${Date.now()}`,
+                            status: 'pending',
+                            visitId: nudgeData.visitId || null,
+                            context: actionContext || {},
+                            metadata: {
+                                actionId,
+                                reminderPhase: 'snoozed',
+                                originalNudgeId: nudgeId,
+                            },
+                            createdAt: admin.firestore.Timestamp.now(),
+                            updatedAt: admin.firestore.Timestamp.now(),
+                        });
+                        functions.logger.info(
+                            `[nudges] Snoozed action reminder for ${actionId} — will check again in 24h`,
+                        );
+                    }
+                    // 'not_yet' — just acknowledge, recorded for caregiver visibility
+                } catch (actionError) {
+                    functions.logger.error(
+                        `[nudges] Error handling action item response for ${actionId}:`,
+                        actionError,
+                    );
+                }
+            }
+        }
+
+        // =========================================================================
         // SMART TIMING: Adjust future nudges based on response
         // =========================================================================
 
@@ -369,8 +436,13 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
 
         // Return appropriate message based on response
         let message = 'Thanks for letting us know!';
+        // Action item follow-up responses
+        if (data.response === 'done') {
+            message = 'Great job! Marked as complete.';
+        } else if (data.response === 'remind_later') {
+            message = 'No problem! We\'ll remind you again tomorrow.';
         // Medication follow-up responses
-        if (data.response === 'took_it') {
+        } else if (data.response === 'took_it') {
             message = 'Dose logged! Great job staying on track.';
         } else if (data.response === 'skipped_it') {
             message = 'Skipped dose recorded. Let your caregiver know if you need help.';

@@ -37,6 +37,8 @@ function getIconForActionType(actionType: NudgeActionType): keyof typeof Ionicon
             return 'information-circle-outline';
         case 'view_insight':
             return 'analytics-outline';
+        case 'action_followup_response':
+            return 'clipboard-outline';
         default:
             return 'chatbubble-outline';
     }
@@ -52,6 +54,8 @@ function getIconColorForType(type: Nudge['type']): string {
             return Colors.primary;
         case 'insight':
             return Colors.accent;
+        case 'action_reminder':
+            return Colors.warning;
         default:
             return Colors.primary;
     }
@@ -91,6 +95,16 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                                     You've logged {ctx.readingCount} reading{ctx.readingCount !== 1 ? 's' : ''} so far
                                 </Text>
                             )}
+                            {ctx.actionType && (
+                                <View style={styles.contextRow}>
+                                    <Ionicons name="clipboard-outline" size={14} color={Colors.textMuted} />
+                                    <Text style={styles.contextText}>
+                                        {ctx.actionType === 'lab_draw' ? 'Lab work' :
+                                         ctx.actionType === 'specialist_referral' ? 'Referral' :
+                                         'Follow-up'}
+                                    </Text>
+                                </View>
+                            )}
                         </View>
                     )}
 
@@ -104,7 +118,7 @@ export function NudgeCard({ nudge, onAction, onSnooze, onDismiss }: NudgeCardPro
                             onPress={() => onAction(nudge)}
                         >
                             <Text style={styles.primaryButtonText}>
-                                {['pickup_check', 'started_check', 'feeling_check', 'side_effects'].includes(nudge.actionType) ? 'Respond' :
+                                {['pickup_check', 'started_check', 'feeling_check', 'side_effects', 'action_followup_response'].includes(nudge.actionType) ? 'Respond' :
                                     nudge.actionType === 'acknowledge' ? 'Got it' :
                                         nudge.actionType === 'view_insight' ? 'Got it' : 'Log'}
                             </Text>

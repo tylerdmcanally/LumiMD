@@ -38,7 +38,8 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { useCareVisitSummary, useUpdateVisitMetadata, useCareVisits } from '@/lib/api/hooks';
+import { useCareVisitSummary, useUpdateVisitMetadata, useCareVisits, useCareFollowThrough } from '@/lib/api/hooks';
+import type { FollowThroughItem } from '@/lib/api/hooks';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getMedlinePlusUrl } from '@/lib/utils/medlineplus';
@@ -102,6 +103,7 @@ export default function CareVisitDetailPage() {
 
   const { data: visitData, isLoading, error, refetch } = useCareVisitSummary(patientId, visitId);
   const { data: allVisits } = useCareVisits(patientId);
+  const { data: followThrough } = useCareFollowThrough(patientId, visitId);
   const updateVisitMetadata = useUpdateVisitMetadata();
 
   // Local override for optimistic updates
@@ -521,6 +523,15 @@ export default function CareVisitDetailPage() {
 
         {/* Education Card */}
         <EducationSection education={(visit as any).education} />
+
+        {/* Follow-Through Checklist */}
+        {followThrough && followThrough.items.length > 0 && (
+          <FollowThroughSection
+            items={followThrough.items}
+            summary={followThrough.summary}
+            patientId={patientId}
+          />
+        )}
 
         {/* Two Column Layout for Action Items and Diagnoses */}
         <section className="grid gap-6 lg:grid-cols-2">
@@ -949,6 +960,132 @@ function EducationSection({ education }: { education?: Record<string, unknown> |
             </div>
           </div>
         )}
+      </div>
+    </Card>
+  );
+}
+
+function FollowThroughSection({
+  items,
+  summary,
+  patientId,
+}: {
+  items: FollowThroughItem[];
+  summary: { total: number; completed: number; overdue: number; pending: number };
+  patientId: string;
+}) {
+  const progressPercent = summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0;
+
+  const statusConfig = {
+    completed: {
+      icon: <CheckCircle2 className="h-4 w-4 text-success" />,
+      label: 'Complete',
+      rowStyle: 'bg-success-light/30 border-success/20',
+      textStyle: 'line-through text-text-muted',
+    },
+    overdue: {
+      icon: <AlertCircle className="h-4 w-4 text-[#E07A5F]" />,
+      label: 'Overdue',
+      rowStyle: 'bg-[#FDF0EC] border-[#E07A5F]/20',
+      textStyle: 'text-text-primary font-medium',
+    },
+    pending: {
+      icon: <ClipboardList className="h-4 w-4 text-text-muted" />,
+      label: 'Pending',
+      rowStyle: 'bg-background-subtle/70 border-border-light/60',
+      textStyle: 'text-text-primary',
+    },
+  };
+
+  // Sort: overdue first, then pending, then completed
+  const sortedItems = [...items].sort((a, b) => {
+    const order = { overdue: 0, pending: 1, completed: 2 };
+    return order[a.status] - order[b.status];
+  });
+
+  return (
+    <Card variant="elevated" padding="none" className="overflow-hidden">
+      <div className="border-b border-border-light bg-background-subtle/50 px-5 py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-brand-primary" />
+              Follow-Through
+            </h2>
+            <p className="text-sm text-text-secondary mt-1">
+              {summary.completed} of {summary.total} items complete
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" asChild>
+            <Link
+              href={`/care/${patientId}/actions`}
+              className="flex items-center text-text-secondary hover:text-brand-primary"
+            >
+              View all actions
+              <ArrowLeft className="h-3 w-3 ml-1 rotate-180" />
+            </Link>
+          </Button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-3">
+          <div className="h-2 w-full rounded-full bg-border-light/40 overflow-hidden">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all duration-500',
+                summary.overdue > 0
+                  ? 'bg-gradient-to-r from-success to-[#E07A5F]'
+                  : 'bg-success',
+              )}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1.5 text-xs text-text-muted">
+            <span>{progressPercent}% complete</span>
+            {summary.overdue > 0 && (
+              <span className="text-[#E07A5F] font-medium">
+                {summary.overdue} overdue
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="p-5">
+        <ul className="space-y-2">
+          {sortedItems.map((item) => {
+            const config = statusConfig[item.status];
+            return (
+              <li
+                key={item.id}
+                className={cn(
+                  'flex items-start gap-3 rounded-xl border px-4 py-3 text-sm',
+                  config.rowStyle,
+                )}
+              >
+                <span className="mt-0.5 shrink-0">{config.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={cn('leading-relaxed', config.textStyle)}>
+                    {item.description}
+                  </p>
+                  {item.dueAt && item.status !== 'completed' && (
+                    <p className="text-xs text-text-muted mt-0.5">
+                      Due {format(new Date(item.dueAt), 'MMM d, yyyy')}
+                    </p>
+                  )}
+                </div>
+                <Badge
+                  tone={item.status === 'overdue' ? 'danger' : item.status === 'completed' ? 'success' : 'neutral'}
+                  variant="soft"
+                  size="sm"
+                  className="shrink-0"
+                >
+                  {config.label}
+                </Badge>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </Card>
   );

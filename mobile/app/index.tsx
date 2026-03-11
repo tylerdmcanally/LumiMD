@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView, View, StyleSheet, Text, ActivityIndicator, Alert, RefreshControl, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius } from '../components/ui';
 import { HeroBanner } from '../components/HeroBanner';
 import { WebPortalBanner, useWebPortalBannerState, NeedHelpButton } from '../components/WebPortalBanner';
@@ -463,6 +464,15 @@ export default function HomeScreen() {
             {/* Primary CTA */}
             <View style={styles.ctaSection}>
               <StartVisitCTA onPress={() => router.push('/record-visit')} />
+              <Pressable
+                style={styles.uploadAvsCta}
+                onPress={() => router.push('/upload-avs')}
+                accessibilityLabel="Upload a visit summary document"
+              >
+                <Ionicons name="document-text-outline" size={20} color={Colors.primary} />
+                <Text style={styles.uploadAvsText}>Upload Visit Summary</Text>
+                <Ionicons name="chevron-forward" size={16} color="#999" />
+              </Pressable>
             </View>
 
             {/* Glanceable Stats Section */}
@@ -647,6 +657,25 @@ const styles = StyleSheet.create({
   ctaSection: {
     marginTop: spacing(5),
     marginBottom: spacing(2),
+  },
+  uploadAvsCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderRadius: Radius.lg,
+    paddingVertical: spacing(3.5),
+    paddingHorizontal: spacing(4),
+    marginTop: spacing(3),
+    borderWidth: 1,
+    borderColor: 'rgba(64,201,208,0.25)',
+    gap: spacing(2),
+  },
+  uploadAvsText: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: Colors.primary,
   },
   section: {
     marginTop: spacing(5),

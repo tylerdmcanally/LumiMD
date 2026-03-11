@@ -548,6 +548,13 @@ export function createApiClient(config: ApiClientConfig) {
             body: JSON.stringify({ question }),
           },
         ),
+      processDocument: (id: string) =>
+        apiRequest<{ status: string }>(
+          `/v1/visits/${id}/process-document`,
+          {
+            method: 'POST',
+          },
+        ),
     },
 
     // Action Items

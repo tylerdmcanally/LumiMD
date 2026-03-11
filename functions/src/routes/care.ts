@@ -10,6 +10,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { registerCareAlertsRoutes } from './care/alerts';
 import { registerCareExportSummaryRoutes } from './care/exportSummary';
+import { registerCareFollowThroughRoutes } from './care/followThrough';
 import {
     clearCaregiverShareLookupCacheForTests,
     getAcceptedSharesForCaregiver,
@@ -1190,6 +1191,15 @@ registerCareTaskRoutes(careRouter, {
     pageSizeMax: CARE_PAGE_SIZE_MAX,
     taskTitleMaxLength: CARE_TASK_TITLE_MAX_LENGTH,
     taskDescriptionMaxLength: CARE_TASK_DESCRIPTION_MAX_LENGTH,
+});
+
+// =============================================================================
+// PER-VISIT FOLLOW-THROUGH CHECKLIST
+// Unified medication changes + action items for a specific visit
+// =============================================================================
+
+registerCareFollowThroughRoutes(careRouter, {
+    getDb,
 });
 
 // =============================================================================

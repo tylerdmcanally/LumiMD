@@ -7,6 +7,8 @@ import { FirestoreError, QueryDocumentSnapshot, DocumentData, Query, DocumentRef
 /**
  * Visit Model
  */
+type VisitSource = 'recording' | 'avs_photo' | 'avs_pdf' | 'recording+avs' | 'manual';
+type VisitDocumentType = 'avs_photo' | 'avs_pdf';
 interface Visit {
     id: string;
     userId: string;
@@ -39,6 +41,9 @@ interface Visit {
     education?: VisitEducation;
     audioUrl?: string | null;
     duration?: number | null;
+    source?: VisitSource;
+    documentStoragePath?: string | null;
+    documentType?: VisitDocumentType | null;
     medicationConfirmationStatus?: MedicationConfirmationStatus;
     medicationConfirmationRequestedAt?: string | null;
     medicationConfirmedAt?: string | null;
@@ -188,6 +193,11 @@ interface CalendarEventEntry {
     addedAt?: string;
     removedAt?: string;
 }
+interface CaregiverNotificationEntry {
+    caregiverId: string;
+    notifiedAt: string;
+    daysOverdue: number;
+}
 interface ActionItem {
     id: string;
     userId: string;
@@ -203,6 +213,7 @@ interface ActionItem {
     type?: FollowUpCategory | null;
     details?: string | null;
     calendarEvents?: Record<string, CalendarEventEntry> | null;
+    caregiverNotifications?: CaregiverNotificationEntry[];
     [key: string]: unknown;
 }
 /**
@@ -291,9 +302,9 @@ interface ShareInvite {
  *
  * Types for nudges, health logs, and health tracking.
  */
-type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight' | 'followup';
+type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight' | 'followup' | 'action_reminder';
 type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
-type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'pickup_check' | 'started_check' | 'feeling_check' | 'side_effects' | 'symptom_check' | 'acknowledge' | 'view_insight';
+type NudgeActionType = 'log_bp' | 'log_glucose' | 'log_weight' | 'pickup_check' | 'started_check' | 'feeling_check' | 'side_effects' | 'symptom_check' | 'acknowledge' | 'view_insight' | 'action_followup_response';
 interface NudgeContext {
     visitId?: string;
     visitDate?: string;
@@ -310,6 +321,9 @@ interface NudgeContext {
     };
     readingCount?: number;
     trackingReason?: string;
+    actionId?: string;
+    actionDescription?: string;
+    actionType?: string;
 }
 interface Nudge {
     id: string;
@@ -442,7 +456,7 @@ interface UpdateNudgeRequest {
     responseValue?: string | Record<string, unknown>;
 }
 interface RespondToNudgeRequest {
-    response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning';
+    response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later';
     note?: string;
     sideEffects?: string[];
 }
@@ -626,6 +640,9 @@ declare function createApiClient(config: ApiClientConfig): {
             answer: string;
             source: string;
             disclaimer: string;
+        }>;
+        processDocument: (id: string) => Promise<{
+            status: string;
         }>;
     };
     actions: {
@@ -849,4 +866,4 @@ declare function useFirestoreDocument<T extends {
     id: string;
 }>(docRef: DocumentReference<DocumentData> | null, key: QueryKey, options?: FirestoreDocumentOptions<T>): _tanstack_react_query.UseQueryResult<_tanstack_query_core.NoInfer<T | null>, Error>;
 
-export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CalendarEventEntry, type CaregiverMessage, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, FOLLOW_UP_CATEGORY_LABELS, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthInsightsResponse, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeContext, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type TrendInsight, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitAskRequest, type VisitAskResponse, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type VisitWalkthrough, type WalkthroughActionItem, type WalkthroughDiagnosis, type WalkthroughFollowUp, type WalkthroughMedicationChanged, type WalkthroughMedicationStarted, type WalkthroughMedicationStopped, type WalkthroughSuggestedQuestion, type WalkthroughTrackingPlan, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };
+export { type ActionItem, type AlertLevel, type ApiClient, type ApiClientConfig, type ApiError, type BloodPressureValue, type CalendarEventEntry, type CaregiverMessage, type CaregiverNotificationEntry, type ConfirmMedicationEntry, type ConfirmMedicationsPayload, type CreateHealthLogRequest, type CreateHealthLogResponse, type CreateMedicationReminderRequest, type CursorListParams, type CursorPage, type DiagnosisDetail, type ExtractionConfidence, FOLLOW_UP_CATEGORY_LABELS, type FirestoreCollectionOptions, type FirestoreDocumentOptions, type FollowUpCategory, type FollowUpItem, type GlucoseValue, type HealthInsightsResponse, type HealthLog, type HealthLogSource, type HealthLogSummary, type HealthLogSummaryResponse, type HealthLogType, type HealthLogValue, type HeartRateValue, type MedComplianceValue, type Medication, type MedicationChanges, type MedicationConfirmationStatus, type MedicationEntry, type MedicationReminder, type MedicationRemindersResponse, type MedicationReviewSummary, type MedicationWarning, type Nudge, type NudgeActionType, type NudgeContext, type NudgeStatus, type NudgeType, type NudgeUpdateResponse, type OrderedTestCategory, type OrderedTestItem, type OxygenSaturationValue, type ReminderCriticality, type ReminderTimingMode, type RespondToNudgeRequest, type Share, type ShareInvite, type StepsValue, type SymptomCheckValue, type TrendInsight, type UpdateMedicationReminderRequest, type UpdateNudgeRequest, type UserProfile, type Visit, type VisitAskRequest, type VisitAskResponse, type VisitDocumentType, type VisitEducation, type VisitExtractionVersion, type VisitListParams, type VisitPromptMeta, type VisitSource, type VisitWalkthrough, type WalkthroughActionItem, type WalkthroughDiagnosis, type WalkthroughFollowUp, type WalkthroughMedicationChanged, type WalkthroughMedicationStarted, type WalkthroughMedicationStopped, type WalkthroughSuggestedQuestion, type WalkthroughTrackingPlan, type WeightValue, configureFirestoreRealtime, convertValue, createApiClient, createApiHooks, getFollowUpCategoryLabel, isApiError, queryKeys, serializeDoc, sortByTimestampDescending, useFirestoreCollection, useFirestoreDocument };

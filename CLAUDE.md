@@ -96,6 +96,7 @@ Push notification to caregiver
 - `routes/messages.ts` — Patient inbox (list, mark-read, unread count)
 - `routes/nudges.ts` — Nudge CRUD + response handler (includes `took_it`/`skipped_it` for medication follow-ups)
 - `routes/care.ts` — Caregiver route aggregator + multi-patient overview
+- `routes/care/followThrough.ts` — Per-visit follow-through (med changes + action items)
 - `routes/care/quickOverview.ts` — Individual patient snapshot
 - `routes/care/summary.ts` — Patient summary with alerts
 - `routes/care/alerts.ts` — Patient alerts (missed doses, overdue items)
@@ -123,7 +124,7 @@ Push notification to caregiver
 - `services/nudgeNotificationService.ts` — Nudge delivery + priority map
 - `services/repositories/` — Firestore data access (query building, pagination, soft-delete filtering)
 - `services/domain/` — Domain service layer (VisitDomainService, MedicationDomainService, MedicationLogDomainService, etc.)
-- `triggers/` — Scheduled Cloud Functions (processVisitAudio, checkPendingTranscriptions, medicationSafetyRecheck, staleVisitSweeper, medicationFollowUpNudges, etc.)
+- `triggers/` — Scheduled Cloud Functions (processVisitAudio, checkPendingTranscriptions, medicationSafetyRecheck, staleVisitSweeper, medicationFollowUpNudges, actionItemReminderNudges, actionOverdueNotifier, etc.)
 
 ### Mobile (`mobile/`)
 - `app/index.tsx` — Home dashboard
@@ -135,6 +136,7 @@ Push notification to caregiver
 - `app/messages.tsx` — Patient inbox (caregiver messages, elderly-friendly large text)
 - `app/medication-schedule.tsx` — Reminder scheduling
 - `app/caregiver-sharing.tsx` — Share management (invite with name, shows caregiver names)
+- `app/upload-avs.tsx` — AVS document upload (photo/PDF capture, multi-image, Firebase Storage upload)
 - `app/_layout.tsx` — Root layout + push notification routing (handles `caregiver_message` type)
 - `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: heard → changed → next)
 - `components/lumibot/PostLogFeedback.tsx` — Post-log feedback modal with trend context
@@ -211,6 +213,8 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `/v1/care/:patientId/medication-changes` | GET | Medication change history |
 | `/v1/care/:patientId/nudge-history` | GET | Nudge response history for caregivers |
 | `/v1/visits/:id/ask` | POST | Visit Q&A (walkthrough) |
+| `/v1/visits/:id/process-document` | POST | Extract structured data from AVS document |
+| `/v1/care/:patientId/visits/:visitId/follow-through` | GET | Per-visit follow-through (med changes + action items) |
 | `/v1/webhooks/assemblyai` | POST | Transcription webhook |
 
 ## Security
@@ -242,6 +246,8 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `medicationSafetyRecheck` | Every 15 min | Re-check med warnings |
 | `processAndNotifyDueNudges` | Every 15 min | Send nudge notifications |
 | `processMedicationFollowUpNudges` | Every 15 min | Send follow-up nudges for unlogged doses |
+| `processActionItemReminderNudges` | Every 15 min | Create nudges for pending/overdue action items |
+| `processActionOverdueNotifier` | Every 15 min | Push notifications for overdue actions |
 | `staleVisitSweeper` | Hourly | Delete old failed visits |
 | `privacySweeper` | Daily | Purge 30-day-old soft-deleted data |
 | `denormalizationSync` | On Firestore write | Sync caregiver-accessible fields |
@@ -308,8 +314,10 @@ firebase use lumimd-dev   # or lumimd (prod)
 - `docs/reports/SYSTEM-HEALTH-REPORT.md` — Current system health status
 - `docs/CAREGIVER-ENHANCEMENTS-CHECKLIST.md` — Implementation checklist for caregiver portal features
 - `docs/archive/LUMIBOT-V2-IMPLEMENTATION-PLAN.md` — LumiBot v2 design + implementation record (all phases complete)
-- `docs/POSTVISIT-ENHANCEMENTS-PROMPT.md` — PostVisit-inspired enhancements execution guide (Phases A-C complete, Phase D next)
+- `docs/POSTVISIT-ENHANCEMENTS-PROMPT.md` — PostVisit-inspired enhancements execution guide (Phases A-D complete)
 - `docs/POSTVISIT-INSPIRED-ENHANCEMENTS.md` — PostVisit-inspired enhancements planning doc (Phases 5-7 complete, Strategic CRUD next)
+- `docs/DATA-INTEGRATION-DESIGN.md` — Data integration design (AVS upload + action nudges)
+- `docs/prompts/DATA-INTEGRATION-BUILD.md` — Data integration build prompt
 - `SECURITY_AND_PRIVACY_SUMMARY.md` — Security posture and compliance
 - `docs/guides/` — Quick Start, Firebase setup, deployment checklists
 - `docs/architecture/` — System design docs
@@ -417,3 +425,30 @@ Phases A-D complete.
 - Medications screen: FAB for add, Edit/Stop/Delete in expanded cards (delete only for `source: 'manual'`)
 - Actions screen: FAB for add action items
 - Visit-detail: "Edit" links on started/changed medications (auto-creates doc if not in collection)
+
+### Data Integration — AVS Upload & Action Nudges (March 2026)
+
+Two-phase feature adding document-based visit creation and proactive action item reminders.
+
+**Phase 1 — AVS Photo/Document Upload (mobile):**
+- `mobile/app/upload-avs.tsx` — New screen for capturing/selecting AVS photos or PDFs via `expo-image-picker` / `expo-document-picker`
+- Multi-image support with preview grid, PDF file cards, remove capability
+- Upload to Firebase Storage (`avs/{userId}/{visitId}/`) with metadata (content type, page count)
+- Creates visit with `source: 'avs_photo' | 'avs_pdf'`, `documentStoragePath`, `documentType`
+- `POST /v1/visits/:id/process-document` — Generates signed URLs, sends to GPT-4o Vision for extraction
+- `openai.ts: extractFromDocument()` — Multi-image/PDF extraction with canonical medication matching
+- Visit processor extended to handle document-based visits (skip transcription, run extraction → summary → safety → post-commit)
+- Storage rules updated for `avs/` path (owner read/write, 20 MB limit, image + PDF content types)
+- Home screen "Upload AVS" card in the quick actions section
+
+**Phase 2 — Action Item Reminder Nudges:**
+- `functions/src/triggers/actionItemReminderNudges.ts` — Scheduled trigger creating `action_reminder` nudges for pending/overdue actions
+- `functions/src/triggers/actionOverdueNotifier.ts` — Scheduled trigger sending push notifications for overdue actions
+- `NudgeActionType` extended with `action_followup_response`; `NudgeType` extended with `action_reminder`
+- `NudgeContext` extended with `actionType` field (lab_draw, specialist_referral, imaging, follow_up_appointment, other)
+- Nudge response handler supports `done` / `remind_later` responses for action follow-ups
+- `NudgeCard` displays action context (Lab work / Referral / Follow-up) with clipboard icon
+- `LumiBotBanner` handles `action_followup_response` with 3-option Alert (Not yet / Remind me later / Done)
+- `GET /v1/care/:patientId/visits/:visitId/follow-through` — Per-visit follow-through endpoint (medication changes + action items with status)
+- `FollowThroughSection` on web visit detail — Progress bar, sorted checklist (overdue → pending → completed), status badges
+- SDK types updated: `ActionItem.visitId`, `Visit.source`, `Visit.documentStoragePath`, `Visit.documentType`, `RespondToNudgeRequest` extended

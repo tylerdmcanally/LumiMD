@@ -91,7 +91,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         });
     }, [updateNudge]);
 
-    const handleRespondToNudge = useCallback((id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning'; note?: string; sideEffects?: string[] }) => {
+    const handleRespondToNudge = useCallback((id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later'; note?: string; sideEffects?: string[] }) => {
         respondToNudge.mutate({ id, data }, {
             onSuccess: (result) => {
                 Alert.alert('Response Recorded', result.message);

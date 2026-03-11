@@ -30,6 +30,7 @@ import {
   ensureVisitReadAccessOrReject,
 } from '../middlewares/visitAccess';
 import { answerVisitQuestion, type VisitQAContext } from '../services/walkthroughQA';
+import { getOpenAIService } from '../services/openai';
 
 export const visitsRouter = Router();
 
@@ -172,12 +173,18 @@ const consentMetadataSchema = z.object({
   timestamp: z.string(),
 }).optional();
 
+const visitSourceEnum = z.enum(['recording', 'avs_photo', 'avs_pdf', 'recording+avs', 'manual']);
+const visitDocumentTypeEnum = z.enum(['avs_photo', 'avs_pdf']);
+
 const createVisitSchema = z.object({
   audioUrl: z.string().optional(),
   storagePath: z.string().optional(),
   notes: z.string().optional(),
   status: z.enum(['recording', 'processing', 'completed', 'failed']).default('recording'),
   consentMetadata: consentMetadataSchema,
+  source: visitSourceEnum.optional(),
+  documentStoragePath: z.string().optional(),
+  documentType: visitDocumentTypeEnum.optional(),
 });
 
 const updateVisitSchema = z.object({
@@ -741,6 +748,9 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
       deletedBy: null,
       createdAt: now,
       updatedAt: now,
+      source: data.source || 'recording',
+      ...(data.documentStoragePath ? { documentStoragePath: data.documentStoragePath } : {}),
+      ...(data.documentType ? { documentType: data.documentType } : {}),
       ...(data.consentMetadata ? { consentMetadata: data.consentMetadata } : {}),
     });
 
@@ -1566,6 +1576,282 @@ visitsRouter.post('/:id/ask', requireAuth, async (req: AuthRequest, res) => {
     res.status(500).json({
       code: 'server_error',
       message: 'Failed to answer question',
+    });
+  }
+});
+
+/**
+ * POST /v1/visits/:id/process-document
+ * Extract structured visit data from an uploaded AVS document (photo or PDF).
+ * Generates signed URL, sends to GPT-4o Vision, writes extraction to visit,
+ * then triggers the existing summarization pipeline.
+ */
+visitsRouter.post('/:id/process-document', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.uid;
+    const visitId = req.params.id;
+    const visitService = getVisitDomainService();
+
+    // Fetch visit and verify ownership
+    const visit = await visitService.getById(visitId);
+    if (!visit) {
+      res.status(404).json({ code: 'not_found', message: 'Visit not found' });
+      return;
+    }
+    if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) return;
+    if (res.headersSent) return;
+
+    // Validate document path exists
+    const documentPath = visit.documentStoragePath;
+    if (!documentPath) {
+      res.status(400).json({
+        code: 'missing_document',
+        message: 'Visit has no associated document to process',
+      });
+      return;
+    }
+
+    // Prevent re-processing a completed visit
+    if (visit.processingStatus === 'completed') {
+      res.status(409).json({
+        code: 'already_processed',
+        message: 'Visit has already been processed',
+      });
+      return;
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    const bucketName = storageConfig.bucket;
+    const bucket = admin.storage().bucket(bucketName);
+
+    // Generate signed URL(s) for the document
+    const file = bucket.file(documentPath);
+    const [fileExists] = await file.exists();
+    if (!fileExists) {
+      res.status(404).json({
+        code: 'document_not_found',
+        message: 'Document file not found in storage',
+      });
+      return;
+    }
+
+    const [metadata] = await file.getMetadata();
+    const contentType = metadata.contentType || '';
+    const isPdf = contentType === 'application/pdf';
+
+    let signedUrls: string[];
+
+    if (isPdf) {
+      // For PDFs, generate a single signed URL — GPT-4o can handle PDF directly
+      // via base64 or URL. We'll use URL approach.
+      const [signedUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 15 * 60 * 1000, // 15 min TTL
+      });
+      signedUrls = [signedUrl];
+    } else {
+      // Single image
+      const [signedUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 15 * 60 * 1000,
+      });
+      signedUrls = [signedUrl];
+    }
+
+    // Update visit status to processing
+    await visitService.updateRecord(visitId, {
+      status: 'processing',
+      processingStatus: 'processing',
+      updatedAt: now,
+    });
+
+    // Respond immediately — extraction happens async
+    res.json({ status: 'processing' });
+
+    // Run extraction asynchronously (don't block the response)
+    (async () => {
+      try {
+        // Get known medications for context
+        const container = createDomainServiceContainer({ db: getDb() });
+        const knownMeds = await container.medicationService.listAllForUser(userId, {
+          sortDirection: 'asc',
+        });
+        const knownMedicationNames = knownMeds
+          .map((m: Record<string, unknown>) => m.name as string)
+          .filter((name: string | undefined): name is string => !!name);
+
+        // Extract structured data from document
+        const openAI = getOpenAIService();
+        const result = await openAI.extractFromDocument(signedUrls, {
+          knownMedications: knownMedicationNames,
+        });
+
+        // Build a text representation from extraction for transcriptText field
+        const extractedTextParts: string[] = [];
+        if (result.summary) extractedTextParts.push(result.summary);
+        if (result.diagnoses?.length) {
+          extractedTextParts.push('Diagnoses: ' + result.diagnoses.join(', '));
+        }
+        const allMeds = [
+          ...(result.medications?.started || []).map((m) => `Started: ${m.display || m.name}`),
+          ...(result.medications?.stopped || []).map((m) => `Stopped: ${m.display || m.name}`),
+          ...(result.medications?.changed || []).map((m) => `Changed: ${m.display || m.name}`),
+        ];
+        if (allMeds.length) {
+          extractedTextParts.push('Medications: ' + allMeds.join('; '));
+        }
+        if (result.nextSteps?.length) {
+          extractedTextParts.push('Next Steps: ' + result.nextSteps.join('; '));
+        }
+
+        const extractedText = extractedTextParts.join('\n\n');
+
+        // Same-visit merge: check for existing recording-based visit on same date
+        const visitDate = visit.visitDate
+          ? (typeof visit.visitDate === 'string' ? visit.visitDate : (visit.visitDate as any).toDate?.()?.toISOString())
+          : null;
+        const visitDateStr = visitDate ? visitDate.slice(0, 10) : null;
+
+        let targetVisitId = visitId;
+        let isMerge = false;
+
+        if (visitDateStr) {
+          // Look for existing visits from the same date with source 'recording'
+          const existingVisits = await getDb()
+            .collection('visits')
+            .where('userId', '==', userId)
+            .where('deletedAt', '==', null)
+            .where('source', '==', 'recording')
+            .get();
+
+          for (const doc of existingVisits.docs) {
+            if (doc.id === visitId) continue;
+            const data = doc.data();
+            const existingDate = data.visitDate || data.createdAt;
+            if (!existingDate) continue;
+            const existingDateStr = typeof existingDate === 'string'
+              ? existingDate.slice(0, 10)
+              : existingDate.toDate?.()?.toISOString()?.slice(0, 10);
+
+            // Check same date and created within 24 hours
+            if (existingDateStr === visitDateStr) {
+              const existingCreatedAt = data.createdAt?.toDate?.() ?? new Date(data.createdAt);
+              const avsCreatedAt = visit.createdAt?.toDate?.() ?? new Date(visit.createdAt || Date.now());
+              const hoursDiff = Math.abs(avsCreatedAt.getTime() - existingCreatedAt.getTime()) / (1000 * 60 * 60);
+
+              if (hoursDiff <= 24) {
+                targetVisitId = doc.id;
+                isMerge = true;
+                functions.logger.info(`[visits] Merging AVS into existing recording visit ${doc.id}`, {
+                  avsVisitId: visitId,
+                  recordingVisitId: doc.id,
+                  visitDate: visitDateStr,
+                });
+                break;
+              }
+            }
+          }
+        }
+
+        if (isMerge && targetVisitId !== visitId) {
+          // Merge AVS data into existing recording visit
+          // AVS wins for factual fields (exact names, doses, vitals)
+          // Recording wins for context (summary narrative, conversational details)
+          const targetVisit = await visitService.getById(targetVisitId);
+          const mergedUpdate: Record<string, unknown> = {
+            source: 'recording+avs',
+            documentStoragePath: visit.documentStoragePath,
+            documentType: visit.documentType,
+            // AVS wins for structured factual data
+            diagnoses: result.diagnoses,
+            diagnosesDetailed: result.diagnosesDetailed,
+            medications: result.medications,
+            imaging: result.imaging,
+            testsOrdered: result.testsOrdered,
+            // Merge follow-ups: union of both, AVS + recording
+            followUps: [
+              ...(result.followUps || []),
+              ...(targetVisit?.followUps || []).filter(
+                (existing: any) => !result.followUps?.some(
+                  (avs: any) => avs.task?.toLowerCase() === existing.task?.toLowerCase()
+                )
+              ),
+            ],
+            // Keep recording's summary narrative if it exists; enrich with AVS education
+            education: result.education,
+            extractionVersion: result.extractionVersion,
+            promptMeta: result.promptMeta,
+            transcriptText: [targetVisit?.transcriptText || '', extractedText].filter(Boolean).join('\n\n--- AVS Data ---\n\n'),
+            processingStatus: 'summarizing',
+            updatedAt: admin.firestore.Timestamp.now(),
+          };
+
+          await visitService.updateRecord(targetVisitId, mergedUpdate);
+
+          // Soft-delete the AVS-only visit (it's been merged)
+          await visitService.updateRecord(visitId, {
+            deletedAt: admin.firestore.Timestamp.now(),
+            deletedBy: 'system_merge',
+            status: 'failed',
+            processingStatus: 'failed',
+            processingError: `Merged into visit ${targetVisitId}`,
+            updatedAt: admin.firestore.Timestamp.now(),
+          });
+
+          functions.logger.info(`[visits] AVS merge complete. Target: ${targetVisitId}, deleted AVS: ${visitId}`);
+        } else {
+          // No merge — write extraction results to the AVS visit
+          await visitService.updateRecord(visitId, {
+            transcriptText: extractedText,
+            summary: result.summary,
+            caregiverSummary: result.caregiverSummary,
+            diagnoses: result.diagnoses,
+            diagnosesDetailed: result.diagnosesDetailed,
+            medications: result.medications,
+            imaging: result.imaging,
+            testsOrdered: result.testsOrdered,
+            nextSteps: result.nextSteps,
+            followUps: result.followUps,
+            medicationReview: result.medicationReview,
+            education: result.education,
+            extractionVersion: result.extractionVersion,
+            promptMeta: result.promptMeta,
+            processingStatus: 'summarizing',
+            updatedAt: admin.firestore.Timestamp.now(),
+          });
+        }
+
+        functions.logger.info(`[visits] Document extraction complete for visit ${targetVisitId}`, {
+          source: visit.source || visit.documentType,
+          pageCount: signedUrls.length,
+          merged: isMerge,
+        });
+      } catch (error) {
+        functions.logger.error(`[visits] Document extraction failed for visit ${visitId}`, error);
+        await visitService.updateRecord(visitId, {
+          status: 'failed',
+          processingStatus: 'failed',
+          processingError: error instanceof Error ? error.message : 'Document extraction failed',
+          updatedAt: admin.firestore.Timestamp.now(),
+        }).catch((updateErr) => {
+          functions.logger.error(`[visits] Failed to update visit status after extraction failure`, updateErr);
+        });
+      }
+    })();
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        code: 'validation_failed',
+        message: 'Invalid request body',
+        details: error.errors,
+      });
+      return;
+    }
+
+    functions.logger.error('[visits] Error processing document:', error);
+    res.status(500).json({
+      code: 'server_error',
+      message: 'Failed to process document',
     });
   }
 });

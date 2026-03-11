@@ -4,7 +4,7 @@
  * Types for nudges, health logs, and health tracking.
  */
 
-export type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight' | 'followup';
+export type NudgeType = 'condition_tracking' | 'medication_checkin' | 'introduction' | 'insight' | 'followup' | 'action_reminder';
 export type NudgeStatus = 'pending' | 'active' | 'snoozed' | 'completed' | 'dismissed';
 export type NudgeActionType =
     | 'log_bp'
@@ -16,7 +16,8 @@ export type NudgeActionType =
     | 'side_effects'      // None / Mild / Concerning
     | 'symptom_check'
     | 'acknowledge'
-    | 'view_insight';
+    | 'view_insight'
+    | 'action_followup_response';  // Done / Remind later / Not yet
 
 export interface NudgeContext {
     visitId?: string;
@@ -34,6 +35,10 @@ export interface NudgeContext {
     };
     readingCount?: number;
     trackingReason?: string;
+    // Action item follow-through context
+    actionId?: string;
+    actionDescription?: string;
+    actionType?: string; // FollowUpCategory value
 }
 
 export interface Nudge {
@@ -195,7 +200,7 @@ export interface UpdateNudgeRequest {
 }
 
 export interface RespondToNudgeRequest {
-    response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning';
+    response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later';
     note?: string;
     sideEffects?: string[]; // Side effect IDs when reporting issues
 }

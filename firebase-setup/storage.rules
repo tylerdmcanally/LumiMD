@@ -3,12 +3,26 @@ service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() { return request.auth != null; }
     function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
-    function isValidAudioUpload() {
+    function isValidUpload() {
       return request.resource != null
-        && request.resource.size < 100 * 1024 * 1024
         && (
-          request.resource.contentType.matches('audio/.*')
-          || request.resource.contentType == 'application/octet-stream'
+          // Audio: up to 100 MB
+          (
+            request.resource.size < 100 * 1024 * 1024
+            && (
+              request.resource.contentType.matches('audio/.*')
+              || request.resource.contentType == 'application/octet-stream'
+            )
+          )
+          // Images and PDFs: up to 20 MB
+          || (
+            request.resource.size < 20 * 1024 * 1024
+            && (
+              request.resource.contentType == 'image/jpeg'
+              || request.resource.contentType == 'image/png'
+              || request.resource.contentType == 'application/pdf'
+            )
+          )
         );
     }
     function isViewerOf(ownerId) {
@@ -19,13 +33,13 @@ service firebase.storage {
 
     match /audio/{userId}/{fileName} {
       allow read: if isOwner(userId) || isViewerOf(userId);
-      allow create, update: if isOwner(userId) && isValidAudioUpload();
+      allow create, update: if isOwner(userId) && isValidUpload();
       allow delete: if isOwner(userId);
     }
 
     match /visits/{userId}/{fileName} {
       allow read: if isOwner(userId) || isViewerOf(userId);
-      allow create, update: if isOwner(userId) && isValidAudioUpload();
+      allow create, update: if isOwner(userId) && isValidUpload();
       allow delete: if isOwner(userId);
     }
   }
