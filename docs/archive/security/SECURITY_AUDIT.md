@@ -2,7 +2,7 @@
 
 **Purpose:** Minimal, actionable checklist for security reviews and compliance.  
 **Scope:** Mobile, web, Cloud Functions, Firebase rules, and third-party AI services.  
-**Last Updated:** January 2026
+**Last Updated:** March 2026
 
 ---
 
@@ -20,6 +20,7 @@
 ### Backend (Cloud Functions)
 - Auth required on all endpoints
 - Ownership checks on all Firestore access
+- Storage path validation: `validateStoragePath()` enforces user-namespace prefix before Admin SDK file access (CWE-22/CWE-862, fixed March 2026)
 - Zod validation on all inputs
 - Sanitized error responses in production
 - Webhooks verify secrets using constant-time comparison
@@ -82,3 +83,5 @@ Notification timing:
 ---
 
 For detailed findings and historical gaps snapshot, see `docs/archive/audits/SECURITY_AUDIT_REPORT.md`.
+
+For the most recent security review, see `docs/SECURITY-REVIEW-2026-03-12.md`.

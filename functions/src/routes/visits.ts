@@ -110,6 +110,20 @@ const normalizeOperationRetryAt = (value: unknown): Record<string, string> => {
   return retryAtByOperation;
 };
 
+/**
+ * Validates that a storage path belongs to the authenticated user's namespace.
+ * Prevents cross-user document access via the Admin SDK (which bypasses Storage rules).
+ */
+function validateStoragePath(path: string, userId: string): boolean {
+  if (path.includes('..')) return false;
+  return path.startsWith(`visits/${userId}/`) || path.startsWith(`audio/${userId}/`);
+}
+
+function validateStoragePaths(paths: string | string[], userId: string): boolean {
+  const pathArray = Array.isArray(paths) ? paths : [paths];
+  return pathArray.every(p => validateStoragePath(p, userId));
+}
+
 const serializeVisitForResponse = (visit: VisitRecord) => ({
   ...visit,
   id: visit.id,
@@ -722,6 +736,16 @@ visitsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
     // Validate request body
     const data = createVisitSchema.parse(req.body);
 
+    // Validate storage paths belong to this user
+    if (data.storagePath && !validateStoragePath(data.storagePath, userId)) {
+      res.status(403).json({ code: 'forbidden', message: 'Storage path must be within your own namespace' });
+      return;
+    }
+    if (data.documentStoragePath && !validateStoragePaths(data.documentStoragePath, userId)) {
+      res.status(403).json({ code: 'forbidden', message: 'Document storage path must be within your own namespace' });
+      return;
+    }
+
     const now = admin.firestore.Timestamp.now();
 
     // Create visit document
@@ -802,6 +826,12 @@ visitsRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (!ensureVisitOwnerAccessOrReject(userId, visit, res)) {
+      return;
+    }
+
+    // Validate storage path belongs to this user
+    if (data.storagePath && !validateStoragePath(data.storagePath, userId)) {
+      res.status(403).json({ code: 'forbidden', message: 'Storage path must be within your own namespace' });
       return;
     }
 
@@ -1136,10 +1166,17 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
         return;
       }
 
+      const documentPaths: string[] = Array.isArray(rawDocPath) ? rawDocPath : [rawDocPath];
+
+      // Re-validate storage paths before accessing via Admin SDK
+      if (!validateStoragePaths(documentPaths, userId)) {
+        res.status(403).json({ code: 'forbidden', message: 'Document path does not belong to this user' });
+        return;
+      }
+
       // Respond immediately, then re-run document extraction async
       res.json(serializeVisitForResponse(updatedVisit));
 
-      const documentPaths: string[] = Array.isArray(rawDocPath) ? rawDocPath : [rawDocPath];
       const bucketName = storageConfig.bucket;
       const bucket = admin.storage().bucket(bucketName);
 
@@ -1162,7 +1199,19 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
             .filter((name: string | undefined): name is string => !!name);
 
           const openAI = getOpenAIService();
-          const result = await openAI.extractFromDocument(signedUrls, { knownMedications: knownMedicationNames });
+
+          // For PDFs, download and base64 encode (GPT-4o requires file content block)
+          let pdfBase64: string | undefined;
+          if (visit.documentType === 'avs_pdf') {
+            const pdfFile = bucket.file(documentPaths[0]);
+            const [pdfBuffer] = await pdfFile.download();
+            pdfBase64 = pdfBuffer.toString('base64');
+          }
+
+          const result = await openAI.extractFromDocument(signedUrls, {
+            knownMedications: knownMedicationNames,
+            pdfBase64,
+          });
 
           const extractedTextParts: string[] = [];
           if (result.summary) extractedTextParts.push(result.summary);
@@ -1209,6 +1258,12 @@ visitsRouter.post('/:id/retry', requireAuth, async (req: AuthRequest, res) => {
         code: 'missing_audio',
         message: 'Visit has no associated audio file to process',
       });
+      return;
+    }
+
+    // Validate storage path belongs to this user
+    if (!validateStoragePath(storagePath, userId)) {
+      res.status(403).json({ code: 'forbidden', message: 'Storage path does not belong to this user' });
       return;
     }
 
@@ -1710,6 +1765,12 @@ visitsRouter.post('/:id/process-document', requireAuth, async (req: AuthRequest,
     // Normalize to array
     const documentPaths: string[] = Array.isArray(rawDocPath) ? rawDocPath : [rawDocPath];
 
+    // Re-validate storage paths before accessing via Admin SDK
+    if (!validateStoragePaths(documentPaths, userId)) {
+      res.status(403).json({ code: 'forbidden', message: 'Document path does not belong to this user' });
+      return;
+    }
+
     // Prevent re-processing a completed visit
     if (visit.processingStatus === 'completed') {
       res.status(409).json({
@@ -1768,8 +1829,22 @@ visitsRouter.post('/:id/process-document', requireAuth, async (req: AuthRequest,
 
         // Extract structured data from document
         const openAI = getOpenAIService();
+
+        // For PDFs, download and base64 encode (GPT-4o requires file content block, not image_url)
+        let pdfBase64: string | undefined;
+        if (visit.documentType === 'avs_pdf') {
+          const pdfFile = bucket.file(documentPaths[0]);
+          const [pdfBuffer] = await pdfFile.download();
+          pdfBase64 = pdfBuffer.toString('base64');
+          functions.logger.info(`[visits] Downloaded PDF for extraction`, {
+            visitId,
+            sizeBytes: pdfBuffer.length,
+          });
+        }
+
         const result = await openAI.extractFromDocument(signedUrls, {
           knownMedications: knownMedicationNames,
+          pdfBase64,
         });
 
         // Build a text representation from extraction for transcriptText field
