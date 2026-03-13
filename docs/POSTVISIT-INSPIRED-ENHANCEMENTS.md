@@ -105,8 +105,9 @@ This document captures the filtered, pressure-tested set of features and pattern
 
 **Simplified approach (no mapping file):**
 - Add a "Learn more" link on medication and condition displays
-- Always link to MedlinePlus search: `https://medlineplus.gov/search/?query=[name]`
-- No mapping file to maintain — search handles all medications and conditions
+- Conditions: resolved to direct MedlinePlus topic pages via NLM Health Topics API. Mobile calls API directly; web uses `/api/medlineplus` proxy (302 redirect)
+- Medications: contextual NLM search (appends "medication" to query, surfaces drug info page first)
+- No mapping file to maintain — API + search handles all medications and conditions
 - Works across: visit-detail, medications screen, caregiver medication view, web portal
 
 **Files to modify:**

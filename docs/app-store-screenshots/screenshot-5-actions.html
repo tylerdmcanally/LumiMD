@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screenshot 5 - Action Items</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+
+  .screenshot {
+    width: 1290px;
+    height: 2796px;
+    background: linear-gradient(170deg, #2D8A5E 0%, #3DA870 40%, #7ECDB5 100%);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .screenshot::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 60% 20%, rgba(255,255,255,0.08) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .text-area {
+    padding: 180px 80px 60px;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .headline {
+    font-size: 96px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+    letter-spacing: -2px;
+    margin-bottom: 32px;
+  }
+
+  .subtext {
+    font-size: 48px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.4;
+  }
+
+  .phone-frame {
+    position: relative;
+    z-index: 2;
+    margin-top: 40px;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+
+  .device {
+    width: 860px;
+    height: 1760px;
+    background: #000;
+    border-radius: 68px;
+    padding: 18px;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.1);
+    overflow: hidden;
+  }
+
+  .device-screen {
+    width: 100%;
+    height: 100%;
+    background: #FDFCF9;
+    border-radius: 52px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-bar {
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 50px 40px 0;
+  }
+  .status-bar .time { font-size: 34px; font-weight: 600; color: #1a1a1a; }
+
+  .dynamic-island {
+    position: absolute;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 240px;
+    height: 70px;
+    background: #000;
+    border-radius: 40px;
+    z-index: 10;
+  }
+
+  .app-content {
+    flex: 1;
+    padding: 20px 36px 40px;
+    overflow: hidden;
+  }
+
+  .page-title {
+    font-size: 52px;
+    font-weight: 700;
+    color: #26231C;
+    margin-bottom: 12px;
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    margin-bottom: 32px;
+    background: #F0EFEC;
+    border-radius: 14px;
+    padding: 5px;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 16px;
+    text-align: center;
+    font-size: 28px;
+    font-weight: 600;
+    color: #8A8578;
+    border-radius: 11px;
+  }
+
+  .tab.active {
+    background: #fff;
+    color: #26231C;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  /* Action cards */
+  .action-card {
+    background: #fff;
+    border-radius: 20px;
+    border: 1.5px solid rgba(38,35,28,0.08);
+    padding: 28px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(38,35,28,0.03);
+  }
+
+  .action-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .action-checkbox {
+    width: 40px;
+    height: 40px;
+    border: 2.5px solid #D1CFC9;
+    border-radius: 10px;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  .action-checkbox.checked {
+    background: #2D8A5E;
+    border-color: #2D8A5E;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 24px;
+  }
+
+  .action-body {
+    flex: 1;
+  }
+
+  .action-title {
+    font-size: 32px;
+    font-weight: 600;
+    color: #26231C;
+    line-height: 1.3;
+    margin-bottom: 8px;
+  }
+
+  .action-title.done {
+    text-decoration: line-through;
+    color: #B0AEA6;
+  }
+
+  .action-meta {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .action-type {
+    padding: 6px 14px;
+    border-radius: 10px;
+    font-size: 22px;
+    font-weight: 500;
+  }
+
+  .type-lab { background: #EDE9FE; color: #7C3AED; }
+  .type-referral { background: #FDF0EC; color: #E07A5F; }
+  .type-followup { background: #F0F9FA; color: #2BA8AE; }
+  .type-imaging { background: #FEF3C7; color: #B45309; }
+
+  .action-due {
+    font-size: 24px;
+    font-weight: 500;
+  }
+
+  .due-overdue { color: #DC2626; }
+  .due-upcoming { color: #8A8578; }
+  .due-done { color: #2D8A5E; }
+
+  .action-source {
+    font-size: 24px;
+    color: #8A8578;
+    margin-top: 8px;
+  }
+
+  /* Nudge card */
+  .nudge-card {
+    background: linear-gradient(135deg, #F0F9FA, #E8F6F4);
+    border-radius: 20px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    border: 1.5px solid rgba(64,201,208,0.2);
+  }
+
+  .nudge-icon {
+    width: 52px;
+    height: 52px;
+    background: #40C9D0;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+
+  .nudge-text {
+    font-size: 28px;
+    color: #1E8E94;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .nudge-action {
+    font-size: 26px;
+    color: #40C9D0;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* FAB */
+  .fab {
+    position: absolute;
+    bottom: 200px;
+    right: 60px;
+    width: 80px;
+    height: 80px;
+    background: #40C9D0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 24px rgba(64,201,208,0.4);
+    z-index: 5;
+  }
+
+  .fab-icon {
+    font-size: 40px;
+    color: #fff;
+  }
+
+  /* Nav */
+  .nav-bar {
+    height: 140px;
+    background: #fff;
+    border-top: 1.5px solid rgba(38,35,28,0.06);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 20px 30px;
+  }
+
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-icon { font-size: 24px; }
+  .nav-label { font-size: 22px; font-weight: 500; color: #8A8578; }
+  .nav-item.active .nav-label { color: #40C9D0; }
+</style>
+</head>
+<body>
+<div class="screenshot">
+  <div class="text-area">
+    <div class="headline">Nothing Falls<br>Through the Cracks</div>
+    <div class="subtext">Action items and reminders from every visit.</div>
+  </div>
+
+  <div class="phone-frame">
+    <div class="device">
+      <div class="dynamic-island"></div>
+      <div class="device-screen">
+        <div class="status-bar">
+          <span class="time">9:41</span>
+        </div>
+
+        <div class="app-content">
+          <div class="page-title">Action Items</div>
+
+          <div class="tab-bar">
+            <div class="tab active">Pending (4)</div>
+            <div class="tab">Completed (7)</div>
+          </div>
+
+          <div class="nudge-card">
+            <div class="nudge-icon">&#128276;</div>
+            <div style="flex: 1;">
+              <div class="nudge-text">Have you scheduled your blood work?</div>
+            </div>
+            <div class="nudge-action">Respond &rsaquo;</div>
+          </div>
+
+          <div class="action-card">
+            <div class="action-top">
+              <div class="action-checkbox"></div>
+              <div class="action-body">
+                <div class="action-title">Get blood work done (lipid panel)</div>
+                <div class="action-meta">
+                  <span class="action-type type-lab">Lab Work</span>
+                  <span class="action-due due-overdue">Overdue: Mar 8</span>
+                </div>
+                <div class="action-source">From: Dr. Chen &middot; Feb 22 visit</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="action-card">
+            <div class="action-top">
+              <div class="action-checkbox"></div>
+              <div class="action-body">
+                <div class="action-title">Schedule follow-up with Cardiology</div>
+                <div class="action-meta">
+                  <span class="action-type type-followup">Follow-up</span>
+                  <span class="action-due due-upcoming">Due: Jun 8</span>
+                </div>
+                <div class="action-source">From: Dr. Patel &middot; Mar 8 visit</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="action-card">
+            <div class="action-top">
+              <div class="action-checkbox"></div>
+              <div class="action-body">
+                <div class="action-title">See dermatologist for skin check</div>
+                <div class="action-meta">
+                  <span class="action-type type-referral">Referral</span>
+                  <span class="action-due due-upcoming">Due: Apr 22</span>
+                </div>
+                <div class="action-source">From: Dr. Chen &middot; Feb 22 visit</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="action-card">
+            <div class="action-top">
+              <div class="action-checkbox"></div>
+              <div class="action-body">
+                <div class="action-title">Chest X-ray (annual screening)</div>
+                <div class="action-meta">
+                  <span class="action-type type-imaging">Imaging</span>
+                  <span class="action-due due-upcoming">Due: May 15</span>
+                </div>
+                <div class="action-source">From: Dr. Chen &middot; Feb 22 visit</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fab">
+            <span class="fab-icon">+</span>
+          </div>
+        </div>
+
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">&#127968;</div>
+            <div class="nav-label">Home</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#128138;</div>
+            <div class="nav-label">Meds</div>
+          </div>
+          <div class="nav-item active">
+            <div class="nav-icon">&#9745;</div>
+            <div class="nav-label">Actions</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#128147;</div>
+            <div class="nav-label">Health</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#9881;</div>
+            <div class="nav-label">Settings</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

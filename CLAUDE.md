@@ -32,7 +32,7 @@ LumiMD/Codebase/
 | Storage | Firebase Storage (audio, AES-256 encrypted) |
 | Auth | Firebase Auth (email/password, Google, Apple) |
 | AI - STT | AssemblyAI (transcript + speaker labels) |
-| AI - NLP | OpenAI GPT-4 (gpt-4-turbo, structured JSON output) |
+| AI - NLP | OpenAI GPT-4 (gpt-4-turbo for transcripts, gpt-4o for Vision/document extraction) |
 | Push | Expo Push + Firebase Cloud Messaging |
 | Email | Resend |
 | Error Tracking | Sentry |
@@ -67,6 +67,7 @@ Switch with `firebase use lumimd-dev`.
 
 ## Visit Processing Pipeline
 
+**Audio-based visits:**
 ```
 Mobile audio upload → Firebase Storage
     ↓ (Storage trigger)
@@ -81,6 +82,19 @@ Firestore update (status: pending → transcribing → processing → completed)
 Post-commit ops (denormalization sync, walkthrough generation, nudge creation — parallel)
     ↓
 Push notification to caregiver
+```
+
+**Document-based visits (AVS photo/PDF):**
+```
+Mobile capture/select → Firebase Storage (visits/{userId}/{timestamp}.ext)
+    ↓
+POST /v1/visits/:id/process-document
+    ↓
+Generate signed URLs (images) or download + base64 encode (PDFs)
+    ↓
+GPT-4o Vision extraction (images as image_url blocks; PDFs as file content block)
+    ↓
+Summary stage → Medication safety check → Firestore update → Post-commit ops
 ```
 
 **Visit status machine:** `pending` → `transcribing` → `processing` → `completed` | `failed`
@@ -113,7 +127,7 @@ Push notification to caregiver
 - `routes/care/exportSummary.ts` — Printable care summary export
 - `routes/shares.ts` — Share CRUD, invite system, `resolveCaregiverName()` helper (profile → auth → invite label → email fallback)
 - `routes/webhooks.ts` — AssemblyAI webhook receiver
-- `services/openai.ts` — GPT-4 summarization (52KB, 4-stage prompts)
+- `services/openai.ts` — GPT-4 summarization (4-stage prompts) + GPT-4o Vision document extraction (PDF via base64 `file` block, images via signed URL `image_url`)
 - `services/assemblyai.ts` — Transcription polling
 - `services/medicationSafety.ts` — Drug interaction checker (local CANONICAL_MEDICATIONS + optional RxNav)
 - `services/visitProcessor.ts` — Orchestrates the full processing pipeline
@@ -141,6 +155,7 @@ Push notification to caregiver
 - `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: heard → changed → next)
 - `components/lumibot/PostLogFeedback.tsx` — Post-log feedback modal with trend context
 - `lib/auth.ts` — Firebase auth helpers (`hasPasswordProvider()`, `linkEmailPassword()` for adding web password to Apple/Google-only accounts)
+- `lib/utils/medlineplus.ts` — MedlinePlus link resolver (`openMedlinePlus()` — conditions use NLM Health Topics API for direct page URLs; medications fall back to contextual search)
 - `lib/api/hooks.ts` — React Query hooks (useRealtimeVisits, useRealtimeActiveMedications, useMyMessages, useUnreadMessageCount, etc.)
 - `lib/api/mutations.ts` — Mutations (useCompleteAction, useUpdateUserProfile, useInviteCaregiver)
 - `contexts/` — AuthContext (global auth state)
@@ -162,7 +177,9 @@ Push notification to caregiver
 - `app/care/sign-in/page.tsx` — Caregiver sign-in (email/password + Google, requires invite token)
 - `app/care/sign-up/page.tsx` — Caregiver sign-up (email/password + Google with terms gate, requires invite token)
 - `app/shared/` — Caregiver read-only view (no login required)
-- `app/api/` — Next.js API routes (auth, email)
+- `app/api/` — Next.js API routes (auth, email, medlineplus redirect proxy)
+- `app/api/medlineplus/route.ts` — Resolves MedlinePlus direct page URLs via NLM Health Topics API (302 redirect); avoids CORS issues for web
+- `lib/utils/medlineplus.ts` — `getMedlinePlusUrl(name, type)` — conditions route through `/api/medlineplus` proxy; medications use contextual NLM search
 - `lib/auth/errors.ts` — Shared Firebase auth error code → user-friendly message mapping
 - `lib/api/hooks.ts` — React Query hooks (useCareOverview, useCareQuickOverview, useCareSummaryExport, useCareMessages, useSendCareMessage, etc.)
 
@@ -225,6 +242,7 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 - **Firestore rules:** Owner-only writes; caregivers read via accepted `shares` doc
 - **OpenAI:** `store: false` on all calls (no data retention)
 - **Constant-time comparison:** Webhook secret validation
+- **Storage path validation:** `validateStoragePath()` enforces user-namespace prefix on all `storagePath`/`documentStoragePath` fields before Admin SDK access (prevents cross-user document reads)
 - **Soft deletes:** Audit trail preserved for 30 days
 
 ## Authentication Flow
@@ -307,6 +325,10 @@ firebase use lumimd-dev   # or lumimd (prod)
 
 **Walkthrough generation:** Walkthroughs are pre-computed during visit processing from existing GPT-4 output (zero extra LLM calls). Stored directly on the visit document. Q&A uses 3-tier approach: keyword match → data match → guarded LLM fallback.
 
+**GPT-4o Vision content types:** Images use `image_url` blocks with signed URLs. PDFs must be downloaded from Storage, base64 encoded, and sent as `file` content blocks (`data:application/pdf;base64,...`). The `image_url` type does NOT accept PDF URLs (returns 400).
+
+**MedlinePlus linking:** Condition links resolve to direct topic pages via NLM Health Topics API (`wsearch.nlm.nih.gov/ws/query?db=healthTopics`). Mobile calls API directly (no CORS in React Native); web proxies through `/api/medlineplus` (302 redirect). Medication links use contextual NLM search (appending "medication" to query). No drug-specific API exists from NLM.
+
 ## Key Documentation
 
 - `docs/reference/DATABASE-SCHEMA.md` — Full Firestore schema
@@ -318,7 +340,7 @@ firebase use lumimd-dev   # or lumimd (prod)
 - `docs/POSTVISIT-INSPIRED-ENHANCEMENTS.md` — PostVisit-inspired enhancements planning doc (Phases 5-7 complete, Strategic CRUD next)
 - `docs/DATA-INTEGRATION-DESIGN.md` — Data integration design (AVS upload + action nudges)
 - `docs/prompts/DATA-INTEGRATION-BUILD.md` — Data integration build prompt
-- `SECURITY_AND_PRIVACY_SUMMARY.md` — Security posture and compliance
+- `docs/SECURITY.md` — Consolidated security & privacy doc (posture, incidents, open items, compliance)
 - `docs/guides/` — Quick Start, Firebase setup, deployment checklists
 - `docs/architecture/` — System design docs
 
@@ -409,7 +431,9 @@ Phases A-D complete.
 - Recording consent card gate on record-visit (two-party default, coral icon, privacy policy link)
 
 **Phase B — MedlinePlus Resource Links:**
-- `getMedlinePlusUrl(name)` utility (mobile + web) → `https://medlineplus.gov/search/?query=...`
+- Context-aware `getMedlinePlusUrl(name, type)` utility (mobile + web)
+- Conditions: resolved to direct MedlinePlus topic pages via NLM Health Topics API (`wsearch.nlm.nih.gov`). Mobile calls API directly (no CORS in RN); web uses `/api/medlineplus` proxy route (302 redirect)
+- Medications: contextual NLM search (appends "medication" to query, surfaces drug info page as first result)
 - "Learn more" links on visit-detail diagnoses/medications (iOS + web), medication screens (iOS + web patient + caregiver)
 
 **Phase C — Web Portal Enhancements:**
@@ -432,14 +456,19 @@ Two-phase feature adding document-based visit creation and proactive action item
 
 **Phase 1 — AVS Photo/Document Upload (mobile):**
 - `mobile/app/upload-avs.tsx` — New screen for capturing/selecting AVS photos or PDFs via `expo-image-picker` / `expo-document-picker`
-- Multi-image support with preview grid, PDF file cards, remove capability
-- Upload to Firebase Storage (`avs/{userId}/{visitId}/`) with metadata (content type, page count)
-- Creates visit with `source: 'avs_photo' | 'avs_pdf'`, `documentStoragePath`, `documentType`
-- `POST /v1/visits/:id/process-document` — Generates signed URLs, sends to GPT-4o Vision for extraction
-- `openai.ts: extractFromDocument()` — Multi-image/PDF extraction with canonical medication matching
-- Visit processor extended to handle document-based visits (skip transcription, run extraction → summary → safety → post-commit)
-- Storage rules updated for `avs/` path (owner read/write, 20 MB limit, image + PDF content types)
+- Multi-image support (up to 10 pages) with thumbnail grid preview, page number badges, remove buttons, "Add page" tile
+- PDF single-file upload via `expo-document-picker`
+- Upload to Firebase Storage (`visits/{userId}/{timestamp}.ext`) with metadata (content type)
+- Creates visit with `source: 'avs_photo' | 'avs_pdf'`, `documentStoragePath` (string or string[]), `documentType`
+- Direct-attach flow: `visitId` param from visit-detail's AVS prompt banner updates existing visit instead of creating new one
+- `POST /v1/visits/:id/process-document` — Images: generates signed URLs as `image_url` blocks; PDFs: downloads from Storage, base64 encodes, sends as `file` content block to GPT-4o Vision
+- `openai.ts: extractFromDocument()` — Multi-image/PDF extraction with canonical medication matching, dynamic page-count prompting
+- Same-day merge logic: AVS within 24hrs of a recording visit merges into it (AVS wins for factual data, recording wins for narrative; source becomes `recording+avs`)
+- Document retry path in `POST /v1/visits/:id/retry` — detects `documentStoragePath`, re-runs GPT-4o extraction (separate from audio retry)
+- Cloud Function timeout: 300s; OpenAI axios timeout: 180s (Vision with multi-page images needs extended time)
+- Storage rules under `visits/{userId}/{fileName}` (owner read/write, 20 MB limit for image/PDF content types)
 - Home screen "Upload AVS" card in the quick actions section
+- AVS prompt banner on visit-detail for recording-only visits (dismissible via AsyncStorage, links to upload-avs with `visitId` for direct-attach)
 
 **Phase 2 — Action Item Reminder Nudges:**
 - `functions/src/triggers/actionItemReminderNudges.ts` — Scheduled trigger creating `action_reminder` nudges for pending/overdue actions

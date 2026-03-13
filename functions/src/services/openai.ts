@@ -1824,7 +1824,8 @@ export class OpenAIService {
   private async requestVisionJsonCompletion(
     messages: Array<{
       role: 'system' | 'user';
-      content: string | Array<{ type: string; text?: string; image_url?: { url: string; detail: string } }>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      content: string | Array<Record<string, any>>;
     }>,
     temperature = 0.2,
   ): Promise<{ content: string; latencyMs: number }> {
@@ -1859,12 +1860,9 @@ export class OpenAIService {
    */
   async extractFromDocument(
     signedUrls: string | string[],
-    options?: { knownMedications?: string[] },
+    options?: { knownMedications?: string[]; pdfBase64?: string },
   ): Promise<VisitSummaryResult> {
     const urls = Array.isArray(signedUrls) ? signedUrls : [signedUrls];
-    if (urls.length === 0) {
-      throw new Error('At least one document URL is required');
-    }
 
     const knownMedicationList = Array.isArray(options?.knownMedications)
       ? options!.knownMedications.filter(
@@ -1875,25 +1873,54 @@ export class OpenAIService {
     const knownMedicationText = formatMedicationReferenceList(knownMedicationList);
 
     // Build vision content blocks: images + text prompt
-    const contentBlocks: Array<{ type: string; text?: string; image_url?: { url: string; detail: string } }> = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contentBlocks: Array<Record<string, any>> = [];
 
-    // Add each document page as an image_url block
-    for (const url of urls) {
+    if (options?.pdfBase64) {
+      // PDF: send as a file content block with base64 data
       contentBlocks.push({
-        type: 'image_url',
-        image_url: {
-          url,
-          detail: 'high',
+        type: 'file',
+        file: {
+          filename: 'document.pdf',
+          file_data: `data:application/pdf;base64,${options.pdfBase64}`,
         },
       });
+    } else if (urls.length === 0) {
+      throw new Error('At least one document URL or pdfBase64 data is required');
+    } else {
+      // Images: send as image_url blocks with signed URLs
+      for (const url of urls) {
+        contentBlocks.push({
+          type: 'image_url',
+          image_url: {
+            url,
+            detail: 'high',
+          },
+        });
+      }
     }
+
+    const pageCount = options?.pdfBase64 ? 'PDF' : urls.length;
+
+    // Build prompt text based on whether it's a PDF or images
+    const isPdf = !!options?.pdfBase64;
+    const docDescription = isPdf
+      ? 'The PDF above is a'
+      : urls.length > 1
+        ? `The ${urls.length} images above are pages of the SAME`
+        : 'The image above is a';
+    const multiPageHint = isPdf
+      ? 'This is a multi-page PDF. You MUST read ALL pages thoroughly. Each page may contain different sections — medications are often on later pages.'
+      : urls.length > 1
+        ? `You MUST read ALL ${urls.length} pages thoroughly. Each page may contain different sections — medications are often on a later page.`
+        : '';
 
     // Add the text prompt (same context as transcript extraction, but adapted for document)
     contentBlocks.push({
       type: 'text',
       text: [
-        `The ${urls.length > 1 ? urls.length + ' images above are pages of the SAME' : 'image above is a'} medical document (After Visit Summary / AVS).`,
-        urls.length > 1 ? `You MUST read ALL ${urls.length} pages thoroughly. Each page may contain different sections — medications are often on a later page.` : '',
+        `${docDescription} medical document (After Visit Summary / AVS).`,
+        multiPageHint,
         '',
         'Extract ALL clinical data into structured JSON. Pay particular attention to:',
         '- MEDICATIONS: List every medication mentioned. Categorize as started (new), stopped (discontinued), or changed (dose/frequency modified).',
@@ -1913,6 +1940,12 @@ export class OpenAIService {
       ].filter(Boolean).join('\n'),
     });
 
+    const systemPageHint = isPdf
+      ? 'IMPORTANT: You are reading a multi-page PDF medical document, not a transcript. You MUST examine EVERY page — medications, labs, and follow-ups are often on pages 2+.'
+      : urls.length > 1
+        ? `IMPORTANT: You are reading ${urls.length} pages of a medical document IMAGE, not a transcript. There are ${urls.length} page images. You MUST examine EVERY page — medications, labs, and follow-ups are often on pages 2+.`
+        : 'IMPORTANT: You are reading a medical document IMAGE, not a transcript.';
+
     const messages = [
       {
         role: 'system' as const,
@@ -1920,8 +1953,7 @@ export class OpenAIService {
           `Prompt version: ${EXTRACTION_PROMPT_VERSION}`,
           EXTRACTION_STAGE_SYSTEM_PROMPT,
           '',
-          `IMPORTANT: You are reading ${urls.length > 1 ? urls.length + ' pages of a' : 'a'} medical document IMAGE, not a transcript.`,
-          urls.length > 1 ? `There are ${urls.length} page images. You MUST examine EVERY page — medications, labs, and follow-ups are often on pages 2+.` : '',
+          systemPageHint,
           'Extract all visible text and clinical data from the document.',
           'Pay special attention to: medication lists with exact names/doses,',
           'diagnoses with ICD codes if visible, vitals, lab results,',
@@ -1937,7 +1969,7 @@ export class OpenAIService {
 
     try {
       functions.logger.info('[OpenAI] Starting document extraction via GPT-4o Vision', {
-        pageCount: urls.length,
+        pageCount,
         promptVersion: EXTRACTION_PROMPT_VERSION,
       });
 
@@ -1988,7 +2020,7 @@ export class OpenAIService {
       };
 
       functions.logger.info('[OpenAI] Document extraction complete', {
-        pageCount: urls.length,
+        pageCount,
         latencyMs: extractionResponse.latencyMs,
         diagnosisCount: diagnoses.length,
         startedMedicationCount: medications.started.length,
@@ -2055,7 +2087,7 @@ export class OpenAIService {
     } catch (error) {
       functions.logger.error('[OpenAI] Document extraction failed', {
         error: error instanceof Error ? error.message : String(error),
-        pageCount: urls.length,
+        pageCount,
       });
       throw error;
     }

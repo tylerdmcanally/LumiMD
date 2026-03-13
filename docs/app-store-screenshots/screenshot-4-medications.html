@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screenshot 4 - Medication Safety</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+
+  .screenshot {
+    width: 1290px;
+    height: 2796px;
+    background: linear-gradient(170deg, #C96A52 0%, #E07A5F 35%, #EB9B84 70%, #40C9D0 100%);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .screenshot::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .text-area {
+    padding: 180px 80px 60px;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .headline {
+    font-size: 96px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+    letter-spacing: -2px;
+    margin-bottom: 32px;
+  }
+
+  .subtext {
+    font-size: 48px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.4;
+  }
+
+  .phone-frame {
+    position: relative;
+    z-index: 2;
+    margin-top: 40px;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+
+  .device {
+    width: 860px;
+    height: 1760px;
+    background: #000;
+    border-radius: 68px;
+    padding: 18px;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.1);
+    overflow: hidden;
+  }
+
+  .device-screen {
+    width: 100%;
+    height: 100%;
+    background: #FDFCF9;
+    border-radius: 52px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-bar {
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 50px 40px 0;
+    background: #FDFCF9;
+  }
+  .status-bar .time { font-size: 34px; font-weight: 600; color: #1a1a1a; }
+
+  .dynamic-island {
+    position: absolute;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 240px;
+    height: 70px;
+    background: #000;
+    border-radius: 40px;
+    z-index: 10;
+  }
+
+  .app-content {
+    flex: 1;
+    padding: 20px 36px 40px;
+    overflow: hidden;
+  }
+
+  .page-title {
+    font-size: 52px;
+    font-weight: 700;
+    color: #26231C;
+    margin-bottom: 32px;
+  }
+
+  /* Safety alert */
+  .safety-alert {
+    background: linear-gradient(135deg, #FDF0EC, #FDEEE8);
+    border: 2px solid #E07A5F;
+    border-radius: 20px;
+    padding: 28px;
+    margin-bottom: 32px;
+  }
+
+  .alert-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .alert-shield {
+    width: 48px;
+    height: 48px;
+    background: #E07A5F;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 26px;
+  }
+
+  .alert-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #8B4332;
+  }
+
+  .alert-body {
+    font-size: 28px;
+    color: #8B4332;
+    line-height: 1.5;
+  }
+
+  .alert-meds {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .alert-med-tag {
+    padding: 8px 16px;
+    border-radius: 10px;
+    background: rgba(224,122,95,0.15);
+    font-size: 24px;
+    font-weight: 600;
+    color: #8B4332;
+  }
+
+  /* Med list */
+  .med-card {
+    background: #fff;
+    border-radius: 20px;
+    border: 1.5px solid rgba(38,35,28,0.08);
+    padding: 28px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(38,35,28,0.03);
+  }
+
+  .med-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .med-name {
+    font-size: 34px;
+    font-weight: 700;
+    color: #26231C;
+  }
+
+  .med-dose {
+    font-size: 28px;
+    color: #8A8578;
+    margin-top: 4px;
+  }
+
+  .med-frequency {
+    font-size: 26px;
+    color: #5A5549;
+    margin-top: 4px;
+  }
+
+  .med-status {
+    padding: 8px 18px;
+    border-radius: 16px;
+    font-size: 24px;
+    font-weight: 600;
+  }
+
+  .med-status.active {
+    background: #E8FAF0;
+    color: #2D8A5E;
+  }
+
+  .med-details {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  .med-detail-tag {
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 22px;
+    font-weight: 500;
+  }
+
+  .med-detail-tag.source {
+    background: #F0F9FA;
+    color: #2BA8AE;
+  }
+
+  .med-detail-tag.learn {
+    color: #40C9D0;
+    font-weight: 600;
+    padding-left: 0;
+  }
+
+  /* Adherence bar */
+  .adherence-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .adherence-label {
+    font-size: 24px;
+    color: #8A8578;
+    white-space: nowrap;
+  }
+
+  .adherence-bar-bg {
+    flex: 1;
+    height: 12px;
+    background: #F0EFEC;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .adherence-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+  }
+
+  .adherence-bar-fill.high { background: #2D8A5E; }
+  .adherence-bar-fill.mid { background: #F0B429; }
+
+  .adherence-pct {
+    font-size: 24px;
+    font-weight: 600;
+    color: #26231C;
+    min-width: 50px;
+  }
+
+  /* FAB */
+  .fab {
+    position: absolute;
+    bottom: 200px;
+    right: 60px;
+    width: 80px;
+    height: 80px;
+    background: #40C9D0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 24px rgba(64,201,208,0.4);
+    z-index: 5;
+  }
+
+  .fab-icon {
+    font-size: 40px;
+    color: #fff;
+    font-weight: 300;
+  }
+
+  /* Nav bar */
+  .nav-bar {
+    height: 140px;
+    background: #fff;
+    border-top: 1.5px solid rgba(38,35,28,0.06);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 20px 30px;
+  }
+
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-icon { font-size: 24px; }
+  .nav-label { font-size: 22px; font-weight: 500; color: #8A8578; }
+  .nav-item.active .nav-label { color: #40C9D0; }
+</style>
+</head>
+<body>
+<div class="screenshot">
+  <div class="text-area">
+    <div class="headline">Medication Safety,<br>Built In</div>
+    <div class="subtext">Drug interaction checks and adherence tracking.</div>
+  </div>
+
+  <div class="phone-frame">
+    <div class="device">
+      <div class="dynamic-island"></div>
+      <div class="device-screen">
+        <div class="status-bar">
+          <span class="time">9:41</span>
+        </div>
+
+        <div class="app-content">
+          <div class="page-title">Medications</div>
+
+          <div class="safety-alert">
+            <div class="alert-header">
+              <div class="alert-shield">&#9888;</div>
+              <div class="alert-title">Interaction Warning</div>
+            </div>
+            <div class="alert-body">Potential interaction detected between these medications. Discuss with your care team.</div>
+            <div class="alert-meds">
+              <span class="alert-med-tag">Lisinopril</span>
+              <span class="alert-med-tag">Potassium Supplement</span>
+            </div>
+          </div>
+
+          <div class="med-card" style="position: relative;">
+            <div class="med-top">
+              <div>
+                <div class="med-name">Lisinopril</div>
+                <div class="med-dose">10mg &middot; Oral tablet</div>
+                <div class="med-frequency">Once daily, morning</div>
+              </div>
+              <div class="med-status active">Active</div>
+            </div>
+            <div class="adherence-row">
+              <span class="adherence-label">Adherence</span>
+              <div class="adherence-bar-bg">
+                <div class="adherence-bar-fill high" style="width: 92%;"></div>
+              </div>
+              <span class="adherence-pct">92%</span>
+            </div>
+            <div class="med-details">
+              <span class="med-detail-tag source">From: Dr. Patel</span>
+              <span class="med-detail-tag learn">Learn more &rsaquo;</span>
+            </div>
+          </div>
+
+          <div class="med-card">
+            <div class="med-top">
+              <div>
+                <div class="med-name">Metformin</div>
+                <div class="med-dose">500mg &middot; Oral tablet</div>
+                <div class="med-frequency">Twice daily, with meals</div>
+              </div>
+              <div class="med-status active">Active</div>
+            </div>
+            <div class="adherence-row">
+              <span class="adherence-label">Adherence</span>
+              <div class="adherence-bar-bg">
+                <div class="adherence-bar-fill mid" style="width: 78%;"></div>
+              </div>
+              <span class="adherence-pct">78%</span>
+            </div>
+            <div class="med-details">
+              <span class="med-detail-tag source">From: Dr. Chen</span>
+              <span class="med-detail-tag learn">Learn more &rsaquo;</span>
+            </div>
+          </div>
+
+          <div class="med-card">
+            <div class="med-top">
+              <div>
+                <div class="med-name">Aspirin</div>
+                <div class="med-dose">81mg &middot; Oral tablet</div>
+                <div class="med-frequency">Once daily</div>
+              </div>
+              <div class="med-status active">Active</div>
+            </div>
+            <div class="adherence-row">
+              <span class="adherence-label">Adherence</span>
+              <div class="adherence-bar-bg">
+                <div class="adherence-bar-fill high" style="width: 96%;"></div>
+              </div>
+              <span class="adherence-pct">96%</span>
+            </div>
+            <div class="med-details">
+              <span class="med-detail-tag source">From: Dr. Patel</span>
+              <span class="med-detail-tag learn">Learn more &rsaquo;</span>
+            </div>
+          </div>
+
+          <div class="fab">
+            <span class="fab-icon">+</span>
+          </div>
+        </div>
+
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">&#127968;</div>
+            <div class="nav-label">Home</div>
+          </div>
+          <div class="nav-item active">
+            <div class="nav-icon">&#128138;</div>
+            <div class="nav-label">Meds</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#9745;</div>
+            <div class="nav-label">Actions</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#128147;</div>
+            <div class="nav-label">Health</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#9881;</div>
+            <div class="nav-label">Settings</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

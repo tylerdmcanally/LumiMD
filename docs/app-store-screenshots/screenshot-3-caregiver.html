@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screenshot 3 - Caregiver Portal</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:wght@400;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+
+  .screenshot {
+    width: 1290px;
+    height: 2796px;
+    background: linear-gradient(170deg, #2D5A6B 0%, #3A7D8A 40%, #40C9D0 100%);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .screenshot::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 30% 80%, rgba(255,255,255,0.06) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .text-area {
+    padding: 180px 80px 60px;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .headline {
+    font-size: 96px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+    letter-spacing: -2px;
+    margin-bottom: 32px;
+  }
+
+  .subtext {
+    font-size: 48px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.4;
+  }
+
+  .phone-frame {
+    position: relative;
+    z-index: 2;
+    margin-top: 40px;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* Web portal shown as a browser-style frame to differentiate */
+  .browser-device {
+    width: 960px;
+    height: 1700px;
+    background: #fff;
+    border-radius: 32px;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Browser chrome */
+  .browser-bar {
+    height: 80px;
+    background: #F5F5F5;
+    border-bottom: 1px solid #E0E0E0;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+  }
+
+  .browser-dots {
+    display: flex;
+    gap: 10px;
+  }
+  .browser-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+  }
+  .dot-red { background: #FF5F57; }
+  .dot-yellow { background: #FFBD2E; }
+  .dot-green { background: #28C840; }
+
+  .url-bar {
+    flex: 1;
+    height: 44px;
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #E0E0E0;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    font-size: 22px;
+    color: #666;
+  }
+
+  .url-lock {
+    color: #28C840;
+    margin-right: 8px;
+  }
+
+  /* Portal content */
+  .portal-content {
+    flex: 1;
+    background: #FDFCF9;
+    padding: 40px;
+    overflow: hidden;
+  }
+
+  /* Hero section */
+  .portal-hero {
+    background: linear-gradient(135deg, #F0FAFB, #E8F6F4);
+    border-radius: 24px;
+    padding: 40px;
+    margin-bottom: 36px;
+  }
+
+  .portal-greeting {
+    font-family: 'Fraunces', serif;
+    font-size: 42px;
+    font-weight: 700;
+    color: #26231C;
+    margin-bottom: 8px;
+  }
+
+  .portal-sub {
+    font-size: 26px;
+    color: #8A8578;
+  }
+
+  /* Patient card */
+  .patient-card {
+    background: #fff;
+    border-radius: 20px;
+    border: 1.5px solid rgba(38,35,28,0.08);
+    padding: 32px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 12px rgba(38,35,28,0.04);
+  }
+
+  .patient-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  .patient-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #40C9D0, #7ECDB5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    margin-right: 16px;
+  }
+
+  .patient-name-row {
+    display: flex;
+    align-items: center;
+  }
+
+  .patient-name {
+    font-size: 36px;
+    font-weight: 700;
+    color: #26231C;
+  }
+
+  .patient-active {
+    font-size: 24px;
+    color: #2D8A5E;
+    background: #E8FAF0;
+    padding: 6px 14px;
+    border-radius: 12px;
+    font-weight: 500;
+  }
+
+  /* Stats grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-box {
+    background: #F8F7F5;
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: #26231C;
+  }
+
+  .stat-label {
+    font-size: 22px;
+    color: #8A8578;
+    margin-top: 4px;
+  }
+
+  .stat-value.alert { color: #E07A5F; }
+
+  /* Vitals row */
+  .vitals-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .vital-chip {
+    padding: 10px 18px;
+    border-radius: 12px;
+    background: #F0F9FA;
+    font-size: 24px;
+    color: #2BA8AE;
+    font-weight: 500;
+  }
+
+  /* Quick action buttons */
+  .card-actions {
+    display: flex;
+    gap: 12px;
+    border-top: 1.5px solid rgba(38,35,28,0.06);
+    padding-top: 20px;
+  }
+
+  .card-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 12px;
+    text-align: center;
+    font-size: 26px;
+    font-weight: 600;
+  }
+
+  .card-btn.primary {
+    background: #40C9D0;
+    color: #fff;
+  }
+
+  .card-btn.secondary {
+    background: #F0F9FA;
+    color: #2BA8AE;
+  }
+
+  /* Alert banner */
+  .alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 24px;
+    background: #FDF0EC;
+    border-radius: 14px;
+    margin-bottom: 24px;
+  }
+
+  .alert-icon {
+    width: 40px;
+    height: 40px;
+    background: #E07A5F;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .alert-text {
+    font-size: 26px;
+    color: #8B4332;
+    font-weight: 500;
+  }
+
+  /* Web badge */
+  .web-badge {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    padding: 14px 32px;
+    z-index: 5;
+  }
+
+  .web-badge-text {
+    font-size: 30px;
+    font-weight: 600;
+    color: #fff;
+  }
+</style>
+</head>
+<body>
+<div class="screenshot">
+  <div class="text-area">
+    <div class="headline">Keep Your Family<br>in the Loop</div>
+    <div class="subtext">A dedicated portal for caregivers —<br>no app needed.</div>
+  </div>
+
+  <div class="phone-frame">
+    <div class="browser-device">
+      <div class="browser-bar">
+        <div class="browser-dots">
+          <div class="browser-dot dot-red"></div>
+          <div class="browser-dot dot-yellow"></div>
+          <div class="browser-dot dot-green"></div>
+        </div>
+        <div class="url-bar">
+          <span class="url-lock">&#128274;</span>
+          portal.lumimd.app/care
+        </div>
+      </div>
+
+      <div class="portal-content">
+        <div class="portal-hero">
+          <div class="portal-greeting">Welcome back, Emily</div>
+          <div class="portal-sub">You're caring for 1 patient</div>
+        </div>
+
+        <div class="alert-banner">
+          <div class="alert-icon">!</div>
+          <div class="alert-text">Sarah has 1 overdue action item</div>
+        </div>
+
+        <div class="patient-card">
+          <div class="patient-header">
+            <div class="patient-name-row">
+              <div class="patient-avatar">SM</div>
+              <div>
+                <div class="patient-name">Sarah Mitchell</div>
+              </div>
+            </div>
+            <div class="patient-active">Active today</div>
+          </div>
+
+          <div class="vitals-row">
+            <div class="vital-chip">BP: 128/82</div>
+            <div class="vital-chip">Weight: 156 lbs</div>
+            <div class="vital-chip">Glucose: 98</div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-value">4</div>
+              <div class="stat-label">Medications</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value alert">1</div>
+              <div class="stat-label">Overdue</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value">92%</div>
+              <div class="stat-label">Adherence</div>
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <div class="card-btn primary">View Dashboard</div>
+            <div class="card-btn secondary">Medications</div>
+            <div class="card-btn secondary">Actions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="web-badge">
+    <span class="web-badge-text">&#128187; Web portal — works on any browser</span>
+  </div>
+</div>
+</body>
+</html>

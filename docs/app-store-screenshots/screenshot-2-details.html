@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screenshot 2 - Visit Details</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+
+  .screenshot {
+    width: 1290px;
+    height: 2796px;
+    background: linear-gradient(170deg, #1E8E94 0%, #2BA8AE 40%, #40C9D0 100%);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .screenshot::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 70% 30%, rgba(255,255,255,0.06) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .text-area {
+    padding: 180px 80px 60px;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .headline {
+    font-size: 96px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+    letter-spacing: -2px;
+    margin-bottom: 32px;
+  }
+
+  .subtext {
+    font-size: 48px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.4;
+  }
+
+  .phone-frame {
+    position: relative;
+    z-index: 2;
+    margin-top: 40px;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+
+  .device {
+    width: 860px;
+    height: 1760px;
+    background: #000;
+    border-radius: 68px;
+    padding: 18px;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.1);
+    overflow: hidden;
+  }
+
+  .device-screen {
+    width: 100%;
+    height: 100%;
+    background: #FDFCF9;
+    border-radius: 52px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-bar {
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 50px 40px 0;
+    background: #FDFCF9;
+  }
+  .status-bar .time { font-size: 34px; font-weight: 600; color: #1a1a1a; }
+
+  .dynamic-island {
+    position: absolute;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 240px;
+    height: 70px;
+    background: #000;
+    border-radius: 40px;
+    z-index: 10;
+  }
+
+  /* Back nav */
+  .top-nav {
+    display: flex;
+    align-items: center;
+    padding: 16px 36px;
+    gap: 12px;
+  }
+  .back-arrow {
+    font-size: 36px;
+    color: #40C9D0;
+  }
+  .back-label {
+    font-size: 32px;
+    color: #40C9D0;
+    font-weight: 500;
+  }
+
+  .app-content {
+    flex: 1;
+    padding: 10px 36px 40px;
+    overflow: hidden;
+  }
+
+  .visit-header {
+    margin-bottom: 32px;
+  }
+  .visit-title {
+    font-size: 48px;
+    font-weight: 700;
+    color: #26231C;
+    margin-bottom: 8px;
+  }
+  .visit-meta {
+    font-size: 28px;
+    color: #8A8578;
+  }
+
+  /* Review pill */
+  .review-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, #40C9D0, #2BA8AE);
+    border-radius: 30px;
+    margin-bottom: 36px;
+  }
+  .review-pill span {
+    font-size: 26px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  /* Section */
+  .section {
+    margin-bottom: 32px;
+  }
+  .section-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #26231C;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+  .section-icon.cyan { background: #E8F9FA; color: #2BA8AE; }
+  .section-icon.coral { background: #FDF0EC; color: #E07A5F; }
+  .section-icon.green { background: #E8FAF0; color: #2D8A5E; }
+
+  .summary-text {
+    font-size: 28px;
+    color: #5A5549;
+    line-height: 1.6;
+    padding: 24px;
+    background: #fff;
+    border-radius: 16px;
+    border: 1.5px solid rgba(38,35,28,0.06);
+  }
+
+  /* Diagnosis list */
+  .diagnosis-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    background: #fff;
+    border-radius: 16px;
+    border: 1.5px solid rgba(38,35,28,0.06);
+    margin-bottom: 12px;
+  }
+  .diagnosis-name {
+    font-size: 30px;
+    font-weight: 600;
+    color: #26231C;
+  }
+  .diagnosis-status {
+    font-size: 24px;
+    color: #8A8578;
+  }
+  .learn-more {
+    font-size: 24px;
+    color: #40C9D0;
+    font-weight: 500;
+  }
+
+  /* Med item */
+  .med-item {
+    padding: 20px 24px;
+    background: #fff;
+    border-radius: 16px;
+    border: 1.5px solid rgba(38,35,28,0.06);
+    margin-bottom: 12px;
+  }
+  .med-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .med-name {
+    font-size: 30px;
+    font-weight: 600;
+    color: #26231C;
+  }
+  .med-dose {
+    font-size: 26px;
+    color: #8A8578;
+    margin-top: 4px;
+  }
+  .med-badge {
+    padding: 6px 16px;
+    border-radius: 14px;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .med-badge.continued {
+    background: #E8FAF0;
+    color: #2D8A5E;
+  }
+  .med-badge.new {
+    background: #FDF0EC;
+    color: #E07A5F;
+  }
+
+  /* Action item */
+  .action-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 24px;
+    background: #fff;
+    border-radius: 16px;
+    border: 1.5px solid rgba(38,35,28,0.06);
+    margin-bottom: 12px;
+  }
+  .checkbox {
+    width: 36px;
+    height: 36px;
+    border: 2.5px solid #D1CFC9;
+    border-radius: 8px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .action-text {
+    font-size: 28px;
+    color: #26231C;
+    line-height: 1.4;
+  }
+  .action-due {
+    font-size: 24px;
+    color: #E07A5F;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+<div class="screenshot">
+  <div class="text-area">
+    <div class="headline">Every Detail,<br>Organized</div>
+    <div class="subtext">Diagnoses, medications, and next steps —<br>extracted automatically.</div>
+  </div>
+
+  <div class="phone-frame">
+    <div class="device">
+      <div class="dynamic-island"></div>
+      <div class="device-screen">
+        <div class="status-bar">
+          <span class="time">9:41</span>
+        </div>
+
+        <div class="top-nav">
+          <span class="back-arrow">&#8249;</span>
+          <span class="back-label">Visits</span>
+        </div>
+
+        <div class="app-content">
+          <div class="visit-header">
+            <div class="visit-title">Dr. Patel — Cardiology</div>
+            <div class="visit-meta">March 8, 2026 &middot; 18 min recording</div>
+          </div>
+
+          <div class="review-pill">
+            <span>&#10024; Review with LumiBot</span>
+          </div>
+
+          <div class="section">
+            <div class="section-title">
+              <div class="section-icon cyan">&#128203;</div>
+              Summary
+            </div>
+            <div class="summary-text">
+              Blood pressure readings have improved significantly since starting Lisinopril. Doctor recommends continuing current regimen. Discussed adding low-dose aspirin. Follow-up appointment in 3 months with repeat labs.
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">
+              <div class="section-icon cyan">&#127973;</div>
+              Diagnoses
+            </div>
+            <div class="diagnosis-item">
+              <div>
+                <div class="diagnosis-name">Essential Hypertension</div>
+                <div class="learn-more">Learn more &rsaquo;</div>
+              </div>
+              <div class="diagnosis-status">Improving</div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">
+              <div class="section-icon coral">&#128138;</div>
+              Medications
+            </div>
+            <div class="med-item">
+              <div class="med-row">
+                <div>
+                  <div class="med-name">Lisinopril</div>
+                  <div class="med-dose">10mg &middot; Once daily</div>
+                </div>
+                <div class="med-badge continued">Continued</div>
+              </div>
+            </div>
+            <div class="med-item">
+              <div class="med-row">
+                <div>
+                  <div class="med-name">Aspirin</div>
+                  <div class="med-dose">81mg &middot; Once daily</div>
+                </div>
+                <div class="med-badge new">New</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">
+              <div class="section-icon green">&#9745;</div>
+              Action Items
+            </div>
+            <div class="action-item">
+              <div class="checkbox"></div>
+              <div>
+                <div class="action-text">Schedule follow-up appointment</div>
+                <div class="action-due">Due: June 8, 2026</div>
+              </div>
+            </div>
+            <div class="action-item">
+              <div class="checkbox"></div>
+              <div>
+                <div class="action-text">Get blood work done (lipid panel)</div>
+                <div class="action-due">Due: May 22, 2026</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

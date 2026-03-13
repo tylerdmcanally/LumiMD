@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screenshot 6 - Health Trends</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+
+  .screenshot {
+    width: 1290px;
+    height: 2796px;
+    background: linear-gradient(170deg, #40C9D0 0%, #7ECDB5 50%, #2D8A5E 100%);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .screenshot::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 40% 70%, rgba(255,255,255,0.06) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .text-area {
+    padding: 180px 80px 60px;
+    text-align: center;
+    z-index: 2;
+  }
+
+  .headline {
+    font-size: 96px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+    letter-spacing: -2px;
+    margin-bottom: 32px;
+  }
+
+  .subtext {
+    font-size: 48px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.4;
+  }
+
+  .phone-frame {
+    position: relative;
+    z-index: 2;
+    margin-top: 40px;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+
+  .device {
+    width: 860px;
+    height: 1760px;
+    background: #000;
+    border-radius: 68px;
+    padding: 18px;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.1);
+    overflow: hidden;
+  }
+
+  .device-screen {
+    width: 100%;
+    height: 100%;
+    background: #FDFCF9;
+    border-radius: 52px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-bar {
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 50px 40px 0;
+  }
+  .status-bar .time { font-size: 34px; font-weight: 600; color: #1a1a1a; }
+
+  .dynamic-island {
+    position: absolute;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 240px;
+    height: 70px;
+    background: #000;
+    border-radius: 40px;
+    z-index: 10;
+  }
+
+  .app-content {
+    flex: 1;
+    padding: 20px 36px 40px;
+    overflow: hidden;
+  }
+
+  .page-title {
+    font-size: 52px;
+    font-weight: 700;
+    color: #26231C;
+    margin-bottom: 12px;
+  }
+
+  .page-subtitle {
+    font-size: 28px;
+    color: #8A8578;
+    margin-bottom: 28px;
+  }
+
+  /* Period selector */
+  .period-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .period-btn {
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 26px;
+    font-weight: 600;
+    background: #F0EFEC;
+    color: #8A8578;
+  }
+
+  .period-btn.active {
+    background: #40C9D0;
+    color: #fff;
+  }
+
+  /* Chart card */
+  .chart-card {
+    background: #fff;
+    border-radius: 20px;
+    border: 1.5px solid rgba(38,35,28,0.08);
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(38,35,28,0.03);
+  }
+
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .chart-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #26231C;
+  }
+
+  .chart-latest {
+    text-align: right;
+  }
+
+  .chart-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: #26231C;
+  }
+
+  .chart-label {
+    font-size: 22px;
+    color: #8A8578;
+  }
+
+  /* SVG chart area */
+  .chart-area {
+    width: 100%;
+    height: 200px;
+    position: relative;
+    margin-bottom: 12px;
+  }
+
+  .chart-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Normal range band */
+  .normal-band {
+    fill: rgba(45, 138, 94, 0.08);
+  }
+
+  .chart-line {
+    fill: none;
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .chart-dot {
+    stroke-width: 3;
+  }
+
+  .line-systolic { stroke: #E07A5F; }
+  .line-diastolic { stroke: #40C9D0; }
+  .line-weight { stroke: #7C3AED; }
+  .line-glucose { stroke: #F0B429; }
+
+  .dot-systolic { fill: #E07A5F; stroke: #fff; }
+  .dot-diastolic { fill: #40C9D0; stroke: #fff; }
+  .dot-weight { fill: #7C3AED; stroke: #fff; }
+  .dot-glucose { fill: #F0B429; stroke: #fff; }
+
+  .chart-legend {
+    display: flex;
+    gap: 24px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 22px;
+    color: #8A8578;
+  }
+
+  .legend-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+  }
+
+  /* Insight card */
+  .insight-card {
+    background: linear-gradient(135deg, #F0F9FA, #E8F6F4);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border: 1.5px solid rgba(64,201,208,0.15);
+  }
+
+  .insight-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .insight-icon {
+    width: 36px;
+    height: 36px;
+    background: #40C9D0;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #fff;
+  }
+
+  .insight-label {
+    font-size: 26px;
+    font-weight: 600;
+    color: #1E8E94;
+  }
+
+  .insight-text {
+    font-size: 28px;
+    color: #3A7D8A;
+    line-height: 1.5;
+  }
+
+  /* Nav */
+  .nav-bar {
+    height: 140px;
+    background: #fff;
+    border-top: 1.5px solid rgba(38,35,28,0.06);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 20px 30px;
+  }
+
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-icon { font-size: 24px; }
+  .nav-label { font-size: 22px; font-weight: 500; color: #8A8578; }
+  .nav-item.active .nav-label { color: #40C9D0; }
+</style>
+</head>
+<body>
+<div class="screenshot">
+  <div class="text-area">
+    <div class="headline">Your Health Story,<br>at a Glance</div>
+    <div class="subtext">Track trends. Spot patterns. Stay informed.</div>
+  </div>
+
+  <div class="phone-frame">
+    <div class="device">
+      <div class="dynamic-island"></div>
+      <div class="device-screen">
+        <div class="status-bar">
+          <span class="time">9:41</span>
+        </div>
+
+        <div class="app-content">
+          <div class="page-title">Health Trends</div>
+          <div class="page-subtitle">Your vitals over time</div>
+
+          <div class="period-selector">
+            <div class="period-btn">1W</div>
+            <div class="period-btn active">1M</div>
+            <div class="period-btn">3M</div>
+            <div class="period-btn">6M</div>
+          </div>
+
+          <!-- Blood Pressure Chart -->
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">Blood Pressure</div>
+              <div class="chart-latest">
+                <div class="chart-value">128/82</div>
+                <div class="chart-label">Latest reading</div>
+              </div>
+            </div>
+            <div class="chart-area">
+              <svg class="chart-svg" viewBox="0 0 720 200">
+                <!-- Normal range -->
+                <rect class="normal-band" x="0" y="60" width="720" height="80" rx="4"/>
+                <text x="710" y="75" text-anchor="end" fill="#8A8578" font-size="16" font-family="Plus Jakarta Sans">Normal range</text>
+                <!-- Systolic line -->
+                <polyline class="chart-line line-systolic" points="40,50 160,35 280,55 400,45 520,40 640,52"/>
+                <circle class="chart-dot dot-systolic" cx="40" cy="50" r="8"/>
+                <circle class="chart-dot dot-systolic" cx="160" cy="35" r="8"/>
+                <circle class="chart-dot dot-systolic" cx="280" cy="55" r="8"/>
+                <circle class="chart-dot dot-systolic" cx="400" cy="45" r="8"/>
+                <circle class="chart-dot dot-systolic" cx="520" cy="40" r="8"/>
+                <circle class="chart-dot dot-systolic" cx="640" cy="52" r="8"/>
+                <!-- Diastolic line -->
+                <polyline class="chart-line line-diastolic" points="40,120 160,110 280,125 400,115 520,112 640,118"/>
+                <circle class="chart-dot dot-diastolic" cx="40" cy="120" r="8"/>
+                <circle class="chart-dot dot-diastolic" cx="160" cy="110" r="8"/>
+                <circle class="chart-dot dot-diastolic" cx="280" cy="125" r="8"/>
+                <circle class="chart-dot dot-diastolic" cx="400" cy="115" r="8"/>
+                <circle class="chart-dot dot-diastolic" cx="520" cy="112" r="8"/>
+                <circle class="chart-dot dot-diastolic" cx="640" cy="118" r="8"/>
+                <!-- X axis labels -->
+                <text x="40" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Feb 12</text>
+                <text x="200" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Feb 19</text>
+                <text x="360" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Feb 26</text>
+                <text x="520" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Mar 5</text>
+                <text x="660" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Mar 11</text>
+              </svg>
+            </div>
+            <div class="chart-legend">
+              <div class="legend-item"><div class="legend-dot" style="background: #E07A5F;"></div> Systolic</div>
+              <div class="legend-item"><div class="legend-dot" style="background: #40C9D0;"></div> Diastolic</div>
+            </div>
+          </div>
+
+          <!-- Weight Chart -->
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">Weight</div>
+              <div class="chart-latest">
+                <div class="chart-value">156 lbs</div>
+                <div class="chart-label">Latest reading</div>
+              </div>
+            </div>
+            <div class="chart-area">
+              <svg class="chart-svg" viewBox="0 0 720 200">
+                <polyline class="chart-line line-weight" points="40,60 160,65 280,55 400,70 520,50 640,45"/>
+                <circle class="chart-dot dot-weight" cx="40" cy="60" r="8"/>
+                <circle class="chart-dot dot-weight" cx="160" cy="65" r="8"/>
+                <circle class="chart-dot dot-weight" cx="280" cy="55" r="8"/>
+                <circle class="chart-dot dot-weight" cx="400" cy="70" r="8"/>
+                <circle class="chart-dot dot-weight" cx="520" cy="50" r="8"/>
+                <circle class="chart-dot dot-weight" cx="640" cy="45" r="8"/>
+                <text x="40" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Feb 12</text>
+                <text x="360" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Feb 26</text>
+                <text x="660" y="190" text-anchor="middle" fill="#B0AEA6" font-size="18" font-family="Plus Jakarta Sans">Mar 11</text>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Insight -->
+          <div class="insight-card">
+            <div class="insight-header">
+              <div class="insight-icon">&#9672;</div>
+              <div class="insight-label">Trend Insight</div>
+            </div>
+            <div class="insight-text">Your blood pressure readings have been improving over the past 4 weeks. Share this with your care team at your next visit.</div>
+          </div>
+        </div>
+
+        <div class="nav-bar">
+          <div class="nav-item">
+            <div class="nav-icon">&#127968;</div>
+            <div class="nav-label">Home</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#128138;</div>
+            <div class="nav-label">Meds</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#9745;</div>
+            <div class="nav-label">Actions</div>
+          </div>
+          <div class="nav-item active">
+            <div class="nav-icon">&#128147;</div>
+            <div class="nav-label">Health</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-icon">&#9881;</div>
+            <div class="nav-label">Settings</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

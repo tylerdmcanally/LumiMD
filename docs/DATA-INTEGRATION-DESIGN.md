@@ -2,7 +2,7 @@
 
 **Date:** March 10, 2026
 **Type:** Technical Design Document
-**Status:** Design — ready for engineering review
+**Status:** Implemented — Phase 1 (AVS upload) and Phase 2 (action nudges) deployed to `lumimd-dev`
 **Prereq:** [DATA-INGESTION-STRATEGY.md](DATA-INGESTION-STRATEGY.md) — prior session's research on pipeline flexibility and per-source tradeoffs
 
 ---

@@ -209,9 +209,12 @@ iOS Bundled 2533ms node_modules/expo-router/entry.js (1595 modules)
 - `mobile/lib/utils/medlineplus.ts`
 - `web-portal/lib/utils/medlineplus.ts`
 
-**Implementation:** Single `getMedlinePlusUrl(name)` function that returns `https://medlineplus.gov/search/?query=${encodeURIComponent(name)}`. Identical implementation in both mobile and web.
+**Implementation:** Context-aware `getMedlinePlusUrl(name, type)` function with `'medication'` | `'condition'` parameter.
 
-**Deviation:** None — implemented exactly as spec.
+**Evolution (2026-03-11):** Original `medlineplus.gov/search/` endpoint retired (returns 404). Migrated to NLM vivisimo search, then enhanced with direct page resolution:
+- **Conditions:** Mobile calls NLM Health Topics API (`wsearch.nlm.nih.gov/ws/query?db=healthTopics`) directly to resolve direct MedlinePlus topic page URLs (e.g., `medlineplus.gov/diabetes.html`). Web uses `/api/medlineplus` Next.js proxy route (302 redirect) to avoid CORS.
+- **Medications:** Contextual NLM search appending "medication" to the query. First result is typically the direct drug info page.
+- Falls back to search if API returns no match.
 
 #### B.2 — iOS: Add Links to Visit Detail
 
