@@ -716,7 +716,7 @@ function MedicationRow({
               )
             ) : null}
             <a
-              href={getMedlinePlusUrl(medicationName)}
+              href={getMedlinePlusUrl(medicationName, 'medication')}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -1032,7 +1032,7 @@ function MedicationCard({
 
           {/* Learn more on MedlinePlus */}
           <a
-            href={getMedlinePlusUrl(medicationName)}
+            href={getMedlinePlusUrl(medicationName, 'medication')}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}

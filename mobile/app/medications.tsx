@@ -19,7 +19,7 @@ import { Colors, spacing, Radius, Card } from '../components/ui';
 import { EmptyState } from '../components/EmptyState';
 import { Linking } from 'react-native';
 import { openWebMeds, openWebVisit } from '../lib/linking';
-import { getMedlinePlusUrl } from '../lib/utils/medlineplus';
+import { openMedlinePlus } from '../lib/utils/medlineplus';
 import { useAuth } from '../contexts/AuthContext';
 import {
   usePaginatedMedications,
@@ -348,7 +348,7 @@ export default function MedicationsScreen() {
               {/* Learn more on MedlinePlus */}
               <Pressable
                 style={styles.learnMoreRow}
-                onPress={(e) => { e.stopPropagation(); Linking.openURL(getMedlinePlusUrl(med.name || 'Medication')); }}
+                onPress={(e) => { e.stopPropagation(); openMedlinePlus(med.name || 'Medication', 'medication'); }}
                 hitSlop={8}
               >
                 <Ionicons name="open-outline" size={14} color={Colors.primary} />

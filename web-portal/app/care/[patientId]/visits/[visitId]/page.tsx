@@ -1151,7 +1151,7 @@ function MedicationSection({
                 <div className="flex items-start justify-between gap-2">
                   <span>{medName}</span>
                   <a
-                    href={getMedlinePlusUrl(medName)}
+                    href={getMedlinePlusUrl(medName, 'medication')}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors shrink-0 mt-0.5"

@@ -39,7 +39,7 @@ import {
   buildMedicationEducationMap,
 } from '../lib/utils/educationHelpers';
 import { trackEvent } from '../lib/telemetry';
-import { getMedlinePlusUrl } from '../lib/utils/medlineplus';
+import { openMedlinePlus } from '../lib/utils/medlineplus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VisitWalkthrough } from '../components/VisitWalkthrough';
 import type { VisitWalkthrough as VisitWalkthroughType } from '@lumimd/sdk';
@@ -975,7 +975,7 @@ export default function VisitDetailScreen() {
                             <Text style={styles.listRowText}>{item}</Text>
                             <Pressable
                               style={styles.learnMoreLink}
-                              onPress={() => Linking.openURL(getMedlinePlusUrl(item))}
+                              onPress={() => openMedlinePlus(item, 'condition')}
                               hitSlop={8}
                             >
                               <Ionicons name="open-outline" size={12} color={Colors.textMuted} />
@@ -1028,7 +1028,7 @@ export default function VisitDetailScreen() {
                                       <View style={styles.medLinksRow}>
                                         <Pressable
                                           style={styles.learnMoreLink}
-                                          onPress={() => Linking.openURL(getMedlinePlusUrl(item.primary))}
+                                          onPress={() => openMedlinePlus(item.primary, 'medication')}
                                           hitSlop={8}
                                         >
                                           <Ionicons name="open-outline" size={12} color={Colors.textMuted} />

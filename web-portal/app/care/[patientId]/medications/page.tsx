@@ -169,7 +169,7 @@ export default function PatientMedicationsPage() {
                                                     </p>
                                                 )}
                                                 <a
-                                                    href={getMedlinePlusUrl(med.name)}
+                                                    href={getMedlinePlusUrl(med.name, 'medication')}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors mt-2"
@@ -239,7 +239,7 @@ export default function PatientMedicationsPage() {
                                                         </div>
                                                     )}
                                                     <a
-                                                        href={getMedlinePlusUrl(med.name)}
+                                                        href={getMedlinePlusUrl(med.name, 'medication')}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-brand-primary transition-colors mt-2"
