@@ -8,6 +8,11 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api/client';
 
+// Notification action identifiers for medication reminders
+export const MED_REMINDER_CATEGORY = 'medication_reminder';
+export const MED_ACTION_TOOK_IT = 'TOOK_IT';
+export const MED_ACTION_SKIPPED = 'SKIPPED';
+
 // Configure notification handler behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -18,6 +23,30 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
+/**
+ * Register notification categories with action buttons.
+ * Must be called once on app startup before notifications arrive.
+ */
+export async function registerNotificationCategories(): Promise<void> {
+  try {
+    await Notifications.setNotificationCategoryAsync(MED_REMINDER_CATEGORY, [
+      {
+        identifier: MED_ACTION_TOOK_IT,
+        buttonTitle: 'Took it',
+        options: { isDestructive: false, isAuthenticationRequired: false },
+      },
+      {
+        identifier: MED_ACTION_SKIPPED,
+        buttonTitle: 'Skipped',
+        options: { isDestructive: true, isAuthenticationRequired: false },
+      },
+    ]);
+    console.log('[Notifications] Registered medication_reminder category');
+  } catch (error) {
+    console.error('[Notifications] Error registering notification categories:', error);
+  }
+}
 
 const DEVICE_ID_STORAGE_KEY = 'lumimd:deviceInstallationId';
 export const LEGACY_PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
@@ -189,6 +218,28 @@ export async function registerPushToken(token: string): Promise<void> {
   }
 }
 
+const LAST_TIMEZONE_STORAGE_KEY = 'lumimd:lastSyncedTimezone';
+
+/**
+ * Sync device timezone to backend if it changed (e.g. patient traveled).
+ * Lightweight — only calls PATCH /v1/users/me when timezone differs from last sync.
+ */
+export async function syncTimezone(): Promise<void> {
+  try {
+    const currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const lastTimezone = await AsyncStorage.getItem(LAST_TIMEZONE_STORAGE_KEY);
+
+    if (currentTimezone === lastTimezone) return;
+
+    await api.user.updateProfile({ timezone: currentTimezone } as any);
+    await AsyncStorage.setItem(LAST_TIMEZONE_STORAGE_KEY, currentTimezone);
+    console.log('[Notifications] Timezone synced:', lastTimezone, '→', currentTimezone);
+  } catch (error) {
+    // Non-critical — will retry on next foreground
+    console.warn('[Notifications] Timezone sync failed:', error);
+  }
+}
+
 /**
  * Unregister push token from backend
  */
@@ -268,6 +319,7 @@ export async function scheduleLocalMedicationReminder(
       content: {
         title: 'Medication Reminder',
         body: `Time to take your ${options.medicationName}${doseText}`,
+        categoryIdentifier: MED_REMINDER_CATEGORY,
         data: {
           type: 'medication_reminder',
           medicationId: options.medicationId,

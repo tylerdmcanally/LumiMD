@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import VisitsScreen from '../app/visits';
+import VisitsScreen from '../app/(patient)/visits';
 
 const mockUseAuth = jest.fn();
 const mockUsePaginatedVisits = jest.fn();

@@ -25,28 +25,28 @@ import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useQueryClient } from '@tanstack/react-query';
-import { Colors, Card, spacing, Radius } from '../components/ui';
-import { useVisit, queryKeys } from '../lib/api/hooks';
-import { api } from '../lib/api/client';
-import { openWebDashboard } from '../lib/linking';
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { MedicationReviewSheet } from '../components/MedicationReviewSheet';
-import { CollapsibleSection } from '../components/CollapsibleSection';
-import { DiagnosisEducationCard, MedicationEducationCard } from '../components/EducationCard';
+import { Colors, Card, spacing, Radius } from '../../components/ui';
+import { useVisit, queryKeys } from '../../lib/api/hooks';
+import { api } from '../../lib/api/client';
+import { openWebDashboard } from '../../lib/linking';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { MedicationReviewSheet } from '../../components/MedicationReviewSheet';
+import { CollapsibleSection } from '../../components/CollapsibleSection';
+import { DiagnosisEducationCard, MedicationEducationCard } from '../../components/EducationCard';
 import {
   normalizeEducationKey,
   buildDiagnosisEducationMap,
   buildMedicationEducationMap,
-} from '../lib/utils/educationHelpers';
-import { trackEvent } from '../lib/telemetry';
-import { openMedlinePlus } from '../lib/utils/medlineplus';
+} from '../../lib/utils/educationHelpers';
+import { trackEvent } from '../../lib/telemetry';
+import { openMedlinePlus } from '../../lib/utils/medlineplus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { VisitWalkthrough } from '../components/VisitWalkthrough';
+import { VisitWalkthrough } from '../../components/VisitWalkthrough';
 import type { VisitWalkthrough as VisitWalkthroughType } from '@lumimd/sdk';
-import { useCompleteAction, useCreateMedication, useUpdateMedication } from '../lib/api/mutations';
-import { EditMedicationSheet } from '../components/EditMedicationSheet';
+import { useCompleteAction, useCreateMedication, useUpdateMedication } from '../../lib/api/mutations';
+import { EditMedicationSheet } from '../../components/EditMedicationSheet';
 import firestore from '@react-native-firebase/firestore';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
 import type { Medication } from '@lumimd/sdk';
 
 dayjs.extend(relativeTime);

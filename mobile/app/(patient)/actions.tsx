@@ -16,17 +16,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
-import { Colors, spacing, Card } from '../components/ui';
-import { EmptyState } from '../components/EmptyState';
-import { usePaginatedActionItems, queryKeys } from '../lib/api/hooks';
-import { openWebActions } from '../lib/linking';
-import { useCompleteAction } from '../lib/api/mutations';
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { addActionToCalendar, removeCalendarEvent } from '../lib/calendar';
-import { api } from '../lib/api/client';
-import { useAuth } from '../contexts/AuthContext';
+import { Colors, spacing, Card } from '../../components/ui';
+import { EmptyState } from '../../components/EmptyState';
+import { usePaginatedActionItems, queryKeys } from '../../lib/api/hooks';
+import { openWebActions } from '../../lib/linking';
+import { useCompleteAction } from '../../lib/api/mutations';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { addActionToCalendar, removeCalendarEvent } from '../../lib/calendar';
+import { api } from '../../lib/api/client';
+import { useAuth } from '../../contexts/AuthContext';
 import { getFollowUpCategoryLabel } from '@lumimd/sdk';
-import { AddActionSheet } from '../components/AddActionSheet';
+import { AddActionSheet } from '../../components/AddActionSheet';
 
 const formatDate = (date?: string | null) => {
   if (!date) return '';

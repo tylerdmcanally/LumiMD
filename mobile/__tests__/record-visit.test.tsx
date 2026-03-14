@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import RecordVisitScreen from '../app/record-visit';
+import RecordVisitScreen from '../app/(patient)/record-visit';
 
 const mockUseAudioRecording = jest.fn();
 const mockStartRecording = jest.fn();

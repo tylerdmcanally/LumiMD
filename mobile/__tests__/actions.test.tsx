@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import ActionsScreen from '../app/actions';
+import ActionsScreen from '../app/(patient)/actions';
 
 const mockUseAuth = jest.fn();
 const mockUsePaginatedActionItems = jest.fn();

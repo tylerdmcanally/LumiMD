@@ -5,6 +5,7 @@ import { normalizeMedicationSummary, computePendingMedicationChanges } from './m
 import { analyzeVisitWithDelta } from './lumibotAnalyzer';
 import { getNotificationService } from './notifications';
 import { sendVisitPdfToAllCaregivers } from './caregiverEmailService';
+import { resolveNotificationPreferences } from './notificationPreferences';
 import type { VisitSummaryResult } from './openai';
 import { UserDomainService } from './domain/users/UserDomainService';
 import { VisitDomainService } from './domain/visits/VisitDomainService';
@@ -289,6 +290,16 @@ async function retryOperation(
     }
 
     case 'pushNotification': {
+      const userDoc = await admin.firestore().collection('users').doc(userId).get();
+      const prefs = resolveNotificationPreferences(
+        userDoc.exists ? (userDoc.data() as Record<string, unknown>) : null,
+      );
+      if (!prefs.visitReady) {
+        functions.logger.info(
+          `[visitPostCommitRecovery] User ${userId} has visitReady disabled — skipping push`,
+        );
+        return;
+      }
       const notificationService = getNotificationService();
       await notificationService.notifyVisitReady(userId, visitId);
       return;

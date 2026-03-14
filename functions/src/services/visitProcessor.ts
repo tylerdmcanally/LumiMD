@@ -12,6 +12,7 @@ import { analyzeVisitWithDelta } from './lumibotAnalyzer';
 import { generateVisitWalkthrough } from './walkthroughGenerator';
 import { getNotificationService } from './notifications';
 import { sendVisitPdfToAllCaregivers } from './caregiverEmailService';
+import { resolveNotificationPreferences } from './notificationPreferences';
 import { FirestoreMedicationRepository } from './repositories/medications/FirestoreMedicationRepository';
 import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
 import { FirestoreVisitActionSyncRepository } from './repositories/visitActionSync/FirestoreVisitActionSyncRepository';
@@ -479,8 +480,22 @@ export async function summarizeVisit({
         );
       })(),
 
-      // 4. Send push notification to user that visit is ready
+      // 4. Send push notification to user that visit is ready (if pref enabled)
       (async () => {
+        try {
+          const userDoc = await db().collection('users').doc(visitData.userId).get();
+          const prefs = resolveNotificationPreferences(
+            userDoc.exists ? (userDoc.data() as Record<string, unknown>) : null,
+          );
+          if (!prefs.visitReady) {
+            functions.logger.info(
+              `[visitProcessor] User ${visitData.userId} has visitReady disabled — skipping push`,
+            );
+            return;
+          }
+        } catch {
+          // Fail open — send notification if we can't read prefs
+        }
         const notificationService = getNotificationService();
         await notificationService.notifyVisitReady(visitData.userId, visitRef.id);
       })(),

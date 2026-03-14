@@ -20,6 +20,7 @@ export interface PushNotificationPayload {
   sound?: 'default' | null;
   priority?: 'default' | 'normal' | 'high';
   channelId?: string;
+  categoryId?: string;
 }
 
 export interface PushNotificationResponse {

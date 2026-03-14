@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
-import MedicationScheduleScreen from '../app/medication-schedule';
+import MedicationScheduleScreen from '../app/(patient)/medication-schedule';
 
 const mockUseAuth = jest.fn();
 const mockUseMedicationSchedule = jest.fn();

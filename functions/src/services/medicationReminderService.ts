@@ -21,6 +21,7 @@ import {
     resolveReminderTimingPolicy,
     resolveTimezoneOrDefault,
 } from '../utils/medicationReminderTiming';
+import { resolveNotificationPreferences } from './notificationPreferences';
 
 const getDb = () => admin.firestore();
 
@@ -699,6 +700,37 @@ export async function processAndNotifyMedicationReminders(
                 continue;
             }
 
+            // Check patient notification preferences — suppress push if disabled
+            try {
+                const userDoc = await getDb().collection('users').doc(userId).get();
+                const prefs = resolveNotificationPreferences(
+                    userDoc.exists ? (userDoc.data() as Record<string, unknown>) : null,
+                );
+                if (!prefs.medicationReminders) {
+                    functions.logger.info(
+                        `[MedReminders] User ${userId} has medicationReminders disabled — skipping ${dueReminders.length} pushes`,
+                    );
+                    // Still update lastSentAt so schedule stays intact
+                    for (const reminder of dueReminders) {
+                        reminderUpdates.push({
+                            reminderId: reminder.id,
+                            updates: {
+                                lastSentAt: now,
+                                timingMode: reminder.timingMode,
+                                anchorTimezone: reminder.anchorTimezone,
+                                criticality: reminder.criticality,
+                                updatedAt: now,
+                            },
+                        });
+                    }
+                    stats.processed += dueReminders.length;
+                    continue;
+                }
+            } catch (prefsError) {
+                functions.logger.warn(`[MedReminders] Could not check prefs for user ${userId}:`, prefsError);
+                // Continue sending — fail open (default true)
+            }
+
             const tokens = await notificationService.getUserPushTokens(userId);
 
             // Log tokens for debugging
@@ -750,6 +782,7 @@ export async function processAndNotifyMedicationReminders(
                     to: token,
                     title: 'Medication Reminder',
                     body: notificationBody,
+                    categoryId: 'medication_reminder',
                     data: {
                         type: 'medication_reminder',
                         reminderId: reminder.id,

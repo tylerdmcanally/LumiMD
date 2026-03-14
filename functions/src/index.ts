@@ -49,9 +49,12 @@ export {
 export { analyzeMedicationSafety } from './callables/medicationSafety';
 export { privacyDataSweeper } from './triggers/privacySweeper';
 export { staleVisitSweeper } from './triggers/staleVisitSweeper';
-export { processMedicationFollowUpNudges } from './triggers/medicationFollowUpNudges';
+// Disabled: follow-up nudges replaced by action buttons on reminder notifications
+// export { processMedicationFollowUpNudges } from './triggers/medicationFollowUpNudges';
 export { processActionItemReminderNudges } from './triggers/actionItemReminderNudges';
 export { processActionOverdueNotifier } from './triggers/actionOverdueNotifier';
+export { processCaregiverDailyBriefing } from './triggers/caregiverDailyBriefing';
+export { processCaregiverAlerts } from './triggers/caregiverAlerts';
 
 const parsePositiveInt = (value: string | undefined): number | undefined => {
   if (!value) {

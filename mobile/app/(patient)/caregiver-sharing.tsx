@@ -17,8 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { Share, ShareInvite } from '@lumimd/sdk';
-import { Colors, spacing, Radius, Card } from '../components/ui';
-import { useAuth } from '../contexts/AuthContext';
+import { Colors, spacing, Radius, Card } from '../../components/ui';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   useInviteCaregiver,
   useMyShareInvites,
@@ -26,7 +26,7 @@ import {
   useRevokeShareAccess,
   useRevokeShareInvite,
   useShares,
-} from '../lib/api/hooks';
+} from '../../lib/api/hooks';
 
 type PendingItem = {
   kind: 'share' | 'invite';

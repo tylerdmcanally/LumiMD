@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import HomeScreen from '../app/index';
+import HomeScreen from '../app/(patient)/index';
 
 const mockUseAuth = jest.fn();
 const mockUseUserProfile = jest.fn();

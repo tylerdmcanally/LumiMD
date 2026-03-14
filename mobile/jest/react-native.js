@@ -49,6 +49,11 @@ const Linking = {
   canOpenURL: jest.fn(async () => true),
 };
 
+const AppState = {
+  currentState: 'active',
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+};
+
 const Animated = {
   View: createHostComponent('Animated.View'),
   Text: createHostComponent('Animated.Text'),
@@ -78,6 +83,7 @@ module.exports = {
     Alert,
     Linking,
     Animated,
+    AppState,
   },
   View,
   Text,
@@ -99,4 +105,5 @@ module.exports = {
   Alert,
   Linking,
   Animated,
+  AppState,
 };

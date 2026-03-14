@@ -1378,3 +1378,397 @@ export function useMarkMessageRead() {
     },
   });
 }
+
+// =============================================================================
+// Caregiver API Hooks
+// =============================================================================
+
+export interface CareOverviewPatient {
+  patientId: string;
+  patientName: string;
+  medicationsToday: { taken: number; total: number };
+  pendingActions: number;
+  alerts: Array<{
+    type: string;
+    severity: 'high' | 'medium' | 'low';
+    title: string;
+    description: string;
+    timestamp: string;
+  }>;
+  lastActive: string | null;
+  latestVitals?: {
+    bloodPressure?: { systolic: number; diastolic: number; recordedAt: string };
+    weight?: { value: number; unit: string; recordedAt: string };
+    glucose?: { value: number; unit: string; recordedAt: string };
+  };
+}
+
+export interface CareOverviewData {
+  patients: CareOverviewPatient[];
+}
+
+export function useCareOverview(options?: QueryEnabledOptions<CareOverviewData>) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareOverviewData>({
+    queryKey: ['care-overview', sessionKey],
+    staleTime: 30_000,
+    enabled: sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      const raw = await fetchWithAuth<{ patients: any[] }>('/v1/care/overview');
+      // Transform API field names to mobile interface names
+      return {
+        patients: (raw.patients ?? []).map((p: any) => ({
+          patientId: p.userId ?? p.patientId ?? '',
+          patientName: p.name ?? p.patientName ?? 'Patient',
+          medicationsToday: p.medicationsToday ?? { taken: 0, total: 0 },
+          pendingActions: p.pendingActions ?? 0,
+          alerts: (p.alerts ?? []).map((a: any) => ({
+            type: a.type ?? '',
+            severity: a.priority ?? a.severity ?? 'low',
+            title: a.title ?? a.message ?? '',
+            description: a.description ?? a.message ?? '',
+            timestamp: a.timestamp ?? new Date().toISOString(),
+          })),
+          lastActive: p.lastActive ?? null,
+          latestVitals: p.latestVitals ?? undefined,
+        })),
+      };
+    },
+  });
+}
+
+export interface CareAlertItem {
+  type: string;
+  severity: 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  patientId?: string;
+  patientName?: string;
+  timestamp: string;
+}
+
+export interface CareAlertsData {
+  alerts: CareAlertItem[];
+}
+
+export function useCareAlerts(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CareAlertsData>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareAlertsData>({
+    queryKey: ['care-alerts', sessionKey, patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      const raw = await fetchWithAuth<any>(`/v1/care/${patientId}/alerts`);
+      // Backend can return severity: 'emergency' which isn't in the mobile type
+      const alerts: CareAlertItem[] = (raw.alerts ?? []).map((a: any) => ({
+        type: a.type ?? '',
+        severity: a.severity === 'emergency' ? 'high' : (a.severity ?? 'low'),
+        title: a.title ?? '',
+        description: a.description ?? '',
+        patientId: a.patientId,
+        patientName: a.patientName,
+        timestamp: a.timestamp ?? new Date().toISOString(),
+      }));
+      return { alerts };
+    },
+  });
+}
+
+export interface CareQuickOverviewData {
+  patientName: string;
+  medicationsToday: { taken: number; skipped: number; pending: number; missed: number; total: number };
+  pendingActions: number;
+  overdueActions: number;
+  recentActivity: Array<{ type: string; description: string; timestamp: string }>;
+  alerts: CareAlertItem[];
+}
+
+export function useCareQuickOverview(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CareQuickOverviewData>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareQuickOverviewData>({
+    queryKey: ['care-quick-overview', sessionKey, patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      const raw = await fetchWithAuth<any>(`/v1/care/${patientId}/quick-overview`);
+      // Transform API field names to mobile interface
+      const todaysMeds = raw.todaysMeds ?? raw.medicationsToday ?? {};
+      const upcomingActions = raw.upcomingActions ?? {};
+      const summary = upcomingActions.summary ?? {};
+      const needsAttention: any[] = raw.needsAttention ?? raw.alerts ?? [];
+      return {
+        patientName: raw.patientName ?? raw.name ?? 'Patient',
+        medicationsToday: {
+          taken: todaysMeds.taken ?? 0,
+          skipped: todaysMeds.skipped ?? 0,
+          pending: todaysMeds.pending ?? 0,
+          missed: todaysMeds.missed ?? 0,
+          total: todaysMeds.total ?? 0,
+        },
+        pendingActions: raw.pendingActions ?? (summary.overdue ?? 0) + (summary.dueToday ?? 0) + (summary.dueThisWeek ?? 0) + (summary.dueLater ?? 0),
+        overdueActions: raw.overdueActions ?? summary.overdue ?? 0,
+        recentActivity: raw.recentActivity ?? [],
+        alerts: needsAttention.map((a: any) => ({
+          type: a.type ?? '',
+          severity: a.priority ?? a.severity ?? 'low',
+          title: a.title ?? a.message ?? '',
+          description: a.description ?? a.message ?? '',
+          timestamp: a.timestamp ?? new Date().toISOString(),
+        })),
+      };
+    },
+  });
+}
+
+export interface CareMedicationStatusData {
+  medications: Array<{
+    id: string;
+    name: string;
+    dose: string;
+    status: 'taken' | 'skipped' | 'pending' | 'missed';
+    scheduledTime?: string;
+  }>;
+  summary: { taken: number; skipped: number; pending: number; missed: number; total: number };
+}
+
+export function useCareMedicationStatus(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CareMedicationStatusData>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareMedicationStatusData>({
+    queryKey: ['care-medication-status', sessionKey, patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      const raw = await fetchWithAuth<any>(`/v1/care/${patientId}/medication-status`);
+      // Transform API schedule items to mobile medications format
+      const schedule: any[] = raw.schedule ?? raw.medications ?? [];
+      const summary = raw.summary ?? {};
+      return {
+        medications: schedule.map((item: any) => ({
+          id: item.medicationId ?? item.id ?? '',
+          name: item.medicationName ?? item.name ?? '',
+          dose: item.dose ?? '',
+          status: item.status ?? 'pending',
+          scheduledTime: item.scheduledTime,
+        })),
+        summary: {
+          taken: summary.taken ?? 0,
+          skipped: summary.skipped ?? 0,
+          pending: summary.pending ?? 0,
+          missed: summary.missed ?? 0,
+          total: summary.total ?? 0,
+        },
+      };
+    },
+  });
+}
+
+export function useSendCareMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ patientId, message }: { patientId: string; message: string }) =>
+      fetchWithAuth(`/v1/care/${patientId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['care-messages'] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Caregiver — Visit list (paginated)
+// ---------------------------------------------------------------------------
+
+export interface CareVisitListItem {
+  id: string;
+  processingStatus?: string;
+  summary?: string;
+  provider?: string;
+  specialty?: string;
+  diagnoses?: string[];
+  source?: string;
+  createdAt?: string;
+  visitDate?: string;
+}
+
+export function useCareVisits(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CareVisitListItem[]>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareVisitListItem[]>({
+    queryKey: ['care-visits', sessionKey, patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      return fetchWithAuth<CareVisitListItem[]>(`/v1/care/${patientId}/visits`);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Caregiver — Single visit detail
+// ---------------------------------------------------------------------------
+
+export interface CareVisitDetailData {
+  id: string;
+  processingStatus?: string;
+  summary?: string;
+  provider?: string;
+  specialty?: string;
+  location?: string;
+  diagnoses?: string[];
+  diagnosesDetailed?: Array<{ name: string; description?: string }>;
+  medications?: {
+    started?: Array<{ name: string; dose?: string; frequency?: string; reason?: string }>;
+    changed?: Array<{ name: string; previousDose?: string; newDose?: string; reason?: string }>;
+    stopped?: Array<{ name: string; reason?: string }>;
+    continued?: Array<{ name: string; dose?: string; frequency?: string }>;
+  };
+  nextSteps?: string[];
+  followUps?: Array<{ description: string; dueDate?: string; category?: string }>;
+  testsOrdered?: string[];
+  education?: { keyTakeaways?: string[]; redFlags?: string[] };
+  createdAt?: string;
+  visitDate?: string;
+  patientName?: string;
+}
+
+export function useCareVisitDetail(
+  patientId: string | undefined,
+  visitId: string | undefined,
+  options?: QueryEnabledOptions<CareVisitDetailData>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareVisitDetailData>({
+    queryKey: ['care-visit-detail', sessionKey, patientId ?? 'unknown', visitId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && Boolean(visitId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      return fetchWithAuth<CareVisitDetailData>(`/v1/care/${patientId}/visits/${visitId}`);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Caregiver — Medication list
+// ---------------------------------------------------------------------------
+
+export interface CareMedicationItem {
+  id: string;
+  name: string;
+  dose?: string;
+  frequency?: string;
+  active?: boolean;
+  source?: string;
+  startedAt?: string;
+  stoppedAt?: string;
+  medicationWarning?: Array<{
+    type: string;
+    severity: string;
+    message: string;
+  }>;
+}
+
+export function useCareMedications(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CareMedicationItem[]>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareMedicationItem[]>({
+    queryKey: ['care-medications', sessionKey, patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      return fetchWithAuth<CareMedicationItem[]>(`/v1/care/${patientId}/medications`);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Caregiver — Action items list
+// ---------------------------------------------------------------------------
+
+export interface CareActionItem {
+  id: string;
+  description: string;
+  completed: boolean;
+  completedAt?: string;
+  dueAt?: string;
+  type?: string;
+  details?: string;
+  visitId?: string;
+  source?: string;
+  createdAt?: string;
+}
+
+export function useCareActions(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CareActionItem[]>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareActionItem[]>({
+    queryKey: ['care-actions', sessionKey, patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      return fetchWithAuth<CareActionItem[]>(`/v1/care/${patientId}/actions`);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Caregiver — Message list (sent messages)
+// ---------------------------------------------------------------------------
+
+export interface CareMessageItem {
+  id: string;
+  message: string;
+  senderName: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export function useCareMessages(
+  patientId: string | undefined,
+  options?: QueryEnabledOptions<CareMessageItem[]>,
+) {
+  const sessionKey = getSessionKey();
+
+  return useQuery<CareMessageItem[]>({
+    queryKey: ['care-messages', sessionKey, patientId ?? 'unknown'],
+    staleTime: 30_000,
+    enabled: Boolean(patientId) && sessionKey !== 'anonymous',
+    ...options,
+    queryFn: async () => {
+      return fetchWithAuth<CareMessageItem[]>(`/v1/care/${patientId}/messages`);
+    },
+  });
+}

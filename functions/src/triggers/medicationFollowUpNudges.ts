@@ -6,6 +6,7 @@ import {
 } from '../services/repositories/medicationReminderProcessing/FirestoreMedicationReminderProcessingRepository';
 import { FirestoreNudgeRepository } from '../services/repositories/nudges/FirestoreNudgeRepository';
 import { NudgeDomainService } from '../services/domain/nudges/NudgeDomainService';
+import { resolveNotificationPreferences, isInQuietHours as isInQuietHoursConfigurable } from '../services/notificationPreferences';
 
 /**
  * Grace window: how long after a reminder was sent before we send a follow-up.
@@ -17,9 +18,6 @@ const GRACE_MAX_HOURS = 4;
 /** Maximum follow-up nudges per user per day (shared with other nudge types). */
 const MAX_DAILY_FOLLOWUP_NUDGES = 3;
 
-/** Quiet hours — do not send follow-ups during these times. */
-const QUIET_HOURS_START = 21; // 9pm
-const QUIET_HOURS_END = 8;   // 8am
 const DEFAULT_TIMEZONE = 'America/Chicago';
 
 const db = () => admin.firestore();
@@ -98,15 +96,29 @@ export const processMedicationFollowUpNudges = onSchedule(
         try {
           // Check quiet hours
           let timezone = DEFAULT_TIMEZONE;
+          let userProfile: Record<string, unknown> | null = null;
           try {
-            const tz = await reminderRepo.getUserTimezoneValue(userId);
-            if (tz) timezone = tz;
+            const userDoc = await firestore.collection('users').doc(userId).get();
+            if (userDoc.exists) {
+              userProfile = userDoc.data() as Record<string, unknown>;
+              const tz = userProfile?.timezone;
+              if (typeof tz === 'string' && tz.length > 0) timezone = tz;
+            }
           } catch {
             // Use default
           }
 
-          if (isQuietHours(now, timezone)) {
+          // Check patient notification preferences — cascade: skip if either pref is false
+          const prefs = resolveNotificationPreferences(userProfile);
+
+          if (isInQuietHoursConfigurable(now, timezone, prefs)) {
             skippedQuietHours += userReminders.length;
+            continue;
+          }
+          if (!prefs.medicationFollowUps || !prefs.medicationReminders) {
+            functions.logger.info(
+              `[MedFollowUp] User ${userId} has follow-ups disabled — skipping`,
+            );
             continue;
           }
 
@@ -246,21 +258,6 @@ export const processMedicationFollowUpNudges = onSchedule(
 );
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function isQuietHours(now: Date, timezone: string): boolean {
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      hour12: false,
-      timeZone: timezone,
-    });
-    const hour = parseInt(formatter.format(now), 10);
-    return hour >= QUIET_HOURS_START || hour < QUIET_HOURS_END;
-  } catch {
-    // If timezone is invalid, default to not quiet
-    return false;
-  }
-}
 
 function getTodayStart(now: Date, timezone: string): Date {
   try {

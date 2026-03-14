@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import VisitDetailScreen from '../app/visit-detail';
+import VisitDetailScreen from '../app/(patient)/visit-detail';
 
 const mockUseVisit = jest.fn();
 const mockRetry = jest.fn();

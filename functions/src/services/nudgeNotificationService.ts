@@ -15,6 +15,7 @@ import { NudgeDomainService } from './domain/nudges/NudgeDomainService';
 import { FirestoreNudgeRepository } from './repositories/nudges/FirestoreNudgeRepository';
 import { UserDomainService } from './domain/users/UserDomainService';
 import { FirestoreUserRepository } from './repositories/users/FirestoreUserRepository';
+import { resolveNotificationPreferences, isInQuietHours } from './notificationPreferences';
 
 const getDb = () => admin.firestore();
 
@@ -62,9 +63,7 @@ function resolveDependencies(
 // Max nudges to send per user per day
 const MAX_DAILY_NUDGES = 3;
 
-// Quiet hours config (in user's local time)
-const QUIET_HOURS_START = 21; // 9pm
-const QUIET_HOURS_END = 8;    // 8am
+// Quiet hours now use configurable values via isInQuietHours (notificationPreferences.ts)
 const DEFAULT_TIMEZONE = 'America/Chicago';
 const LOCK_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -108,28 +107,7 @@ async function getUserTimezone(
     return DEFAULT_TIMEZONE;
 }
 
-/**
- * Check if it's currently quiet hours for a given timezone
- */
-function isQuietHours(timezone: string): boolean {
-    try {
-        const now = new Date();
-        const options: Intl.DateTimeFormatOptions = {
-            hour: 'numeric',
-            hour12: false,
-            timeZone: timezone,
-        };
-        const localHour = parseInt(now.toLocaleTimeString('en-US', options), 10);
-
-        // Quiet hours: 9pm (21) to 8am (8)
-        // This means: hour >= 21 OR hour < 8
-        return localHour >= QUIET_HOURS_START || localHour < QUIET_HOURS_END;
-    } catch (error) {
-        // Invalid timezone, default to not quiet hours
-        functions.logger.warn(`[NudgeNotifications] Invalid timezone: ${timezone}`);
-        return false;
-    }
-}
+// Quiet hours now use configurable values from isInQuietHours (notificationPreferences.ts)
 
 /**
  * Get count of nudges already sent to user today
@@ -220,11 +198,40 @@ export async function processAndNotifyDueNudges(
         // Process each user's nudges
         for (const [userId, nudges] of nudgesByUser) {
             try {
-                // Check quiet hours first
+                // Fetch user profile for timezone + notification preferences
+                const userProfile = await dependencies.userService.getById(userId);
+
+                // Check quiet hours using configurable values
                 const timezone = await getUserTimezone(userId, dependencies);
-                if (isQuietHours(timezone)) {
+                const notifPrefs = resolveNotificationPreferences(
+                    userProfile as Record<string, unknown> | null,
+                );
+                if (isInQuietHours(new Date(), timezone, notifPrefs)) {
                     functions.logger.info(`[NudgeNotifications] User ${userId} in quiet hours (${timezone}), skipping ${nudges.length} nudges`);
                     stats.skippedQuietHours += nudges.length;
+                    continue;
+                }
+
+                // Filter out health nudge types if healthNudges is disabled
+                // medication_followup and action_reminder have their own trigger-level gates
+                const HEALTH_NUDGE_TYPES = new Set([
+                    'medication_checkin', 'condition_tracking', 'followup', 'insight',
+                    'side_effect', 'symptom_check',
+                ]);
+                const filteredNudges: typeof nudges = [];
+                for (const nudge of nudges) {
+                    if (!notifPrefs.healthNudges && nudge.type && HEALTH_NUDGE_TYPES.has(nudge.type)) {
+                        stats.skippedQuietHours++; // reuse counter for suppressed
+                        await nudgeService.markNotificationProcessed(nudge.id, {
+                            now,
+                            skippedReason: 'preference_disabled',
+                        });
+                        continue;
+                    }
+                    filteredNudges.push(nudge);
+                }
+
+                if (filteredNudges.length === 0) {
                     continue;
                 }
 
@@ -240,7 +247,7 @@ export async function processAndNotifyDueNudges(
                 }
 
                 // Sort by priority and take only up to remaining limit
-                const sortedNudges = sortNudgesByPriority(nudges);
+                const sortedNudges = sortNudgesByPriority(filteredNudges);
                 const nudgesToSend = sortedNudges.slice(0, remaining);
                 const nudgesToSkip = sortedNudges.slice(remaining);
 

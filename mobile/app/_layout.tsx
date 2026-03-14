@@ -2,17 +2,27 @@ import { Stack, useRouter } from 'expo-router';
 import { useColorScheme, AppState } from 'react-native';
 import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
-import { useFonts, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
+import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import { Fraunces_400Regular, Fraunces_600SemiBold, Fraunces_700Bold } from '@expo-google-fonts/fraunces';
 import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
-import { usePendingActions, useVisits, useMedicationSchedule } from '../lib/api/hooks';
-import { setBadgeCount, getExpoPushToken, registerPushToken } from '../lib/notifications';
+import { usePendingActions, useVisits, useMedicationSchedule, useCareOverview } from '../lib/api/hooks';
+import {
+  setBadgeCount,
+  getExpoPushToken,
+  registerPushToken,
+  syncTimezone,
+  registerNotificationCategories,
+  MED_ACTION_TOOK_IT,
+  MED_ACTION_SKIPPED,
+} from '../lib/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from '../lib/api/client';
 import { initializeTelemetryConsent } from '../lib/telemetry';
 
 // Create a client
@@ -42,24 +52,53 @@ function RootFallback({ reset }: { reset: () => void }) {
   );
 }
 
+// Patient notification types that route to patient screens
+const PATIENT_NOTIFICATION_TYPES = ['medication_reminder', 'visit-ready', 'nudge', 'caregiver_message'];
+// Caregiver notification types that route to caregiver screens
+const CAREGIVER_NOTIFICATION_TYPES = ['daily_briefing', 'missed_medication_caregiver', 'overdue_action_caregiver', 'visit_ready_caregiver'];
+
+/** AsyncStorage key for deduplicating notification-based medication logs */
+function medLogDedupKey(medicationId: string, scheduledTime: string): string {
+  const today = new Date().toISOString().split('T')[0];
+  return `medlog:${medicationId}:${scheduledTime}:${today}`;
+}
+
 function NotificationHandler() {
   const router = useRouter();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, role } = useAuth();
+  const qc = useQueryClient();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const appState = useRef(AppState.currentState);
 
-  // Only fetch data when authenticated to prevent SDK errors
-  const { data: pendingActions } = usePendingActions({ enabled: isAuthenticated && !!user });
-  const { data: visits } = useVisits({ enabled: isAuthenticated && !!user });
+  // Only fetch patient badge data when authenticated as patient
+  const isPatient = role === 'patient';
+  const isCaregiver = role === 'caregiver';
+  const { data: pendingActions } = usePendingActions({ enabled: isAuthenticated && !!user && isPatient });
+  const { data: visits } = useVisits({ enabled: isAuthenticated && !!user && isPatient });
   const { data: medicationSchedule, refetch: refetchSchedule } = useMedicationSchedule(user?.uid, {
-    enabled: isAuthenticated && !!user 
+    enabled: isAuthenticated && !!user && isPatient,
   });
+  const { data: careOverview } = useCareOverview({ enabled: isAuthenticated && !!user && isCaregiver });
 
-  // Update badge count when actions or visits change
+  // Update badge count when actions or visits change (patient only)
   useEffect(() => {
     const updateBadge = async () => {
       if (!isAuthenticated) {
+        await setBadgeCount(0);
+        return;
+      }
+
+      if (isCaregiver) {
+        // Caregiver badge: count of high-severity alerts across all patients
+        const highSeverityCount = careOverview?.patients?.reduce((count, patient) => {
+          return count + (patient.alerts?.filter((a) => a.severity === 'high').length ?? 0);
+        }, 0) ?? 0;
+        await setBadgeCount(highSeverityCount);
+        return;
+      }
+
+      if (!isPatient) {
         await setBadgeCount(0);
         return;
       }
@@ -85,10 +124,14 @@ function NotificationHandler() {
     };
 
     updateBadge();
-  }, [isAuthenticated, pendingActions, visits]);
+  }, [isAuthenticated, isPatient, isCaregiver, careOverview, pendingActions, visits]);
 
-  // Auto-register push token when authenticated
-  // This ensures new builds (e.g., TestFlight) get fresh tokens registered
+  // Register notification categories on mount (before any notifications arrive)
+  useEffect(() => {
+    registerNotificationCategories();
+  }, []);
+
+  // Auto-register push token when authenticated (shared — both roles need push)
   useEffect(() => {
     const autoRegisterPushToken = async () => {
       if (!isAuthenticated || !user) return;
@@ -99,6 +142,8 @@ function NotificationHandler() {
           await registerPushToken(token);
           console.log('[Notifications] Auto-registered push token on app launch');
         }
+        // Sync timezone in case device timezone changed since last launch
+        await syncTimezone();
       } catch (error) {
         console.error('[Notifications] Error auto-registering push token:', error);
       }
@@ -111,7 +156,6 @@ function NotificationHandler() {
   useEffect(() => {
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       console.log('[Notifications] Notification received:', notification);
-      // Badge will be updated by the useEffect above when data refetches
     });
 
     return () => {
@@ -121,32 +165,89 @@ function NotificationHandler() {
     };
   }, []);
 
-  // Handle notification tapped (deep linking)
+  // Handle notification tapped (deep linking) — role-aware routing
   useEffect(() => {
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
-      console.log('[Notifications] Notification tapped:', data);
+      const actionId = response.actionIdentifier;
+      console.log('[Notifications] Notification tapped:', data, 'action:', actionId);
 
       if (!isAuthenticated) {
         console.log('[Notifications] User not authenticated, ignoring tap');
         return;
       }
 
-      if (data?.type === 'medication_reminder') {
-        // Navigate to medication schedule screen
-        console.log('[Notifications] Navigating to medication schedule');
-        router.push('/medication-schedule');
-      } else if (data?.type === 'visit-ready' && data?.visitId) {
-        // Navigate to visit detail
-        router.push(`/visit-detail?id=${data.visitId}`);
-      } else if (data?.type === 'nudge') {
-        // Navigate to home screen where LumiBot section will show the nudge
-        console.log('[Notifications] Navigating to home for nudge:', data.nudgeId);
-        router.replace('/(tabs)');
-      } else if (data?.type === 'caregiver_message') {
-        // Navigate to messages screen
-        console.log('[Notifications] Navigating to messages for caregiver message:', data.messageId);
-        router.push('/messages');
+      const notificationType = data?.type as string;
+
+      // Handle medication reminder action buttons (Took it / Skipped)
+      if (
+        notificationType === 'medication_reminder' &&
+        role === 'patient' &&
+        (actionId === MED_ACTION_TOOK_IT || actionId === MED_ACTION_SKIPPED)
+      ) {
+        const medicationId = data?.medicationId as string;
+        const medicationName = data?.medicationName as string;
+        const scheduledTime = data?.scheduledTime as string;
+        const reminderId = data?.reminderId as string | undefined;
+
+        if (medicationId && medicationName && scheduledTime) {
+          const dedupKey = medLogDedupKey(medicationId, scheduledTime);
+
+          // Dedup: skip if this dose was already logged via notification today
+          AsyncStorage.getItem(dedupKey)
+            .then((existing) => {
+              if (existing) {
+                console.log(`[Notifications] Duplicate tap ignored for ${medicationName} ${scheduledTime}`);
+                return;
+              }
+
+              return api.medicationLogs
+                .create({
+                  medicationId,
+                  medicationName,
+                  action: actionId === MED_ACTION_TOOK_IT ? 'taken' : 'skipped',
+                  scheduledTime,
+                  reminderId,
+                })
+                .then(() => {
+                  console.log(
+                    `[Notifications] Logged ${actionId === MED_ACTION_TOOK_IT ? 'taken' : 'skipped'} for ${medicationName}`,
+                  );
+                  // Mark as logged to prevent duplicates
+                  AsyncStorage.setItem(dedupKey, '1');
+                  // Invalidate medication-related caches so UI reflects the log
+                  qc.invalidateQueries({ queryKey: ['medicationSchedule'] });
+                  qc.invalidateQueries({ queryKey: ['medications'] });
+                });
+            })
+            .catch((err) => {
+              console.error('[Notifications] Failed to log medication action:', err);
+            });
+        }
+        return;
+      }
+
+      // Patient notification routing
+      if (PATIENT_NOTIFICATION_TYPES.includes(notificationType) && role === 'patient') {
+        if (notificationType === 'medication_reminder') {
+          router.push('/medication-schedule');
+        } else if (notificationType === 'visit-ready' && data?.visitId) {
+          router.push(`/visit-detail?id=${data.visitId}`);
+        } else if (notificationType === 'nudge') {
+          router.replace('/(patient)/');
+        } else if (notificationType === 'caregiver_message') {
+          router.push('/messages');
+        }
+      }
+
+      // Caregiver notification routing
+      if (CAREGIVER_NOTIFICATION_TYPES.includes(notificationType) && role === 'caregiver') {
+        if (notificationType === 'daily_briefing') {
+          router.replace('/(caregiver)/');
+        } else if (data?.patientId) {
+          // missed_medication_caregiver, overdue_action_caregiver, visit_ready_caregiver
+          router.push(`/(caregiver)/patient/${data.patientId}`);
+        }
       }
     });
 
@@ -155,9 +256,9 @@ function NotificationHandler() {
         responseListener.current.remove();
       }
     };
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, role, router]);
 
-  // Refresh schedule data on app foreground
+  // Sync timezone + refresh data on app foreground
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (
@@ -165,9 +266,12 @@ function NotificationHandler() {
         nextAppState === 'active' &&
         isAuthenticated
       ) {
-        // App has come to the foreground - refresh schedule
         console.log('[AppState] App came to foreground, refreshing data');
-        refetchSchedule();
+        // Sync timezone for all roles (handles patient travel across timezones)
+        syncTimezone();
+        if (isPatient) {
+          refetchSchedule();
+        }
       }
       appState.current = nextAppState;
     });
@@ -175,16 +279,17 @@ function NotificationHandler() {
     return () => {
       subscription.remove();
     };
-  }, [isAuthenticated, refetchSchedule]);
+  }, [isAuthenticated, isPatient, refetchSchedule]);
 
   return null;
 }
 
 export default function RootLayout() {
   const scheme = useColorScheme();
-  
+
   // Load fonts (non-blocking): Plus Jakarta Sans (body) + Fraunces (display)
   useFonts({
+    PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
@@ -208,6 +313,8 @@ export default function RootLayout() {
             <NotificationHandler />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="(patient)" options={{ headerShown: false }} />
+              <Stack.Screen name="(caregiver)" options={{ headerShown: false }} />
               <Stack.Screen
                 name="sign-in"
                 options={{
@@ -224,71 +331,6 @@ export default function RootLayout() {
               />
               <Stack.Screen
                 name="forgot-password"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="settings"
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="medications"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="medication-schedule"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="record-visit"
-                options={{
-                  headerShown: false,
-                  presentation: 'modal',
-                  animation: 'slide_from_bottom',
-                }}
-              />
-              <Stack.Screen
-                name="visits"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="visit-detail"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="caregiver-sharing"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="messages"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="health"
                 options={{
                   headerShown: false,
                   animation: 'slide_from_right',

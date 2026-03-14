@@ -64,6 +64,27 @@ const updateProfileSchema = z.object({
   roles: z.array(userRoleSchema).optional(),
   primaryRole: userRoleSchema.optional(),
   legalAssent: legalAssentSchema.optional(),
+  // Caregiver notification preferences
+  briefingEnabled: z.boolean().optional(),
+  briefingHour: z.number().int().min(0).max(23).optional(),
+  alertPreferences: z.object({
+    missedMedications: z.boolean().optional(),
+    visitReady: z.boolean().optional(),
+    overdueActions: z.boolean().optional(),
+  }).optional(),
+  // Device timezone (IANA, e.g. 'America/New_York') — synced on app foreground
+  timezone: z.string().min(1).max(100).optional(),
+  // Patient notification preferences
+  notificationPreferences: z.object({
+    medicationReminders: z.boolean().optional(),
+    medicationFollowUps: z.boolean().optional(),
+    actionReminders: z.boolean().optional(),
+    healthNudges: z.boolean().optional(),
+    visitReady: z.boolean().optional(),
+    caregiverMessages: z.boolean().optional(),
+    quietHoursStart: z.number().int().min(0).max(23).optional(),
+    quietHoursEnd: z.number().int().min(0).max(23).optional(),
+  }).optional(),
 });
 
 const registerPushTokenSchema = z.object({
@@ -238,6 +259,7 @@ usersRouter.get('/me', requireAuth, async (req: AuthRequest, res) => {
       updatedAt: timestampToIso(data.updatedAt),
       legalAssent: serializeLegalAssent(legalAssent),
       complete: isProfileComplete(data),
+      notificationPreferences: data.notificationPreferences ?? undefined,
     };
 
     res.json(response);
@@ -301,6 +323,14 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       updateData.primaryRole = payload.primaryRole;
     }
 
+    if (payload.notificationPreferences !== undefined) {
+      updateData.notificationPreferences = payload.notificationPreferences;
+    }
+
+    if (payload.timezone !== undefined) {
+      updateData.timezone = payload.timezone;
+    }
+
     if (payload.legalAssent !== undefined) {
       const legalAssentPayload = payload.legalAssent;
       const traceHeader = sanitizeAuditString(req.header('x-cloud-trace-context'), 256);
@@ -348,6 +378,7 @@ usersRouter.patch('/me', requireAuth, async (req: AuthRequest, res) => {
       updatedAt: timestampToIso(data.updatedAt),
       legalAssent: serializeLegalAssent(legalAssent),
       complete: isProfileComplete(data),
+      notificationPreferences: data.notificationPreferences ?? undefined,
     };
 
     res.json(response);

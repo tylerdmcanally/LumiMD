@@ -837,6 +837,20 @@ export function createApiClient(config: ApiClientConfig) {
         apiRequest<{ count: number }>('/v1/messages/unread-count'),
     },
 
+    medicationLogs: {
+      create: (data: {
+        medicationId: string;
+        medicationName: string;
+        action: 'taken' | 'skipped' | 'snoozed';
+        scheduledTime: string;
+        reminderId?: string;
+      }) =>
+        apiRequest<{ id: string }>('/v1/medication-logs', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+    },
+
     // Caregiver → Patient messaging
     careMessages: {
       send: (patientId: string, data: { message: string }) =>

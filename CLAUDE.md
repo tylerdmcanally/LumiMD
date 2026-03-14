@@ -2,7 +2,7 @@
 
 ## What Is LumiMD?
 
-A consumer health app that records medical visits, transcribes audio via AssemblyAI, and extracts structured medical data (diagnoses, medications, action items) using GPT-4. Patients use the mobile app; caregivers view a read-only web portal.
+A consumer health app that records medical visits, transcribes audio via AssemblyAI, and extracts structured medical data (diagnoses, medications, action items) using GPT-4. Patients use the mobile app; caregivers access a read-only web portal and a mobile caregiver experience (same app, role-based routing).
 
 ## Monorepo Layout
 
@@ -136,9 +136,10 @@ Summary stage → Medication safety check → Firestore update → Post-commit o
 - `services/walkthroughQA.ts` — 3-tier visit Q&A (keyword match → data match → guarded LLM)
 - `services/trendAnalyzer.ts` — Rule-based health trend detection (no AI calls)
 - `services/nudgeNotificationService.ts` — Nudge delivery + priority map
+- `services/notificationPreferences.ts` — Patient notification preference reader (defaults-to-true semantics, configurable quiet hours)
 - `services/repositories/` — Firestore data access (query building, pagination, soft-delete filtering)
 - `services/domain/` — Domain service layer (VisitDomainService, MedicationDomainService, MedicationLogDomainService, etc.)
-- `triggers/` — Scheduled Cloud Functions (processVisitAudio, checkPendingTranscriptions, medicationSafetyRecheck, staleVisitSweeper, medicationFollowUpNudges, actionItemReminderNudges, actionOverdueNotifier, etc.)
+- `triggers/` — Scheduled Cloud Functions (processVisitAudio, checkPendingTranscriptions, medicationSafetyRecheck, staleVisitSweeper, medicationFollowUpNudges, actionItemReminderNudges, actionOverdueNotifier, caregiverDailyBriefing, caregiverAlerts, etc.)
 
 ### Mobile (`mobile/`)
 - `app/index.tsx` — Home dashboard
@@ -151,9 +152,10 @@ Summary stage → Medication safety check → Firestore update → Post-commit o
 - `app/medication-schedule.tsx` — Reminder scheduling
 - `app/caregiver-sharing.tsx` — Share management (invite with name, shows caregiver names)
 - `app/upload-avs.tsx` — AVS document upload (photo/PDF capture, multi-image, Firebase Storage upload)
-- `app/_layout.tsx` — Root layout + push notification routing (handles `caregiver_message` type)
+- `app/_layout.tsx` — Root layout + push notification routing + timezone sync on foreground (handles `caregiver_message` type)
 - `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: heard → changed → next)
 - `components/lumibot/PostLogFeedback.tsx` — Post-log feedback modal with trend context
+- `lib/notifications.ts` — Push token registration, `syncTimezone()` (detects device timezone changes on foreground, patches user profile)
 - `lib/auth.ts` — Firebase auth helpers (`hasPasswordProvider()`, `linkEmailPassword()` for adding web password to Apple/Google-only accounts)
 - `lib/utils/medlineplus.ts` — MedlinePlus link resolver (`openMedlinePlus()` — conditions use NLM Health Topics API for direct page URLs; medications fall back to contextual search)
 - `lib/api/hooks.ts` — React Query hooks (useRealtimeVisits, useRealtimeActiveMedications, useMyMessages, useUnreadMessageCount, etc.)
@@ -266,6 +268,8 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `processMedicationFollowUpNudges` | Every 15 min | Send follow-up nudges for unlogged doses |
 | `processActionItemReminderNudges` | Every 15 min | Create nudges for pending/overdue action items |
 | `processActionOverdueNotifier` | Every 15 min | Push notifications for overdue actions |
+| `processCaregiverAlerts` | Every 15 min | Missed-med + visit-ready push to caregivers (respects `alertPreferences`) |
+| `processCaregiverDailyBriefing` | Hourly | Timezone-aware daily briefing push (respects `briefingEnabled`) |
 | `staleVisitSweeper` | Hourly | Delete old failed visits |
 | `privacySweeper` | Daily | Purge 30-day-old soft-deleted data |
 | `denormalizationSync` | On Firestore write | Sync caregiver-accessible fields |
@@ -326,6 +330,8 @@ firebase use lumimd-dev   # or lumimd (prod)
 **Walkthrough generation:** Walkthroughs are pre-computed during visit processing from existing GPT-4 output (zero extra LLM calls). Stored directly on the visit document. Q&A uses 3-tier approach: keyword match → data match → guarded LLM fallback.
 
 **GPT-4o Vision content types:** Images use `image_url` blocks with signed URLs. PDFs must be downloaded from Storage, base64 encoded, and sent as `file` content blocks (`data:application/pdf;base64,...`). The `image_url` type does NOT accept PDF URLs (returns 400).
+
+**Timezone sync:** Device timezone (IANA string, e.g. `America/New_York`) is stored on `users/{uid}.timezone`. Updated via: (1) push token registration on app launch, (2) `syncTimezone()` on every app foreground — compares `Intl.DateTimeFormat().resolvedOptions().timeZone` to cached value, patches profile if changed. All backend triggers read timezone from user profile on each run. Medication reminders with `timingMode: 'local'` shift with the user's timezone; `timingMode: 'anchor'` stays fixed (intentional for time-critical meds). `PATCH /v1/users/me` accepts `timezone` field directly.
 
 **MedlinePlus linking:** Condition links resolve to direct topic pages via NLM Health Topics API (`wsearch.nlm.nih.gov/ws/query?db=healthTopics`). Mobile calls API directly (no CORS in React Native); web proxies through `/api/medlineplus` (302 redirect). Medication links use contextual NLM search (appending "medication" to query). No drug-specific API exists from NLM.
 
@@ -481,3 +487,82 @@ Two-phase feature adding document-based visit creation and proactive action item
 - `GET /v1/care/:patientId/visits/:visitId/follow-through` — Per-visit follow-through endpoint (medication changes + action items with status)
 - `FollowThroughSection` on web visit detail — Progress bar, sorted checklist (overdue → pending → completed), status badges
 - SDK types updated: `ActionItem.visitId`, `Visit.source`, `Visit.documentStoragePath`, `Visit.documentType`, `RespondToNudgeRequest` extended
+
+### Caregiver Mobile Experience (March 2026)
+
+Single-app dual-experience: Expo Router route groups `(patient)/` and `(caregiver)/` with layout guards. All hooks cross-checked against backend API responses (March 13, 2026).
+
+**Architecture:**
+- Role resolution in `AuthContext`: `primaryRole` → `roles[]` → fallback `patient`, with AsyncStorage override for dual-role switching
+- Root `app/index.tsx` is a thin role router → `/(patient)/` or `/(caregiver)/`
+- Layout guards in both groups check `isAuthenticated` first (→ `/sign-in`), then `role` (→ `/`)
+- All caregiver data comes from existing `/v1/care/*` API endpoints (no new backend routes)
+- Caregiver screens nest under `(caregiver)/patient/[patientId]/` to avoid URL conflicts
+
+**Screens:**
+- `(caregiver)/index.tsx` — Home: daily briefing card, needs-attention alerts, patient status cards
+- `(caregiver)/settings.tsx` — Notification preferences (briefing toggle/time, alert type toggles), role switch, linked patients
+- `(caregiver)/patient/[patientId]/index.tsx` — Patient detail dashboard (quick overview, today's meds, alerts, action counts, recent activity, nav buttons)
+- `(caregiver)/patient/[patientId]/visits.tsx` — Visit list with status badges, diagnosis preview
+- `(caregiver)/patient/[patientId]/visit-detail.tsx` — Full visit summary (collapsible sections: diagnoses, medications started/changed/stopped/continued, next steps, follow-ups, tests, education)
+- `(caregiver)/patient/[patientId]/medications.tsx` — Medication list with today's status dots, warnings, inactive badges
+- `(caregiver)/patient/[patientId]/actions.tsx` — Action items sorted overdue → pending → completed, with "Message about this" shortcut
+- `(caregiver)/patient/[patientId]/messages.tsx` — Caregiver → patient messaging (10/day limit, read receipts, prefill from action items)
+
+**Caregiver hooks (mobile/lib/api/hooks.ts, line 1382+):**
+
+| Hook | Endpoint | queryFn transform? | Status |
+|------|----------|-------------------|--------|
+| `useCareOverview` | `GET /v1/care/overview` | Yes — `userId`→`patientId`, `name`→`patientName`, `priority`→`severity` | Verified |
+| `useCareAlerts` | `GET /v1/care/:patientId/alerts` | Yes — maps `severity: 'emergency'`→`'high'` (backend type not in mobile enum) | Verified |
+| `useCareQuickOverview` | `GET /v1/care/:patientId/quick-overview` | Yes — `needsAttention`→`alerts`, `todaysMeds`→`medicationsToday` | Verified |
+| `useCareMedicationStatus` | `GET /v1/care/:patientId/medication-status` | Yes — `schedule`→`medications`, `medicationId`→`id` | Verified |
+| `useCareVisits` | `GET /v1/care/:patientId/visits` | No — bare array, field names match | Verified |
+| `useCareVisitDetail` | `GET /v1/care/:patientId/visits/:visitId` | No — explicit fields match interface | Verified |
+| `useCareMedications` | `GET /v1/care/:patientId/medications` | No — bare array, fields match | Verified |
+| `useCareActions` | `GET /v1/care/:patientId/actions` | No — bare array, `dueAt` matches | Verified |
+| `useCareMessages` | `GET /v1/care/:patientId/messages` | No — fields match exactly | Verified |
+| `useSendCareMessage` | `POST /v1/care/:patientId/messages` | N/A — mutation, invalidates `['care-messages']` | Verified |
+
+**Cloud Function triggers:**
+- `processCaregiverDailyBriefing` — Hourly, timezone-aware daily briefing push (respects `briefingEnabled` + `briefingHour` from profile)
+- `processCaregiverAlerts` — Every 15 min, missed-med + visit-ready push (respects `alertPreferences` from profile)
+
+**User profile fields (caregiver preferences):**
+- `briefingEnabled: boolean` — Toggle daily briefing (default true)
+- `briefingHour: number` — Preferred briefing hour 0-23 (default 8)
+- `alertPreferences: { missedMedications, visitReady, overdueActions }` — Per-type alert toggles (default all true)
+
+**User profile fields (patient notification preferences):**
+- `notificationPreferences.medicationReminders: boolean` — "Time to take X" pushes (default true)
+- `notificationPreferences.medicationFollowUps: boolean` — "Did you take X?" nudges (default true, cascades: disabled when medicationReminders is false)
+- `notificationPreferences.actionReminders: boolean` — Due-date action item reminders (default true)
+- `notificationPreferences.healthNudges: boolean` — Condition tracking, side effects, insights (default true)
+- `notificationPreferences.visitReady: boolean` — "Visit summary ready" push (default true)
+- `notificationPreferences.caregiverMessages: boolean` — Caregiver → patient message push (default true; message document still created)
+- `notificationPreferences.quietHoursStart: number` — Hour 0-23 (default 21 / 9 PM)
+- `notificationPreferences.quietHoursEnd: number` — Hour 0-23 (default 8 / 8 AM)
+- All fields default to true/21/8 when missing (backwards-compatible). Suppress pushes only — never suppress data creation.
+- Quiet hours adjust dynamically to device timezone via `syncTimezone()` on app foreground (see "Timezone sync" pattern)
+- Preference reader: `functions/src/services/notificationPreferences.ts` (`resolveNotificationPreferences()` + `isInQuietHours()`)
+- Mobile UI: `mobile/app/(patient)/settings.tsx` (grouped toggles under Reminders / Updates / Schedule sections, each in its own section for proper spacing)
+
+**Navigation flows (verified):**
+- Login → role router → `/(caregiver)/` home (data loads via `useCareOverview`)
+- Patient card tap → `/(caregiver)/patient/[patientId]/` detail dashboard
+- Nav buttons → visits, medications, actions, messages sub-screens
+- Visit card tap → visit detail (with collapsible sections)
+- Back button (`router.back()`) on all sub-screens
+- Sign-out → `router.replace('/')` → role router → `/sign-in`
+- Pull-to-refresh on home and patient detail screens
+- Settings → notification prefs, role switch, linked patients
+
+**Key files:**
+- `mobile/contexts/AuthContext.tsx` — Role resolution + override + available roles
+- `mobile/lib/api/hooks.ts` (lines 1382+) — All caregiver hooks (10 hooks, 4 with queryFn transforms)
+- `mobile/components/caregiver/` — PatientStatusCard, AlertBanner
+- `functions/src/routes/care/patientResources.ts` — Backend: visits, medications, actions list + detail
+- `functions/src/routes/care/alerts.ts` — Backend: patient alerts (7 alert types incl. emergency severity)
+- `functions/src/routes/care/messages.ts` — Backend: caregiver messaging (send + list)
+- `functions/src/triggers/caregiverAlerts.ts`, `caregiverDailyBriefing.ts` — Scheduled push notifications
+- `docs/CAREGIVER-MOBILE-CROSSCHECK.md` — Hook crosscheck checklist and fix patterns

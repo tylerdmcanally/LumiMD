@@ -45,6 +45,36 @@ const TWO_PARTY_STATES = new Set([
   'Washington',
 ]);
 
+/**
+ * Abbreviation fallback: expo-location on iOS simulator sometimes returns
+ * two-letter abbreviations instead of full state names.
+ */
+const STATE_ABBREV_TO_FULL: Record<string, string> = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas',
+  CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware',
+  FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho',
+  IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas',
+  KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
+  MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+  NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York',
+  NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma',
+  OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+  SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah',
+  VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia',
+  WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
+};
+
+/** Normalize state region to full name (handles abbreviations). */
+function normalizeStateName(region: string): string {
+  // Already a full name
+  if (TWO_PARTY_STATES.has(region) || region.length > 2) {
+    return region;
+  }
+  // Try abbreviation lookup
+  return STATE_ABBREV_TO_FULL[region.toUpperCase()] ?? region;
+}
+
 export type ConsentRequirement = 'two-party' | 'one-party' | 'unknown';
 
 export interface ConsentResult {
@@ -81,10 +111,12 @@ export async function detectConsentRequirement(): Promise<ConsentResult> {
       return { requirement: 'unknown', detectedState: place?.region ?? null, previouslyDismissed };
     }
 
-    const isTwoParty = TWO_PARTY_STATES.has(place.region);
+    const stateName = normalizeStateName(place.region);
+    const isTwoParty = TWO_PARTY_STATES.has(stateName);
+    console.log(`[recordingConsent] Detected state: "${place.region}" → "${stateName}", twoParty: ${isTwoParty}`);
     return {
       requirement: isTwoParty ? 'two-party' : 'one-party',
-      detectedState: place.region,
+      detectedState: stateName,
       previouslyDismissed,
     };
   } catch (error) {

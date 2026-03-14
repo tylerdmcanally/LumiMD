@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share, Platform, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Switch, Linking, Alert, Share, Platform, TextInput, Modal, FlatList } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius, Card } from '../components/ui';
-import { useAuth } from '../contexts/AuthContext';
-import { hasPasswordProvider, linkEmailPassword } from '../lib/auth';
-import { openWebDashboard } from '../lib/linking';
-import { cfg } from '../lib/config';
+import { useQueryClient } from '@tanstack/react-query';
+import { Colors, spacing, Radius, Card } from '../../components/ui';
+import { useAuth } from '../../contexts/AuthContext';
+import { hasPasswordProvider, linkEmailPassword } from '../../lib/auth';
+import { openWebDashboard } from '../../lib/linking';
+import { cfg } from '../../lib/config';
 import {
   clearStoredPushToken,
   getNotificationPermissions,
@@ -18,19 +19,125 @@ import {
   registerPushToken,
   setStoredPushToken,
   unregisterPushToken,
-} from '../lib/notifications';
-import { api } from '../lib/api/client';
-import { openManageSubscriptions, restorePurchases } from '../lib/store';
+} from '../../lib/notifications';
+import { api } from '../../lib/api/client';
+import { useUpdateUserProfile } from '../../lib/api/mutations';
+import { openManageSubscriptions, restorePurchases } from '../../lib/store';
 import {
   getTelemetryConsent,
   isTelemetryConfigured,
   refreshTelemetryConsentFromServer,
   setTelemetryConsent,
-} from '../lib/telemetry';
+} from '../../lib/telemetry';
+
+// ---------------------------------------------------------------------------
+// Hour picker for quiet hours
+// ---------------------------------------------------------------------------
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+function formatHourLabel(h: number): string {
+  if (h === 0) return '12:00 AM';
+  if (h < 12) return `${h}:00 AM`;
+  if (h === 12) return '12:00 PM';
+  return `${h - 12}:00 PM`;
+}
+
+function QuietHourPickerModal({
+  visible,
+  title,
+  selectedHour,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  selectedHour: number;
+  onSelect: (h: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={pickerStyles.overlay}>
+        <View style={pickerStyles.sheet}>
+          <View style={pickerStyles.header}>
+            <Text style={pickerStyles.title}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Ionicons name="close" size={22} color={Colors.text} />
+            </Pressable>
+          </View>
+          <FlatList
+            data={HOURS}
+            keyExtractor={(h) => String(h)}
+            renderItem={({ item: h }) => (
+              <Pressable
+                style={[pickerStyles.hourRow, h === selectedHour && pickerStyles.hourRowSelected]}
+                onPress={() => { onSelect(h); onClose(); }}
+              >
+                <Text style={[pickerStyles.hourText, h === selectedHour && pickerStyles.hourTextSelected]}>
+                  {formatHourLabel(h)}
+                </Text>
+                {h === selectedHour && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+              </Pressable>
+            )}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const pickerStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    maxHeight: '60%',
+    paddingBottom: spacing(8),
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing(4),
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.stroke,
+  },
+  title: {
+    fontSize: 17,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: Colors.text,
+  },
+  hourRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(4),
+  },
+  hourRowSelected: {
+    backgroundColor: Colors.primaryMuted,
+  },
+  hourText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: Colors.text,
+  },
+  hourTextSelected: {
+    color: Colors.primary,
+    fontFamily: 'PlusJakartaSans_700Bold',
+  },
+});
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, signOut, availableRoles, setRoleOverride } = useAuth();
+  const queryClient = useQueryClient();
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isLoadingPush, setIsLoadingPush] = useState(false);
@@ -44,6 +151,32 @@ export default function SettingsScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [isSettingPassword, setIsSettingPassword] = useState(false);
+
+  // Notification preferences state
+  const updateProfile = useUpdateUserProfile();
+  const [notifPrefsLoaded, setNotifPrefsLoaded] = useState(false);
+  const [medReminders, setMedReminders] = useState(true);
+  const [medFollowUps, setMedFollowUps] = useState(true);
+  const [actionReminders, setActionReminders] = useState(true);
+  const [healthNudges, setHealthNudges] = useState(true);
+  const [visitReady, setVisitReady] = useState(true);
+  const [caregiverMessages, setCaregiverMessages] = useState(true);
+  const [quietHoursStart, setQuietHoursStart] = useState(21);
+  const [quietHoursEnd, setQuietHoursEnd] = useState(8);
+  const [showQuietStartPicker, setShowQuietStartPicker] = useState(false);
+  const [showQuietEndPicker, setShowQuietEndPicker] = useState(false);
+
+  // Ref tracks latest prefs to avoid stale closures on rapid toggles
+  const notifPrefsRef = useRef({
+    medicationReminders: true,
+    medicationFollowUps: true,
+    actionReminders: true,
+    healthNudges: true,
+    visitReady: true,
+    caregiverMessages: true,
+    quietHoursStart: 21,
+    quietHoursEnd: 8,
+  });
 
   // Check if user has a password provider linked
   useEffect(() => {
@@ -130,6 +263,47 @@ export default function SettingsScreen() {
       mounted = false;
     };
   }, [user]);
+
+  // Load notification preferences from profile
+  useEffect(() => {
+    if (notifPrefsLoaded || !user) return;
+    (async () => {
+      try {
+        const { getIdToken } = await import('../../lib/auth');
+        const token = await getIdToken();
+        const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://us-central1-lumimd-dev.cloudfunctions.net/api';
+        const res = await fetch(`${baseUrl}/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
+        });
+        if (res.ok) {
+          const profile = await res.json();
+          const np = profile.notificationPreferences;
+          if (np) {
+            if (typeof np.medicationReminders === 'boolean') { setMedReminders(np.medicationReminders); notifPrefsRef.current.medicationReminders = np.medicationReminders; }
+            if (typeof np.medicationFollowUps === 'boolean') { setMedFollowUps(np.medicationFollowUps); notifPrefsRef.current.medicationFollowUps = np.medicationFollowUps; }
+            if (typeof np.actionReminders === 'boolean') { setActionReminders(np.actionReminders); notifPrefsRef.current.actionReminders = np.actionReminders; }
+            if (typeof np.healthNudges === 'boolean') { setHealthNudges(np.healthNudges); notifPrefsRef.current.healthNudges = np.healthNudges; }
+            if (typeof np.visitReady === 'boolean') { setVisitReady(np.visitReady); notifPrefsRef.current.visitReady = np.visitReady; }
+            if (typeof np.caregiverMessages === 'boolean') { setCaregiverMessages(np.caregiverMessages); notifPrefsRef.current.caregiverMessages = np.caregiverMessages; }
+            if (typeof np.quietHoursStart === 'number') { setQuietHoursStart(np.quietHoursStart); notifPrefsRef.current.quietHoursStart = np.quietHoursStart; }
+            if (typeof np.quietHoursEnd === 'number') { setQuietHoursEnd(np.quietHoursEnd); notifPrefsRef.current.quietHoursEnd = np.quietHoursEnd; }
+          }
+        }
+      } catch {
+        // Use defaults
+      }
+      setNotifPrefsLoaded(true);
+    })();
+  }, [notifPrefsLoaded, user]);
+
+  // Save notification preference (sends full object to avoid partial overwrites)
+  const saveNotifPref = useCallback(
+    (field: string, value: boolean | number) => {
+      (notifPrefsRef.current as any)[field] = value;
+      updateProfile.mutate({ notificationPreferences: { ...notifPrefsRef.current } } as any);
+    },
+    [updateProfile],
+  );
 
   const handlePushToggle = async (enabled: boolean) => {
     setIsLoadingPush(true);
@@ -569,6 +743,172 @@ export default function SettingsScreen() {
             </Card>
           </View>
 
+          {/* Notification Preferences — Reminders */}
+          {pushEnabled && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Reminders</Text>
+              <Card style={styles.card}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="alarm-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel}>Medication Reminders</Text>
+                    <Text style={styles.settingDescription}>
+                      Reminders when it's time to take your medications
+                    </Text>
+                  </View>
+                  <Switch
+                    value={medReminders}
+                    onValueChange={(val) => { setMedReminders(val); saveNotifPref('medicationReminders', val); if (!val) { setMedFollowUps(false); saveNotifPref('medicationFollowUps', false); } }}
+                    trackColor={{ false: '#d1d5db', true: Colors.accent }}
+                    thumbColor={medReminders ? Colors.primary : '#f3f4f6'}
+                  />
+                </View>
+
+                {medReminders && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={[styles.settingRow, { paddingLeft: spacing(4) + 36 + spacing(3) }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.settingLabel}>Dose Follow-ups</Text>
+                        <Text style={styles.settingDescription}>
+                          Check-in if you haven't logged a dose
+                        </Text>
+                      </View>
+                      <Switch
+                        value={medFollowUps}
+                        onValueChange={(val) => { setMedFollowUps(val); saveNotifPref('medicationFollowUps', val); }}
+                        trackColor={{ false: '#d1d5db', true: Colors.accent }}
+                        thumbColor={medFollowUps ? Colors.primary : '#f3f4f6'}
+                      />
+                    </View>
+                  </>
+                )}
+
+                <View style={styles.divider} />
+
+                <View style={styles.settingRow}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="clipboard-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel}>Action Item Reminders</Text>
+                    <Text style={styles.settingDescription}>
+                      Due dates for follow-ups, lab work, and referrals
+                    </Text>
+                  </View>
+                  <Switch
+                    value={actionReminders}
+                    onValueChange={(val) => { setActionReminders(val); saveNotifPref('actionReminders', val); }}
+                    trackColor={{ false: '#d1d5db', true: Colors.accent }}
+                    thumbColor={actionReminders ? Colors.primary : '#f3f4f6'}
+                  />
+                </View>
+              </Card>
+            </View>
+          )}
+
+          {/* Notification Preferences — Updates */}
+          {pushEnabled && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Updates</Text>
+              <Card style={styles.card}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="pulse-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel}>Health Check-ins</Text>
+                    <Text style={styles.settingDescription}>
+                      Periodic check-ins about your conditions and medications
+                    </Text>
+                  </View>
+                  <Switch
+                    value={healthNudges}
+                    onValueChange={(val) => { setHealthNudges(val); saveNotifPref('healthNudges', val); }}
+                    trackColor={{ false: '#d1d5db', true: Colors.accent }}
+                    thumbColor={healthNudges ? Colors.primary : '#f3f4f6'}
+                  />
+                </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.settingRow}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="document-text-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel}>Visit Summaries</Text>
+                    <Text style={styles.settingDescription}>
+                      When your visit summary is ready to view
+                    </Text>
+                  </View>
+                  <Switch
+                    value={visitReady}
+                    onValueChange={(val) => { setVisitReady(val); saveNotifPref('visitReady', val); }}
+                    trackColor={{ false: '#d1d5db', true: Colors.accent }}
+                    thumbColor={visitReady ? Colors.primary : '#f3f4f6'}
+                  />
+                </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.settingRow}>
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="chatbubble-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel}>Caregiver Messages</Text>
+                    <Text style={styles.settingDescription}>
+                      Messages from your caregiver
+                    </Text>
+                  </View>
+                  <Switch
+                    value={caregiverMessages}
+                    onValueChange={(val) => { setCaregiverMessages(val); saveNotifPref('caregiverMessages', val); }}
+                    trackColor={{ false: '#d1d5db', true: Colors.accent }}
+                    thumbColor={caregiverMessages ? Colors.primary : '#f3f4f6'}
+                  />
+                </View>
+              </Card>
+            </View>
+          )}
+
+          {/* Notification Preferences — Schedule */}
+          {pushEnabled && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Schedule</Text>
+              <Card style={styles.card}>
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => setShowQuietStartPicker(true)}
+                >
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="moon-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel}>Quiet Hours</Text>
+                    <Text style={styles.settingDescription}>
+                      {formatHourLabel(quietHoursStart)} – {formatHourLabel(quietHoursEnd)}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                </Pressable>
+              </Card>
+            </View>
+          )}
+
+          {!pushEnabled && (
+            <View style={styles.section}>
+              <Card style={[styles.card, { padding: spacing(4) }]}>
+                <Text style={[styles.settingDescription, { textAlign: 'center' }]}>
+                  Enable push notifications above to configure individual alerts
+                </Text>
+              </Card>
+            </View>
+          )}
+
           {/* Legal Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Legal</Text>
@@ -702,6 +1042,46 @@ export default function SettingsScreen() {
             </Card>
           </View>
 
+          {/* Role Switch (dual-role users) */}
+          {availableRoles && availableRoles.length > 1 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Experience</Text>
+              <Card style={styles.card}>
+                <Pressable
+                  style={styles.linkRow}
+                  onPress={() => {
+                    Alert.alert(
+                      'Switch to Caregiver',
+                      "You'll switch to the caregiver experience.",
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Switch',
+                          onPress: () => {
+                            queryClient.clear();
+                            setRoleOverride('caregiver');
+                            router.replace('/');
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                >
+                  <View style={styles.settingIcon}>
+                    <Ionicons name="swap-horizontal-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.linkLabel, { marginLeft: 0 }]}>Switch to Caregiver</Text>
+                    <Text style={styles.settingDescription}>
+                      You have both roles on this account
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                </Pressable>
+              </Card>
+            </View>
+          )}
+
           {/* Sign Out */}
           <View style={styles.section}>
             <Pressable
@@ -727,6 +1107,29 @@ export default function SettingsScreen() {
           </View>
         </ScrollView>
       </View >
+
+      <QuietHourPickerModal
+        visible={showQuietStartPicker}
+        title="Quiet Hours Start"
+        selectedHour={quietHoursStart}
+        onSelect={(h) => {
+          setQuietHoursStart(h);
+          saveNotifPref('quietHoursStart', h);
+          // After selecting start, open end picker
+          setTimeout(() => setShowQuietEndPicker(true), 300);
+        }}
+        onClose={() => setShowQuietStartPicker(false)}
+      />
+      <QuietHourPickerModal
+        visible={showQuietEndPicker}
+        title="Quiet Hours End"
+        selectedHour={quietHoursEnd}
+        onSelect={(h) => {
+          setQuietHoursEnd(h);
+          saveNotifPref('quietHoursEnd', h);
+        }}
+        onClose={() => setShowQuietEndPicker(false)}
+      />
     </SafeAreaView >
   );
 }

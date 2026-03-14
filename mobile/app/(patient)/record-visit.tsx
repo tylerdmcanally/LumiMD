@@ -21,18 +21,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius } from '../components/ui';
-import { useAudioRecording, MAX_RECORDING_MS } from '../lib/hooks/useAudioRecording';
-import { uploadAudioFile, UploadProgress, deleteAudioFile } from '../lib/storage';
-import { useAuth } from '../contexts/AuthContext';
-import { api } from '../lib/api/client';
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { KeepDeviceAwake } from '../components/KeepDeviceAwake';
+import { Colors, spacing, Radius } from '../../components/ui';
+import { useAudioRecording, MAX_RECORDING_MS } from '../../lib/hooks/useAudioRecording';
+import { uploadAudioFile, UploadProgress, deleteAudioFile } from '../../lib/storage';
+import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../lib/api/client';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { KeepDeviceAwake } from '../../components/KeepDeviceAwake';
 import {
   detectConsentRequirement,
   dismissOnePartyNotice,
   type ConsentRequirement,
-} from '../lib/recordingConsent';
+} from '../../lib/recordingConsent';
 
 const LONG_RECORDING_CONFIRM_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
 const LONG_RECORDING_WARNING_THRESHOLD_MS = 75 * 60 * 1000; // 75 minutes

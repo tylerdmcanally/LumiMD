@@ -24,10 +24,10 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { Colors, spacing, Radius } from '../components/ui';
-import { uploadDocumentFile, UploadProgress } from '../lib/storage';
-import { useAuth } from '../contexts/AuthContext';
-import { api } from '../lib/api/client';
+import { Colors, spacing, Radius } from '../../components/ui';
+import { uploadDocumentFile, UploadProgress } from '../../lib/storage';
+import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../lib/api/client';
 
 type ScreenState = 'choose' | 'preview' | 'uploading' | 'processing' | 'error';
 

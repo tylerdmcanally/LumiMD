@@ -26,12 +26,12 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius, Card } from '../components/ui';
-import { useHealthLogs, useHealthInsights } from '../lib/api/hooks';
+import { Colors, spacing, Radius, Card } from '../../components/ui';
+import { useHealthLogs, useHealthInsights } from '../../lib/api/hooks';
 import type { HealthLog, HealthLogSource, TrendInsight } from '@lumimd/sdk';
-import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../components/lumibot';
-import type { WeightValue } from '../components/lumibot';
-import { api } from '../lib/api/client';
+import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../../components/lumibot';
+import type { WeightValue } from '../../components/lumibot';
+import { api } from '../../lib/api/client';
 import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 
 // ============================================================================

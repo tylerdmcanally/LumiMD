@@ -19,8 +19,8 @@ import {
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius, Card } from '../components/ui';
-import { useMyMessages } from '../lib/api/hooks';
+import { Colors, spacing, Radius, Card } from '../../components/ui';
+import { useMyMessages } from '../../lib/api/hooks';
 import type { CaregiverMessage } from '@lumimd/sdk';
 
 // ============================================================================

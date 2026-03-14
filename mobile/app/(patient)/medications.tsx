@@ -15,12 +15,12 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
-import { Colors, spacing, Radius, Card } from '../components/ui';
-import { EmptyState } from '../components/EmptyState';
+import { Colors, spacing, Radius, Card } from '../../components/ui';
+import { EmptyState } from '../../components/EmptyState';
 import { Linking } from 'react-native';
-import { openWebMeds, openWebVisit } from '../lib/linking';
-import { openMedlinePlus } from '../lib/utils/medlineplus';
-import { useAuth } from '../contexts/AuthContext';
+import { openWebMeds, openWebVisit } from '../../lib/linking';
+import { openMedlinePlus } from '../../lib/utils/medlineplus';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   usePaginatedMedications,
   useMedicationReminders,
@@ -28,13 +28,13 @@ import {
   useUpdateMedicationReminder,
   useDeleteMedicationReminder,
   useAcknowledgeMedicationWarnings,
-} from '../lib/api/hooks';
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { MedicationWarningBanner } from '../components/MedicationWarningBanner';
-import { ReminderTimePickerModal } from '../components/ReminderTimePickerModal';
-import { EditMedicationSheet } from '../components/EditMedicationSheet';
-import { AddMedicationSheet } from '../components/AddMedicationSheet';
-import { useUpdateMedication, useDeleteMedication } from '../lib/api/mutations';
+} from '../../lib/api/hooks';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { MedicationWarningBanner } from '../../components/MedicationWarningBanner';
+import { ReminderTimePickerModal } from '../../components/ReminderTimePickerModal';
+import { EditMedicationSheet } from '../../components/EditMedicationSheet';
+import { AddMedicationSheet } from '../../components/AddMedicationSheet';
+import { useUpdateMedication, useDeleteMedication } from '../../lib/api/mutations';
 import type { Medication, MedicationReminder } from '@lumimd/sdk';
 
 const resolveDeviceTimezone = (): string | null => {

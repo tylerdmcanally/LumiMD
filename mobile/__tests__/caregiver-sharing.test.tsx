@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import CaregiverSharingScreen from '../app/caregiver-sharing';
+import CaregiverSharingScreen from '../app/(patient)/caregiver-sharing';
 
 const mockUseAuth = jest.fn();
 const mockUseShares = jest.fn();

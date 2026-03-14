@@ -3,13 +3,11 @@ import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { FirestoreNudgeRepository } from '../services/repositories/nudges/FirestoreNudgeRepository';
 import { NudgeDomainService } from '../services/domain/nudges/NudgeDomainService';
+import { resolveNotificationPreferences, isInQuietHours as isInQuietHoursConfigurable } from '../services/notificationPreferences';
 
 /** Maximum nudges per user per day (shared with other nudge types). */
 const MAX_DAILY_NUDGES = 3;
 
-/** Quiet hours — do not send nudges during these times. */
-const QUIET_HOURS_START = 21; // 9pm
-const QUIET_HOURS_END = 8;   // 8am
 const DEFAULT_TIMEZONE = 'America/Chicago';
 
 /** Reminder phases: how many days before/after due date to send nudges. */
@@ -46,22 +44,6 @@ const DEFAULT_TEMPLATES: Record<ReminderPhase, { title: string; message: string 
 };
 
 const db = () => admin.firestore();
-
-function isQuietHours(now: Date, timezone: string): boolean {
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: 'numeric',
-      hour12: false,
-    });
-    const hour = parseInt(formatter.format(now), 10);
-    return hour >= QUIET_HOURS_START || hour < QUIET_HOURS_END;
-  } catch {
-    // Fallback to UTC
-    const hour = now.getUTCHours();
-    return hour >= QUIET_HOURS_START || hour < QUIET_HOURS_END;
-  }
-}
 
 function getTodayBoundaries(now: Date, timezone: string): { start: Date; end: Date } {
   try {
@@ -170,18 +152,30 @@ export const processActionItemReminderNudges = onSchedule(
       // 3. Process each user
       for (const [userId, userActions] of byUser) {
         try {
-          // Check quiet hours
+          // Check quiet hours and notification preferences
           let timezone = DEFAULT_TIMEZONE;
+          let userProfile: Record<string, unknown> | null = null;
           try {
             const userDoc = await firestore.collection('users').doc(userId).get();
-            const userData = userDoc.data();
-            if (userData?.timezone) timezone = userData.timezone;
+            if (userDoc.exists) {
+              userProfile = userDoc.data() as Record<string, unknown>;
+              if (userProfile?.timezone) timezone = userProfile.timezone as string;
+            }
           } catch {
             // Use default
           }
 
-          if (isQuietHours(now, timezone)) {
+          // Check patient notification preferences
+          const prefs = resolveNotificationPreferences(userProfile);
+
+          if (isInQuietHoursConfigurable(now, timezone, prefs)) {
             skippedQuietHours += userActions.length;
+            continue;
+          }
+          if (!prefs.actionReminders) {
+            functions.logger.info(
+              `[ActionReminder] User ${userId} has actionReminders disabled — skipping`,
+            );
             continue;
           }
 

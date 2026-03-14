@@ -14,12 +14,12 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { Colors, spacing, Radius, Card } from '../components/ui';
-import { EmptyState } from '../components/EmptyState';
-import { usePaginatedVisits } from '../lib/api/hooks';
-import { openWebVisit, openWebDashboard } from '../lib/linking';
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { useAuth } from '../contexts/AuthContext';
+import { Colors, spacing, Radius, Card } from '../../components/ui';
+import { EmptyState } from '../../components/EmptyState';
+import { usePaginatedVisits } from '../../lib/api/hooks';
+import { openWebVisit, openWebDashboard } from '../../lib/linking';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { useAuth } from '../../contexts/AuthContext';
 
 dayjs.extend(relativeTime);
 

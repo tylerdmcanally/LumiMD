@@ -13,10 +13,10 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, spacing, Radius, Card } from '../components/ui';
-import { useAuth } from '../contexts/AuthContext';
-import { useMedicationSchedule, useMarkDose, useMarkBatch, useSnoozeDose, type ScheduledDose } from '../lib/api/hooks';
-import { ErrorBoundary } from '../components/ErrorBoundary';
+import { Colors, spacing, Radius, Card } from '../../components/ui';
+import { useAuth } from '../../contexts/AuthContext';
+import { useMedicationSchedule, useMarkDose, useMarkBatch, useSnoozeDose, type ScheduledDose } from '../../lib/api/hooks';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 
 export default function MedicationScheduleScreen() {
     const router = useRouter();

@@ -13,6 +13,7 @@ import { ensureCaregiverAccessOrReject } from '../../middlewares/caregiverAccess
 import { sanitizePlainText } from '../../utils/inputSanitization';
 import { getNotificationService } from '../../services/notifications';
 import { createDomainServiceContainer } from '../../services/domain/serviceContainer';
+import { resolveNotificationPreferences } from '../../services/notificationPreferences';
 
 const MESSAGE_MAX_LENGTH = 500;
 const DAILY_MESSAGE_LIMIT = 10;
@@ -167,35 +168,47 @@ export function registerCareMessagesRoutes(
                 { messageId: docRef.id },
             );
 
-            // Send push notification to patient
+            // Send push notification to patient (if pref enabled)
             try {
-                const notificationService = getNotificationService();
-                const tokens = await notificationService.getUserPushTokens(patientId);
+                // Check patient notification preferences
+                const patientDoc = await db.collection('users').doc(patientId).get();
+                const patientPrefs = resolveNotificationPreferences(
+                    patientDoc.exists ? (patientDoc.data() as Record<string, unknown>) : null,
+                );
+                if (!patientPrefs.caregiverMessages) {
+                    functions.logger.info(
+                        `[care][messages] Patient ${patientId} has caregiverMessages disabled — skipping push`,
+                    );
+                    // Skip push but continue — message is already saved
+                } else {
+                    const notificationService = getNotificationService();
+                    const tokens = await notificationService.getUserPushTokens(patientId);
 
-                if (tokens.length > 0) {
-                    const truncatedBody =
-                        sanitizedMessage.length > 100
-                            ? sanitizedMessage.substring(0, 97) + '...'
-                            : sanitizedMessage;
+                    if (tokens.length > 0) {
+                        const truncatedBody =
+                            sanitizedMessage.length > 100
+                                ? sanitizedMessage.substring(0, 97) + '...'
+                                : sanitizedMessage;
 
-                    const payloads = tokens.map((t) => ({
-                        to: t.token,
-                        title: `${senderName} sent you a message`,
-                        body: truncatedBody,
-                        data: {
-                            type: 'caregiver_message',
-                            messageId: docRef.id,
-                        },
-                        sound: 'default' as const,
-                        priority: 'high' as const,
-                    }));
+                        const payloads = tokens.map((t) => ({
+                            to: t.token,
+                            title: `${senderName} sent you a message`,
+                            body: truncatedBody,
+                            data: {
+                                type: 'caregiver_message',
+                                messageId: docRef.id,
+                            },
+                            sound: 'default' as const,
+                            priority: 'high' as const,
+                        }));
 
-                    const results = await notificationService.sendNotifications(payloads);
+                        const results = await notificationService.sendNotifications(payloads);
 
-                    // Clean up invalid tokens
-                    for (let i = 0; i < results.length; i++) {
-                        if (results[i].details?.error === 'DeviceNotRegistered') {
-                            await notificationService.removeInvalidToken(patientId, tokens[i].token);
+                        // Clean up invalid tokens
+                        for (let i = 0; i < results.length; i++) {
+                            if (results[i].details?.error === 'DeviceNotRegistered') {
+                                await notificationService.removeInvalidToken(patientId, tokens[i].token);
+                            }
                         }
                     }
                 }
