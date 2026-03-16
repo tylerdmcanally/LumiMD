@@ -76,6 +76,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const resolutionId = ++roleResolutionRef.current;
 
+    // Signal that role is being resolved — prevents the role router from
+    // acting on a stale null role while we fetch the profile.
+    setRoleLoading(true);
+
     // Use cached role for instant startup while we fetch
     try {
       const cached = await AsyncStorage.getItem(ROLE_CACHE_KEY);

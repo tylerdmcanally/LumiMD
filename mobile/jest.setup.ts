@@ -80,3 +80,13 @@ jest.mock('@react-native-firebase/auth', () =>
     currentUser: null,
   }))
 );
+
+jest.mock('@react-native-google-signin/google-signin', () => ({
+  GoogleSignin: {
+    configure: jest.fn(),
+    hasPlayServices: jest.fn(async () => true),
+    signIn: jest.fn(async () => ({ data: { idToken: 'mock-id-token' } })),
+    signOut: jest.fn(async () => {}),
+    getCurrentUser: jest.fn(() => null),
+  },
+}));

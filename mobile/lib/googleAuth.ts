@@ -1,83 +1,62 @@
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import auth from '@react-native-firebase/auth';
 import { cfg } from './config';
 
-WebBrowser.maybeCompleteAuthSession();
-
-const discovery = {
-  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-  tokenEndpoint: 'https://oauth2.googleapis.com/token',
-};
-
-const scopes = ['openid', 'profile', 'email'];
-// Dev client/TestFlight builds should use the native redirect scheme (no Expo proxy)
-const useProxy = false;
+// Configure with the web client ID (required for Firebase credential exchange)
+GoogleSignin.configure({
+  webClientId: cfg.googleWebClientId,
+  iosClientId: cfg.googleIosClientId || undefined,
+});
 
 /**
- * Sign in with Google via web OAuth and authenticate with Firebase.
+ * Sign in with Google using the native SDK and authenticate with Firebase.
  */
 export async function signInWithGoogle() {
-  if (!cfg.googleWebClientId) {
-    console.warn('[googleAuth] Missing Google Web Client ID configuration');
-    return { user: null, error: 'Google Sign-In is not configured' };
-  }
-
   try {
-    const redirectUri = AuthSession.makeRedirectUri({ scheme: 'lumimd' });
+    // Check if Google Play Services are available (Android) / Sign-In is possible
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-    const request = await AuthSession.loadAsync(
-      {
-        clientId: cfg.googleWebClientId,
-        redirectUri,
-        responseType: AuthSession.ResponseType.IdToken,
-        scopes,
-        usePKCE: false,
-        extraParams: {
-          prompt: 'select_account',
-        },
-      },
-      discovery
-    );
+    // Native sign-in UI
+    const response = await GoogleSignin.signIn();
 
-    const result = await request.promptAsync(discovery, { useProxy } as any);
-
-    if (result.type !== 'success') {
-      if (result.type === 'dismiss' || result.type === 'cancel') {
-        return { user: null, error: 'Sign in was cancelled' };
-      }
-      return { user: null, error: 'Google Sign-In was interrupted' };
-    }
-
-    const idToken = result.params?.id_token;
+    const idToken = response.data?.idToken;
 
     if (!idToken) {
-      console.error('[googleAuth] No ID token returned from Google', result);
+      console.error('[googleAuth] No ID token returned from Google Sign-In');
       return { user: null, error: 'Failed to obtain Google credentials' };
     }
 
+    // Create Firebase credential and sign in
     const credential = auth.GoogleAuthProvider.credential(idToken);
     const userCredential = await auth().signInWithCredential(credential);
 
     console.log('[googleAuth] Successfully signed in:', userCredential.user.email);
     return { user: userCredential.user, error: null };
   } catch (error: any) {
+    // Handle cancellation silently
+    if (error?.code === 'SIGN_IN_CANCELLED' || error?.code === '12501') {
+      return { user: null, error: 'Sign in was cancelled' };
+    }
+
     console.error('[googleAuth] Sign in error:', error);
     return { user: null, error: error?.message || 'Failed to sign in with Google' };
   }
 }
 
 /**
- * No-op sign out helper (Firebase handles session).
+ * Sign out from Google (clears native session).
  */
 export async function signOutFromGoogle() {
-  // Web-based OAuth doesn't maintain native session; Firebase sign-out is sufficient.
-  console.log('[googleAuth] Web OAuth flow does not require explicit Google sign-out.');
+  try {
+    await GoogleSignin.signOut();
+  } catch {
+    // Not critical — Firebase sign-out is the primary mechanism
+  }
 }
 
 /**
- * Indicates web OAuth does not manage a persistent Google session.
+ * Check if the user has an active Google session.
  */
 export async function isSignedInToGoogle(): Promise<boolean> {
-  return false;
+  return GoogleSignin.getCurrentUser() !== null;
 }

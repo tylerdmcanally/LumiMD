@@ -4,7 +4,7 @@ module.exports = {
   expo: {
     name: 'LumiMD',
     slug: 'lumimd',
-    version: '1.4.0',
+    version: '1.5.0',
     runtimeVersion: {
       policy: 'appVersion',
     },
@@ -103,6 +103,7 @@ module.exports = {
         },
       ],
       '@react-native-firebase/app',
+      '@react-native-google-signin/google-signin',
     ],
     extra: {
       router: {},
