@@ -30,7 +30,7 @@ LumiMD/Codebase/
 | Backend | Firebase Cloud Functions, Express.js |
 | Database | Cloud Firestore (NoSQL) |
 | Storage | Firebase Storage (audio, AES-256 encrypted) |
-| Auth | Firebase Auth (email/password, Google, Apple) |
+| Auth | Firebase Auth (email/password, Google via native SDK, Apple) |
 | AI - STT | AssemblyAI (transcript + speaker labels) |
 | AI - NLP | OpenAI GPT-4 (gpt-4-turbo for transcripts, gpt-4o for Vision/document extraction) |
 | Push | Expo Push + Firebase Cloud Messaging |
@@ -152,10 +152,12 @@ Summary stage → Medication safety check → Firestore update → Post-commit o
 - `app/medication-schedule.tsx` — Reminder scheduling
 - `app/caregiver-sharing.tsx` — Share management (invite with name, shows caregiver names)
 - `app/upload-avs.tsx` — AVS document upload (photo/PDF capture, multi-image, Firebase Storage upload)
-- `app/_layout.tsx` — Root layout + push notification routing + timezone sync on foreground (handles `caregiver_message` type)
+- `app/_layout.tsx` — Root layout + push notification routing + medication reminder action button handling (Took it / Skipped) + timezone sync on foreground
 - `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: heard → changed → next)
 - `components/lumibot/PostLogFeedback.tsx` — Post-log feedback modal with trend context
-- `lib/notifications.ts` — Push token registration, `syncTimezone()` (detects device timezone changes on foreground, patches user profile)
+- `lib/notifications.ts` — Push token registration, `syncTimezone()`, notification categories for medication reminder action buttons (`registerNotificationCategories()`)
+- `lib/googleAuth.ts` — Native Google Sign-In via `@react-native-google-signin/google-signin` (replaced browser-based `expo-auth-session` which Google blocked for custom URI schemes)
+- `lib/recordingConsent.ts` — Location-based recording consent detection with state abbreviation normalization
 - `lib/auth.ts` — Firebase auth helpers (`hasPasswordProvider()`, `linkEmailPassword()` for adding web password to Apple/Google-only accounts)
 - `lib/utils/medlineplus.ts` — MedlinePlus link resolver (`openMedlinePlus()` — conditions use NLM Health Topics API for direct page URLs; medications fall back to contextual search)
 - `lib/api/hooks.ts` — React Query hooks (useRealtimeVisits, useRealtimeActiveMedications, useMyMessages, useUnreadMessageCount, etc.)
@@ -249,7 +251,7 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 
 ## Authentication Flow
 
-1. **Mobile:** Firebase Auth (email/password, Google, Apple). JWT attached as `Authorization: Bearer`
+1. **Mobile:** Firebase Auth (email/password, Google via `@react-native-google-signin/google-signin` native SDK, Apple). JWT attached as `Authorization: Bearer`
 2. **Web portal (patient):** Email/password or Google Sign-In via `signInWithPopup`. New Google users auto-provisioned with `roles: ['patient']`
 3. **Web portal (caregiver):** Email/password or Google Sign-In. Invite token accepted after auth. `email_mismatch` triggers sign-out + error
 4. **Caregiver:** Gets invited by owner → creates account → accepts share → Firestore rules grant read access
@@ -265,7 +267,7 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `processAndNotifyMedicationReminders` | Every 5 min | Send due reminders |
 | `medicationSafetyRecheck` | Every 15 min | Re-check med warnings |
 | `processAndNotifyDueNudges` | Every 15 min | Send nudge notifications |
-| `processMedicationFollowUpNudges` | Every 15 min | Send follow-up nudges for unlogged doses |
+| ~~`processMedicationFollowUpNudges`~~ | ~~Every 15 min~~ | ~~Send follow-up nudges for unlogged doses~~ (disabled — replaced by notification action buttons) |
 | `processActionItemReminderNudges` | Every 15 min | Create nudges for pending/overdue action items |
 | `processActionOverdueNotifier` | Every 15 min | Push notifications for overdue actions |
 | `processCaregiverAlerts` | Every 15 min | Missed-med + visit-ready push to caregivers (respects `alertPreferences`) |
@@ -566,3 +568,46 @@ Single-app dual-experience: Expo Router route groups `(patient)/` and `(caregive
 - `functions/src/routes/care/messages.ts` — Backend: caregiver messaging (send + list)
 - `functions/src/triggers/caregiverAlerts.ts`, `caregiverDailyBriefing.ts` — Scheduled push notifications
 - `docs/CAREGIVER-MOBILE-CROSSCHECK.md` — Hook crosscheck checklist and fix patterns
+
+### Medication Reminder Action Buttons (March 2026)
+
+**Problem:** Medication follow-up nudges ("Did you take X?") sent 2-4 hours after reminders were redundant with the existing reminder system ("Time to take X"), creating double-notifications.
+
+**Solution:** Added "Took it" / "Skipped" action buttons directly on the medication reminder notification, eliminating the need for separate follow-up nudges entirely.
+
+**Implementation:**
+- `mobile/lib/notifications.ts` — `registerNotificationCategories()` creates `medication_reminder` category with `TOOK_IT` and `SKIPPED` action buttons via `Notifications.setNotificationCategoryAsync()`
+- `functions/src/services/medicationReminderService.ts` — Added `categoryId: 'medication_reminder'` to Expo Push payload (maps to `categoryIdentifier` on iOS)
+- `mobile/app/_layout.tsx` — `NotificationHandler` handles action button taps: creates medication log via `api.medicationLogs.create()`, deduplicates via AsyncStorage (`medLogDedupKey`), invalidates React Query caches
+- `packages/sdk/src/api-client.ts` — Added `medicationLogs.create()` method
+- `functions/src/index.ts` — `processMedicationFollowUpNudges` trigger disabled (commented out)
+- Client-side dedup prevents double-logging from repeated notification taps (AsyncStorage key: `medlog:{medicationId}:{scheduledTime}:{date}`)
+
+### Recording Consent Fix (March 2026)
+
+**Problem:** `expo-location`'s `reverseGeocodeAsync` returns state abbreviations ("CA") on iOS simulator instead of full names ("California"), causing two-party consent states to be incorrectly classified as one-party.
+
+**Fix:** Added `normalizeStateName()` with full 50-state + DC abbreviation-to-name lookup map in `mobile/lib/recordingConsent.ts`.
+
+### Caregiver Login Routing Fix (March 2026)
+
+**Problem:** `resolveRole()` in `AuthContext` didn't reset `roleLoading = true` when called after sign-in. After initial null-user resolution set `roleLoading = false`, a subsequent sign-in would start fetching the profile but the role router would see `roleLoading = false` + `role = null` and show a blank screen.
+
+**Fix:** Added `setRoleLoading(true)` at the start of `resolveRole()` when there's a real user, so the role router waits for the API response before routing.
+
+### Google Sign-In Native SDK Migration (March 2026)
+
+**Problem:** Google blocked custom URI scheme redirects (`lumimd://`) for web-type OAuth clients, breaking the browser-based `expo-auth-session` Google Sign-In flow with "doesn't comply with Google's OAuth 2.0 policy" error.
+
+**Fix:** Replaced `expo-auth-session` + `expo-web-browser` browser OAuth with `@react-native-google-signin/google-signin` native SDK.
+- `mobile/lib/googleAuth.ts` — Uses `GoogleSignin.signIn()` for native UI, exchanges ID token with Firebase
+- `mobile/app.config.js` — Added `@react-native-google-signin/google-signin` plugin (auto-reads iOS client ID from `GoogleService-Info.plist`)
+- Google OAuth consent screen must be published (not Testing mode) for non-test users; basic scopes (`openid`, `profile`, `email`) don't require Google verification
+
+### Deployment & Versioning (March 2026)
+
+- **Current version:** 1.5.0 (build 125)
+- **OTA updates:** `eas update --branch default --message "description"` for JS-only changes (no App Store review)
+- **Native builds:** `eas build --platform ios --profile production --auto-submit` for native module changes
+- **TestFlight:** Same-version builds (e.g., 1.5.0 build 124 → 125) skip Beta App Review. New version numbers trigger review (12-48 hours)
+- **Google OAuth consent screen:** Published (production mode) in Google Cloud Console — required for all Gmail accounts to sign in
