@@ -168,7 +168,7 @@ describe('caregiverAlerts', () => {
     await handler();
 
     expect(mockSendNotifications).toHaveBeenCalledTimes(1);
-    const payloads = mockSendNotifications.mock.calls[0][0];
+    const payloads = (mockSendNotifications.mock.calls[0] as any[])[0];
     expect(payloads[0].title).toContain('Mom');
     expect(payloads[0].title).toContain('missed');
     expect(payloads[0].data.type).toBe('missed_medication_caregiver');
@@ -290,7 +290,7 @@ describe('caregiverAlerts', () => {
     await handler();
 
     expect(mockSendNotifications).toHaveBeenCalledTimes(1);
-    const payloads = mockSendNotifications.mock.calls[0][0];
+    const payloads = (mockSendNotifications.mock.calls[0] as any[])[0];
     expect(payloads[0].title).toContain("Mom's visit summary is ready");
     expect(payloads[0].data.type).toBe('visit_ready_caregiver');
     expect(payloads[0].data.visitId).toBe('visit-1');
