@@ -211,5 +211,11 @@ service cloud.firestore {
       // using admin SDK, not by client code. Deny all client access.
       allow read, write: if false;
     }
+
+    match /privacyAuditLogs/{logId} {
+      // Privacy audit logs are written by Cloud Functions (admin SDK) only.
+      // Deny all direct client access.
+      allow read, write: if false;
+    }
   }
 }

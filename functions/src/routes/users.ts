@@ -12,6 +12,7 @@ import {
 import { hasResourceOwnerAccess } from '../middlewares/resourceAccess';
 import { sanitizePlainText } from '../utils/inputSanitization';
 import { UserDomainService } from '../services/domain/users/UserDomainService';
+import { logPrivacyEvent } from '../services/privacyAuditLogger';
 import { ShareDomainService } from '../services/domain/shares/ShareDomainService';
 import { FirestoreUserRepository } from '../services/repositories/users/FirestoreUserRepository';
 import { FirestoreShareRepository } from '../services/repositories/shares/FirestoreShareRepository';
@@ -929,6 +930,11 @@ usersRouter.get('/me/export', requireAuth, async (req: AuthRequest, res) => {
 
     functions.logger.info(`[users] User ${userId} exported their data`);
 
+    await logPrivacyEvent({
+      eventType: 'data_export',
+      actorUserId: userId,
+    });
+
     res.json(exportData);
   } catch (error) {
     functions.logger.error('[users] Error exporting user data:', error);
@@ -961,12 +967,45 @@ usersRouter.delete('/me', requireAuth, async (req: AuthRequest, res) => {
       ),
     );
 
+    // Collect Storage paths from visits before Firestore deletion
+    const visitsSnap = await admin.firestore()
+      .collection('visits')
+      .where('userId', '==', userId)
+      .get();
+    const storagePaths: string[] = [];
+    for (const doc of visitsSnap.docs) {
+      const data = doc.data();
+      if (data.storagePath) storagePaths.push(data.storagePath);
+      if (data.documentStoragePath) {
+        const docPaths = Array.isArray(data.documentStoragePath)
+          ? data.documentStoragePath
+          : [data.documentStoragePath];
+        storagePaths.push(...docPaths);
+      }
+    }
+
     const deleteCount = await userService.deleteAccountData(userId, emailCandidates);
+
+    // Clean up Storage files (audio + AVS documents)
+    const bucket = admin.storage().bucket();
+    for (const path of storagePaths) {
+      try {
+        await bucket.file(path).delete({ ignoreNotFound: true });
+      } catch (err) {
+        functions.logger.warn(`[users] Failed to delete storage file ${path} during account deletion`, err);
+      }
+    }
 
     // Delete Firebase Auth user
     await admin.auth().deleteUser(userId);
 
     functions.logger.info(`[users] Successfully deleted account for user ${userId}. Deleted ${deleteCount} documents.`);
+
+    await logPrivacyEvent({
+      eventType: 'account_deletion',
+      actorUserId: userId,
+      metadata: { deletedDocuments: deleteCount, storageFilesDeleted: storagePaths.length },
+    });
 
     res.json({
       success: true,

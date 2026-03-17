@@ -7,7 +7,7 @@ import {
 
 const getDb = () => admin.firestore();
 
-const DEFAULT_SOFT_DELETE_RETENTION_DAYS = 90;
+const DEFAULT_SOFT_DELETE_RETENTION_DAYS = 30;
 const DEFAULT_PURGE_PAGE_SIZE = 250;
 const MAX_PURGE_PAGE_SIZE = 500;
 

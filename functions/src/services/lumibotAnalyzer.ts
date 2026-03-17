@@ -5,6 +5,7 @@
  * based on diagnoses discussed and medications started/changed.
  */
 
+import crypto from 'crypto';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import {
@@ -34,7 +35,7 @@ import { FirestoreHealthLogRepository } from './repositories/healthLogs/Firestor
 
 /** Generate a short random ID for sequence grouping */
 function generateShortId(): string {
-    return Math.random().toString(36).substring(2, 10);
+    return crypto.randomBytes(4).toString('hex');
 }
 
 // =============================================================================

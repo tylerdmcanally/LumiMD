@@ -168,7 +168,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
             loggedAt: doc.data().loggedAt?.toDate?.()?.toISOString() || null,
         }));
 
-        res.set('Cache-Control', 'private, max-age=30');
+        res.set('Cache-Control', 'private, no-cache');
         res.json({ logs });
     } catch (error) {
         functions.logger.error('[MedLogs] Error fetching logs:', error);
@@ -247,7 +247,7 @@ router.get('/summary', requireAuth, async (req: AuthRequest, res) => {
             ? Math.round((totalTaken / totalRelevant) * 100)
             : 100;
 
-        res.set('Cache-Control', 'private, max-age=60');
+        res.set('Cache-Control', 'private, no-cache');
         res.json({
             period: {
                 days: daysNum,

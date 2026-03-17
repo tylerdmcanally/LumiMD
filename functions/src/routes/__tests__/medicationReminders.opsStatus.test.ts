@@ -164,7 +164,7 @@ describe('medication reminder timing backfill ops status route', () => {
     await handler(req, res, jest.fn());
 
     expect(res.statusCode).toBe(200);
-    expect(res.get('cache-control')).toBe('private, max-age=15');
+    expect(res.get('cache-control')).toBe('private, no-cache');
     expect(res.body).toMatchObject({
       cursorDocId: 'rem-200',
       hasMore: true,

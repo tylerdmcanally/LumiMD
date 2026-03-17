@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate verification token (valid for 24 hours)
-    const verificationToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
     // Store verification token in Firestore

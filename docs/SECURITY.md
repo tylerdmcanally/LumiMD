@@ -16,12 +16,17 @@
 | Secrets in git | Clean | No secrets in tracked files or git history; `.env` properly gitignored |
 | External code review | Done | 16/16 items addressed (Feb 2026) |
 | Key exposure incident | Done | Resend key rotated, Firebase keys restricted (Feb 2026) |
+| Privacy audit logging | Done | `privacyAuditLogs` collection tracks deletions, exports, sweeps, access changes (March 2026) |
+| Cache-Control consistency | Done | All mutable GET endpoints use `private, no-cache` (March 2026) |
+| Account deletion completeness | Done | `caregiverMessages`, `devices` added to deletion targets; Storage files cleaned up (March 2026) |
+| Document file cleanup | Done | `privacyDataSweeper` now cleans AVS document files alongside audio (March 2026) |
+| Soft-delete retention alignment | Done | Code aligned to 30-day retention (was 90); timezone normalized to UTC (March 2026) |
 
 ### Open Items
 
 | Item | Severity | Notes |
 |------|----------|-------|
-| `Math.random()` in email verification tokens | High | `send-verification-email/route.ts` and `send-verification-email-simple/route.ts` — replace with `crypto.randomBytes()` |
+| ~~`Math.random()` in email verification tokens~~ | ~~High~~ | Fixed March 2026 — replaced with `crypto.randomBytes(32)` in both email routes + `lumibotAnalyzer.ts`. PII removed from server logs. |
 | Mobile encrypted storage | Medium | AsyncStorage is unencrypted — migrate sensitive data to `expo-secure-store` |
 | Screen capture prevention | Medium | No `FLAG_SECURE` / `preventScreenCapture` on health data screens |
 | `x-middleware-subrequest` header blocking | Medium | Next.js middleware bypass (CVE-2025-29927) — add header check |

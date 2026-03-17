@@ -12,6 +12,7 @@ import {
   ensureResourceParticipantAccessOrReject,
 } from '../middlewares/resourceAccess';
 import { invalidateCaregiverShareLookupCache } from '../services/shareAccess';
+import { logPrivacyEvent } from '../services/privacyAuditLogger';
 import { escapeHtml, sanitizePlainText } from '../utils/inputSanitization';
 import { ShareDomainService } from '../services/domain/shares/ShareDomainService';
 import { FirestoreShareRepository } from '../services/repositories/shares/FirestoreShareRepository';
@@ -765,6 +766,15 @@ sharesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     functions.logger.info(
       `[shares] ${userId} updated share ${shareId} to ${updatedShare.status}`,
     );
+
+    if (updatedShare.status === 'accepted' || updatedShare.status === 'revoked') {
+      await logPrivacyEvent({
+        eventType: updatedShare.status === 'accepted' ? 'caregiver_access_granted' : 'caregiver_access_revoked',
+        actorUserId: userId,
+        targetUserId: updatedShare.ownerId === userId ? updatedShare.caregiverUserId : updatedShare.ownerId,
+        metadata: { shareId },
+      });
+    }
 
     res.json(serializeSharePayload(shareId, updatedShare as Record<string, unknown>));
   } catch (error) {

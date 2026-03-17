@@ -321,7 +321,7 @@ describe('medication reminders soft delete', () => {
     await listHandler(listReq, listRes, jest.fn());
 
     expect(listRes.statusCode).toBe(200);
-    expect(listRes.get('cache-control')).toBe('private, max-age=30');
+    expect(listRes.get('cache-control')).toBe('private, no-cache');
     expect(listRes.body).toMatchObject({ reminders: [] });
   });
 

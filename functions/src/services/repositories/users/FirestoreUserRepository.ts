@@ -79,6 +79,9 @@ function buildDeletionTargets(userId: string, userEmailCandidates: string[]): De
     { collection: 'medicationSafetyCache', field: 'userId', value: userId },
     { collection: 'medicationSafetyExternalCache', field: 'userId', value: userId },
     { collection: 'auth_handoffs', field: 'userId', value: userId },
+    { collection: 'caregiverMessages', field: 'recipientId', value: userId },
+    { collection: 'caregiverMessages', field: 'senderId', value: userId },
+    { collection: 'devices', field: 'userId', value: userId },
   ];
 
   userEmailCandidates.forEach((email) => {

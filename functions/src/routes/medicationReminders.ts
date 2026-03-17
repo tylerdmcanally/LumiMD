@@ -135,7 +135,7 @@ medicationRemindersRouter.get('/', requireAuth, async (req: AuthRequest, res) =>
             };
         });
 
-        res.set('Cache-Control', 'private, max-age=30');
+        res.set('Cache-Control', 'private, no-cache');
         res.json({ reminders });
     } catch (error) {
         functions.logger.error('[medicationReminders] List failed:', error);
@@ -157,7 +157,7 @@ medicationRemindersRouter.get('/ops/timing-backfill-status', requireAuth, async 
         }
 
         const status = await getMedicationReminderTimingBackfillStatus();
-        res.set('Cache-Control', 'private, max-age=15');
+        res.set('Cache-Control', 'private, no-cache');
         res.json(status);
     } catch (error) {
         functions.logger.error('[medicationReminders] Failed to load timing backfill status:', error);

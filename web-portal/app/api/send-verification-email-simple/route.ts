@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { z } from 'zod';
@@ -34,18 +35,18 @@ export async function POST(request: NextRequest) {
 
     // Parse and validate request
     const body = await request.json();
-    console.log('[send-verification-email] Body parsed:', { userId: body.userId, email: body.email });
+    console.log('[send-verification-email] Body parsed:', { userId: body.userId });
 
     const { userId, email } = requestSchema.parse(body);
 
     // Generate simple verification token
-    const verificationToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
 
     // Get app URL
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'https://portal.lumimd.app';
     const verificationUrl = `${appUrl}/verify-email?token=${verificationToken}&uid=${userId}`;
 
-    console.log('[send-verification-email] Sending email to:', email);
+    console.log('[send-verification-email] Sending verification email for userId:', userId);
 
     // Send email via Resend
     const { data, error: resendError } = await getResendClient().emails.send({

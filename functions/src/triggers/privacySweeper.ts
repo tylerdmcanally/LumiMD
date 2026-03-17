@@ -2,6 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { getAssemblyAIService } from '../services/assemblyai';
+import { logPrivacyEvent } from '../services/privacyAuditLogger';
 
 const db = () => admin.firestore();
 
@@ -11,14 +12,15 @@ const db = () => admin.firestore();
  *
  * 1. Checks for "orphaned" AssemblyAI transcripts that weren't deleted
  * 2. Checks for audio files that should have been deleted but weren't
- * 3. Expires stale pending shareInvites past their TTL
- * 4. Hard-deletes expired/revoked shareInvites older than 30 days
+ * 3. Checks for lingering AVS document files (photos/PDFs) in Storage
+ * 4. Expires stale pending shareInvites past their TTL
+ * 5. Hard-deletes expired/revoked shareInvites older than 30 days
  */
 export const privacyDataSweeper = onSchedule(
   {
     region: 'us-central1',
     schedule: 'every 24 hours',
-    timeZone: 'America/Chicago',
+    timeZone: 'Etc/UTC',
     memory: '512MiB',
     timeoutSeconds: 300,
     maxInstances: 1,
@@ -39,6 +41,7 @@ export const privacyDataSweeper = onSchedule(
 
   let cleanedTranscripts = 0;
   let cleanedAudio = 0;
+  let cleanedDocuments = 0;
 
   for (const doc of visitsSnapshot.docs) {
     const data = doc.data();
@@ -77,9 +80,31 @@ export const privacyDataSweeper = onSchedule(
         functions.logger.error(`[PrivacyAudit] Failed to sweep audio for visit ${doc.id}`, error);
       }
     }
+
+    // Check for lingering document files (AVS photos/PDFs)
+    if (data.documentStoragePath) {
+      try {
+        const paths = Array.isArray(data.documentStoragePath)
+          ? data.documentStoragePath
+          : [data.documentStoragePath];
+        const bucket = admin.storage().bucket();
+        for (const docPath of paths) {
+          await bucket.file(docPath).delete({ ignoreNotFound: true });
+        }
+        await doc.ref.update({
+          documentStoragePath: admin.firestore.FieldValue.delete(),
+          documentDeletedAt: admin.firestore.Timestamp.now(),
+          sweptByPrivacyJob: true,
+        });
+        cleanedDocuments++;
+        functions.logger.info(`[PrivacyAudit] Swept lingering documents for visit ${doc.id}`);
+      } catch (error) {
+        functions.logger.error(`[PrivacyAudit] Failed to sweep documents for visit ${doc.id}`, error);
+      }
+    }
   }
 
-  functions.logger.info(`[PrivacyAudit] Sweep complete. Cleaned ${cleanedTranscripts} transcripts and ${cleanedAudio} audio files.`);
+  functions.logger.info(`[PrivacyAudit] Sweep complete. Cleaned ${cleanedTranscripts} transcripts, ${cleanedAudio} audio files, and ${cleanedDocuments} document files.`);
 
   // ── Phase 2: ShareInvite cleanup ──────────────────────────────────────────
 
@@ -149,5 +174,17 @@ export const privacyDataSweeper = onSchedule(
   functions.logger.info(
     `[PrivacyAudit] ShareInvite cleanup: expired ${expiredInvites} pending invites, deleted ${deletedInvites} stale invites.`,
   );
+
+  await logPrivacyEvent({
+    eventType: 'privacy_sweep',
+    actorUserId: 'system',
+    metadata: {
+      cleanedTranscripts,
+      cleanedAudio,
+      cleanedDocuments,
+      expiredInvites,
+      deletedInvites,
+    },
+  });
 });
 
