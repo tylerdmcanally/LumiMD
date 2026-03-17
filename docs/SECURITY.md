@@ -26,7 +26,6 @@
 
 | Item | Severity | Notes |
 |------|----------|-------|
-| ~~`Math.random()` in email verification tokens~~ | ~~High~~ | Fixed March 2026 — replaced with `crypto.randomBytes(32)` in both email routes + `lumibotAnalyzer.ts`. PII removed from server logs. |
 | Mobile encrypted storage | Medium | AsyncStorage is unencrypted — migrate sensitive data to `expo-secure-store` |
 | Screen capture prevention | Medium | No `FLAG_SECURE` / `preventScreenCapture` on health data screens |
 | `x-middleware-subrequest` header blocking | Medium | Next.js middleware bypass (CVE-2025-29927) — add header check |
@@ -164,4 +163,4 @@ User Device (viewing data)
 - [ ] CORS tested with unauthorized origin
 - [ ] Firebase API keys restricted to required APIs + bundle IDs
 - [ ] GitHub push protection / secret scanning enabled
-- [ ] `Math.random()` replaced with `crypto.randomBytes()` in email routes
+- [x] `Math.random()` replaced with `crypto.randomBytes()` in email routes (March 2026)

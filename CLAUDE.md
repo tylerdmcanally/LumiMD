@@ -62,6 +62,7 @@ Switch with `firebase use lumimd-dev`.
 | `shareInvites/{token}` | Pending invite tokens (includes optional `caregiverName`) |
 | `devices/{id}` | Push notification tokens |
 | `auth_handoffs/{code}` | Temporary mobile→web auth codes (10 min TTL) |
+| `privacyAuditLogs/{id}` | Privacy audit trail (account deletions, data exports, sweeps, access changes) — admin SDK only |
 
 **Soft deletes:** All records use `deletedAt` field instead of hard delete. Queries always filter `deletedAt == null`. 30-day retention before `privacySweeper` purges.
 
@@ -267,13 +268,14 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `processAndNotifyMedicationReminders` | Every 5 min | Send due reminders |
 | `medicationSafetyRecheck` | Every 15 min | Re-check med warnings |
 | `processAndNotifyDueNudges` | Every 15 min | Send nudge notifications |
-| ~~`processMedicationFollowUpNudges`~~ | ~~Every 15 min~~ | ~~Send follow-up nudges for unlogged doses~~ (disabled — replaced by notification action buttons) |
+| ~~`processMedicationFollowUpNudges`~~ | ~~Every 15 min~~ | ~~Send follow-up nudges for unlogged doses~~ (removed from cloud — replaced by notification action buttons) |
 | `processActionItemReminderNudges` | Every 15 min | Create nudges for pending/overdue action items |
 | `processActionOverdueNotifier` | Every 15 min | Push notifications for overdue actions |
 | `processCaregiverAlerts` | Every 15 min | Missed-med + visit-ready push to caregivers (respects `alertPreferences`) |
 | `processCaregiverDailyBriefing` | Hourly | Timezone-aware daily briefing push (respects `briefingEnabled`) |
 | `staleVisitSweeper` | Hourly | Delete old failed visits |
-| `privacySweeper` | Daily | Purge 30-day-old soft-deleted data |
+| `privacyDataSweeper` | Daily | Clean up audio, documents, transcripts (24hr); expire/purge stale share invites; write privacy audit log |
+| `purgeSoftDeletedData` | Daily | Purge soft-deleted records older than 30 days |
 | `denormalizationSync` | On Firestore write | Sync caregiver-accessible fields |
 
 ## Development Commands
@@ -343,12 +345,10 @@ firebase use lumimd-dev   # or lumimd (prod)
 - `docs/TECHNICAL_OVERVIEW.md` — Architecture for non-engineers
 - `docs/reports/SYSTEM-HEALTH-REPORT.md` — Current system health status
 - `docs/CAREGIVER-ENHANCEMENTS-CHECKLIST.md` — Implementation checklist for caregiver portal features
-- `docs/archive/LUMIBOT-V2-IMPLEMENTATION-PLAN.md` — LumiBot v2 design + implementation record (all phases complete)
-- `docs/POSTVISIT-ENHANCEMENTS-PROMPT.md` — PostVisit-inspired enhancements execution guide (Phases A-D complete)
 - `docs/POSTVISIT-INSPIRED-ENHANCEMENTS.md` — PostVisit-inspired enhancements planning doc (Phases 5-7 complete, Strategic CRUD next)
 - `docs/DATA-INTEGRATION-DESIGN.md` — Data integration design (AVS upload + action nudges)
-- `docs/prompts/DATA-INTEGRATION-BUILD.md` — Data integration build prompt
 - `docs/SECURITY.md` — Consolidated security & privacy doc (posture, incidents, open items, compliance)
+- `docs/archive/` — Completed execution guides (LumiBot v2, PostVisit, data integration, privacy remediation, etc.)
 - `docs/guides/` — Quick Start, Firebase setup, deployment checklists
 - `docs/architecture/` — System design docs
 
