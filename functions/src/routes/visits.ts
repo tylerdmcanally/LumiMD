@@ -124,16 +124,20 @@ function validateStoragePaths(paths: string | string[], userId: string): boolean
   return pathArray.every(p => validateStoragePath(p, userId));
 }
 
-const serializeVisitForResponse = (visit: VisitRecord) => ({
-  ...visit,
-  id: visit.id,
-  createdAt: visit.createdAt?.toDate?.().toISOString?.(),
-  updatedAt: visit.updatedAt?.toDate?.().toISOString?.(),
-  processedAt: visit.processedAt?.toDate?.().toISOString?.() ?? null,
-  visitDate: visit.visitDate?.toDate?.()
-    ? visit.visitDate.toDate().toISOString()
-    : visit.visitDate ?? null,
-});
+const serializeVisitForResponse = (visit: VisitRecord) => {
+  // Strip raw transcript fields — clients only see the plain-language summary
+  const { transcript, transcriptText, ...rest } = visit as any;
+  return {
+    ...rest,
+    id: visit.id,
+    createdAt: visit.createdAt?.toDate?.().toISOString?.(),
+    updatedAt: visit.updatedAt?.toDate?.().toISOString?.(),
+    processedAt: visit.processedAt?.toDate?.().toISOString?.() ?? null,
+    visitDate: visit.visitDate?.toDate?.()
+      ? visit.visitDate.toDate().toISOString()
+      : visit.visitDate ?? null,
+  };
+};
 
 const sanitizeStringArray = (
   values: unknown,

@@ -1154,16 +1154,7 @@ export default function VisitDetailScreen() {
                 </CollapsibleSection>
               )}
 
-              {/* ── SECONDARY ZONE: Full Transcript (collapsed) ── */}
-              {visit.transcript && (
-                <CollapsibleSection
-                  title="Full Transcript"
-                  icon="document-text-outline"
-                  defaultExpanded={false}
-                >
-                  <Text style={styles.transcriptText}>{visit.transcript}</Text>
-                </CollapsibleSection>
-              )}
+              {/* Raw transcript intentionally hidden — we surface only the plain-language summary */}
             </ScrollView>
 
             {/* Floating "Review with LumiBot" pill */}
@@ -1574,11 +1565,6 @@ const styles = StyleSheet.create({
   placeholderText: {
     fontSize: 14,
     color: Colors.textMuted,
-  },
-  transcriptText: {
-    fontSize: 14,
-    color: Colors.text,
-    lineHeight: 22,
   },
   viewAllLink: {
     flexDirection: 'row',

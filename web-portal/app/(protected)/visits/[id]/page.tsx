@@ -851,7 +851,7 @@ export default function VisitDetailPage() {
           <DialogHeader>
             <DialogTitle>Delete visit</DialogTitle>
             <DialogDescription>
-              This will permanently remove the summary, transcript, and any
+              This will permanently remove the summary, visit notes, and any
               associated data. You won’t be able to recover it later.
             </DialogDescription>
           </DialogHeader>
@@ -908,7 +908,7 @@ function SummaryCard({ summary }: { summary?: string }) {
             </span>
             <h2 className="text-2xl font-semibold text-text-primary">Visit highlights</h2>
             <p className="text-sm text-text-secondary">
-              A concise overview generated from your visit transcript.
+              A concise overview generated from your visit notes.
             </p>
           </div>
           <Button

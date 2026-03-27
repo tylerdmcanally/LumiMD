@@ -21,7 +21,7 @@ const welcomeCards: WelcomeCard[] = [
     {
         icon: <Download className="h-6 w-6" />,
         title: 'Download iOS App',
-        description: 'Record visits with AI-powered transcription and get instant summaries',
+        description: 'Take notes at your visits and get clear, organized summaries',
         href: 'https://apps.apple.com/app/lumimd',
         external: true,
         variant: 'primary',

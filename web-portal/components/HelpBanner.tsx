@@ -94,7 +94,7 @@ export function HelpBanner() {
             {[
               {
                 title: 'Visits',
-                description: 'Review transcripts, insights, and share summaries.',
+                description: 'Review visit notes, insights, and share summaries.',
               },
               {
                 title: 'Medications',
