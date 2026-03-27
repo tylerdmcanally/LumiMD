@@ -113,7 +113,7 @@ export async function detectConsentRequirement(): Promise<ConsentResult> {
 
     const stateName = normalizeStateName(place.region);
     const isTwoParty = TWO_PARTY_STATES.has(stateName);
-    console.log(`[recordingConsent] Detected state: "${place.region}" → "${stateName}", twoParty: ${isTwoParty}`);
+    if (__DEV__) console.log(`[recordingConsent] Detected state: "${place.region}" → "${stateName}", twoParty: ${isTwoParty}`);
     return {
       requirement: isTwoParty ? 'two-party' : 'one-party',
       detectedState: stateName,

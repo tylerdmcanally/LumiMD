@@ -18,10 +18,10 @@ async function createHandoffCode(): Promise<string | null> {
       return null;
     }
 
-    console.log('[linking] Getting ID token for user:', currentUser.uid);
+    if (__DEV__) console.log('[linking] Getting ID token for user:', currentUser.uid);
     const idToken = await currentUser.getIdToken();
 
-    console.log('[linking] Calling create-handoff API...');
+    if (__DEV__) console.log('[linking] Calling create-handoff API...');
     const response = await fetch(`${cfg.apiBaseUrl}/v1/auth/create-handoff`, {
       method: 'POST',
       headers: {
@@ -37,7 +37,7 @@ async function createHandoffCode(): Promise<string | null> {
     }
 
     const data = await response.json();
-    console.log('[linking] Got handoff code successfully');
+    if (__DEV__) console.log('[linking] Got handoff code successfully');
     return data.code;
   } catch (error) {
     console.error('[linking] Failed to create handoff code:', error);
@@ -62,13 +62,13 @@ async function openWebUrl(path: string): Promise<void> {
       // Success: use handoff flow - include userId so web can skip re-auth if already signed in
       const userId = auth().currentUser?.uid;
       url = `${cfg.webPortalUrl}/auth/handoff?code=${code}&returnTo=${encodeURIComponent(path)}&uid=${userId}`;
-      console.log(`[linking] Opening with handoff: ${path}`);
+      if (__DEV__) console.log(`[linking] Opening with handoff: ${path}`);
 
     } else {
       // Handoff failed - redirect to sign-in with the intended destination
       // This prevents showing wrong account data
       url = `${cfg.webPortalUrl}/sign-in?returnTo=${encodeURIComponent(path)}&reason=app_handoff`;
-      console.log(`[linking] Handoff failed, redirecting to sign-in: ${path}`);
+      if (__DEV__) console.log(`[linking] Handoff failed, redirecting to sign-in: ${path}`);
     }
 
     // Open in user's default browser (Chrome, Safari, etc.)

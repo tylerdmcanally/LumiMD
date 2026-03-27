@@ -27,11 +27,11 @@ export function useMedicationReviewPrompt() {
 
   useEffect(() => {
     if (!user) {
-      console.log('[useMedicationReviewPrompt] No user, skipping listener');
+      if (__DEV__) console.log('[useMedicationReviewPrompt] No user, skipping listener');
       return;
     }
 
-    console.log('[useMedicationReviewPrompt] Setting up Firestore listener for user:', user.uid);
+    if (__DEV__) console.log('[useMedicationReviewPrompt] Setting up Firestore listener for user:', user.uid);
 
     // Listen for visits with pending medication confirmation
     const unsubscribe = firestore()
@@ -42,6 +42,7 @@ export function useMedicationReviewPrompt() {
       .limit(5)
       .onSnapshot(
         (snapshot) => {
+          if (__DEV__) {
           console.log(
             '[useMedicationReviewPrompt] Snapshot received:',
             snapshot.size,
@@ -49,9 +50,10 @@ export function useMedicationReviewPrompt() {
             'empty:',
             snapshot.empty,
           );
+          }
 
           if (snapshot.empty) {
-            console.log('[useMedicationReviewPrompt] No pending visits found');
+            if (__DEV__) console.log('[useMedicationReviewPrompt] No pending visits found');
             return;
           }
 
@@ -60,6 +62,7 @@ export function useMedicationReviewPrompt() {
             const visit = doc.data();
             const visitId = doc.id;
 
+            if (__DEV__) {
             console.log(
               '[useMedicationReviewPrompt] Checking visit:',
               visitId,
@@ -70,6 +73,7 @@ export function useMedicationReviewPrompt() {
               'dismissed:',
               dismissedRef.current.has(visitId),
             );
+            }
 
             // Skip visits the user already dismissed this session
             if (dismissedRef.current.has(visitId)) {
@@ -79,10 +83,12 @@ export function useMedicationReviewPrompt() {
             // Skip if we've already set this visit as the active review —
             // subsequent snapshots from backend writes shouldn't re-trigger.
             if (activeVisitIdRef.current === visitId) {
+              if (__DEV__) {
               console.log(
                 '[useMedicationReviewPrompt] Skipping duplicate snapshot for already-active visit:',
                 visitId,
               );
+              }
               return;
             }
 
@@ -97,6 +103,7 @@ export function useMedicationReviewPrompt() {
               const changedCount = pending.changed?.length ?? 0;
               const hasChanges = startedCount > 0 || stoppedCount > 0 || changedCount > 0;
 
+              if (__DEV__) {
               console.log(
                 '[useMedicationReviewPrompt] Visit',
                 visitId,
@@ -105,6 +112,7 @@ export function useMedicationReviewPrompt() {
                 'hasChanges:',
                 hasChanges,
               );
+              }
 
               if (hasChanges) {
                 const visitDate =
@@ -112,10 +120,12 @@ export function useMedicationReviewPrompt() {
                   visit.createdAt?.toDate?.()?.toISOString?.() ??
                   null;
 
+                if (__DEV__) {
                 console.log(
                   '[useMedicationReviewPrompt] Setting pending review for visit:',
                   visitId,
                 );
+                }
 
                 activeVisitIdRef.current = visitId;
                 setPendingReview({
@@ -137,17 +147,19 @@ export function useMedicationReviewPrompt() {
       );
 
     return () => {
-      console.log('[useMedicationReviewPrompt] Cleaning up listener');
+      if (__DEV__) console.log('[useMedicationReviewPrompt] Cleaning up listener');
       unsubscribe();
     };
   }, [user]);
 
   const clearPendingReview = useCallback(() => {
     if (pendingReview) {
+      if (__DEV__) {
       console.log(
         '[useMedicationReviewPrompt] Dismissing review for visit:',
         pendingReview.visitId,
       );
+      }
       dismissedRef.current.add(pendingReview.visitId);
     }
     activeVisitIdRef.current = null;

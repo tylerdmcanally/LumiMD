@@ -59,7 +59,7 @@ export async function uploadAudioFile(
           // Upload complete - get download URL
           try {
             const downloadURL = await storageRef.getDownloadURL();
-            console.log('[Storage] Upload complete:', downloadURL);
+            if (__DEV__) console.log('[Storage] Upload complete:', downloadURL);
             resolve({
               downloadUrl: downloadURL,
               storagePath: filename,
@@ -120,7 +120,7 @@ export async function uploadDocumentFile(
         async () => {
           try {
             const downloadURL = await storageRef.getDownloadURL();
-            console.log('[Storage] Document upload complete:', downloadURL);
+            if (__DEV__) console.log('[Storage] Document upload complete:', downloadURL);
             resolve({
               downloadUrl: downloadURL,
               storagePath: filename,
@@ -152,7 +152,7 @@ export async function deleteAudioFile(url: string): Promise<void> {
 
     // Native SDK has delete() method on reference
     await storageRef.delete();
-    console.log('[Storage] Deleted:', url);
+    if (__DEV__) console.log('[Storage] Deleted:', url);
   } catch (error) {
     console.error('[Storage] Delete failed:', error);
     throw error;

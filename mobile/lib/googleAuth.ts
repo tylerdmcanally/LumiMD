@@ -30,7 +30,7 @@ export async function signInWithGoogle() {
     const credential = auth.GoogleAuthProvider.credential(idToken);
     const userCredential = await auth().signInWithCredential(credential);
 
-    console.log('[googleAuth] Successfully signed in:', userCredential.user.email);
+    if (__DEV__) console.log('[googleAuth] Successfully signed in:', userCredential.user.email);
     return { user: userCredential.user, error: null };
   } catch (error: any) {
     // Handle cancellation silently

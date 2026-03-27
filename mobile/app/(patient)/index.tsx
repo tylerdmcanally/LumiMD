@@ -104,6 +104,7 @@ export default function HomeScreen() {
 
   // Debug: trace medication review visibility
   useEffect(() => {
+    if (__DEV__) {
     console.log(
       '[HomeScreen] Medication review state:',
       'pendingReview:',
@@ -113,6 +114,7 @@ export default function HomeScreen() {
       'sheetVisible:',
       pendingReview !== null && pendingShare === null,
     );
+    }
   }, [pendingReview, pendingShare]);
 
   const handleShareComplete = useCallback((sent: number, failed: number) => {

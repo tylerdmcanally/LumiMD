@@ -90,7 +90,7 @@ export default function OnboardingScreen() {
                 caregiverEmail: caregiver.email,
                 message: `${data.firstName} wants to share their health information with you.`,
             })
-            .then(() => console.log('[Onboarding] Invited caregiver:', caregiver.email))
+            .then(() => { if (__DEV__) console.log('[Onboarding] Invited caregiver:', caregiver.email); })
             .catch((e) => console.error('[Onboarding] Failed to invite caregiver:', e));
         }
     }, [data.caregivers, data.firstName, inviteCaregiver]);

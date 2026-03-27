@@ -28,6 +28,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api/client';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { KeepDeviceAwake } from '../../components/KeepDeviceAwake';
+import { ProviderIntroModal } from '../../components/ProviderIntroModal';
 import {
   detectConsentRequirement,
   dismissOnePartyNotice,
@@ -65,6 +66,7 @@ export default function RecordVisitScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showIntroModal, setShowIntroModal] = useState(false);
 
   // Location-based consent flow
   const [consentReq, setConsentReq] = useState<ConsentRequirement | null>(null);
@@ -165,6 +167,29 @@ export default function RecordVisitScreen() {
     }
   };
 
+  // ── Intro modal handlers ──────────────────────────────────────────────────
+
+  // User tapped the mic button → show the intro modal instead of starting immediately.
+  const handleMicPress = () => {
+    setShowIntroModal(true);
+  };
+
+  // Intro clip finished or user stopped it early.
+  // Brief 1-second gap so the provider knows the intro is done and the
+  // conversation is about to begin before recording quietly starts.
+  const handleIntroComplete = () => {
+    setShowIntroModal(false);
+    setTimeout(() => {
+      void handleStartRecording();
+    }, 1000);
+  };
+
+  // User chose to skip the intro → go straight to recording.
+  const handleIntroSkip = () => {
+    setShowIntroModal(false);
+    void handleStartRecording();
+  };
+
   const handleStop = async () => {
     try {
       await stopRecording();
@@ -209,7 +234,7 @@ export default function RecordVisitScreen() {
         }
       );
 
-      console.log('[RecordVisit] Audio uploaded:', downloadUrl);
+      if (__DEV__) console.log('[RecordVisit] Audio uploaded:', downloadUrl);
       uploadedStoragePath = storagePath;
 
       await api.visits.create({
@@ -227,7 +252,7 @@ export default function RecordVisitScreen() {
         },
       });
 
-      console.log('[RecordVisit] Visit created');
+      if (__DEV__) console.log('[RecordVisit] Visit created');
 
       Alert.alert(
         'Visit Recorded',
@@ -246,7 +271,7 @@ export default function RecordVisitScreen() {
       if (uploadedStoragePath) {
         try {
           await deleteAudioFile(uploadedStoragePath);
-          console.log('[RecordVisit] Cleaned up orphaned upload:', uploadedStoragePath);
+          if (__DEV__) console.log('[RecordVisit] Cleaned up orphaned upload:', uploadedStoragePath);
         } catch (cleanupError) {
           console.error('[RecordVisit] Failed to clean up orphaned upload:', cleanupError);
         }
@@ -313,7 +338,7 @@ export default function RecordVisitScreen() {
   const getPrimaryAction = () => {
     if (isRecording) return handleStop;
     if (isPaused) return handleResume;
-    return handleStartRecording;
+    return handleMicPress;
   };
 
   const getPrimaryIcon = (): 'stop' | 'play' | 'mic' => {
@@ -506,6 +531,12 @@ export default function RecordVisitScreen() {
                   <Text style={styles.consentSubtext}>
                     All recordings are encrypted and stored securely.
                   </Text>
+                  <View style={styles.aiDisclosureRow}>
+                    <Ionicons name="information-circle-outline" size={15} color={Colors.textMuted} style={{ marginTop: 1 }} />
+                    <Text style={styles.aiDisclosureText}>
+                      Your recording is processed by AI services (AssemblyAI for transcription, OpenAI for analysis) to generate your visit notes. These services do not retain your data.
+                    </Text>
+                  </View>
                   <Pressable
                     style={styles.consentButton}
                     onPress={() => setConsentGiven(true)}
@@ -566,6 +597,12 @@ export default function RecordVisitScreen() {
                       I confirm all parties have consented to this recording
                     </Text>
                   </Pressable>
+                  <View style={styles.aiDisclosureRow}>
+                    <Ionicons name="information-circle-outline" size={15} color={Colors.textMuted} style={{ marginTop: 1 }} />
+                    <Text style={styles.aiDisclosureText}>
+                      Your recording is processed by AI services (AssemblyAI for transcription, OpenAI for analysis) to generate your visit notes. These services do not retain your data.
+                    </Text>
+                  </View>
                   <Pressable
                     style={[styles.consentButton, !allPartiesConfirmed && styles.consentButtonDisabled]}
                     onPress={() => {
@@ -719,6 +756,11 @@ export default function RecordVisitScreen() {
         </View>
       </SafeAreaView>
       {isRecording && <KeepDeviceAwake tag="visit-recording" />}
+      <ProviderIntroModal
+        visible={showIntroModal}
+        onComplete={handleIntroComplete}
+        onSkip={handleIntroSkip}
+      />
     </ErrorBoundary>
   );
 }
@@ -1068,5 +1110,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_500Medium',
     color: Colors.primary,
+  },
+  aiDisclosureRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing(2),
+    marginTop: spacing(3),
+  },
+  aiDisclosureText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 16,
   },
 });

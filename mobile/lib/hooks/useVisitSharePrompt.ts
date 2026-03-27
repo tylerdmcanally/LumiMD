@@ -74,7 +74,7 @@ export function useVisitSharePrompt() {
                                     hasActiveCaregiversRef.current &&
                                     !autoShareEnabledRef.current
                                 ) {
-                                    console.log('[useVisitSharePrompt] Visit completed, prompting share:', visitId);
+                                    if (__DEV__) console.log('[useVisitSharePrompt] Visit completed, prompting share:', visitId);
                                     setPendingShare({
                                         visitId,
                                         caregiverCount: caregiverCountRef.current,

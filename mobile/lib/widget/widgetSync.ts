@@ -56,7 +56,7 @@ export async function syncMedicationScheduleToWidget(
     // Only supported on iOS
     if (Platform.OS !== 'ios') return;
     if (!SharedGroupPreferences) {
-        console.log('[WidgetSync] SharedGroupPreferences native module not available');
+        if (__DEV__) console.log('[WidgetSync] SharedGroupPreferences native module not available');
         return;
     }
 
@@ -112,7 +112,7 @@ export async function syncMedicationScheduleToWidget(
 
         // Trigger widget refresh
         reloadWidgetTimelines();
-        console.log(`[WidgetSync] Synced ${sharedMeds.length} medications to widget at ${now}`);
+        if (__DEV__) console.log(`[WidgetSync] Synced ${sharedMeds.length} medications to widget at ${now}`);
     } catch (error) {
         console.warn('[WidgetSync] Failed to sync:', error);
     }
@@ -143,6 +143,6 @@ function reloadWidgetTimelines() {
         }
     } catch (e) {
         // LumiWidgetKit module may not be available (e.g., Android, old build)
-        console.log('[WidgetSync] LumiWidgetKit reload not available');
+        if (__DEV__) console.log('[WidgetSync] LumiWidgetKit reload not available');
     }
 }

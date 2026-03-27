@@ -116,7 +116,7 @@ export function useInviteCaregiver() {
       const invite = await api.shares.invite(payload);
 
       if (invite.emailSent) {
-        console.log('[useInviteCaregiver] Invite created and email sent successfully');
+        if (__DEV__) console.log('[useInviteCaregiver] Invite created and email sent successfully');
       } else {
         console.warn('[useInviteCaregiver] Invite created but email was not sent');
       }

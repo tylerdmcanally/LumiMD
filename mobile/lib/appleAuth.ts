@@ -51,7 +51,7 @@ export async function signInWithApple() {
       }
     }
 
-    console.log('[appleAuth] Successfully signed in:', userCredential.user.email);
+    if (__DEV__) console.log('[appleAuth] Successfully signed in:', userCredential.user.email);
     return { user: userCredential.user, error: null };
   } catch (error: any) {
     // User cancelled the sign-in

@@ -857,6 +857,16 @@ export default function VisitDetailScreen() {
                 </Card>
               )}
 
+              {/* AI-generated summary disclaimer */}
+              {visit.processingStatus === 'completed' && (
+                <View style={styles.aiDisclaimerBanner}>
+                  <Ionicons name="information-circle-outline" size={15} color={Colors.textMuted} />
+                  <Text style={styles.aiDisclaimerText}>
+                    AI-generated summary — always verify with your care team
+                  </Text>
+                </View>
+              )}
+
               {/* ── PRIMARY ZONE: Summary Hero ── */}
               <View style={styles.summaryHero}>
                 <View style={styles.summaryHeroHeader}>
@@ -1412,6 +1422,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textMuted,
     marginTop: 2,
+  },
+
+  /* ── AI Disclaimer Banner ── */
+  aiDisclaimerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    backgroundColor: 'rgba(38,35,28,0.04)',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: spacing(3),
+    marginBottom: spacing(3),
+  },
+  aiDisclaimerText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    fontStyle: 'italic',
+    color: Colors.textMuted,
+    flex: 1,
   },
 
   /* ── Summary Hero ── */

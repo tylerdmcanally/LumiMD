@@ -263,7 +263,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       }
       await configureAudioMode();
 
-      console.log('[Recording] Starting recording...');
+      if (__DEV__) console.log('[Recording] Starting recording...');
 
       const recordingOptions = {
         ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
@@ -285,7 +285,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           if (attempt > 1) {
-            console.log(`[Recording] Retrying (attempt ${attempt}/${maxRetries})...`);
+            if (__DEV__) console.log(`[Recording] Retrying (attempt ${attempt}/${maxRetries})...`);
             await new Promise(resolve => setTimeout(resolve, 500));
             // Full reset cycle before retry
             try {
@@ -323,7 +323,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       // Start duration tracker
       startDurationTimer(newRecording);
 
-      console.log('[Recording] Recording started');
+      if (__DEV__) console.log('[Recording] Recording started');
     } catch (error) {
       console.error('[Recording] Failed to start:', error);
       throw error;
@@ -345,7 +345,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       commitActiveSegment();
       setDuration(accumulatedDurationRef.current);
 
-      console.log('[Recording] Paused');
+      if (__DEV__) console.log('[Recording] Paused');
     } catch (error) {
       console.error('[Recording] Failed to pause:', error);
       throw error;
@@ -368,7 +368,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       startDurationTimer(recording);
       updateDisplayedDuration();
 
-      console.log('[Recording] Resumed');
+      if (__DEV__) console.log('[Recording] Resumed');
     } catch (error) {
       console.error('[Recording] Failed to resume:', error);
       throw error;
@@ -380,11 +380,11 @@ export function useAudioRecording(): UseAudioRecordingResult {
     try {
       if (!recording) return;
 
-      console.log('[Recording] Stopping recording...');
+      if (__DEV__) console.log('[Recording] Stopping recording...');
 
       await finalizeRecording(recording);
 
-      console.log('[Recording] Stopped. URI:', recording.getURI());
+      if (__DEV__) console.log('[Recording] Stopped. URI:', recording.getURI());
     } catch (error) {
       console.error('[Recording] Failed to stop:', error);
       throw error;
@@ -416,7 +416,7 @@ export function useAudioRecording(): UseAudioRecordingResult {
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync().catch(() => {
           // Ignore errors if already unloaded
-          console.log('[Recording] Cleanup - recording already unloaded');
+          if (__DEV__) console.log('[Recording] Cleanup - recording already unloaded');
         });
       }
       clearDurationTimer();

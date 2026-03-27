@@ -260,9 +260,11 @@ export function trackEvent<E extends TelemetryEvent>(
 
   // Debug visibility for internal testing; production transport intentionally omitted
   if (isDevRuntime) {
+    if (__DEV__) {
     console.log('[Telemetry]', event, {
       ...safeProps,
       at: new Date().toISOString(),
     });
+    }
   }
 }

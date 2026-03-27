@@ -70,7 +70,7 @@ export async function configureStore(): Promise<void> {
     });
 
     isConfigured = true;
-    console.log('[Store] Configured successfully');
+    if (__DEV__) console.log('[Store] Configured successfully');
   } catch (error) {
     console.error('[Store] Configuration failed:', error);
   }
@@ -140,7 +140,7 @@ export async function restorePurchases(): Promise<boolean> {
     const history = await IAP.getPurchaseHistoryAsync({ useGooglePlayCache: false });
     const hasPurchases = (history?.results?.length ?? 0) > 0;
 
-    console.log('[Store] Restored purchases:', hasPurchases);
+    if (__DEV__) console.log('[Store] Restored purchases:', hasPurchases);
     return hasPurchases;
   } catch (error) {
     console.error('[Store] Failed to restore purchases:', error);
