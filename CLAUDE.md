@@ -2,7 +2,9 @@
 
 ## What Is LumiMD?
 
-A consumer health app that records medical visits, transcribes audio via AssemblyAI, and extracts structured medical data (diagnoses, medications, action items) using GPT-4. Patients use the mobile app; caregivers access a read-only web portal and a mobile caregiver experience (same app, role-based routing).
+A consumer health app that takes notes at medical visits — capturing audio, generating plain-language summaries, and extracting structured medical data (diagnoses, medications, action items) using AI. Patients use the mobile app; caregivers access a read-only web portal and a mobile caregiver experience (same app, role-based routing).
+
+**Positioning:** LumiMD is a "medical visit note-taking companion," not a "recording app." Audio capture is the mechanism, not the value prop. All user-facing copy should emphasize notes, summaries, and organized visit information — not recording, transcription, or AI. See "Copy & Positioning Guidelines" section below.
 
 ## Monorepo Layout
 
@@ -99,6 +101,25 @@ Summary stage → Medication safety check → Firestore update → Post-commit o
 ```
 
 **Visit status machine:** `pending` → `transcribing` → `processing` → `completed` | `failed`
+
+**Transcript visibility:** Raw transcripts (speaker-labeled, timestamped) are stored in Firestore for backend processing (GPT extraction, LumiBot walkthrough) but are **never sent to clients**. The API's `serializeVisitForResponse()` strips `transcript` and `transcriptText` fields. All client surfaces show only the plain-language summary and structured extracted data.
+
+## Copy & Positioning Guidelines
+
+LumiMD is positioned as a **note-taking companion**, not a recording/transcription app. When writing user-facing copy anywhere in the codebase:
+
+| Use | Avoid |
+|-----|-------|
+| "Take notes" / "visit notes" | "Record" / "recording" (as the value prop) |
+| "Your visit notes" | "Your transcript" |
+| "LumiMD listens and takes notes" | "AI-powered transcription" |
+| "Clear summary" / "organized notes" | "AI-generated summary" (as headline) |
+| "What was discussed" | "What we heard" |
+| "Never miss a detail from your visit" | "Record your doctor visits" |
+
+**Audio/recording is still how it works** — just don't lead with it. Frame it as: "LumiMD listens so you can focus on your doctor." Mention recording where necessary (consent screens, privacy/security, FAQ about legality) but position it as a technical detail, not the headline.
+
+**AI stays behind the scenes.** Don't remove AI mentions entirely, but keep AI as a supporting detail ("powered by AI" as a badge) rather than the primary selling point. The value prop is the outcome: organized notes, nothing forgotten.
 
 ## Key Source Files
 
