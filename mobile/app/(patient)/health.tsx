@@ -9,7 +9,7 @@
  *   highlight: string — health log ID to scroll to (future)
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -74,7 +74,7 @@ interface TrendChartProps {
 const CHART_PADDING = { top: 20, right: 16, bottom: 30, left: 48 };
 const screenWidth = Dimensions.get('window').width;
 
-function TrendChart({ data, color, color2, unit, height = 180 }: TrendChartProps) {
+const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, height = 180 }: TrendChartProps) {
   if (data.length === 0) return null;
 
   const chartWidth = screenWidth - spacing(8) - CHART_PADDING.left - CHART_PADDING.right - 32;
@@ -190,7 +190,7 @@ function TrendChart({ data, color, color2, unit, height = 180 }: TrendChartProps
       ))}
     </Svg>
   );
-}
+});
 
 // ============================================================================
 // Insight Card
@@ -296,6 +296,12 @@ export default function HealthScreen() {
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Guard against state updates after unmount during rapid back navigation
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
+
   // Data — fetch all logs for the selected type (up to 100)
   const startDate = useMemo(() => {
     const d = new Date();
@@ -352,15 +358,17 @@ export default function HealthScreen() {
     setIsSubmitting(true);
     try {
       const response = await api.healthLogs.create({ type: 'bp', value, source: 'manual' });
+      if (!mountedRef.current) return {};
       Alert.alert('Success', 'Blood pressure logged successfully');
       setShowBPModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
     } catch {
+      if (!mountedRef.current) return {};
       Alert.alert('Error', 'Failed to log blood pressure. Please try again.');
       return {};
     } finally {
-      setIsSubmitting(false);
+      if (mountedRef.current) setIsSubmitting(false);
     }
   }, [refetch]);
 
@@ -368,15 +376,17 @@ export default function HealthScreen() {
     setIsSubmitting(true);
     try {
       const response = await api.healthLogs.create({ type: 'glucose', value, source: 'manual' });
+      if (!mountedRef.current) return {};
       Alert.alert('Success', 'Blood glucose logged successfully');
       setShowGlucoseModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
     } catch {
+      if (!mountedRef.current) return {};
       Alert.alert('Error', 'Failed to log blood glucose. Please try again.');
       return {};
     } finally {
-      setIsSubmitting(false);
+      if (mountedRef.current) setIsSubmitting(false);
     }
   }, [refetch]);
 
@@ -384,15 +394,17 @@ export default function HealthScreen() {
     setIsSubmitting(true);
     try {
       await api.healthLogs.create({ type: 'weight', value, source: 'manual' });
+      if (!mountedRef.current) return {};
       Alert.alert('Success', 'Weight logged successfully');
       setShowWeightModal(false);
       refetch();
       return {};
     } catch {
+      if (!mountedRef.current) return {};
       Alert.alert('Error', 'Failed to log weight. Please try again.');
       return {};
     } finally {
-      setIsSubmitting(false);
+      if (mountedRef.current) setIsSubmitting(false);
     }
   }, [refetch]);
 
