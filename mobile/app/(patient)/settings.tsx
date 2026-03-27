@@ -22,7 +22,6 @@ import {
 } from '../../lib/notifications';
 import { api } from '../../lib/api/client';
 import { useUpdateUserProfile } from '../../lib/api/mutations';
-import { openManageSubscriptions, restorePurchases } from '../../lib/store';
 import {
   getTelemetryConsent,
   isTelemetryConfigured,
@@ -992,51 +991,6 @@ export default function SettingsScreen() {
                 <Text style={[styles.linkLabel, { color: Colors.error }]}>
                   {isDeleting ? 'Deleting account…' : 'Delete account'}
                 </Text>
-                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
-              </Pressable>
-            </Card>
-          </View>
-
-          {/* Subscription */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Subscription</Text>
-            <Card style={styles.card}>
-              <Pressable
-                style={styles.linkRow}
-                onPress={() => {
-                  openManageSubscriptions().catch((e) =>
-                    Alert.alert('Unable to open', e?.message ?? 'Please try again.'),
-                  );
-                }}
-              >
-                <View style={styles.settingIcon}>
-                  <Ionicons name="card-outline" size={22} color={Colors.textMuted} />
-                </View>
-                <Text style={styles.linkLabel}>Manage subscription</Text>
-                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
-              </Pressable>
-
-              <View style={styles.divider} />
-
-              <Pressable
-                style={styles.linkRow}
-                onPress={async () => {
-                  try {
-                    const restored = await restorePurchases();
-                    if (restored) {
-                      Alert.alert('Purchases Restored', 'Your previous purchases have been restored.');
-                    } else {
-                      Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
-                    }
-                  } catch (e: any) {
-                    Alert.alert('Restore failed', e?.message ?? 'Please try again.');
-                  }
-                }}
-              >
-                <View style={styles.settingIcon}>
-                  <Ionicons name="refresh-circle-outline" size={22} color={Colors.textMuted} />
-                </View>
-                <Text style={styles.linkLabel}>Restore purchases</Text>
                 <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
               </Pressable>
             </Card>
