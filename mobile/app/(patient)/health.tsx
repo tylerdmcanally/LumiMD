@@ -77,6 +77,12 @@ const screenWidth = Dimensions.get('window').width;
 const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, height = 180 }: TrendChartProps) {
   if (data.length === 0) return null;
 
+  // Guard: if any data point has NaN/undefined values, skip rendering to avoid SVG crash
+  const hasValidData = data.every(d =>
+    Number.isFinite(d.value) && (d.value2 === undefined || Number.isFinite(d.value2))
+  );
+  if (!hasValidData) return null;
+
   const chartWidth = screenWidth - spacing(8) - CHART_PADDING.left - CHART_PADDING.right - 32;
   const chartHeight = height - CHART_PADDING.top - CHART_PADDING.bottom;
   const totalWidth = screenWidth - spacing(8) - 32;
@@ -315,10 +321,14 @@ export default function HealthScreen() {
     error,
     refetch,
     isRefetching,
+    isFetching,
   } = useHealthLogs(
     { type: selectedType, limit: 100 },
-    { enabled: true },
+    { enabled: true, keepPreviousData: true },
   );
+
+  // While switching types, suppress chart render to avoid stale-data SVG crashes
+  const isTransitioning = isFetching && !isLoading;
 
   const {
     data: insightsData,
@@ -488,7 +498,7 @@ export default function HealthScreen() {
         )}
 
         {/* Chart Section */}
-        {!isLoading && !error && (
+        {!isLoading && !error && !isTransitioning && (
           <Card style={styles.chartCard}>
             <View style={styles.chartHeader}>
               <View style={[styles.chartIconBg, { backgroundColor: `${config.color}15` }]}>
@@ -543,7 +553,7 @@ export default function HealthScreen() {
         )}
 
         {/* Trend Insights */}
-        {!isLoading && insights.length > 0 && (
+        {!isLoading && !isTransitioning && insights.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Insights</Text>
             {insights.map((insight, i) => (
@@ -556,7 +566,7 @@ export default function HealthScreen() {
         )}
 
         {/* Recent Readings */}
-        {!isLoading && !error && recentLogs.length > 0 && (
+        {!isLoading && !error && !isTransitioning && recentLogs.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Recent Readings</Text>
             {recentLogs.slice(0, 10).map(log => (
