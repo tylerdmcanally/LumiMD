@@ -28,6 +28,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../../components/ui';
 import { useHealthLogs, useHealthInsights } from '../../lib/api/hooks';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import type { HealthLog, HealthLogSource, TrendInsight } from '@lumimd/sdk';
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../../components/lumibot';
 import type { WeightValue } from '../../components/lumibot';
@@ -321,14 +322,10 @@ export default function HealthScreen() {
     error,
     refetch,
     isRefetching,
-    isFetching,
   } = useHealthLogs(
     { type: selectedType, limit: 100 },
-    { enabled: true, keepPreviousData: true },
+    { enabled: true },
   );
-
-  // While switching types, suppress chart render to avoid stale-data SVG crashes
-  const isTransitioning = isFetching && !isLoading;
 
   const {
     data: insightsData,
@@ -422,6 +419,7 @@ export default function HealthScreen() {
   const insights = insightsData?.insights ?? [];
 
   return (
+    <ErrorBoundary>
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
@@ -497,8 +495,8 @@ export default function HealthScreen() {
           </View>
         )}
 
-        {/* Chart Section */}
-        {!isLoading && !error && !isTransitioning && (
+        {/* Chart Section — key forces clean SVG remount on type switch */}
+        {!isLoading && !error && (
           <Card style={styles.chartCard}>
             <View style={styles.chartHeader}>
               <View style={[styles.chartIconBg, { backgroundColor: `${config.color}15` }]}>
@@ -530,6 +528,7 @@ export default function HealthScreen() {
             ) : (
               <View style={styles.chartContainer}>
                 <TrendChart
+                  key={selectedType}
                   data={chartData}
                   color={config.color}
                   color2={selectedType === 'bp' ? '#FB923C' : undefined}
@@ -553,7 +552,7 @@ export default function HealthScreen() {
         )}
 
         {/* Trend Insights */}
-        {!isLoading && !isTransitioning && insights.length > 0 && (
+        {!isLoading && insights.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Insights</Text>
             {insights.map((insight, i) => (
@@ -566,7 +565,7 @@ export default function HealthScreen() {
         )}
 
         {/* Recent Readings */}
-        {!isLoading && !error && !isTransitioning && recentLogs.length > 0 && (
+        {!isLoading && !error && recentLogs.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Recent Readings</Text>
             {recentLogs.slice(0, 10).map(log => (
@@ -676,6 +675,7 @@ export default function HealthScreen() {
         isSubmitting={isSubmitting}
       />
     </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

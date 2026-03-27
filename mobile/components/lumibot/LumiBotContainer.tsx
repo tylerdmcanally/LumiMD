@@ -240,7 +240,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
     const handleViewTrend = useCallback(() => {
         const type = postLogFeedback.healthLogType;
         setPostLogFeedback(prev => ({ ...prev, visible: false }));
-        router.push({ pathname: '/health', params: { type } });
+        router.push({ pathname: '/(patient)/health', params: { type } });
     }, [postLogFeedback.healthLogType, router]);
 
     const handleWeightSubmit = useCallback(async (value: WeightValue) => {
