@@ -308,6 +308,22 @@ export default function HealthScreen() {
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Defer chart render by one frame after type switch. This gives the native
+  // SVG layer time to fully tear down before mounting new views — prevents
+  // native crash from overlapping mount/unmount cycles.
+  const [chartReady, setChartReady] = useState(true);
+  const prevTypeRef = useRef(selectedType);
+  useEffect(() => {
+    if (prevTypeRef.current !== selectedType) {
+      prevTypeRef.current = selectedType;
+      setChartReady(false);
+      const raf = requestAnimationFrame(() => {
+        setChartReady(true);
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [selectedType]);
+
   // Guard against state updates after unmount during rapid back navigation
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -500,8 +516,8 @@ export default function HealthScreen() {
           </View>
         )}
 
-        {/* Chart Section — key forces clean SVG remount on type switch */}
-        {!isLoading && !error && (
+        {/* Chart Section — deferred render + key forces clean SVG lifecycle */}
+        {!isLoading && !error && chartReady && (
           <Card style={styles.chartCard}>
             <View style={styles.chartHeader}>
               <View style={[styles.chartIconBg, { backgroundColor: `${config.color}15` }]}>
