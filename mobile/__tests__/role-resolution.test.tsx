@@ -217,7 +217,14 @@ describe('AuthContext role resolution', () => {
       expect(getByTestId('role')).toHaveTextContent('caregiver');
     });
 
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('lumimd:cachedRole', 'caregiver');
+    const cacheCall = (AsyncStorage.setItem as jest.Mock).mock.calls.find(
+      (c: unknown[]) => c[0] === 'lumimd:cachedRole',
+    );
+    expect(cacheCall).toBeTruthy();
+    const cached = JSON.parse(cacheCall![1] as string);
+    expect(cached.role).toBe('caregiver');
+    expect(typeof cached.at).toBe('number');
+    expect(cached.at).toBeGreaterThan(0);
   });
 
   it('uses cached role from AsyncStorage for instant startup', async () => {

@@ -69,11 +69,13 @@ const mockUseVisits = jest.fn(() => ({ data: [] }));
 const mockUseMedicationSchedule = jest.fn(() => ({ data: null, refetch: jest.fn() }));
 const mockUseCareOverview = jest.fn(() => ({ data: null }));
 
+const mockPrefetchOnAuth = jest.fn();
 jest.mock('../lib/api/hooks', () => ({
   usePendingActions: (...args: any[]) => mockUsePendingActions(...args),
   useVisits: (...args: any[]) => mockUseVisits(...args),
   useMedicationSchedule: (...args: any[]) => mockUseMedicationSchedule(...args),
   useCareOverview: (...args: any[]) => mockUseCareOverview(...args),
+  prefetchOnAuth: (...args: any[]) => mockPrefetchOnAuth(...args),
 }));
 
 // Mock fonts
@@ -108,10 +110,11 @@ jest.mock('../components/ui', () => ({
 }));
 
 const mockInvalidateQueries = jest.fn(() => Promise.resolve());
+const mockPrefetchQuery = jest.fn(() => Promise.resolve());
 jest.mock('@tanstack/react-query', () => ({
   QueryClient: jest.fn(() => ({ clear: jest.fn() })),
   QueryClientProvider: ({ children }: any) => children,
-  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries, prefetchQuery: mockPrefetchQuery }),
 }));
 
 // Mock expo-notifications — capture the response callback

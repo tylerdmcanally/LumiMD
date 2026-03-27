@@ -42,11 +42,16 @@ export async function registerNotificationCategories(): Promise<void> {
         options: { isDestructive: true, isAuthenticationRequired: false },
       },
     ]);
-    console.log('[Notifications] Registered medication_reminder category');
+    if (__DEV__) console.log('[Notifications] Registered medication_reminder category');
   } catch (error) {
     console.error('[Notifications] Error registering notification categories:', error);
   }
 }
+
+// Register categories at module load so iOS has them before any notification arrives.
+// iOS persists registered categories between sessions, but re-registering on every launch
+// is safe and ensures buttons show even on a fresh install before components mount.
+registerNotificationCategories();
 
 const DEVICE_ID_STORAGE_KEY = 'lumimd:deviceInstallationId';
 export const LEGACY_PUSH_TOKEN_STORAGE_KEY = 'lumimd:pushToken';
@@ -187,6 +192,14 @@ export async function registerPushToken(token: string): Promise<void> {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const deviceId = await getDeviceInstallationId();
     const previousToken = await getStoredPushToken();
+
+    // Skip re-registration if the token hasn't changed — avoids a redundant
+    // API call on every app launch (the common case for returning users).
+    if (previousToken === token) {
+      if (__DEV__) console.log('[Notifications] Push token unchanged, skipping re-registration');
+      return;
+    }
+
     const previousTokenForCleanup =
       previousToken && previousToken !== token ? previousToken : undefined;
 
@@ -200,7 +213,7 @@ export async function registerPushToken(token: string): Promise<void> {
           previousToken: previousTokenForCleanup,
         } as any);
         await setStoredPushToken(token);
-        console.log('[Notifications] Push token registered with timezone:', timezone);
+        if (__DEV__) console.log('[Notifications] Push token registered with timezone:', timezone);
         return;
       } catch (error) {
         if (attempt >= maxAttempts) {
@@ -233,7 +246,7 @@ export async function syncTimezone(): Promise<void> {
 
     await api.user.updateProfile({ timezone: currentTimezone } as any);
     await AsyncStorage.setItem(LAST_TIMEZONE_STORAGE_KEY, currentTimezone);
-    console.log('[Notifications] Timezone synced:', lastTimezone, '→', currentTimezone);
+    if (__DEV__) console.log('[Notifications] Timezone synced:', lastTimezone, '→', currentTimezone);
   } catch (error) {
     // Non-critical — will retry on next foreground
     console.warn('[Notifications] Timezone sync failed:', error);
@@ -246,7 +259,7 @@ export async function syncTimezone(): Promise<void> {
 export async function unregisterPushToken(token: string): Promise<void> {
   try {
     await api.user.unregisterPushToken({ token });
-    console.log('[Notifications] Push token unregistered successfully');
+    if (__DEV__) console.log('[Notifications] Push token unregistered successfully');
   } catch (error) {
     console.error('[Notifications] Error unregistering push token:', error);
     throw error;
@@ -263,7 +276,7 @@ export async function unregisterAllPushTokens(): Promise<void> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await api.user.unregisterAllPushTokens();
-      console.log('[Notifications] All push tokens unregistered successfully');
+      if (__DEV__) console.log('[Notifications] All push tokens unregistered successfully');
       return;
     } catch (error) {
       if (attempt >= maxAttempts) {
@@ -335,7 +348,7 @@ export async function scheduleLocalMedicationReminder(
       },
     });
 
-    console.log(`[Notifications] Scheduled local reminder in ${options.delayMinutes} min:`, notificationId);
+    if (__DEV__) console.log(`[Notifications] Scheduled local reminder in ${options.delayMinutes} min:`, notificationId);
     return notificationId;
   } catch (error) {
     console.error('[Notifications] Error scheduling local notification:', error);
@@ -349,7 +362,7 @@ export async function scheduleLocalMedicationReminder(
 export async function cancelScheduledNotification(notificationId: string): Promise<void> {
   try {
     await Notifications.cancelScheduledNotificationAsync(notificationId);
-    console.log('[Notifications] Cancelled scheduled notification:', notificationId);
+    if (__DEV__) console.log('[Notifications] Cancelled scheduled notification:', notificationId);
   } catch (error) {
     console.error('[Notifications] Error cancelling notification:', error);
   }
@@ -362,7 +375,7 @@ export async function cancelScheduledNotification(notificationId: string): Promi
 export async function cancelAllScheduledNotifications(): Promise<void> {
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
-    console.log('[Notifications] Cancelled all scheduled notifications');
+    if (__DEV__) console.log('[Notifications] Cancelled all scheduled notifications');
   } catch (error) {
     console.error('[Notifications] Error cancelling all notifications:', error);
   }
@@ -374,7 +387,7 @@ export async function cancelAllScheduledNotifications(): Promise<void> {
 export async function dismissAllNotifications(): Promise<void> {
   try {
     await Notifications.dismissAllNotificationsAsync();
-    console.log('[Notifications] Dismissed all notifications');
+    if (__DEV__) console.log('[Notifications] Dismissed all notifications');
   } catch (error) {
     console.error('[Notifications] Error dismissing notifications:', error);
   }

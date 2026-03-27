@@ -104,6 +104,10 @@ module.exports = {
       ],
       '@react-native-firebase/app',
       '@react-native-google-signin/google-signin',
+      ['@sentry/react-native/expo', {
+        organization: 'lumimd',
+        project: 'lumimd-mobile',
+      }],
     ],
     extra: {
       router: {},

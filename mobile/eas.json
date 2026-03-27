@@ -40,7 +40,8 @@
         "EXPO_PUBLIC_ENV": "production",
         "EXPO_PUBLIC_API_BASE_URL": "https://us-central1-lumimd-dev.cloudfunctions.net/api",
         "EXPO_PUBLIC_WEB_PORTAL_URL": "https://lumimd.app",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "355816267177-nmg2orcp4biaapoa5urmgiis1dqki2l5.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "355816267177-nmg2orcp4biaapoa5urmgiis1dqki2l5.apps.googleusercontent.com",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://0736d4a9cd080df3b7daf54118798404@o4511116742950912.ingest.us.sentry.io/4511116747538432"
       }
     }
   },

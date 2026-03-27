@@ -28,6 +28,7 @@ import { clearOnePartyDismissal } from '../lib/recordingConsent';
 
 const ROLE_CACHE_KEY = 'lumimd:cachedRole';
 const ROLE_OVERRIDE_KEY = 'lumimd:roleOverride';
+const ROLE_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour — skip network fetch if cache is fresh
 
 export type UserRole = 'patient' | 'caregiver';
 
@@ -61,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setRoleOverride = useCallback((newRole: UserRole) => {
     setRole(newRole);
     AsyncStorage.setItem(ROLE_OVERRIDE_KEY, newRole).catch(() => {});
-    AsyncStorage.setItem(ROLE_CACHE_KEY, newRole).catch(() => {});
+    AsyncStorage.setItem(ROLE_CACHE_KEY, JSON.stringify({ role: newRole, at: Date.now() })).catch(() => {});
   }, []);
 
   const resolveRole = useCallback(async (currentUser: FirebaseAuthTypes.User | null) => {
@@ -80,17 +81,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // acting on a stale null role while we fetch the profile.
     setRoleLoading(true);
 
-    // Use cached role for instant startup while we fetch
+    // Use cached role for instant startup; skip network fetch if cache is fresh (< 1hr)
     try {
-      const cached = await AsyncStorage.getItem(ROLE_CACHE_KEY);
-      if (cached === 'caregiver' || cached === 'patient') {
-        if (resolutionId === roleResolutionRef.current) {
-          setRole(cached);
-          setRoleLoading(false);
+      const rawCached = await AsyncStorage.getItem(ROLE_CACHE_KEY);
+      let cachedRole: UserRole | null = null;
+      let cacheIsFresh = false;
+
+      if (rawCached) {
+        try {
+          // New JSON format: { role, at }
+          const parsed: { role?: string; at?: number } = JSON.parse(rawCached);
+          if (parsed.role === 'patient' || parsed.role === 'caregiver') {
+            cachedRole = parsed.role;
+            cacheIsFresh = (Date.now() - (parsed.at ?? 0)) < ROLE_CACHE_MAX_AGE_MS;
+          }
+        } catch {
+          // Legacy plain-string format — valid but treat as stale to trigger a refresh
+          if (rawCached === 'patient' || rawCached === 'caregiver') {
+            cachedRole = rawCached;
+          }
+        }
+      }
+
+      if (cachedRole && resolutionId === roleResolutionRef.current) {
+        setRole(cachedRole);
+        setRoleLoading(false);
+        if (cacheIsFresh) {
+          console.log('[AuthContext] Role cache fresh, skipping network fetch');
+          return;
         }
       }
     } catch {
-      // Cache miss — no problem, we'll fetch
+      // Storage error — fall through to network fetch
     }
 
     try {
@@ -145,7 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAvailableRoles(roles);
       setRole(resolved);
       setRoleLoading(false);
-      await AsyncStorage.setItem(ROLE_CACHE_KEY, resolved).catch(() => {});
+      await AsyncStorage.setItem(ROLE_CACHE_KEY, JSON.stringify({ role: resolved, at: Date.now() })).catch(() => {});
     } catch (err) {
       console.warn('[AuthContext] Role resolution error, falling back to patient:', err);
       if (resolutionId === roleResolutionRef.current) {
@@ -157,15 +179,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Subscribe to auth state changes
+    // Fast path for returning users: the React Native Firebase SDK makes
+    // auth().currentUser synchronously available once the native module loads.
+    // If a session is already cached, we can skip waiting for the async event
+    // and unblock the role router immediately.
+    const syncUser = auth().currentUser;
+    if (syncUser) {
+      setUser(syncUser);
+      setLoading(false);
+      resolveRole(syncUser);
+    }
+
     const unsubscribe = onAuthStateChange((newUser) => {
       console.log('[AuthContext] Auth state changed:', newUser ? 'signed in' : 'signed out');
       setUser(newUser);
       setLoading(false);
-      resolveRole(newUser);
+      // Skip re-resolving only when the fast path already handled this exact
+      // user — avoids a redundant network fetch on startup. All other cases
+      // (sign-out, different user, no fast path) fall through to resolveRole.
+      if (!syncUser || newUser?.uid !== syncUser.uid) {
+        resolveRole(newUser);
+      }
     });
 
-    // Cleanup subscription
     return () => unsubscribe();
   }, [resolveRole]);
 

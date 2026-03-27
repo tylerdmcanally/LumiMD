@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  QueryClient,
   QueryKey,
   UseQueryOptions,
   useQuery,
@@ -1155,7 +1156,7 @@ export async function cleanupOrphanedReminders(): Promise<{ deleted: number } | 
       { method: 'POST' }
     );
     if (result.deleted > 0) {
-      console.log(`[MedReminders] Cleaned up ${result.deleted} orphaned reminder(s)`);
+      if (__DEV__) console.log(`[MedReminders] Cleaned up ${result.deleted} orphaned reminder(s)`);
     }
     return { deleted: result.deleted };
   } catch (error) {
@@ -1176,7 +1177,7 @@ export async function cleanupOrphanedNudges(): Promise<{ deleted: number } | nul
       { method: 'POST' }
     );
     if (result.deleted > 0) {
-      console.log(`[Nudges] Cleaned up ${result.deleted} orphaned nudge(s)`);
+      if (__DEV__) console.log(`[Nudges] Cleaned up ${result.deleted} orphaned nudge(s)`);
     }
     return { deleted: result.deleted };
   } catch (error) {
@@ -1365,6 +1366,23 @@ export function useUnreadMessageCount(options?: { enabled?: boolean }) {
     gcTime: 60_000,
     enabled: options?.enabled,
     refetchInterval: 30_000, // Poll every 30s for new messages
+  });
+}
+
+/**
+ * Fire-and-forget prefetch for the two highest-priority patient queries.
+ * Call once when auth is confirmed to warm the cache before screens mount.
+ */
+export function prefetchOnAuth(queryClient: QueryClient, userId: string): void {
+  queryClient.prefetchQuery({
+    queryKey: medicationScheduleKey(userId),
+    queryFn: () => fetchWithAuth<MedicationScheduleResponse>('/v1/meds/schedule/today'),
+    staleTime: 30_000,
+  });
+  queryClient.prefetchQuery({
+    queryKey: ['messages', 'unread-count', userId],
+    queryFn: () => api.messages.unreadCount(),
+    staleTime: 10_000,
   });
 }
 

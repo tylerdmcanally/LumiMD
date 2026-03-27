@@ -61,18 +61,17 @@ describe('notification token registration', () => {
     expect(secondPayload.previousToken).toBeUndefined();
   });
 
-  it('does not send previousToken when current token matches stored token', async () => {
+  it('skips registration entirely when token is already registered', async () => {
     await AsyncStorage.setItem(LAST_PUSH_TOKEN_STORAGE_KEY, 'ExponentPushToken[same-token]');
     await AsyncStorage.setItem(DEVICE_ID_STORAGE_KEY, 'device-installation-2');
 
     await registerPushToken('ExponentPushToken[same-token]');
 
-    expect(mockRegisterPushToken).toHaveBeenCalledWith(
-      expect.objectContaining({
-        token: 'ExponentPushToken[same-token]',
-        previousToken: undefined,
-        deviceId: 'device-installation-2',
-      }),
+    // No API call should be made — token hasn't changed
+    expect(mockRegisterPushToken).not.toHaveBeenCalled();
+    // Stored token should remain unchanged
+    expect(await AsyncStorage.getItem(LAST_PUSH_TOKEN_STORAGE_KEY)).toBe(
+      'ExponentPushToken[same-token]',
     );
   });
 });

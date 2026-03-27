@@ -11,7 +11,7 @@ import { navTheme } from '../theme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors, spacing } from '../components/ui';
-import { usePendingActions, useVisits, useMedicationSchedule, useCareOverview } from '../lib/api/hooks';
+import { usePendingActions, useVisits, useMedicationSchedule, useCareOverview, prefetchOnAuth } from '../lib/api/hooks';
 import {
   setBadgeCount,
   getExpoPushToken,
@@ -24,6 +24,23 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../lib/api/client';
 import { initializeTelemetryConsent } from '../lib/telemetry';
+import * as Sentry from '@sentry/react-native';
+import { cfg } from '../lib/config';
+
+Sentry.init({
+  dsn: cfg.sentryDsn,
+  enabled: !__DEV__,
+  tracesSampleRate: 0.2,
+  sendDefaultPii: false,
+  beforeSend(event) {
+    if (event.extra) {
+      delete event.extra.visitData;
+      delete event.extra.medications;
+      delete event.extra.healthLogs;
+    }
+    return event;
+  },
+});
 
 // Create a client
 const queryClient = new QueryClient({
@@ -70,6 +87,15 @@ function NotificationHandler() {
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const appState = useRef(AppState.currentState);
+
+  // Refs to always access current auth/role state inside stable callbacks.
+  // Without these, the response listener closes over a stale role value from
+  // the render in which it was created — causing action taps to be silently
+  // dropped when role resolves after the notification event fires.
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  const roleRef = useRef(role);
+  useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
+  useEffect(() => { roleRef.current = role; }, [role]);
 
   // Only fetch patient badge data when authenticated as patient
   const isPatient = role === 'patient';
@@ -140,7 +166,7 @@ function NotificationHandler() {
         const token = await getExpoPushToken();
         if (token) {
           await registerPushToken(token);
-          console.log('[Notifications] Auto-registered push token on app launch');
+          if (__DEV__) console.log('[Notifications] Auto-registered push token on app launch');
         }
         // Sync timezone in case device timezone changed since last launch
         await syncTimezone();
@@ -155,7 +181,7 @@ function NotificationHandler() {
   // Handle notification received while app is foregrounded
   useEffect(() => {
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      console.log('[Notifications] Notification received:', notification);
+      if (__DEV__) console.log('[Notifications] Notification received:', notification);
     });
 
     return () => {
@@ -165,15 +191,19 @@ function NotificationHandler() {
     };
   }, []);
 
-  // Handle notification tapped (deep linking) — role-aware routing
+  // Handle notification tapped (deep linking) — role-aware routing.
+  // Intentionally stable (deps: [router, qc]). Auth state is read from refs so
+  // action taps are handled correctly even when the event fires before role resolves.
   useEffect(() => {
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
       const actionId = response.actionIdentifier;
-      console.log('[Notifications] Notification tapped:', data, 'action:', actionId);
+      const currentRole = roleRef.current;
+      const currentIsAuthenticated = isAuthenticatedRef.current;
+      if (__DEV__) console.log('[Notifications] Notification tapped:', data, 'action:', actionId);
 
-      if (!isAuthenticated) {
-        console.log('[Notifications] User not authenticated, ignoring tap');
+      if (!currentIsAuthenticated) {
+        if (__DEV__) console.log('[Notifications] User not authenticated, ignoring tap');
         return;
       }
 
@@ -182,7 +212,7 @@ function NotificationHandler() {
       // Handle medication reminder action buttons (Took it / Skipped)
       if (
         notificationType === 'medication_reminder' &&
-        role === 'patient' &&
+        currentRole === 'patient' &&
         (actionId === MED_ACTION_TOOK_IT || actionId === MED_ACTION_SKIPPED)
       ) {
         const medicationId = data?.medicationId as string;
@@ -197,7 +227,7 @@ function NotificationHandler() {
           AsyncStorage.getItem(dedupKey)
             .then((existing) => {
               if (existing) {
-                console.log(`[Notifications] Duplicate tap ignored for ${medicationName} ${scheduledTime}`);
+                if (__DEV__) console.log(`[Notifications] Duplicate tap ignored for ${medicationName} ${scheduledTime}`);
                 return;
               }
 
@@ -210,9 +240,11 @@ function NotificationHandler() {
                   reminderId,
                 })
                 .then(() => {
+                  if (__DEV__) {
                   console.log(
                     `[Notifications] Logged ${actionId === MED_ACTION_TOOK_IT ? 'taken' : 'skipped'} for ${medicationName}`,
                   );
+                  }
                   // Mark as logged to prevent duplicates
                   AsyncStorage.setItem(dedupKey, '1');
                   // Invalidate medication-related caches so UI reflects the log
@@ -228,7 +260,7 @@ function NotificationHandler() {
       }
 
       // Patient notification routing
-      if (PATIENT_NOTIFICATION_TYPES.includes(notificationType) && role === 'patient') {
+      if (PATIENT_NOTIFICATION_TYPES.includes(notificationType) && currentRole === 'patient') {
         if (notificationType === 'medication_reminder') {
           router.push('/medication-schedule');
         } else if (notificationType === 'visit-ready' && data?.visitId) {
@@ -241,7 +273,7 @@ function NotificationHandler() {
       }
 
       // Caregiver notification routing
-      if (CAREGIVER_NOTIFICATION_TYPES.includes(notificationType) && role === 'caregiver') {
+      if (CAREGIVER_NOTIFICATION_TYPES.includes(notificationType) && currentRole === 'caregiver') {
         if (notificationType === 'daily_briefing') {
           router.replace('/(caregiver)/');
         } else if (data?.patientId) {
@@ -256,7 +288,14 @@ function NotificationHandler() {
         responseListener.current.remove();
       }
     };
-  }, [isAuthenticated, role, router]);
+  }, [router, qc]);
+
+  // Prefetch high-priority patient data as soon as auth is confirmed
+  useEffect(() => {
+    if (isAuthenticated && user && isPatient) {
+      prefetchOnAuth(qc, user.uid);
+    }
+  }, [isAuthenticated, user, isPatient, qc]);
 
   // Sync timezone + refresh data on app foreground
   useEffect(() => {
@@ -266,7 +305,7 @@ function NotificationHandler() {
         nextAppState === 'active' &&
         isAuthenticated
       ) {
-        console.log('[AppState] App came to foreground, refreshing data');
+        if (__DEV__) console.log('[AppState] App came to foreground, refreshing data');
         // Sync timezone for all roles (handles patient travel across timezones)
         syncTimezone();
         if (isPatient) {
@@ -284,7 +323,7 @@ function NotificationHandler() {
   return null;
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const scheme = useColorScheme();
 
   // Load fonts (non-blocking): Plus Jakarta Sans (body) + Fraunces (display)
@@ -381,3 +420,5 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });
+
+export default Sentry.wrap(RootLayout);

@@ -3,7 +3,7 @@
  * Warm aesthetic with Fraunces display font
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -39,10 +39,15 @@ export default function SignInScreen() {
     isAppleSignInAvailable().then(setAppleAvailable);
   }, []);
 
-  // Guard: if already authenticated (e.g. deep link, nav stack glitch),
-  // redirect to home which handles onboarding/dashboard routing.
+  // Prevent duplicate router.replace('/') calls — two concurrent navigations
+  // can leave Expo Router in a blank limbo state.
+  const hasNavigated = useRef(false);
+
+  // Guard: if already authenticated (e.g. deep link, nav stack glitch, or
+  // onAuthStateChanged fired after sign-in), redirect to role router.
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
+    if (!authLoading && isAuthenticated && !hasNavigated.current) {
+      hasNavigated.current = true;
       router.replace('/');
     }
   }, [authLoading, isAuthenticated, router]);
@@ -65,8 +70,14 @@ export default function SignInScreen() {
         return;
       }
 
-      console.log('[SignIn] Success');
-      router.replace('/');
+      if (__DEV__) console.log('[SignIn] Success');
+      // Guard effect usually navigates when isAuthenticated becomes true.
+      // Explicit fallback ensures navigation even if React batching delays
+      // the onAuthStateChanged state update / effect cycle.
+      if (!hasNavigated.current) {
+        hasNavigated.current = true;
+        router.replace('/');
+      }
     } catch (err: any) {
       console.error('[SignIn] Error:', err);
       setError('An unexpected error occurred');
@@ -88,7 +99,10 @@ export default function SignInScreen() {
         setSocialLoading(null);
         return;
       }
-      router.replace('/');
+      if (!hasNavigated.current) {
+        hasNavigated.current = true;
+        router.replace('/');
+      }
     } catch {
       setError('An unexpected error occurred');
       setSocialLoading(null);
@@ -105,7 +119,10 @@ export default function SignInScreen() {
         setSocialLoading(null);
         return;
       }
-      router.replace('/');
+      if (!hasNavigated.current) {
+        hasNavigated.current = true;
+        router.replace('/');
+      }
     } catch {
       setError('An unexpected error occurred');
       setSocialLoading(null);
@@ -270,6 +287,14 @@ export default function SignInScreen() {
             >
               <Text style={styles.signUpText}>Create an Account</Text>
             </TouchableOpacity>
+
+            {/* Medical Disclaimer */}
+            <View style={styles.disclaimerSection}>
+              <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
+              <Text style={styles.disclaimerText}>
+                LumiMD helps you capture and organize your medical visits. It is not a substitute for professional medical advice, diagnosis, or treatment. Always consult your healthcare provider.
+              </Text>
+            </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -455,5 +480,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     color: Colors.accent,
+  },
+  disclaimerSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: spacing(5),
+    paddingHorizontal: spacing(2),
+    gap: spacing(2),
+  },
+  disclaimerText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
 });
