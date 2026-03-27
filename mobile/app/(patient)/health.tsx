@@ -9,7 +9,7 @@
  *   highlight: string — health log ID to scroll to (future)
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -28,12 +28,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, spacing, Radius, Card } from '../../components/ui';
 import { useHealthLogs, useHealthInsights } from '../../lib/api/hooks';
-import { ErrorBoundary } from '../../components/ErrorBoundary';
 import type { HealthLog, HealthLogSource, TrendInsight } from '@lumimd/sdk';
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../../components/lumibot';
 import type { WeightValue } from '../../components/lumibot';
 import { api } from '../../lib/api/client';
-import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 
 // ============================================================================
 // Types
@@ -75,14 +74,8 @@ interface TrendChartProps {
 const CHART_PADDING = { top: 20, right: 16, bottom: 30, left: 48 };
 const screenWidth = Dimensions.get('window').width;
 
-const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, height = 180 }: TrendChartProps) {
+function TrendChart({ data, color, color2, unit, height = 180 }: TrendChartProps) {
   if (data.length === 0) return null;
-
-  // Guard: if any data point has NaN/undefined values, skip rendering to avoid SVG crash
-  const hasValidData = data.every(d =>
-    Number.isFinite(d.value) && (d.value2 === undefined || Number.isFinite(d.value2))
-  );
-  if (!hasValidData) return null;
 
   const chartWidth = screenWidth - spacing(8) - CHART_PADDING.left - CHART_PADDING.right - 32;
   const chartHeight = height - CHART_PADDING.top - CHART_PADDING.bottom;
@@ -111,15 +104,10 @@ const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, h
   const scaleX = (i: number) => CHART_PADDING.left + (i / (data.length - 1)) * chartWidth;
   const scaleY = (v: number) => CHART_PADDING.top + chartHeight - ((v - yMin) / (yMax - yMin)) * chartHeight;
 
-  // Build SVG path strings (Path is more stable than Polyline on iOS)
-  const buildPathD = (coords: Array<{ x: number; y: number }>): string => {
-    if (coords.length === 0) return '';
-    return coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(' ');
-  };
-
-  const primaryPath = buildPathD(data.map((d, i) => ({ x: scaleX(i), y: scaleY(d.value) })));
-  const secondaryPath = color2
-    ? buildPathD(data.map((d, i) => d.value2 !== undefined ? { x: scaleX(i), y: scaleY(d.value2) } : null).filter(Boolean) as Array<{ x: number; y: number }>)
+  // Build polyline points
+  const points = data.map((d, i) => `${scaleX(i)},${scaleY(d.value)}`).join(' ');
+  const points2 = color2
+    ? data.filter(d => d.value2 !== undefined).map((d) => `${scaleX(data.indexOf(d))},${scaleY(d.value2!)}`).join(' ')
     : '';
 
   // Y-axis labels (3 lines)
@@ -168,9 +156,9 @@ const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, h
       ))}
 
       {/* Secondary line (diastolic for BP) */}
-      {secondaryPath ? (
-        <Path
-          d={secondaryPath}
+      {points2 ? (
+        <Polyline
+          points={points2}
           fill="none"
           stroke={color2!}
           strokeWidth={2}
@@ -181,8 +169,8 @@ const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, h
       ) : null}
 
       {/* Primary line */}
-      <Path
-        d={primaryPath}
+      <Polyline
+        points={points}
         fill="none"
         stroke={color}
         strokeWidth={2.5}
@@ -202,7 +190,7 @@ const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, h
       ))}
     </Svg>
   );
-});
+}
 
 // ============================================================================
 // Insight Card
@@ -308,28 +296,6 @@ export default function HealthScreen() {
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Defer chart render by one frame after type switch. This gives the native
-  // SVG layer time to fully tear down before mounting new views — prevents
-  // native crash from overlapping mount/unmount cycles.
-  const [chartReady, setChartReady] = useState(true);
-  const prevTypeRef = useRef(selectedType);
-  useEffect(() => {
-    if (prevTypeRef.current !== selectedType) {
-      prevTypeRef.current = selectedType;
-      setChartReady(false);
-      const raf = requestAnimationFrame(() => {
-        setChartReady(true);
-      });
-      return () => cancelAnimationFrame(raf);
-    }
-  }, [selectedType]);
-
-  // Guard against state updates after unmount during rapid back navigation
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    return () => { mountedRef.current = false; };
-  }, []);
-
   // Data — fetch all logs for the selected type (up to 100)
   const startDate = useMemo(() => {
     const d = new Date();
@@ -386,17 +352,15 @@ export default function HealthScreen() {
     setIsSubmitting(true);
     try {
       const response = await api.healthLogs.create({ type: 'bp', value, source: 'manual' });
-      if (!mountedRef.current) return {};
       Alert.alert('Success', 'Blood pressure logged successfully');
       setShowBPModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
     } catch {
-      if (!mountedRef.current) return {};
       Alert.alert('Error', 'Failed to log blood pressure. Please try again.');
       return {};
     } finally {
-      if (mountedRef.current) setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   }, [refetch]);
 
@@ -404,17 +368,15 @@ export default function HealthScreen() {
     setIsSubmitting(true);
     try {
       const response = await api.healthLogs.create({ type: 'glucose', value, source: 'manual' });
-      if (!mountedRef.current) return {};
       Alert.alert('Success', 'Blood glucose logged successfully');
       setShowGlucoseModal(false);
       refetch();
       return { alertLevel: response.alertLevel, alertMessage: response.alertMessage, shouldShowAlert: response.shouldShowAlert };
     } catch {
-      if (!mountedRef.current) return {};
       Alert.alert('Error', 'Failed to log blood glucose. Please try again.');
       return {};
     } finally {
-      if (mountedRef.current) setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   }, [refetch]);
 
@@ -422,17 +384,15 @@ export default function HealthScreen() {
     setIsSubmitting(true);
     try {
       await api.healthLogs.create({ type: 'weight', value, source: 'manual' });
-      if (!mountedRef.current) return {};
       Alert.alert('Success', 'Weight logged successfully');
       setShowWeightModal(false);
       refetch();
       return {};
     } catch {
-      if (!mountedRef.current) return {};
       Alert.alert('Error', 'Failed to log weight. Please try again.');
       return {};
     } finally {
-      if (mountedRef.current) setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   }, [refetch]);
 
@@ -440,7 +400,6 @@ export default function HealthScreen() {
   const insights = insightsData?.insights ?? [];
 
   return (
-    <ErrorBoundary>
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
@@ -516,8 +475,8 @@ export default function HealthScreen() {
           </View>
         )}
 
-        {/* Chart Section — deferred render + key forces clean SVG lifecycle */}
-        {!isLoading && !error && chartReady && (
+        {/* Chart Section */}
+        {!isLoading && !error && (
           <Card style={styles.chartCard}>
             <View style={styles.chartHeader}>
               <View style={[styles.chartIconBg, { backgroundColor: `${config.color}15` }]}>
@@ -549,7 +508,6 @@ export default function HealthScreen() {
             ) : (
               <View style={styles.chartContainer}>
                 <TrendChart
-                  key={selectedType}
                   data={chartData}
                   color={config.color}
                   color2={selectedType === 'bp' ? '#FB923C' : undefined}
@@ -696,7 +654,6 @@ export default function HealthScreen() {
         isSubmitting={isSubmitting}
       />
     </SafeAreaView>
-    </ErrorBoundary>
   );
 }
 
