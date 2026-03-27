@@ -33,7 +33,7 @@ import type { HealthLog, HealthLogSource, TrendInsight } from '@lumimd/sdk';
 import { BPLogModal, GlucoseLogModal, WeightLogModal } from '../../components/lumibot';
 import type { WeightValue } from '../../components/lumibot';
 import { api } from '../../lib/api/client';
-import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
 
 // ============================================================================
 // Types
@@ -111,10 +111,15 @@ const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, h
   const scaleX = (i: number) => CHART_PADDING.left + (i / (data.length - 1)) * chartWidth;
   const scaleY = (v: number) => CHART_PADDING.top + chartHeight - ((v - yMin) / (yMax - yMin)) * chartHeight;
 
-  // Build polyline points
-  const points = data.map((d, i) => `${scaleX(i)},${scaleY(d.value)}`).join(' ');
-  const points2 = color2
-    ? data.filter(d => d.value2 !== undefined).map((d) => `${scaleX(data.indexOf(d))},${scaleY(d.value2!)}`).join(' ')
+  // Build SVG path strings (Path is more stable than Polyline on iOS)
+  const buildPathD = (coords: Array<{ x: number; y: number }>): string => {
+    if (coords.length === 0) return '';
+    return coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(' ');
+  };
+
+  const primaryPath = buildPathD(data.map((d, i) => ({ x: scaleX(i), y: scaleY(d.value) })));
+  const secondaryPath = color2
+    ? buildPathD(data.map((d, i) => d.value2 !== undefined ? { x: scaleX(i), y: scaleY(d.value2) } : null).filter(Boolean) as Array<{ x: number; y: number }>)
     : '';
 
   // Y-axis labels (3 lines)
@@ -163,9 +168,9 @@ const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, h
       ))}
 
       {/* Secondary line (diastolic for BP) */}
-      {points2 ? (
-        <Polyline
-          points={points2}
+      {secondaryPath ? (
+        <Path
+          d={secondaryPath}
           fill="none"
           stroke={color2!}
           strokeWidth={2}
@@ -176,8 +181,8 @@ const TrendChart = React.memo(function TrendChart({ data, color, color2, unit, h
       ) : null}
 
       {/* Primary line */}
-      <Polyline
-        points={points}
+      <Path
+        d={primaryPath}
         fill="none"
         stroke={color}
         strokeWidth={2.5}
