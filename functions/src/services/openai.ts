@@ -24,10 +24,13 @@ const BASE_URL = 'https://api.openai.com/v1';
 
 
 
+export type FrequencyCode = 'QD' | 'BID' | 'TID' | 'QID' | 'QHS' | 'PRN' | 'WEEKLY' | 'MONTHLY' | 'OTHER';
+
 export interface MedicationChangeEntry {
   name: string;
   dose?: string;
   frequency?: string;
+  frequencyCode?: FrequencyCode;
   note?: string;
   display?: string;
   original?: string;
@@ -908,6 +911,12 @@ const normalizeMedicationEntry = (value: unknown): MedicationChangeEntry | null 
 
     if (frequency) {
       result.frequency = frequency;
+    }
+
+    const rawCode = sanitizeText(record.frequencyCode)?.toUpperCase();
+    const validCodes = new Set(['QD', 'BID', 'TID', 'QID', 'QHS', 'PRN', 'WEEKLY', 'MONTHLY', 'OTHER']);
+    if (rawCode && validCodes.has(rawCode)) {
+      result.frequencyCode = rawCode as FrequencyCode;
     }
 
     if (computedDisplay) {

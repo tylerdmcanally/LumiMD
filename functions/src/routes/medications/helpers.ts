@@ -2,6 +2,7 @@ import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 import { UserDomainService } from '../../services/domain/users/UserDomainService';
 import { FirestoreUserRepository } from '../../services/repositories/users/FirestoreUserRepository';
+import { resolveReminderTimes } from '../../utils/frequencyTimes';
 
 export const DEFAULT_USER_TIMEZONE = 'America/Chicago';
 const TWENTY_FOUR_HOUR_TIME_REGEX = /^\d{2}:\d{2}$/;
@@ -50,82 +51,9 @@ function buildDoseCompletionLogDocId(
 export function createMedicationRouteHelpers(getDb: () => FirebaseFirestore.Firestore) {
   const getUserDomainService = () => new UserDomainService(new FirestoreUserRepository(getDb()));
 
-  /**
-   * Map medication frequency string to default reminder times.
-   * Returns null if frequency doesn't warrant a reminder (PRN, as needed, etc.)
-   */
+  // Reminder times resolved via shared utility: utils/frequencyTimes.ts
   function getDefaultReminderTimes(frequency?: string): string[] | null {
-    if (!frequency) return ['08:00']; // Default morning if no frequency specified
-
-    const freq = frequency.toLowerCase().trim();
-
-    // PRN / as needed - no automatic reminder
-    if (freq.includes('prn') || freq.includes('as needed') || freq.includes('when needed')) {
-      return null;
-    }
-
-    // Once daily patterns
-    if (
-      freq.includes('once daily') ||
-      freq.includes('once a day') ||
-      freq.includes('qd') ||
-      freq.includes('daily') ||
-      freq === 'qday'
-    ) {
-      // Check for timing hints
-      if (freq.includes('morning') || freq.includes('am') || freq.includes('breakfast')) {
-        return ['08:00'];
-      }
-      if (
-        freq.includes('evening') ||
-        freq.includes('pm') ||
-        freq.includes('night') ||
-        freq.includes('bedtime') ||
-        freq.includes('dinner')
-      ) {
-        return ['20:00'];
-      }
-      return ['08:00']; // Default morning for once daily
-    }
-
-    // Twice daily patterns
-    if (
-      freq.includes('twice') ||
-      freq.includes('bid') ||
-      freq.includes('2x') ||
-      freq.includes('two times') ||
-      freq.includes('every 12')
-    ) {
-      return ['08:00', '20:00'];
-    }
-
-    // Three times daily patterns
-    if (
-      freq.includes('three times') ||
-      freq.includes('tid') ||
-      freq.includes('3x') ||
-      freq.includes('every 8')
-    ) {
-      return ['08:00', '14:00', '20:00'];
-    }
-
-    // Four times daily
-    if (
-      freq.includes('four times') ||
-      freq.includes('qid') ||
-      freq.includes('4x') ||
-      freq.includes('every 6')
-    ) {
-      return ['08:00', '12:00', '16:00', '20:00'];
-    }
-
-    // Weekly - just one reminder
-    if (freq.includes('weekly') || freq.includes('once a week')) {
-      return ['08:00'];
-    }
-
-    // Default: single morning reminder
-    return ['08:00'];
+    return resolveReminderTimes(frequency);
   }
 
   /**

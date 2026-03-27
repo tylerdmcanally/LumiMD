@@ -96,7 +96,7 @@ describe('medicationReminderService repository bridge', () => {
       {
         reminderId: 'rem-1',
         updates: expect.objectContaining({
-          lastSentAt: expect.objectContaining({
+          missedNoTokensAt: expect.objectContaining({
             toMillis: expect.any(Function),
           }),
           timingMode: 'anchor',

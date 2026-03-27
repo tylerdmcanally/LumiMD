@@ -119,7 +119,7 @@ describe('caregiverAlerts', () => {
                     userId: 'patient-1',
                     medicationId: 'med-1',
                     medicationName: 'Lisinopril',
-                    lastNotifiedAt: { toDate: () => threeHoursAgo },
+                    lastSentAt: { toDate: () => threeHoursAgo },
                     deletedAt: null,
                     caregiverNotifications: [],
                   },
@@ -136,7 +136,7 @@ describe('caregiverAlerts', () => {
               createMockSnapshot([
                 {
                   id: 'share-1',
-                  data: { ownerId: 'patient-1', caregiverId: 'cg-1', status: 'accepted' },
+                  data: { ownerId: 'patient-1', caregiverUserId: 'cg-1', status: 'accepted' },
                 },
               ]),
             );
@@ -192,7 +192,7 @@ describe('caregiverAlerts', () => {
                     userId: 'patient-1',
                     medicationId: 'med-1',
                     medicationName: 'Lisinopril',
-                    lastNotifiedAt: { toDate: () => threeHoursAgo },
+                    lastSentAt: { toDate: () => threeHoursAgo },
                     deletedAt: null,
                     caregiverNotifications: [],
                   },
@@ -261,7 +261,7 @@ describe('caregiverAlerts', () => {
               createMockSnapshot([
                 {
                   id: 'share-1',
-                  data: { ownerId: 'patient-1', caregiverId: 'cg-1', status: 'accepted' },
+                  data: { ownerId: 'patient-1', caregiverUserId: 'cg-1', status: 'accepted' },
                 },
               ]),
             );
@@ -330,7 +330,7 @@ describe('caregiverAlerts', () => {
               createMockSnapshot([
                 {
                   id: 'share-1',
-                  data: { ownerId: 'patient-1', caregiverId: 'cg-1', status: 'accepted' },
+                  data: { ownerId: 'patient-1', caregiverUserId: 'cg-1', status: 'accepted' },
                 },
               ]),
             );
@@ -442,7 +442,7 @@ describe('caregiverAlerts', () => {
               createMockSnapshot([
                 {
                   id: 'share-1',
-                  data: { ownerId: 'patient-1', caregiverId: 'cg-1', status: 'accepted' },
+                  data: { ownerId: 'patient-1', caregiverUserId: 'cg-1', status: 'accepted' },
                 },
               ]),
             );

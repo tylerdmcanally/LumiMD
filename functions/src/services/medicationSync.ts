@@ -5,12 +5,20 @@ import {
   runMedicationSafetyChecks,
   addSafetyWarningsToEntry,
   normalizeMedicationName,
+  cleanWarningsForFirestore,
+  computeNeedsConfirmation,
 } from './medicationSafety';
 import { clearMedicationSafetyCacheForUser } from './medicationSafetyAI';
 import {
   FirestoreMedicationSyncRepository,
   MedicationSyncRepository,
 } from './repositories';
+import {
+  resolveReminderTimingPolicy,
+  resolveTimezoneOrDefault,
+  DEFAULT_REMINDER_TIMEZONE,
+} from '../utils/medicationReminderTiming';
+import { resolveReminderTimes } from '../utils/frequencyTimes';
 
 type MedicationSyncDependencies = {
   medicationSyncRepository?: Pick<
@@ -37,87 +45,20 @@ function resolveDependencies(
   };
 }
 
-/**
- * Map medication frequency string to default reminder times.
- * Returns null if frequency doesn't warrant a reminder (PRN, as needed, etc.)
- */
-function getDefaultReminderTimes(frequency?: string | null): string[] | null {
-  if (!frequency) return ['08:00']; // Default morning if no frequency specified
-
-  const freq = frequency.toLowerCase().trim();
-
-  // PRN / as needed - no automatic reminder
-  if (freq.includes('prn') || freq.includes('as needed') || freq.includes('when needed')) {
-    return null;
+async function getUserTimezoneForSync(userId: string): Promise<string> {
+  try {
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    return resolveTimezoneOrDefault(
+      userDoc.exists ? userDoc.data()?.timezone : null,
+      DEFAULT_REMINDER_TIMEZONE,
+    );
+  } catch (error) {
+    functions.logger.warn(`[medicationSync] Could not fetch timezone for user ${userId}:`, error);
+    return DEFAULT_REMINDER_TIMEZONE;
   }
-
-  // ===== MEALTIME PATTERNS =====
-  // "with meals" or "with food" (3x daily at mealtimes)
-  if (freq.includes('with meals') || freq.includes('with food') ||
-    freq.includes('at meals') || freq.includes('at mealtimes')) {
-    return ['08:00', '12:00', '18:00'];
-  }
-
-  // Breakfast / morning meal
-  if (freq.includes('breakfast') || freq.includes('morning meal') ||
-    (freq.includes('morning') && !freq.includes('every morning'))) {
-    return ['08:00'];
-  }
-
-  // Lunch / midday meal
-  if (freq.includes('lunch') || freq.includes('midday') || freq.includes('noon')) {
-    return ['12:00'];
-  }
-
-  // Dinner / evening meal (but not "bedtime" which is later)
-  if (freq.includes('dinner') || freq.includes('supper') ||
-    freq.includes('evening meal') || freq.includes('with evening')) {
-    return ['18:00'];
-  }
-
-  // ===== STANDARD TIME-OF-DAY PATTERNS =====
-  // Once daily patterns
-  if (freq.includes('once daily') || freq.includes('once a day') || freq.includes('qd') ||
-    freq.includes('daily') || freq === 'qday') {
-    if (freq.includes('evening') || freq.includes('pm') || freq.includes('night') ||
-      freq.includes('bedtime') || freq.includes('hs')) {
-      return ['20:00'];
-    }
-    return ['08:00']; // Default morning for once daily
-  }
-
-  // Bedtime / at night (after dinner, before sleep)
-  if (freq.includes('bedtime') || freq.includes('at night') ||
-    freq.includes('before bed') || freq.includes('hs') || freq.includes('nightly')) {
-    return ['21:00'];
-  }
-
-  // Twice daily patterns
-  if (freq.includes('twice') || freq.includes('bid') || freq.includes('2x') ||
-    freq.includes('two times') || freq.includes('every 12')) {
-    return ['08:00', '20:00'];
-  }
-
-  // Three times daily patterns
-  if (freq.includes('three times') || freq.includes('tid') || freq.includes('3x') ||
-    freq.includes('every 8')) {
-    return ['08:00', '14:00', '20:00'];
-  }
-
-  // Four times daily
-  if (freq.includes('four times') || freq.includes('qid') || freq.includes('4x') ||
-    freq.includes('every 6')) {
-    return ['08:00', '12:00', '16:00', '20:00'];
-  }
-
-  // Weekly - just one reminder  
-  if (freq.includes('weekly') || freq.includes('once a week')) {
-    return ['08:00'];
-  }
-
-  // Default: single morning reminder
-  return ['08:00'];
 }
+
+// Reminder times resolved via shared utility: utils/frequencyTimes.ts
 
 type MedicationEntryInput = MedicationChangeEntry | string;
 
@@ -570,6 +511,11 @@ const upsertMedication = async ({
   const display = entry.display ?? (note && note !== entry.note ? note : null);
   const originalText = entry.original ?? display ?? note ?? null;
 
+  // Compute needsConfirmation from safety check results, not GPT output
+  const safetyWarnings = Array.isArray(entry.warning) ? entry.warning : [];
+  const hasCriticalWarnings = computeNeedsConfirmation(safetyWarnings);
+  const cleanedWarnings = safetyWarnings.length > 0 ? cleanWarningsForFirestore(safetyWarnings) : null;
+
   const baseData = {
     userId,
     name: entry.name,
@@ -577,6 +523,7 @@ const upsertMedication = async ({
     canonicalName,
     dose: entry.dose ?? null,
     frequency: entry.frequency ?? null,
+    frequencyCode: entry.frequencyCode ?? null,
     notes: note,
     display,
     originalText,
@@ -584,9 +531,9 @@ const upsertMedication = async ({
     sourceVisitId: visitId,
     updatedAt: processedAt,
     lastSyncedAt: processedAt,
-    needsConfirmation: entry.needsConfirmation ?? false,
-    medicationStatus: entry.status ?? null,
-    medicationWarning: entry.warning ?? null,
+    needsConfirmation: hasCriticalWarnings || (entry.needsConfirmation ?? false),
+    medicationStatus: hasCriticalWarnings ? 'pending_review' : (entry.status ?? null),
+    medicationWarning: cleanedWarnings,
   };
 
   if (existingDoc) {
@@ -687,8 +634,14 @@ const upsertMedication = async ({
         );
 
         if (existingReminder.length === 0) {
-          const defaultTimes = getDefaultReminderTimes(entry.frequency);
+          const defaultTimes = resolveReminderTimes(entry.frequency, entry.frequencyCode);
           if (defaultTimes) {
+            const userTimezone = await getUserTimezoneForSync(userId);
+            const timingPolicy = resolveReminderTimingPolicy({
+              medicationName: entry.name,
+              userTimezone,
+            });
+
             await dependencies.medicationSyncRepository.createReminder({
               userId,
               medicationId: existingDoc.id,
@@ -696,12 +649,22 @@ const upsertMedication = async ({
               medicationDose: entry.dose || undefined,
               times: defaultTimes,
               enabled: true,
+              timingMode: timingPolicy.timingMode,
+              anchorTimezone: timingPolicy.anchorTimezone,
+              criticality: timingPolicy.criticality,
+              deletedAt: null,
+              deletedBy: null,
               createdAt: processedAt,
               updatedAt: processedAt,
             });
 
             functions.logger.info(
-              `[medicationSync] Auto-created reminder for reactivated ${entry.name} with times: ${defaultTimes.join(', ')}`
+              `[medicationSync] Auto-created reminder for reactivated ${entry.name} with times: ${defaultTimes.join(', ')}`,
+              {
+                timingMode: timingPolicy.timingMode,
+                anchorTimezone: timingPolicy.anchorTimezone,
+                criticality: timingPolicy.criticality,
+              },
             );
           }
         } else {
@@ -746,9 +709,15 @@ const upsertMedication = async ({
 
   // Auto-create medication reminder for new active medications
   if (status !== 'stopped') {
-    const defaultTimes = getDefaultReminderTimes(entry.frequency);
+    const defaultTimes = resolveReminderTimes(entry.frequency, entry.frequencyCode);
     if (defaultTimes) {
       try {
+        const userTimezone = await getUserTimezoneForSync(userId);
+        const timingPolicy = resolveReminderTimingPolicy({
+          medicationName: entry.name,
+          userTimezone,
+        });
+
         await dependencies.medicationSyncRepository.createReminder({
           userId,
           medicationId,
@@ -756,12 +725,22 @@ const upsertMedication = async ({
           medicationDose: entry.dose || undefined,
           times: defaultTimes,
           enabled: true,
+          timingMode: timingPolicy.timingMode,
+          anchorTimezone: timingPolicy.anchorTimezone,
+          criticality: timingPolicy.criticality,
+          deletedAt: null,
+          deletedBy: null,
           createdAt: processedAt,
           updatedAt: processedAt,
         });
 
         functions.logger.info(
-          `[medicationSync] Auto-created reminder for ${entry.name} with times: ${defaultTimes.join(', ')}`
+          `[medicationSync] Auto-created reminder for ${entry.name} with times: ${defaultTimes.join(', ')}`,
+          {
+            timingMode: timingPolicy.timingMode,
+            anchorTimezone: timingPolicy.anchorTimezone,
+            criticality: timingPolicy.criticality,
+          },
         );
       } catch (reminderError) {
         // Don't fail medication sync if reminder creation fails
@@ -803,55 +782,84 @@ export const syncMedicationsFromSummary = async ({
     }
   });
 
-  const tasks: Array<Promise<void>> = [];
+  // Process all medications sequentially to ensure atomicity.
+  // If any upsert fails, we log the error and track it so the caller
+  // knows which medications succeeded vs failed — no partial silent state.
+  const results: Array<{ name: string; status: string; success: boolean; error?: string }> = [];
 
-  // Started medications - run fast hardcoded checks only
+  // Started medications — full safety checks (same depth as manual add)
   for (const entry of normalized.started) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
-    const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
-    tasks.push(
-      upsertMedication({
+    try {
+      const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
+      const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+      await upsertMedication({
         userId,
         visitId,
         entry: entryWithWarnings,
         status: 'started',
         processedAt,
         dependencies,
-      }),
-    );
+      });
+      results.push({ name: entry.name, status: 'started', success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      functions.logger.error(`[medicationSync] Failed to upsert started medication ${entry.name}:`, error);
+      results.push({ name: entry.name, status: 'started', success: false, error: message });
+    }
   }
 
-  // Stopped medications - no checks needed
-  normalized.stopped.forEach((entry) => {
-    tasks.push(
-      upsertMedication({
+  // Stopped medications — no safety checks needed
+  for (const entry of normalized.stopped) {
+    try {
+      await upsertMedication({
         userId,
         visitId,
         entry,
         status: 'stopped',
         processedAt,
         dependencies,
-      }),
-    );
-  });
+      });
+      results.push({ name: entry.name, status: 'stopped', success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      functions.logger.error(`[medicationSync] Failed to upsert stopped medication ${entry.name}:`, error);
+      results.push({ name: entry.name, status: 'stopped', success: false, error: message });
+    }
+  }
 
-  // Changed medications - run fast hardcoded checks only
+  // Changed medications — full safety checks
   for (const entry of normalized.changed) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
-    const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
-    tasks.push(
-      upsertMedication({
+    try {
+      const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
+      const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+      await upsertMedication({
         userId,
         visitId,
         entry: entryWithWarnings,
         status: 'changed',
         processedAt,
         dependencies,
-      }),
+      });
+      results.push({ name: entry.name, status: 'changed', success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      functions.logger.error(`[medicationSync] Failed to upsert changed medication ${entry.name}:`, error);
+      results.push({ name: entry.name, status: 'changed', success: false, error: message });
+    }
+  }
+
+  const failed = results.filter((r) => !r.success);
+  if (failed.length > 0) {
+    functions.logger.error(
+      `[medicationSync] ${failed.length}/${results.length} medications failed to sync for visit ${visitId}`,
+      { failed },
     );
   }
 
-  await Promise.all(tasks);
+  functions.logger.info(
+    `[medicationSync] Sync complete for visit ${visitId}: ${results.filter((r) => r.success).length} succeeded, ${failed.length} failed`,
+  );
+
   await clearMedicationSafetyCacheForUser(userId);
 };
 
@@ -881,20 +889,20 @@ export const computePendingMedicationChanges = async ({
     return;
   }
 
-  // Run safety checks for started medications
+  // Run full safety checks for started medications (same depth as manual add)
   const annotatedStarted: MedicationChangeEntry[] = [];
   for (const entry of normalized.started) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
     annotatedStarted.push(addSafetyWarningsToEntry(entry, safetyWarnings));
   }
 
   // Stopped medications don't need safety checks
   const annotatedStopped = [...normalized.stopped];
 
-  // Run safety checks for changed medications
+  // Run full safety checks for changed medications
   const annotatedChanged: MedicationChangeEntry[] = [];
   for (const entry of normalized.changed) {
-    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+    const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
     annotatedChanged.push(addSafetyWarningsToEntry(entry, safetyWarnings));
   }
 

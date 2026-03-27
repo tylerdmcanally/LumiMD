@@ -55,6 +55,7 @@ interface UserReminderCandidate {
     timingMode?: ReminderTimingMode;
     anchorTimezone?: string | null;
     lastSentAt?: admin.firestore.Timestamp;
+    missedNoTokensAt?: admin.firestore.Timestamp;
 }
 
 interface DueReminderCandidate {
@@ -536,6 +537,7 @@ export async function processAndNotifyMedicationReminders(
             timingMode: reminder.timingMode,
             anchorTimezone: reminder.anchorTimezone,
             lastSentAt: reminder.lastSentAt,
+            missedNoTokensAt: reminder.missedNoTokensAt as admin.firestore.Timestamp | undefined,
         });
     }
 
@@ -743,13 +745,15 @@ export async function processAndNotifyMedicationReminders(
             });
 
                 if (tokens.length === 0) {
-                    functions.logger.info(`[MedReminders] No tokens for user ${userId} - skipping`);
-                    // Mark as processed but skipped
+                    functions.logger.info(`[MedReminders] No tokens for user ${userId} - skipping ${dueReminders.length} due reminders`);
+                    // Do NOT update lastSentAt — the reminder was never delivered.
+                    // Set missedNoTokensAt so the processor can send a catch-up
+                    // notification once the user logs back in and tokens reappear.
                     for (const reminder of dueReminders) {
                         reminderUpdates.push({
                             reminderId: reminder.id,
                             updates: {
-                                lastSentAt: now,
+                                missedNoTokensAt: now,
                                 timingMode: reminder.timingMode,
                                 anchorTimezone: reminder.anchorTimezone,
                                 criticality: reminder.criticality,
@@ -760,6 +764,76 @@ export async function processAndNotifyMedicationReminders(
                     stats.processed += dueReminders.length;
                     continue;
                 }
+
+            // Catch-up: send missed reminders that were skipped because tokens were absent.
+            // These have missedNoTokensAt set but lastSentAt not updated.
+            const missedReminders = reminders.filter(
+                (r) => r.missedNoTokensAt && (!r.lastSentAt || r.missedNoTokensAt.toMillis() > r.lastSentAt.toMillis()),
+            );
+            if (missedReminders.length > 0) {
+                functions.logger.info(
+                    `[MedReminders] Sending ${missedReminders.length} catch-up notification(s) for user ${userId}`,
+                );
+                // Deduplicate by medicationId — send one catch-up per medication, not per dose
+                const seenMedIds = new Set<string>();
+                for (const missed of missedReminders) {
+                    if (seenMedIds.has(missed.medicationId)) continue;
+                    seenMedIds.add(missed.medicationId);
+
+                    const lockAcquired = await acquireReminderSendLock(
+                        missed.id,
+                        now,
+                        dependencies.reminderProcessingRepository,
+                    );
+                    if (!lockAcquired) continue;
+
+                    const doseText = missed.medicationDose ? ` (${missed.medicationDose})` : '';
+                    const payloads: PushNotificationPayload[] = tokens.map(({ token }) => ({
+                        to: token,
+                        title: 'Medication Reminder',
+                        body: `Don't forget your ${missed.medicationName}${doseText}`,
+                        categoryId: 'medication_reminder',
+                        data: {
+                            type: 'medication_reminder',
+                            reminderId: missed.id,
+                            medicationId: missed.medicationId,
+                            medicationName: missed.medicationName,
+                            scheduledTime: missed.times[0] ?? '00:00',
+                            dueReason: 'catchup',
+                        },
+                        sound: 'default',
+                        priority: 'high',
+                    }));
+
+                    const responses = await notificationService.sendNotifications(payloads);
+                    const successCount = responses.filter((r) => r.status === 'ok').length;
+
+                    responses.forEach((response, index) => {
+                        if (response.details?.error === 'DeviceNotRegistered') {
+                            void notificationService.removeInvalidToken(userId, tokens[index].token);
+                        }
+                    });
+
+                    reminderUpdates.push({
+                        reminderId: missed.id,
+                        updates: {
+                            lastSentAt: now,
+                            missedNoTokensAt: admin.firestore.FieldValue.delete(),
+                            timingMode: missed.timingMode,
+                            anchorTimezone: missed.anchorTimezone,
+                            updatedAt: now,
+                        },
+                    });
+
+                    stats.processed++;
+                    if (successCount > 0) stats.sent++;
+
+                    functions.logger.info(`[MedReminders] Sent catch-up notification for ${missed.id}`, {
+                        userId,
+                        medication: missed.medicationName,
+                    });
+                }
+            }
 
             // Send notification for each due reminder candidate.
             for (const reminder of dueReminders) {
@@ -806,11 +880,12 @@ export async function processAndNotifyMedicationReminders(
                     }
                 });
 
-                // Update lastSentAt
+                // Update lastSentAt and clear any missed flag
                 reminderUpdates.push({
                     reminderId: reminder.id,
                     updates: {
                         lastSentAt: now,
+                        missedNoTokensAt: admin.firestore.FieldValue.delete(),
                         timingMode: reminder.timingMode,
                         anchorTimezone: reminder.anchorTimezone,
                         criticality: reminder.criticality,

@@ -5,8 +5,9 @@ import { z } from 'zod';
 import { requireAuth, AuthRequest } from '../../middlewares/auth';
 import {
   runMedicationSafetyChecks,
-  MedicationSafetyWarning,
   normalizeMedicationName,
+  cleanWarningsForFirestore,
+  computeNeedsConfirmation,
 } from '../../services/medicationSafety';
 import type { MedicationDomainService } from '../../services/domain/medications/MedicationDomainService';
 import { clearMedicationSafetyCacheForUser } from '../../services/medicationSafetyAI';
@@ -105,25 +106,10 @@ export function registerMedicationCoreRoutes(
       );
 
       // Determine if medication needs confirmation based on warning severity
-      const hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
+      const hasCriticalWarnings = computeNeedsConfirmation(warnings);
 
       // Remove undefined fields from warnings (Firestore doesn't accept undefined)
-      const cleanedWarnings = warnings.map((w) => {
-        const cleaned: any = {
-          type: w.type,
-          severity: w.severity,
-          message: w.message,
-          details: w.details,
-          recommendation: w.recommendation,
-        };
-        if (w.conflictingMedication !== undefined) {
-          cleaned.conflictingMedication = w.conflictingMedication;
-        }
-        if (w.allergen !== undefined) {
-          cleaned.allergen = w.allergen;
-        }
-        return cleaned;
-      });
+      const cleanedWarnings = cleanWarningsForFirestore(warnings);
 
       const now = admin.firestore.Timestamp.now();
       const canonicalName = normalizeMedicationName(medicationName);
@@ -312,7 +298,7 @@ export function registerMedicationCoreRoutes(
           useAI: true,
           excludeMedicationId: medId,
         });
-        hasCriticalWarnings = warnings.some((w: MedicationSafetyWarning) => w.severity === 'critical' || w.severity === 'high');
+        hasCriticalWarnings = computeNeedsConfirmation(warnings);
       }
 
       // Update medication - only update fields that are explicitly provided
@@ -337,27 +323,10 @@ export function registerMedicationCoreRoutes(
 
       // Update safety warning fields if medication details changed
       if (data.name !== undefined || data.dose !== undefined || data.frequency !== undefined) {
-        // Remove undefined fields from warnings (Firestore doesn't accept undefined)
-        const cleanedWarnings = warnings.map((w: MedicationSafetyWarning) => {
-          const cleaned: any = {
-            type: w.type,
-            severity: w.severity,
-            message: w.message,
-            details: w.details,
-            recommendation: w.recommendation,
-          };
-          if (w.conflictingMedication !== undefined) {
-            cleaned.conflictingMedication = w.conflictingMedication;
-          }
-          if (w.allergen !== undefined) {
-            cleaned.allergen = w.allergen;
-          }
-          return cleaned;
-        });
-
+        const cleanedWarnings = cleanWarningsForFirestore(warnings);
         updates.medicationWarning = cleanedWarnings.length > 0 ? cleanedWarnings : null;
-        updates.needsConfirmation = hasCriticalWarnings;
-        updates.medicationStatus = hasCriticalWarnings ? 'pending_review' : null;
+        updates.needsConfirmation = computeNeedsConfirmation(warnings);
+        updates.medicationStatus = computeNeedsConfirmation(warnings) ? 'pending_review' : null;
       }
 
       const updatedMed = await medicationService.updateRecord(medId, updates);

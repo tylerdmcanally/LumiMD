@@ -70,8 +70,8 @@ export const processCaregiverAlerts = onSchedule(
       const remindersSnapshot = await firestore
         .collection('medicationReminders')
         .where('deletedAt', '==', null)
-        .where('lastNotifiedAt', '>=', admin.firestore.Timestamp.fromDate(fourHoursAgo))
-        .where('lastNotifiedAt', '<=', admin.firestore.Timestamp.fromDate(twoHoursAgo))
+        .where('lastSentAt', '>=', admin.firestore.Timestamp.fromDate(fourHoursAgo))
+        .where('lastSentAt', '<=', admin.firestore.Timestamp.fromDate(twoHoursAgo))
         .get();
 
       // Group reminders by patient (userId) to batch notifications
@@ -89,14 +89,14 @@ export const processCaregiverAlerts = onSchedule(
         const medicationId = data.medicationId;
         if (!medicationId) continue;
 
-        const lastNotifiedAt = data.lastNotifiedAt?.toDate?.() ?? new Date(data.lastNotifiedAt);
-        if (isNaN(lastNotifiedAt.getTime())) continue;
+        const lastSentAt = data.lastSentAt?.toDate?.() ?? new Date(data.lastSentAt);
+        if (isNaN(lastSentAt.getTime())) continue;
 
         const logsSnapshot = await firestore
           .collection('medicationLogs')
           .where('userId', '==', userId)
           .where('medicationId', '==', medicationId)
-          .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(lastNotifiedAt))
+          .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(lastSentAt))
           .limit(1)
           .get();
 
@@ -136,7 +136,7 @@ export const processCaregiverAlerts = onSchedule(
           }
 
           for (const shareDoc of sharesSnapshot.docs) {
-            const caregiverId = shareDoc.data().caregiverId;
+            const caregiverId = shareDoc.data().caregiverUserId;
             if (!caregiverId) continue;
 
             // Respect caregiver alertPreferences (default true for backwards compatibility)
@@ -258,7 +258,7 @@ export const processCaregiverAlerts = onSchedule(
           const patientName = await getPatientName(firestore, patientId);
 
           for (const shareDoc of sharesSnapshot.docs) {
-            const caregiverId = shareDoc.data().caregiverId;
+            const caregiverId = shareDoc.data().caregiverUserId;
             if (!caregiverId) continue;
 
             // Respect caregiver alertPreferences (default true for backwards compatibility)

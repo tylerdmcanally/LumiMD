@@ -10,6 +10,10 @@ import { resolveReminderTimingPolicy } from '../../utils/medicationReminderTimin
 jest.mock('../../services/medicationSafety', () => ({
   runMedicationSafetyChecks: jest.fn(async () => []),
   normalizeMedicationName: jest.fn((name: string) => name.toLowerCase()),
+  cleanWarningsForFirestore: jest.fn((warnings: unknown[]) => warnings),
+  computeNeedsConfirmation: jest.fn((warnings: Array<{ severity?: string }>) =>
+    warnings.some((w) => w.severity === 'critical' || w.severity === 'high'),
+  ),
 }));
 
 jest.mock('../../services/medicationSafetyAI', () => ({

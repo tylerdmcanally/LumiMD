@@ -834,3 +834,44 @@ export function addSafetyWarningsToEntry(
     status: hasCriticalWarning ? 'unverified' : (entry.status || 'matched'),
   };
 }
+
+/**
+ * Remove undefined fields from safety warnings for Firestore compatibility.
+ * Firestore rejects documents with explicit `undefined` values.
+ *
+ * Single source of truth — used by both manual and visit-extraction paths.
+ */
+export function cleanWarningsForFirestore(
+  warnings: MedicationSafetyWarning[],
+): Record<string, unknown>[] {
+  return warnings.map((w) => {
+    const cleaned: Record<string, unknown> = {
+      type: w.type,
+      severity: w.severity,
+      message: w.message,
+      details: w.details,
+      recommendation: w.recommendation,
+    };
+    if (w.conflictingMedication !== undefined) {
+      cleaned.conflictingMedication = w.conflictingMedication;
+    }
+    if (w.allergen !== undefined) {
+      cleaned.allergen = w.allergen;
+    }
+    if (w.source !== undefined) {
+      cleaned.source = w.source;
+    }
+    if (w.externalIds !== undefined) {
+      cleaned.externalIds = w.externalIds;
+    }
+    return cleaned;
+  });
+}
+
+/**
+ * Determine if a medication needs user confirmation based on safety warning severity.
+ * Always computed from safety check results, never trusted from GPT output alone.
+ */
+export function computeNeedsConfirmation(warnings: MedicationSafetyWarning[]): boolean {
+  return warnings.some((w) => w.severity === 'critical' || w.severity === 'high');
+}

@@ -55,7 +55,7 @@ export const processCaregiverDailyBriefing = onSchedule(
       const caregiverPatients = new Map<string, string[]>();
       for (const doc of sharesSnapshot.docs) {
         const data = doc.data();
-        const caregiverId = data.caregiverId;
+        const caregiverId = data.caregiverUserId;
         const ownerId = data.ownerId;
         if (!caregiverId || !ownerId) continue;
 

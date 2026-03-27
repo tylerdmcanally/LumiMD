@@ -130,7 +130,7 @@ export const processActionOverdueNotifier = onSchedule(
 
             for (const shareDoc of sharesSnapshot.docs) {
               const shareData = shareDoc.data();
-              const caregiverId = shareData.caregiverId;
+              const caregiverId = shareData.caregiverUserId;
               if (!caregiverId) continue;
 
               // Dedup: check if we already notified this caregiver at this threshold
@@ -145,14 +145,7 @@ export const processActionOverdueNotifier = onSchedule(
 
               try {
                 // Get caregiver's push tokens
-                const devicesSnapshot = await firestore
-                  .collection('devices')
-                  .where('userId', '==', caregiverId)
-                  .get();
-
-                const tokens = devicesSnapshot.docs
-                  .map((d) => d.data().pushToken)
-                  .filter((t): t is string => !!t);
+                const tokens = await notificationService.getUserPushTokens(caregiverId);
 
                 if (tokens.length === 0) continue;
 
@@ -167,19 +160,20 @@ export const processActionOverdueNotifier = onSchedule(
                   : `"${description}" is ${action.daysOverdue} days overdue.`;
 
                 // Send push to all caregiver devices
-                for (const token of tokens) {
-                  await notificationService.sendNotification({
-                    to: token,
-                    title,
-                    body,
-                    data: {
-                      type: 'overdue_action',
-                      actionId: action.id,
-                      patientId,
-                      daysOverdue: String(action.daysOverdue),
-                    },
-                  });
-                }
+                const payloads = tokens.map(({ token }) => ({
+                  to: token,
+                  title,
+                  body,
+                  data: {
+                    type: 'overdue_action' as const,
+                    actionId: action.id,
+                    patientId,
+                    daysOverdue: String(action.daysOverdue),
+                  },
+                  sound: 'default' as const,
+                  priority: 'default' as const,
+                }));
+                await notificationService.sendNotifications(payloads);
 
                 // Record notification in action document
                 existingNotifications.push({
