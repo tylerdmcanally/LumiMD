@@ -7,6 +7,10 @@
 
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
+import { Resend } from 'resend';
+
+const METRICS_RECIPIENT = 'tyler@lumimd.app';
+const METRICS_FROM = 'LumiMD <updates@lumimd.app>';
 
 interface WeeklyMetrics {
   periodStart: string;
@@ -166,5 +170,87 @@ export async function generateWeeklyMetrics(): Promise<{ weekLabel: string; metr
     adherenceRateThisWeek: metrics.adherenceRateThisWeek,
   });
 
+  // Email digest
+  await sendMetricsEmail(weekLabel, metrics);
+
   return { weekLabel, metrics };
+}
+
+function pct(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function delta(current: number, label: string): string {
+  return current > 0 ? ` (+${current} ${label})` : '';
+}
+
+async function sendMetricsEmail(weekLabel: string, m: WeeklyMetrics): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    functions.logger.warn('[WeeklyMetrics] RESEND_API_KEY not set, skipping email');
+    return;
+  }
+
+  const resend = new Resend(apiKey);
+
+  const subject = `LumiMD Weekly — ${weekLabel}`;
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; color: #1C1917;">
+      <h2 style="font-size: 20px; margin: 0 0 4px;">LumiMD Weekly — ${weekLabel}</h2>
+      <p style="color: #78716C; font-size: 14px; margin: 0 0 24px;">${m.periodStart.slice(0, 10)} → ${m.periodEnd.slice(0, 10)}</p>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr style="border-bottom: 1px solid #E7E5E4;">
+          <td colspan="2" style="padding: 12px 0 6px; font-weight: 700; color: #40C9D0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Users</td>
+        </tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Total users</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.totalUsers}</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Active this week</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.activeUsersThisWeek}${delta(m.newUsersThisWeek, 'new')}</td></tr>
+
+        <tr style="border-bottom: 1px solid #E7E5E4;">
+          <td colspan="2" style="padding: 16px 0 6px; font-weight: 700; color: #40C9D0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Visits</td>
+        </tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Visits this week</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.visitsThisWeek} (${m.visitsCompletedThisWeek} completed)</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Document uploads</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.documentUploadsThisWeek}</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Failure rate</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${pct(m.visitFailureRate)}</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Total visits (all time)</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.totalVisits}</td></tr>
+
+        <tr style="border-bottom: 1px solid #E7E5E4;">
+          <td colspan="2" style="padding: 16px 0 6px; font-weight: 700; color: #40C9D0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Medications</td>
+        </tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Active medications</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.totalActiveMedications}</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Adherence rate</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${pct(m.adherenceRateThisWeek)}</td></tr>
+
+        <tr style="border-bottom: 1px solid #E7E5E4;">
+          <td colspan="2" style="padding: 16px 0 6px; font-weight: 700; color: #40C9D0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Caregivers</td>
+        </tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Active shares</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.activeCaregiverShares}</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Invites sent this week</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.caregiverInvitesSentThisWeek}</td></tr>
+
+        <tr style="border-bottom: 1px solid #E7E5E4;">
+          <td colspan="2" style="padding: 16px 0 6px; font-weight: 700; color: #40C9D0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Engagement</td>
+        </tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Nudges sent</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.nudgesSentThisWeek}</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Nudge response rate</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${pct(m.nudgeResponseRate)}</td></tr>
+        <tr><td style="padding: 4px 0; color: #78716C;">Action items completed</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${m.actionItemsCompletedThisWeek}</td></tr>
+      </table>
+
+      <p style="color: #A8A29E; font-size: 12px; margin: 24px 0 0; border-top: 1px solid #E7E5E4; padding-top: 16px;">
+        Auto-generated by LumiMD weekly metrics. No patient data is included in this report.
+      </p>
+    </div>
+  `;
+
+  try {
+    await resend.emails.send({
+      from: METRICS_FROM,
+      to: METRICS_RECIPIENT,
+      subject,
+      html,
+    });
+    functions.logger.info(`[WeeklyMetrics] Email sent to ${METRICS_RECIPIENT}`);
+  } catch (error) {
+    functions.logger.error('[WeeklyMetrics] Failed to send email:', error);
+    // Don't throw — metrics are already saved to Firestore
+  }
 }
