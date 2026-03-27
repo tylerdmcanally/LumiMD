@@ -357,6 +357,8 @@ Run multiple: `npx jest __tests__/file1 __tests__/file2 --no-coverage`
 
 **Real-time hooks:** Mobile uses Firestore real-time listeners (not polling). Web uses React Query + listeners via SDK.
 
+**ScrollView + dynamic content height:** When a screen has a selector/tab that changes content height (e.g., health metrics switching between BP/glucose/weight), add `key={selectorValue}` to the ScrollView. iOS preserves `contentOffset` across re-renders — if the offset from a tall content view exceeds the bounds of a shorter view, the native `UIScrollView` crashes with `EXC_BAD_ACCESS` when switching back.
+
 **Error handling (SDK):** Network errors, timeouts, 5xx → retryable. 401/403 → session expired. 429 → rate limit message.
 
 **Caregiver access:** Firestore rules check `shares/{ownerId_caregiverId}` status = 'accepted'.
