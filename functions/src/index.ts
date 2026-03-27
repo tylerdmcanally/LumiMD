@@ -451,6 +451,30 @@ export const reportVisitPostCommitEscalations = onSchedule(
   },
 );
 
+// Scheduled function to generate weekly aggregate product metrics (no PII, no health data)
+export const generateWeeklyProductMetrics = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every monday 06:00',
+    timeZone: 'America/Chicago',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    maxInstances: 1,
+  },
+  async () => {
+    functions.logger.info('[Scheduler] Running weekly metrics generation');
+
+    try {
+      const { generateWeeklyMetrics } = await import('./services/weeklyMetrics');
+      const result = await generateWeeklyMetrics();
+      functions.logger.info('[Scheduler] Weekly metrics generation complete', { week: result.weekLabel });
+    } catch (error) {
+      functions.logger.error('[Scheduler] Error generating weekly metrics:', error);
+      throw error;
+    }
+  },
+);
+
 // Scheduled function to create recurring condition check-in nudges (daily at 9 AM)
 export const processConditionReminders = onSchedule(
   {

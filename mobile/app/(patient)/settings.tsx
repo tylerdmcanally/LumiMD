@@ -701,29 +701,6 @@ export default function SettingsScreen() {
 
               <View style={styles.divider} />
 
-              <View style={styles.settingRow}>
-                <View style={styles.settingIcon}>
-                  <Ionicons name="bar-chart-outline" size={22} color={Colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.settingLabel}>Privacy-Safe Analytics</Text>
-                  <Text style={styles.settingDescription}>
-                    {isTelemetryConfigured()
-                      ? 'Share anonymous reliability metrics. No health details are sent.'
-                      : 'Disabled in this build unless explicitly configured.'}
-                  </Text>
-                </View>
-                <Switch
-                  value={analyticsEnabled}
-                  onValueChange={handleAnalyticsToggle}
-                  disabled={isLoadingAnalytics || !isTelemetryConfigured()}
-                  trackColor={{ false: '#d1d5db', true: Colors.accent }}
-                  thumbColor={analyticsEnabled ? Colors.primary : '#f3f4f6'}
-                />
-              </View>
-
-              <View style={styles.divider} />
-
               <Pressable
                 style={styles.linkRow}
                 onPress={() => router.replace('/caregiver-sharing')}
