@@ -29,7 +29,7 @@ LumiMD/Codebase/
 |-------|-----------|
 | Mobile | Expo 54, React Native 0.81, Expo Router (file-based) |
 | Web | Next.js 15, TailwindCSS, Radix UI, Recharts |
-| Backend | Firebase Cloud Functions, Express.js |
+| Backend | Firebase Cloud Functions (Node 20 — deprecated Apr 30, upgrade to 22 pending), Express.js |
 | Database | Cloud Firestore (NoSQL) |
 | Storage | Firebase Storage (audio, AES-256 encrypted) |
 | Auth | Firebase Auth (email/password, Google via native SDK, Apple) |
@@ -37,7 +37,8 @@ LumiMD/Codebase/
 | AI - NLP | OpenAI GPT-4 (gpt-4-turbo for transcripts, gpt-4o for Vision/document extraction) |
 | Push | Expo Push + Firebase Cloud Messaging |
 | Email | Resend |
-| Error Tracking | Sentry |
+| Error Tracking | Sentry (`@sentry/react-native` on mobile, PII scrubbed, `sendDefaultPii: false`) |
+| Analytics | Weekly metrics Cloud Function (Firestore-based, no third-party analytics provider yet) |
 | Hosting | Firebase Functions + Vercel (web) + Expo/TestFlight (mobile) |
 
 ## Firebase Projects
@@ -65,6 +66,7 @@ Switch with `firebase use lumimd-dev`.
 | `devices/{id}` | Push notification tokens |
 | `auth_handoffs/{code}` | Temporary mobile→web auth codes (10 min TTL) |
 | `privacyAuditLogs/{id}` | Privacy audit trail (account deletions, data exports, sweeps, access changes) — admin SDK only |
+| `metrics/{YYYY-Www}` | Weekly aggregate product metrics (users, visits, adherence, engagement) — no PII |
 
 **Soft deletes:** All records use `deletedAt` field instead of hard delete. Queries always filter `deletedAt == null`. 30-day retention before `privacySweeper` purges.
 
@@ -151,7 +153,9 @@ LumiMD is positioned as a **note-taking companion**, not a recording/transcripti
 - `routes/webhooks.ts` — AssemblyAI webhook receiver
 - `services/openai.ts` — GPT-4 summarization (4-stage prompts) + GPT-4o Vision document extraction (PDF via base64 `file` block, images via signed URL `image_url`)
 - `services/assemblyai.ts` — Transcription polling
-- `services/medicationSafety.ts` — Drug interaction checker (local CANONICAL_MEDICATIONS + optional RxNav)
+- `services/medicationSafety.ts` — Drug interaction checker (local CANONICAL_MEDICATIONS + optional RxNav) + shared helpers (`cleanWarningsForFirestore()`, `computeNeedsConfirmation()`)
+- `services/weeklyMetrics.ts` — Weekly aggregate product metrics + email digest via Resend (runs Monday 6 AM CT)
+- `utils/frequencyTimes.ts` — Shared medication frequency → reminder times resolver (used by helpers.ts + medicationSync.ts)
 - `services/visitProcessor.ts` — Orchestrates the full processing pipeline
 - `services/denormalizationSync.ts` — Keeps caregiver-accessible fields in sync
 - `services/walkthroughGenerator.ts` — Pre-computes post-visit walkthrough from GPT-4 output
@@ -164,27 +168,33 @@ LumiMD is positioned as a **note-taking companion**, not a recording/transcripti
 - `triggers/` — Scheduled Cloud Functions (processVisitAudio, checkPendingTranscriptions, medicationSafetyRecheck, staleVisitSweeper, medicationFollowUpNudges, actionItemReminderNudges, actionOverdueNotifier, caregiverDailyBriefing, caregiverAlerts, etc.)
 
 ### Mobile (`mobile/`)
-- `app/index.tsx` — Home dashboard
-- `app/record-visit.tsx` — Audio recording (max 2 hours)
-- `app/visit-detail.tsx` — Visit summary view
-- `app/medications.tsx` — Medication management
-- `app/actions.tsx` — Action items (pending/completed tabs)
-- `app/health.tsx` — Health log
-- `app/messages.tsx` — Patient inbox (caregiver messages, elderly-friendly large text)
-- `app/medication-schedule.tsx` — Reminder scheduling
-- `app/caregiver-sharing.tsx` — Share management (invite with name, shows caregiver names)
-- `app/upload-avs.tsx` — AVS document upload (photo/PDF capture, multi-image, Firebase Storage upload)
-- `app/_layout.tsx` — Root layout + push notification routing + medication reminder action button handling (Took it / Skipped) + timezone sync on foreground
-- `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: heard → changed → next)
+- `app/(patient)/index.tsx` — Home dashboard
+- `app/(patient)/record-visit.tsx` — Audio recording (max 2 hours) + ProviderIntroModal before recording starts
+- `app/(patient)/visit-detail.tsx` — Visit summary view + AI disclaimer banner
+- `app/(patient)/medications.tsx` — Medication management
+- `app/(patient)/actions.tsx` — Action items (pending/completed tabs)
+- `app/(patient)/health.tsx` — Health metrics hub (BP, glucose, weight charts + insights)
+- `app/(patient)/messages.tsx` — Patient inbox (caregiver messages, elderly-friendly large text)
+- `app/(patient)/medication-schedule.tsx` — Reminder scheduling
+- `app/(patient)/caregiver-sharing.tsx` — Share management (invite with name, shows caregiver names)
+- `app/(patient)/upload-avs.tsx` — AVS document upload (photo/PDF capture, multi-image, Firebase Storage upload)
+- `app/(patient)/settings.tsx` — Patient settings (push notifications, caregiver sharing, legal links)
+- `app/(caregiver)/` — Caregiver mobile experience (same app, role-based routing)
+- `app/_layout.tsx` — Root layout + Sentry init + push notification routing + medication reminder action button handling (Took it / Skipped) + timezone sync on foreground + `prefetchOnAuth()`
+- `app/sign-in.tsx` — Sign-in screen with `hasNavigated` ref dedup + medical disclaimer
+- `components/ProviderIntroModal.tsx` — Intro audio clip for providers before recording starts
+- `components/VisitWalkthrough.tsx` — Post-visit walkthrough overlay (3-step: discussed → changed → next)
 - `components/lumibot/PostLogFeedback.tsx` — Post-log feedback modal with trend context
-- `lib/notifications.ts` — Push token registration, `syncTimezone()`, notification categories for medication reminder action buttons (`registerNotificationCategories()`)
-- `lib/googleAuth.ts` — Native Google Sign-In via `@react-native-google-signin/google-signin` (replaced browser-based `expo-auth-session` which Google blocked for custom URI schemes)
-- `lib/recordingConsent.ts` — Location-based recording consent detection with state abbreviation normalization
-- `lib/auth.ts` — Firebase auth helpers (`hasPasswordProvider()`, `linkEmailPassword()` for adding web password to Apple/Google-only accounts)
-- `lib/utils/medlineplus.ts` — MedlinePlus link resolver (`openMedlinePlus()` — conditions use NLM Health Topics API for direct page URLs; medications fall back to contextual search)
-- `lib/api/hooks.ts` — React Query hooks (useRealtimeVisits, useRealtimeActiveMedications, useMyMessages, useUnreadMessageCount, etc.)
+- `components/lumibot/LumiBotContainer.tsx` — LumiBot nudge handler + log modals (BP, glucose, weight, side effects, symptom check)
+- `lib/notifications.ts` — Push token registration (skip when unchanged), `syncTimezone()`, notification categories
+- `lib/googleAuth.ts` — Native Google Sign-In via `@react-native-google-signin/google-signin`
+- `lib/recordingConsent.ts` — Location-based recording consent detection
+- `lib/auth.ts` — Firebase auth helpers (`hasPasswordProvider()`, `linkEmailPassword()`)
+- `lib/telemetry.ts` — PHI-safe analytics consent + event tracking (production transport not yet wired)
+- `lib/store.ts` — iOS in-app purchase helpers (not currently active — no subscription UI)
+- `lib/api/hooks.ts` — React Query hooks + `prefetchOnAuth()` (warms med schedule + unread count on auth)
 - `lib/api/mutations.ts` — Mutations (useCompleteAction, useUpdateUserProfile, useInviteCaregiver)
-- `contexts/` — AuthContext (global auth state)
+- `contexts/AuthContext.tsx` — Global auth state, role cache with TTL, `auth().currentUser` fast path
 
 ### Web Portal (`web-portal/`)
 - `app/(protected)/` — Authenticated routes (dashboard, visits, medications, actions, ops/)
@@ -285,18 +295,25 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 
 | Function | Frequency | Purpose |
 |----------|-----------|---------|
-| `checkPendingTranscriptions` | Every 5 min | Retry stuck transcriptions |
-| `processAndNotifyMedicationReminders` | Every 5 min | Send due reminders |
-| `medicationSafetyRecheck` | Every 15 min | Re-check med warnings |
+| `checkPendingTranscriptions` | Every minute | Retry stuck transcriptions |
+| `processAndNotifyMedicationReminders` | Every 5 min | Send due reminders + catch-up for missed (no-token) reminders |
 | `processAndNotifyDueNudges` | Every 15 min | Send nudge notifications |
-| ~~`processMedicationFollowUpNudges`~~ | ~~Every 15 min~~ | ~~Send follow-up nudges for unlogged doses~~ (removed from cloud — replaced by notification action buttons) |
+| `processMedicationFollowUpNudges` | Every 15 min | Send follow-up nudges for unlogged doses |
 | `processActionItemReminderNudges` | Every 15 min | Create nudges for pending/overdue action items |
 | `processActionOverdueNotifier` | Every 15 min | Push notifications for overdue actions |
 | `processCaregiverAlerts` | Every 15 min | Missed-med + visit-ready push to caregivers (respects `alertPreferences`) |
+| `processConditionReminders` | Hourly | Create recurring condition check-in nudges |
 | `processCaregiverDailyBriefing` | Hourly | Timezone-aware daily briefing push (respects `briefingEnabled`) |
-| `staleVisitSweeper` | Hourly | Delete old failed visits |
+| `staleVisitSweeper` | Every 10 min | Recover or clean up stuck/failed visits |
+| `retryVisitPostCommitOperations` | Every 30 min | Retry failed post-commit ops (denorm sync, walkthrough, nudges) |
+| `reportVisitPostCommitEscalations` | Hourly | Report escalated post-commit failures |
+| `evaluatePatients` | Every 2 hours | Personal RN evaluation for patient engagement |
+| `backfillMedicationReminderTiming` | Every 2 hours | Backfill timing mode/timezone on legacy reminders |
+| `backfillDenormalizedFieldSync` | Every 2 hours | Backfill denormalized fields on legacy records |
+| `backfillLegacyListQueryContract` | Every 2 hours | Backfill legacy list query fields |
 | `privacyDataSweeper` | Daily | Clean up audio, documents, transcripts (24hr); expire/purge stale share invites; write privacy audit log |
 | `purgeSoftDeletedData` | Daily | Purge soft-deleted records older than 30 days |
+| `generateWeeklyProductMetrics` | Weekly (Mon 6 AM CT) | Aggregate product metrics + email digest to tyler@lumimd.app |
 | `denormalizationSync` | On Firestore write | Sync caregiver-accessible fields |
 
 ## Development Commands
