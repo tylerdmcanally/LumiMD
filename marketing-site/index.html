@@ -8,1227 +8,1693 @@
 
   <!-- SEO -->
   <meta name="description"
-    content="LumiMD captures everything your doctor says so you never forget a detail, medication, or follow-up again. Free personal health assistant app.">
+    content="LumiMD takes notes at every doctor visit, organizes your medications with one-tap reminders, and gives your caregivers a complete picture of your health — all in one app.">
   <meta name="keywords"
-    content="health app, doctor visit recorder, medication tracker, healthcare assistant, caregiver sharing">
+    content="health app, doctor visit notes, medical note-taking, medication tracker, caregiver app, healthcare assistant, LumiBot, after-visit summary, medication reminders, HIPAA">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="LumiMD – Never forget what your doctor said again">
+  <meta property="og:title" content="LumiMD – Your health, organized. Your caregivers, informed.">
   <meta property="og:description"
-    content="Your personal health assistant that captures every appointment, organizes your medications, and keeps your family informed.">
+    content="LumiMD takes notes at every doctor visit, organizes your medications with one-tap reminders, and gives your caregivers a complete picture of your health — all in one app.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="/images/og-image.png">
   <meta property="og:url" content="https://lumimd.app">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="LumiMD – Never forget what your doctor said again">
+  <meta name="twitter:title" content="LumiMD – Your health, organized. Your caregivers, informed.">
   <meta name="twitter:description"
-    content="Your personal health assistant that captures every appointment, organizes your medications, and keeps your family informed.">
+    content="LumiMD takes notes at every doctor visit, organizes your medications with one-tap reminders, and gives your caregivers a complete picture of your health — all in one app.">
   <meta name="twitter:image" content="/images/og-image.png">
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
     rel="stylesheet">
 
-  <title>LumiMD – Never forget what your doctor said again</title>
+  <title>LumiMD – Your health, organized. Your caregivers, informed.</title>
 
   <style>
+    /* ============================================================
+       VARIABLES
+    ============================================================ */
     :root {
       --brand-cyan: #40C9D0;
-      --brand-mint: #89D8C6;
-      --brand-pale: #E8F8F8;
-      --brand-dark: #078A94;
-      --text-primary: #1E293B;
-      --text-secondary: #64748B;
-      --bg-warm: #FAFBFC;
+      --brand-sage: #7ECDB5;
+      --brand-coral: #E07A5F;
+      --brand-dark: #2A9D8F;
+      --brand-cyan-light: rgba(64, 201, 208, 0.12);
+      --brand-sage-light: rgba(126, 205, 181, 0.15);
+      --brand-coral-light: rgba(224, 122, 95, 0.10);
+      --cream: #FDFCF9;
+      --cream-alt: #F5F2EC;
+      --cream-sage: #EFF6F2;
+      --text-primary: #1C1917;
+      --text-secondary: #78716C;
+      --text-muted: #A8A29E;
+      --border: rgba(28, 25, 23, 0.08);
+      --border-warm: rgba(28, 25, 23, 0.13);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    /* ============================================================
+       RESET + BASE
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
       color: var(--text-primary);
-      line-height: 1.6;
-      margin: 0;
+      background: var(--cream);
+      line-height: 1.65;
       -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    h1,
-    h2,
-    h3 {
-      font-family: 'Source Serif 4', Georgia, serif;
-      line-height: 1.2;
+    h1, h2, h3 {
+      font-family: 'Fraunces', Georgia, serif;
+      line-height: 1.15;
+    }
+
+    img { max-width: 100%; height: auto; display: block; }
+    a { color: inherit; }
+
+    /* ============================================================
+       LAYOUT
+    ============================================================ */
+    .container { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+
+    /* ============================================================
+       EYEBROW LABELS
+    ============================================================ */
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
       font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border-radius: 20px;
+      margin-bottom: 18px;
     }
+    .eyebrow-cyan   { background: var(--brand-cyan-light); color: var(--brand-dark); }
+    .eyebrow-sage   { background: var(--brand-sage-light); color: #2E7D64; }
+    .eyebrow-coral  { background: var(--brand-coral-light); color: #B25C42; }
 
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    /* Buttons */
+    /* ============================================================
+       BUTTONS
+    ============================================================ */
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 14px 28px;
+      gap: 8px;
+      padding: 14px 26px;
       border-radius: 12px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
       font-weight: 600;
-      font-size: 16px;
+      font-size: 15px;
       text-decoration: none;
-      transition: all 0.2s ease;
-      border: none;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+      border: 1.5px solid transparent;
       cursor: pointer;
+      line-height: 1;
     }
-
     .btn-primary {
       background: var(--brand-cyan);
       color: white;
     }
-
     .btn-primary:hover {
       background: var(--brand-dark);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(64, 201, 208, 0.3);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(64, 201, 208, 0.35);
     }
-
     .btn-secondary {
       background: white;
       color: var(--text-primary);
-      border: 2px solid #E2E8F0;
+      border-color: var(--border-warm);
     }
-
     .btn-secondary:hover {
       border-color: var(--brand-cyan);
       color: var(--brand-dark);
+      transform: translateY(-1px);
     }
+    .btn-sage {
+      background: var(--brand-sage);
+      color: white;
+    }
+    .btn-sage:hover {
+      background: #5AB89E;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(126, 205, 181, 0.4);
+    }
+    .btn-outline-white {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border-color: rgba(255,255,255,0.4);
+    }
+    .btn-outline-white:hover {
+      background: rgba(255,255,255,0.25);
+      transform: translateY(-1px);
+    }
+    .btn-sm { padding: 10px 18px; font-size: 13px; }
+    .btn-lg { padding: 17px 34px; font-size: 16px; }
 
-    /* Navigation */
+    /* ============================================================
+       NAVIGATION
+    ============================================================ */
     nav {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: 0; left: 0; right: 0;
       z-index: 100;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      background: rgba(253, 252, 249, 0.92);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
     }
-
-    nav .container {
+    .nav-inner {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 72px;
+      height: 68px;
     }
-
     .logo {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 9px;
       text-decoration: none;
     }
-
-    .logo-icon {
-      width: 36px;
-      height: 36px;
-      background: linear-gradient(135deg, var(--brand-cyan), var(--brand-mint));
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-weight: 700;
-      font-size: 18px;
+    .logo-mark {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--brand-cyan), var(--brand-sage));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
     }
-
-    .logo-text {
-      font-family: 'Source Serif 4', serif;
-      font-size: 28px;
+    .logo-mark svg { color: white; }
+    .logo-wordmark {
+      font-family: 'Fraunces', serif;
+      font-size: 22px;
       font-weight: 700;
       color: var(--text-primary);
     }
-
-    .logo-text span {
-      color: var(--brand-cyan);
-    }
-
+    .logo-wordmark span { color: var(--brand-cyan); }
     .nav-links {
       display: flex;
       align-items: center;
-      gap: 32px;
+      gap: 26px;
     }
-
     .nav-links a {
       color: var(--text-secondary);
       text-decoration: none;
       font-weight: 500;
-      font-size: 15px;
-      transition: color 0.2s;
+      font-size: 14px;
+      transition: color 0.18s;
     }
+    .nav-links a:hover { color: var(--text-primary); }
+    .nav-actions { display: flex; align-items: center; gap: 8px; }
 
-    .nav-links a:hover {
-      color: var(--brand-cyan);
-    }
+    @media (max-width: 900px) { .nav-links { display: none; } }
+    @media (max-width: 580px) { .nav-actions .btn-secondary { display: none; } }
 
-    @media (max-width: 768px) {
-      .nav-links {
-        display: none;
-      }
-    }
-
-    /* Hero Section */
+    /* ============================================================
+       HERO
+    ============================================================ */
     .hero {
-      padding: 100px 0 40px;
-      background: linear-gradient(180deg, var(--brand-pale) 0%, white 100%);
+      padding: 120px 0 80px;
+      position: relative;
       overflow: hidden;
     }
-
-    .hero .container {
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 55% 55% at 72% 25%, rgba(64, 201, 208, 0.09) 0%, transparent 65%),
+        radial-gradient(ellipse 40% 45% at 15% 85%, rgba(126, 205, 181, 0.08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 60px;
+      grid-template-columns: 1fr 340px;
+      gap: 64px;
       align-items: center;
     }
-
     @media (max-width: 900px) {
-      .hero .container {
+      .hero-grid {
         grid-template-columns: 1fr;
+        gap: 48px;
         text-align: center;
       }
     }
-
+    .hero-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--brand-cyan-light);
+      color: var(--brand-dark);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 22px;
+      letter-spacing: 0.03em;
+    }
+    .kicker-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--brand-cyan);
+      animation: blink 2.4s ease infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
     .hero h1 {
-      font-size: clamp(36px, 5vw, 52px);
-      margin: 0 0 20px;
+      font-size: clamp(36px, 5.2vw, 58px);
       color: var(--text-primary);
+      margin: 0 0 22px;
+      font-weight: 700;
+      line-height: 1.1;
     }
-
-    .hero p {
-      font-size: 19px;
+    .hero h1 em {
+      font-style: italic;
+      color: var(--brand-cyan);
+    }
+    .hero-sub {
+      font-size: 18px;
+      line-height: 1.7;
       color: var(--text-secondary);
-      margin: 0 0 32px;
-      max-width: 500px;
+      margin: 0 0 36px;
+      max-width: 490px;
     }
-
     @media (max-width: 900px) {
-      .hero p {
-        margin-left: auto;
-        margin-right: auto;
-      }
+      .hero-sub { margin-left: auto; margin-right: auto; }
     }
-
-    .hero-buttons {
+    .hero-actions {
       display: flex;
-      gap: 16px;
+      gap: 12px;
       flex-wrap: wrap;
+      margin-bottom: 32px;
     }
-
-    @media (max-width: 900px) {
-      .hero-buttons {
-        justify-content: center;
-      }
+    @media (max-width: 900px) { .hero-actions { justify-content: center; } }
+    .trust-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
     }
-
-    .hero-image {
-      position: relative;
+    @media (max-width: 900px) { .trust-row { justify-content: center; } }
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
     }
+    .trust-item svg { color: var(--brand-cyan); flex-shrink: 0; }
 
+    /* Hero phone mockup */
     .phone-frame {
-      background: #1a1a2e;
+      background: #18181B;
       border-radius: 32px;
-      padding: 10px;
-      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
-      max-width: 260px;
+      padding: 9px;
+      box-shadow: 0 32px 64px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.04);
+      max-width: 240px;
       margin: 0 auto;
     }
-
     .phone-screen {
-      border-radius: 30px;
+      border-radius: 26px;
       overflow: hidden;
+      position: relative;
     }
-
-    .phone-screen img {
-      width: 100%;
-      height: auto;
-      display: block;
-    }
-
-    /* Animated Demo Slideshow */
+    .phone-screen img { width: 100%; height: auto; display: block; }
     .demo-slideshow {
       position: relative;
       width: 100%;
-      aspect-ratio: 9/19.5;
+      aspect-ratio: 9 / 19.5;
     }
-
     .demo-slide {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      position: absolute; inset: 0;
       opacity: 0;
-      transition: opacity 0.6s ease-in-out;
+      transition: opacity 0.7s ease-in-out;
     }
-
-    .demo-slide.active {
-      opacity: 1;
-    }
-
-    .demo-slide img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-
+    .demo-slide.active { opacity: 1; }
+    .demo-slide img { width: 100%; height: 100%; object-fit: cover; }
     .demo-caption {
       text-align: center;
-      padding: 16px 8px 0;
-      min-height: 60px;
+      padding: 14px 4px 0;
+      min-height: 52px;
     }
-
     .demo-caption h4 {
-      color: var(--text-primary, #1E293B);
-      font-family: 'Source Serif 4', serif;
-      font-size: 16px;
-      margin: 0 0 4px;
+      font-family: 'Fraunces', serif;
+      font-size: 14px;
       font-weight: 600;
+      color: var(--text-primary);
+      margin: 0 0 3px;
     }
-
-    .demo-caption p {
-      color: var(--text-secondary, #64748B);
-      font-size: 13px;
-      margin: 0;
-      line-height: 1.4;
-    }
-
+    .demo-caption p { font-size: 12px; color: var(--text-muted); margin: 0; }
     .demo-indicators {
       display: flex;
       justify-content: center;
       gap: 6px;
-      margin-top: 16px;
+      margin-top: 12px;
     }
-
     .demo-indicator {
-      width: 8px;
-      height: 8px;
+      width: 7px; height: 7px;
       border-radius: 50%;
-      background: rgba(64, 201, 208, 0.3);
+      background: rgba(64, 201, 208, 0.25);
       cursor: pointer;
-      transition: background 0.3s ease;
+      transition: background 0.3s, transform 0.2s;
     }
-
     .demo-indicator.active {
-      background: #40C9D0;
+      background: var(--brand-cyan);
+      transform: scale(1.25);
     }
 
-    .demo-audio-btn {
+    /* ============================================================
+       SECTION HEADER (reusable)
+    ============================================================ */
+    .section-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+    .section-header h2 {
+      font-size: clamp(26px, 3.8vw, 40px);
+      margin: 0 0 14px;
+    }
+    .section-header p {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ============================================================
+       PROBLEM
+    ============================================================ */
+    .problem {
+      padding: 96px 0;
+      background: white;
+    }
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .problem-card {
+      background: var(--cream);
+      border-radius: 18px;
+      padding: 28px;
+      border: 1px solid var(--border);
+    }
+    .problem-icon {
+      width: 44px; height: 44px;
+      background: var(--brand-coral-light);
+      border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+    }
+    .problem-icon svg { color: var(--brand-coral); }
+    .problem-card h3 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      line-height: 1.3;
+    }
+    .problem-card p { font-size: 14px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+
+    /* ============================================================
+       HOW IT WORKS
+    ============================================================ */
+    .how-it-works {
+      padding: 96px 0;
+      background: var(--cream-alt);
+    }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 28px;
+      position: relative;
+    }
+    .steps-grid::before {
+      content: '';
+      position: absolute;
+      top: 27px;
+      left: 12.5%; right: 12.5%;
+      height: 1px;
+      background: linear-gradient(90deg, var(--brand-cyan), var(--brand-sage));
+      opacity: 0.25;
+    }
+    @media (max-width: 860px) {
+      .steps-grid { grid-template-columns: repeat(2, 1fr); }
+      .steps-grid::before { display: none; }
+    }
+    @media (max-width: 460px) {
+      .steps-grid { grid-template-columns: 1fr; }
+    }
+    .step { text-align: center; }
+    .step-num {
+      width: 54px; height: 54px;
+      border-radius: 15px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 18px;
+      font-weight: 700;
+      font-size: 20px;
+      position: relative;
+      z-index: 1;
+      color: white;
+    }
+    .step-1 { background: linear-gradient(135deg, #40C9D0, #5DD9E0); }
+    .step-2 { background: linear-gradient(135deg, #5DD9E0, #7ECDB5); }
+    .step-3 { background: linear-gradient(135deg, #7ECDB5, #6BC5A8); }
+    .step-4 { background: linear-gradient(135deg, #6BC5A8, #4BA88A); }
+    .step h3 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 15px; font-weight: 700;
+      margin: 0 0 8px;
+    }
+    .step p { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+
+    /* ============================================================
+       PATIENT FEATURES
+    ============================================================ */
+    .features {
+      padding: 96px 0;
+      background: white;
+    }
+    .feature-block {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 72px;
+      align-items: center;
+      margin-bottom: 96px;
+    }
+    .feature-block:last-child { margin-bottom: 0; }
+    .feature-block.reverse { direction: rtl; }
+    .feature-block.reverse > * { direction: ltr; }
+    @media (max-width: 840px) {
+      .feature-block {
+        grid-template-columns: 1fr;
+        gap: 36px;
+        direction: ltr !important;
+      }
+      .feature-block > * { direction: ltr !important; }
+    }
+    .feature-text h3 {
+      font-size: clamp(22px, 3vw, 30px);
+      margin: 0 0 14px;
+    }
+    .feature-text p {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin: 0 0 24px;
+      line-height: 1.75;
+    }
+    .feature-bullets {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .feature-bullets li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+    .check-wrap {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--brand-cyan-light);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .check-wrap svg { color: var(--brand-cyan); }
+
+    /* Feature visual: phone */
+    .feature-phone {
+      background: #18181B;
+      border-radius: 30px;
+      padding: 9px;
+      box-shadow: 0 24px 56px rgba(0,0,0,0.15);
+      max-width: 240px;
+      margin: 0 auto;
+    }
+    .feature-phone .phone-screen { border-radius: 24px; overflow: hidden; }
+    .feature-phone img { width: 100%; display: block; }
+
+    /* Feature visual: AVS card */
+    .avs-card {
+      background: white;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.07);
+      max-width: 360px;
+      margin: 0 auto;
+    }
+    .avs-doc-header {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 6px;
-      margin-top: 12px;
-      padding: 8px 16px;
-      background: rgba(64, 201, 208, 0.1);
-      border: 1px solid rgba(64, 201, 208, 0.3);
-      border-radius: 20px;
-      color: var(--brand-dark, #2A9D8F);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      margin-left: auto;
-      margin-right: auto;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--cream);
+      border-radius: 12px;
+      margin-bottom: 18px;
+      border: 1px solid var(--border);
     }
-
-    .demo-audio-btn:hover {
-      background: rgba(64, 201, 208, 0.2);
-      border-color: rgba(64, 201, 208, 0.5);
+    .avs-doc-icon {
+      width: 34px; height: 34px;
+      background: var(--brand-coral-light);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
     }
-
-    .demo-audio-btn svg {
-      width: 16px;
-      height: 16px;
-    }
-
-    /* Trust badges */
-    .trust-row {
-      display: flex;
-      gap: 24px;
-      margin-top: 32px;
-      flex-wrap: wrap;
-    }
-
-    @media (max-width: 900px) {
-      .trust-row {
-        justify-content: center;
-      }
-    }
-
-    .trust-badge {
+    .avs-doc-icon svg { color: var(--brand-coral); }
+    .avs-doc-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .avs-doc-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .avs-processing {
       display: flex;
       align-items: center;
       gap: 8px;
-      color: var(--text-secondary);
-      font-size: 14px;
-      font-weight: 500;
-    }
-
-    .trust-badge svg {
-      color: var(--brand-cyan);
-    }
-
-    /* Problem Section */
-    .problem {
-      padding: 100px 0;
-      background: white;
-    }
-
-    .problem h2 {
-      text-align: center;
-      font-size: clamp(28px, 4vw, 40px);
-      margin: 0 0 16px;
-    }
-
-    .problem>.container>p {
-      text-align: center;
-      color: var(--text-secondary);
-      font-size: 18px;
-      max-width: 600px;
-      margin: 0 auto 60px;
-    }
-
-    .problem-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 24px;
-    }
-
-    .problem-card {
-      background: var(--bg-warm);
-      border-radius: 20px;
-      padding: 32px;
-      border: 1px solid #F1F5F9;
-    }
-
-    .problem-card-icon {
-      width: 48px;
-      height: 48px;
-      background: #FEE2E2;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 20px;
-    }
-
-    .problem-card-icon svg {
-      color: #EF4444;
-    }
-
-    .problem-card h3 {
-      font-family: 'Inter', sans-serif;
-      font-size: 18px;
-      margin: 0 0 8px;
-    }
-
-    .problem-card p {
-      color: var(--text-secondary);
-      margin: 0;
-      font-size: 15px;
-    }
-
-    /* How It Works */
-    .how-it-works {
-      padding: 100px 0;
-      background: var(--brand-pale);
-    }
-
-    .how-it-works h2 {
-      text-align: center;
-      font-size: clamp(28px, 4vw, 40px);
-      margin: 0 0 60px;
-    }
-
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 40px;
-    }
-
-    @media (max-width: 768px) {
-      .steps {
-        grid-template-columns: 1fr;
-        gap: 32px;
-      }
-    }
-
-    .step {
-      text-align: center;
-    }
-
-    .step-number {
-      width: 56px;
-      height: 56px;
-      background: linear-gradient(135deg, var(--brand-cyan), var(--brand-mint));
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 24px;
-      font-weight: 700;
-      margin: 0 auto 20px;
-    }
-
-    .step h3 {
-      font-family: 'Inter', sans-serif;
-      font-size: 20px;
-      margin: 0 0 8px;
-    }
-
-    .step p {
-      color: var(--text-secondary);
-      margin: 0;
-      font-size: 15px;
-    }
-
-    /* Features */
-    .features {
-      padding: 100px 0;
-      background: white;
-    }
-
-    .feature {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 80px;
-      align-items: center;
-      margin-bottom: 100px;
-    }
-
-    .feature:last-child {
-      margin-bottom: 0;
-    }
-
-    .feature:nth-child(even) {
-      direction: rtl;
-    }
-
-    .feature:nth-child(even)>* {
-      direction: ltr;
-    }
-
-    @media (max-width: 900px) {
-      .feature {
-        grid-template-columns: 1fr;
-        gap: 40px;
-      }
-
-      .feature:nth-child(even) {
-        direction: ltr;
-      }
-    }
-
-    .feature-tag {
-      display: inline-block;
-      background: var(--brand-pale);
-      color: var(--brand-dark);
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      color: var(--brand-dark);
+      margin-bottom: 14px;
     }
-
-    .feature h3 {
-      font-size: clamp(24px, 3vw, 32px);
-      margin: 0 0 16px;
+    .avs-spinner {
+      width: 13px; height: 13px;
+      border: 2px solid var(--brand-cyan-light);
+      border-top-color: var(--brand-cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
     }
-
-    .feature p {
-      color: var(--text-secondary);
-      font-size: 17px;
-      margin: 0 0 24px;
-    }
-
-    .feature-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .feature-list li {
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .avs-extracted { display: flex; flex-direction: column; gap: 9px; }
+    .avs-row {
       display: flex;
       align-items: flex-start;
-      gap: 12px;
-      margin-bottom: 12px;
-      color: var(--text-secondary);
+      gap: 9px;
+      font-size: 13px;
     }
-
-    .feature-list li svg {
-      color: var(--brand-cyan);
+    .avs-green {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: rgba(22, 163, 74, 0.1);
+      display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
-      margin-top: 4px;
+      margin-top: 1px;
     }
+    .avs-green svg { color: #16A34A; }
+    .avs-label { font-weight: 600; color: var(--text-primary); }
+    .avs-value { color: var(--text-secondary); }
 
-    .feature-image {
-      position: relative;
-    }
-
-    .feature-image .phone-frame {
-      max-width: 280px;
-    }
-
-    .feature-illustration {
-      max-width: 384px;
-      width: 100%;
-      height: auto;
-      border-radius: 20px;
-      margin: 0 auto;
-      display: block;
-    }
-
-    /* Full-width feature (no image) */
-    .feature-fullwidth {
-      text-align: center;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 60px 0;
-      border-top: 1px solid #E2E8F0;
-    }
-
-    .feature-fullwidth h3 {
-      font-size: clamp(24px, 3vw, 32px);
-      margin: 0 0 16px;
-    }
-
-    .feature-fullwidth>p {
-      color: var(--text-secondary);
-      font-size: 17px;
-      margin: 0 0 40px;
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    .sharing-benefits {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 32px;
-    }
-
-    @media (max-width: 768px) {
-      .sharing-benefits {
-        grid-template-columns: 1fr;
-        gap: 24px;
-      }
-    }
-
-    .sharing-benefit {
-      text-align: center;
-    }
-
-    .sharing-benefit-icon {
-      width: 64px;
-      height: 64px;
-      background: linear-gradient(135deg, var(--brand-pale), #D1FAE5);
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 16px;
-    }
-
-    .sharing-benefit-icon svg {
-      color: var(--brand-dark);
-    }
-
-    .sharing-benefit h4 {
-      font-family: 'Inter', sans-serif;
-      font-size: 16px;
-      font-weight: 600;
-      margin: 0 0 6px;
-    }
-
-    .sharing-benefit p {
-      color: var(--text-secondary);
-      font-size: 14px;
-      margin: 0;
-    }
-
-    /* Security */
-    .security {
-      padding: 100px 0;
-      background: var(--bg-warm);
-    }
-
-    .security h2 {
-      text-align: center;
-      font-size: clamp(28px, 4vw, 40px);
-      margin: 0 0 16px;
-    }
-
-    .security>.container>p {
-      text-align: center;
-      color: var(--text-secondary);
-      font-size: 18px;
-      max-width: 600px;
-      margin: 0 auto 60px;
-    }
-
-    .security-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 24px;
-    }
-
-    .security-card {
+    /* Feature visual: notification mock */
+    .notif-wrap { max-width: 340px; margin: 0 auto; }
+    .notif-card {
       background: white;
-      border-radius: 16px;
-      padding: 28px;
-      border: 1px solid #E2E8F0;
-    }
-
-    .security-card-icon {
-      width: 44px;
-      height: 44px;
-      background: var(--brand-pale);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 16px;
-    }
-
-    .security-card-icon svg {
-      color: var(--brand-dark);
-    }
-
-    .security-card h4 {
-      font-family: 'Inter', sans-serif;
-      font-size: 16px;
-      font-weight: 600;
-      margin: 0 0 6px;
-    }
-
-    .security-card p {
-      color: var(--text-secondary);
-      font-size: 14px;
-      margin: 0;
-    }
-
-    /* CTA */
-    .cta {
-      padding: 100px 0;
-      background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-mint) 100%);
-      text-align: center;
-    }
-
-    .cta h2 {
-      color: white;
-      font-size: clamp(28px, 4vw, 40px);
-      margin: 0 0 16px;
-    }
-
-    .cta p {
-      color: rgba(255, 255, 255, 0.85);
-      font-size: 18px;
-      margin: 0 0 32px;
-    }
-
-    .cta .btn {
-      background: white;
-      color: var(--brand-dark);
-    }
-
-    .cta .btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-    }
-
-    .cta-note {
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 14px;
-      margin-top: 16px;
-    }
-
-    /* Footer */
-    footer {
-      background: #1E293B;
-      color: #94A3B8;
-      padding: 60px 0 40px;
-    }
-
-    .footer-content {
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 40px;
-      margin-bottom: 40px;
-    }
-
-    .footer-brand .logo-text {
-      color: white;
-    }
-
-    .footer-brand p {
-      margin: 12px 0 0;
-      max-width: 280px;
-      font-size: 14px;
-    }
-
-    .footer-links h5 {
-      color: white;
-      font-size: 14px;
-      font-weight: 600;
-      margin: 0 0 16px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .footer-links ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .footer-links li {
+      border-radius: 18px;
+      padding: 15px 16px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+      border: 1px solid var(--border);
       margin-bottom: 10px;
     }
-
-    .footer-links a {
-      color: #94A3B8;
-      text-decoration: none;
-      font-size: 14px;
-      transition: color 0.2s;
+    .notif-top {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 9px;
     }
-
-    .footer-links a:hover {
-      color: var(--brand-cyan);
+    .notif-app-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--brand-cyan), var(--brand-sage));
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
     }
-
-    .footer-bottom {
-      border-top: 1px solid #334155;
-      padding-top: 24px;
-      text-align: center;
-      font-size: 14px;
-    }
-
-    /* Citations */
-    .citation {
-      font-size: 12px;
-      color: var(--brand-dark);
-      text-decoration: none;
-      vertical-align: super;
-      font-weight: 600;
-      margin-left: 2px;
-    }
-
-    .citation:hover {
-      text-decoration: underline;
-    }
-
-    .sources {
-      background: var(--bg-warm);
-      border-radius: 12px;
-      padding: 24px;
-      margin-top: 40px;
-    }
-
-    .sources h4 {
-      font-family: 'Inter', sans-serif;
-      font-size: 14px;
-      font-weight: 600;
+    .notif-app-icon svg { color: white; }
+    .notif-app-name {
+      font-size: 11px;
+      font-weight: 700;
       color: var(--text-secondary);
-      margin: 0 0 12px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.05em;
     }
+    .notif-time { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+    .notif-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin: 0 0 3px; }
+    .notif-body { font-size: 13px; color: var(--text-secondary); margin: 0 0 13px; line-height: 1.5; }
+    .notif-actions { display: flex; gap: 8px; }
+    .notif-btn {
+      flex: 1;
+      padding: 9px 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .notif-took { background: var(--brand-cyan); color: white; }
+    .notif-skipped { background: var(--cream-alt); color: var(--text-secondary); }
+    .notif-card-2 {
+      background: white;
+      border-radius: 14px;
+      padding: 12px 14px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.07);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      opacity: 0.65;
+      transform: scale(0.97);
+    }
+    .notif-card-2-icon {
+      width: 26px; height: 26px;
+      background: var(--brand-sage-light);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .notif-card-2-icon svg { color: var(--brand-sage); }
+    .notif-card-2-text { font-size: 13px; color: var(--text-secondary); }
+    .notif-card-2-text strong { color: var(--text-primary); }
 
-    .sources ol {
-      margin: 0;
-      padding-left: 20px;
+    /* Feature visual: LumiBot */
+    .lumibot-card {
+      background: var(--cream);
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      max-width: 360px;
+      margin: 0 auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.07);
+    }
+    .lumibot-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      background: white;
+      border-bottom: 1px solid var(--border);
+    }
+    .lumibot-avatar {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--brand-cyan), var(--brand-sage));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lumibot-avatar svg { color: white; }
+    .lumibot-name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+    .lumibot-status { font-size: 12px; color: var(--brand-sage); font-weight: 500; }
+    .lumibot-messages {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .chat-bot, .chat-user {
+      max-width: 88%;
+      padding: 10px 13px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .chat-bot {
+      background: white;
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 14px 14px 14px 4px;
+      align-self: flex-start;
+    }
+    .chat-user {
+      background: var(--brand-cyan);
+      color: white;
+      border-radius: 14px 14px 4px 14px;
+      align-self: flex-end;
+    }
+    .lumibot-steps {
+      padding: 0 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .lb-step {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      background: white;
+      border: 1px solid var(--border);
+      padding: 9px 13px;
+      border-radius: 10px;
       font-size: 13px;
       color: var(--text-secondary);
     }
-
-    .sources li {
-      margin-bottom: 6px;
-    }
-
-    .sources a {
+    .lb-step-num {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--brand-cyan-light);
       color: var(--brand-dark);
-      text-decoration: none;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .lb-step strong { color: var(--text-primary); }
+
+    /* ============================================================
+       CAREGIVER SECTION
+    ============================================================ */
+    .caregiver {
+      padding: 96px 0;
+      background: var(--cream-sage);
+      position: relative;
+      overflow: hidden;
+    }
+    .caregiver::before {
+      content: '';
+      position: absolute;
+      top: -80px; right: -80px;
+      width: 420px; height: 420px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(126, 205, 181, 0.13) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .caregiver-intro {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+      margin-bottom: 72px;
+    }
+    @media (max-width: 840px) {
+      .caregiver-intro { grid-template-columns: 1fr; gap: 40px; }
+    }
+    .caregiver-intro h2 {
+      font-size: clamp(26px, 3.5vw, 38px);
+      margin: 0 0 16px;
+    }
+    .caregiver-intro > div > p {
+      font-size: 16px;
+      color: var(--text-secondary);
+      line-height: 1.75;
+      margin: 0 0 28px;
     }
 
-    .sources a:hover {
-      text-decoration: underline;
+    /* Caregiver dashboard mock */
+    .cgd {
+      background: white;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.08);
     }
-
-    .sources a:hover {
-      text-decoration: underline;
+    .cgd-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: var(--cream);
+      border-bottom: 1px solid var(--border);
     }
-
-    /* FAQ */
-    .faq {
-      padding: 100px 0;
+    .cgd-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .cgd-portal-badge {
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--brand-sage);
+      color: white;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+    .cgd-patients { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .cgd-patient {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
       background: white;
     }
-
-    .faq h2 {
-      text-align: center;
-      font-size: clamp(28px, 4vw, 40px);
-      margin: 0 0 60px;
+    .cgd-patient-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
     }
-
-    .faq-grid {
-      max-width: 800px;
-      margin: 0 auto;
+    .cgd-patient-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .cgd-status {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
     }
+    .cgd-ok { background: rgba(22,163,74,0.1); color: #16A34A; }
+    .cgd-warn { background: var(--brand-coral-light); color: var(--brand-coral); }
+    .cgd-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 9px; }
+    .cgd-bar-row {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .cgd-bar {
+      flex: 1; height: 4px;
+      background: var(--cream-alt);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .cgd-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--brand-sage), var(--brand-cyan));
+    }
+    .cgd-pct { font-size: 11px; font-weight: 700; color: var(--brand-dark); }
 
+    /* Caregiver features 3-up */
+    .cg-features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-bottom: 32px;
+    }
+    @media (max-width: 860px) { .cg-features { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .cg-features { grid-template-columns: 1fr; } }
+    .cg-card {
+      background: white;
+      border-radius: 16px;
+      padding: 22px;
+      border: 1px solid var(--border);
+    }
+    .cg-icon {
+      width: 42px; height: 42px;
+      background: var(--brand-sage-light);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 14px;
+    }
+    .cg-icon svg { color: #2E7D64; }
+    .cg-card h4 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0 0 7px;
+    }
+    .cg-card p { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+
+    /* Portal callout */
+    .portal-callout {
+      background: white;
+      border-radius: 18px;
+      padding: 28px 32px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+    }
+    @media (max-width: 620px) {
+      .portal-callout { flex-direction: column; text-align: center; }
+    }
+    .portal-callout-text h3 { font-size: 18px; margin: 0 0 6px; }
+    .portal-callout-text p { font-size: 14px; color: var(--text-secondary); margin: 0; }
+
+    /* ============================================================
+       PRIVACY / SECURITY
+    ============================================================ */
+    .security {
+      padding: 96px 0;
+      background: white;
+    }
+    .security-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin-bottom: 28px;
+    }
+    .sec-card {
+      background: var(--cream);
+      border-radius: 16px;
+      padding: 22px;
+      border: 1px solid var(--border);
+    }
+    .sec-icon {
+      width: 40px; height: 40px;
+      background: var(--brand-cyan-light);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 13px;
+    }
+    .sec-icon svg { color: var(--brand-dark); }
+    .sec-card h4 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 14px; font-weight: 700;
+      margin: 0 0 6px;
+    }
+    .sec-card p { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+
+    .hipaa-banner {
+      background: linear-gradient(135deg, rgba(64,201,208,0.07), rgba(126,205,181,0.07));
+      border: 1px solid rgba(64,201,208,0.18);
+      border-radius: 16px;
+      padding: 22px 26px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    @media (max-width: 580px) { .hipaa-banner { flex-direction: column; text-align: center; } }
+    .hipaa-icon {
+      width: 48px; height: 48px;
+      background: white;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .hipaa-icon svg { color: var(--brand-cyan); }
+    .hipaa-text h4 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 14px; font-weight: 700;
+      margin: 0 0 4px;
+    }
+    .hipaa-text p { font-size: 13px; color: var(--text-secondary); margin: 0; }
+
+    /* ============================================================
+       FAQ
+    ============================================================ */
+    .faq { padding: 96px 0; background: var(--cream-alt); }
+    .faq-inner { max-width: 740px; margin: 0 auto; }
     .faq-item {
-      border-bottom: 1px solid #E2E8F0;
-      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+      padding: 18px 0;
     }
-
-    .faq-item:first-child {
-      border-top: 1px solid #E2E8F0;
-    }
-
+    .faq-item:first-child { border-top: 1px solid var(--border); }
     .faq-question {
       display: flex;
       justify-content: space-between;
       align-items: center;
       cursor: pointer;
-      width: 100%;
-      text-align: left;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
       background: none;
       border: none;
       padding: 0;
-      font-family: 'Inter', sans-serif;
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text-primary);
+      width: 100%;
+      text-align: left;
+      gap: 14px;
     }
-
-    .faq-question:hover {
-      color: var(--brand-dark);
-    }
-
-    .faq-question svg {
-      color: var(--text-secondary);
-      transition: transform 0.2s;
-      flex-shrink: 0;
-      margin-left: 16px;
-    }
-
-    .faq-item[open] .faq-question svg {
-      transform: rotate(180deg);
-    }
-
+    .faq-question:hover { color: var(--brand-dark); }
+    .faq-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform 0.2s; }
+    .faq-item[open] .faq-chevron { transform: rotate(180deg); }
     .faq-answer {
+      font-size: 15px;
       color: var(--text-secondary);
-      font-size: 16px;
-      line-height: 1.6;
-      margin-top: 12px;
+      line-height: 1.75;
+      padding-top: 12px;
       display: none;
     }
+    .faq-item[open] .faq-answer { display: block; }
+    .faq-answer p { margin: 0 0 10px; }
+    .faq-answer p:last-child { margin: 0; }
+    .faq-answer a { color: var(--brand-dark); font-weight: 500; text-decoration: none; }
+    .faq-answer a:hover { text-decoration: underline; }
 
-    .faq-item[open] .faq-answer {
-      display: block;
+    /* ============================================================
+       CTA
+    ============================================================ */
+    .cta {
+      padding: 96px 0;
+      background: linear-gradient(135deg, #2A9D8F 0%, var(--brand-cyan) 55%, #5DD9E0 100%);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
     }
+    .cta::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+    }
+    .cta-inner { position: relative; z-index: 1; }
+    .cta h2 {
+      color: white;
+      font-size: clamp(26px, 4vw, 44px);
+      margin: 0 0 14px;
+    }
+    .cta-sub {
+      color: rgba(255,255,255,0.85);
+      font-size: 17px;
+      margin: 0 0 40px;
+    }
+    .cta-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn-cta-white {
+      background: white;
+      color: var(--brand-dark);
+      font-weight: 700;
+    }
+    .btn-cta-white:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+    }
+    .cta-note {
+      margin-top: 20px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.55);
+    }
+
+    /* ============================================================
+       SOURCES
+    ============================================================ */
+    .sources-section { padding: 52px 0; background: white; }
+    .sources-box {
+      background: var(--cream);
+      border-radius: 14px;
+      padding: 22px 26px;
+      border: 1px solid var(--border);
+    }
+    .sources-box h4 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      margin: 0 0 12px;
+    }
+    .sources-box ol {
+      margin: 0; padding-left: 18px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+    .sources-box li { margin-bottom: 6px; }
+    .sources-box a { color: var(--brand-dark); text-decoration: none; }
+    .sources-box a:hover { text-decoration: underline; }
+    .citation {
+      font-size: 11px;
+      color: var(--brand-dark);
+      text-decoration: none;
+      vertical-align: super;
+      font-weight: 700;
+      margin-left: 1px;
+    }
+
+    /* ============================================================
+       FOOTER
+    ============================================================ */
+    footer {
+      background: #1C1917;
+      padding: 56px 0 32px;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 40px;
+      margin-bottom: 48px;
+    }
+    @media (max-width: 780px) { .footer-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 440px) { .footer-grid { grid-template-columns: 1fr; } }
+    .footer-brand .logo-wordmark { color: white; font-size: 20px; }
+    .footer-brand .logo-wordmark span { color: var(--brand-cyan); }
+    .footer-brand p {
+      font-size: 14px;
+      color: #78716C;
+      margin: 10px 0 0;
+      line-height: 1.65;
+      max-width: 240px;
+    }
+    .footer-col h5 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #78716C;
+      margin: 0 0 14px;
+    }
+    .footer-col ul { list-style: none; }
+    .footer-col li { margin-bottom: 9px; }
+    .footer-col a { color: #57534E; text-decoration: none; font-size: 14px; transition: color 0.18s; }
+    .footer-col a:hover { color: white; }
+    .footer-bottom {
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding-top: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .footer-bottom p { font-size: 13px; color: #44403C; margin: 0; }
+    .footer-bottom-links { display: flex; gap: 18px; }
+    .footer-bottom-links a { font-size: 13px; color: #44403C; text-decoration: none; transition: color 0.18s; }
+    .footer-bottom-links a:hover { color: #78716C; }
   </style>
 </head>
 
 <body>
 
-  <!-- Navigation -->
+  <!-- ============================================================
+       NAVIGATION
+  ============================================================ -->
   <nav>
     <div class="container">
-      <a href="/" class="logo">
-        <div class="logo-text">Lumi<span>MD</span></div>
-      </a>
-      <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#how-it-works">How It Works</a>
-        <a href="#security">Security</a>
-        <a href="https://lumimd.app/sign-in" class="btn btn-secondary" style="padding: 10px 20px; font-size: 14px;">Sign
-          In</a>
-        <a href="https://testflight.apple.com/join/GnMxymtP" class="btn btn-primary"
-          style="padding: 10px 20px; font-size: 14px;">Join the Beta</a>
+      <div class="nav-inner">
+        <a href="/" class="logo">
+          <div class="logo-mark">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+          <span class="logo-wordmark">Lumi<span>MD</span></span>
+        </a>
+
+        <div class="nav-links">
+          <a href="#features">For Patients</a>
+          <a href="#caregivers">For Caregivers</a>
+          <a href="#security">Privacy</a>
+          <a href="#faq">FAQ</a>
+        </div>
+
+        <div class="nav-actions">
+          <a href="https://portal.lumimd.app" class="btn btn-secondary btn-sm">Caregiver Portal</a>
+          <a href="https://testflight.apple.com/join/GnMxymtP" class="btn btn-primary btn-sm">Download</a>
+        </div>
       </div>
     </div>
   </nav>
 
-  <!-- Hero -->
+  <!-- ============================================================
+       HERO
+  ============================================================ -->
   <section class="hero">
     <div class="container">
-      <div class="hero-content">
-        <h1>Never forget what your doctor said again.</h1>
-        <p>Up to 80% of medical information is forgotten immediately after leaving the clinic.<a href="#sources"
-            class="citation">[1]</a> LumiMD captures everything so
-          you can focus on what matters—your health.</p>
-        <div class="hero-buttons">
-          <a href="https://testflight.apple.com/join/GnMxymtP" class="btn btn-primary">Join the Beta</a>
-          <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
-        </div>
-        <div class="trust-row">
-          <div class="trust-badge">
-            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-            End-to-end encrypted
+      <div class="hero-grid">
+        <div class="hero-content">
+          <div class="hero-kicker">
+            <span class="kicker-dot"></span>
+            Now in beta — iOS
           </div>
-          <div class="trust-badge">
-            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-            You own your data
+          <h1>Never miss a detail from your doctor's visit. Keep everyone who cares in the loop.</h1>
+          <p class="hero-sub">LumiMD takes notes at your appointments, organizes your medications with one-tap reminders, and
+            gives your caregivers a complete picture — all from one app.</p>
+          <div class="hero-actions">
+            <a href="https://testflight.apple.com/join/GnMxymtP" class="btn btn-primary btn-lg">
+              <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13z M12 2v2 M12 20v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M2 12h2 M20 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42" />
+              </svg>
+              Join the Beta
+            </a>
+            <a href="#caregivers" class="btn btn-secondary btn-lg">For Caregivers →</a>
           </div>
-        </div>
-      </div>
-      <div class="hero-image">
-        <div class="phone-frame">
-          <div class="phone-screen">
-            <div class="demo-slideshow" id="demoSlideshow">
-              <div class="demo-slide active">
-                <img src="/images/app-screen-1.png" alt="LumiMD Dashboard">
-              </div>
-              <div class="demo-slide">
-                <img src="/images/app-recording.png" alt="Recording Screen">
-              </div>
-              <div class="demo-slide">
-                <img src="/images/app-screen-3.png" alt="Processing">
-              </div>
-              <div class="demo-slide">
-                <img src="/images/app-meds.png" alt="Medications">
-              </div>
-              <div class="demo-slide">
-                <img src="/images/app-schedule.png" alt="Medication Schedule">
-              </div>
+          <div class="trust-row">
+            <div class="trust-item">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              End-to-end encrypted
+            </div>
+            <div class="trust-item">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              HIPAA-compliant
+            </div>
+            <div class="trust-item">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              You own your data
+            </div>
+            <div class="trust-item">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              Free to start
             </div>
           </div>
         </div>
-        <div class="demo-caption" id="demoCaption">
-          <h4>Welcome to LumiMD</h4>
-          <p>Your health journey, organized and easy to find</p>
+
+        <div class="hero-visual">
+          <div class="phone-frame">
+            <div class="phone-screen">
+              <div class="demo-slideshow" id="demoSlideshow">
+                <div class="demo-slide active">
+                  <img src="/images/app-screen-1.png" alt="LumiMD Dashboard">
+                </div>
+                <div class="demo-slide">
+                  <img src="/images/app-recording.png" alt="Recording Screen">
+                </div>
+                <div class="demo-slide">
+                  <img src="/images/app-screen-3.png" alt="Visit Summary">
+                </div>
+                <div class="demo-slide">
+                  <img src="/images/app-meds.png" alt="Medications">
+                </div>
+                <div class="demo-slide">
+                  <img src="/images/app-schedule.png" alt="Medication Schedule">
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="demo-caption" id="demoCaption">
+            <h4>Your health dashboard</h4>
+            <p>Everything that matters, at a glance</p>
+          </div>
+          <div class="demo-indicators" id="demoIndicators">
+            <div class="demo-indicator active" data-slide="0"></div>
+            <div class="demo-indicator" data-slide="1"></div>
+            <div class="demo-indicator" data-slide="2"></div>
+            <div class="demo-indicator" data-slide="3"></div>
+            <div class="demo-indicator" data-slide="4"></div>
+          </div>
         </div>
-        <div class="demo-indicators" id="demoIndicators">
-          <div class="demo-indicator active" data-slide="0"></div>
-          <div class="demo-indicator" data-slide="1"></div>
-          <div class="demo-indicator" data-slide="2"></div>
-          <div class="demo-indicator" data-slide="3"></div>
-          <div class="demo-indicator" data-slide="4"></div>
-        </div>
-        <button class="demo-audio-btn" id="demoAudioBtn">
-          <svg id="audioIcon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-          </svg>
-          <span id="audioLabel">Unmute narration</span>
-        </button>
-        <audio id="demoAudio">
-          <source src="/audio/narration.mp3" type="audio/mpeg">
-        </audio>
       </div>
     </div>
   </section>
 
-  <!-- Problem Section -->
+  <!-- ============================================================
+       PROBLEM
+  ============================================================ -->
   <section class="problem">
     <div class="container">
-      <h2>Healthcare shouldn't feel this hard.</h2>
-      <p>Managing your health is overwhelming—but it doesn't have to be.</p>
-
-      <div class="problem-cards">
+      <div class="section-header">
+        <h2>Healthcare shouldn't feel this hard.</h2>
+        <p>Managing your health is overwhelming. And if you're a caregiver, multiply that by every patient you're
+          looking after.</p>
+      </div>
+      <div class="problem-grid">
         <div class="problem-card">
-          <div class="problem-card-icon">
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="problem-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" />
+                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h3>You leave confused</h3>
-          <p>Doctors speak fast. Medical terms blur together. By the time you get home, you've already forgotten half of
-            what was said.</p>
+          <h3>You leave the appointment confused</h3>
+          <p>Up to 80% of medical information is forgotten immediately after a visit.<a href="#sources"
+              class="citation">[1]</a> Doctors speak fast, use unfamiliar terms, and there are no notes you can go
+            back to.</p>
         </div>
-
         <div class="problem-card">
-          <div class="problem-card-icon">
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="problem-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
             </svg>
           </div>
-          <h3>Medications pile up</h3>
-          <p>Nearly 50% of patients don't take medications as prescribed, often due to confusion about dosing.<a
-              href="#sources" class="citation">[2]</a></p>
+          <h3>Medications pile up, details get missed</h3>
+          <p>Nearly 50% of patients don't take medications as prescribed — often because dosing instructions are
+            confusing or easy to forget.<a href="#sources" class="citation">[2]</a></p>
         </div>
-
         <div class="problem-card">
-          <div class="problem-card-icon">
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="problem-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </div>
-          <h3>Family is left in the dark</h3>
-          <p>Your loved ones want to help, but keeping everyone updated after every appointment is exhausting.</p>
+          <h3>Caregivers are left in the dark</h3>
+          <p>Adult children, spouses, and family caregivers want to help — but staying current on medications, visits,
+            and action items requires constant phone tag.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- How It Works -->
+  <!-- ============================================================
+       HOW IT WORKS
+  ============================================================ -->
   <section class="how-it-works" id="how-it-works">
     <div class="container">
-      <h2>How LumiMD works</h2>
-
-      <div class="steps">
+      <div class="section-header">
+        <h2>How LumiMD works</h2>
+        <p>From your first doctor visit to your caregiver's morning briefing — LumiMD keeps everything connected.</p>
+      </div>
+      <div class="steps-grid">
         <div class="step">
-          <div class="step-number">1</div>
-          <h3>Record</h3>
-          <p>Open the app during your doctor visit. Just tap one button—we handle the rest.</p>
+          <div class="step-num step-1">1</div>
+          <h3>Take notes</h3>
+          <p>Open the app during your visit, or upload your after-visit summary. LumiMD handles both.</p>
         </div>
-
         <div class="step">
-          <div class="step-number">2</div>
+          <div class="step-num step-2">2</div>
           <h3>Understand</h3>
-          <p>Get an instant summary in plain English, plus your updated medication list and action items.</p>
+          <p>Get a plain-English summary with diagnoses, medication changes, and action items — minutes after your visit.
+          </p>
         </div>
-
         <div class="step">
-          <div class="step-number">3</div>
-          <h3>Share</h3>
-          <p>Keep your family or caregivers informed with one tap. No more phone tag.</p>
+          <div class="step-num step-3">3</div>
+          <h3>Stay on track</h3>
+          <p>Medication reminders let you log a dose with one tap, right from the notification. LumiBot checks in
+            between visits.</p>
+        </div>
+        <div class="step">
+          <div class="step-num step-4">4</div>
+          <h3>Keep everyone informed</h3>
+          <p>Your caregiver gets the full picture — visits, medications, adherence, and alerts — on their phone or via
+            the web portal.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Features -->
+  <!-- ============================================================
+       PATIENT FEATURES
+  ============================================================ -->
   <section class="features" id="features">
     <div class="container">
 
-      <!-- Feature 1: Automatic Summaries -->
-      <div class="feature">
+      <!-- Section header -->
+      <div class="section-header">
+        <span class="eyebrow eyebrow-cyan">For Patients</span>
+        <h2>Everything you need between appointments</h2>
+        <p>LumiMD works in the exam room and keeps working long after you leave.</p>
+      </div>
+
+      <!-- Feature 1: Visit Notes -->
+      <div class="feature-block">
         <div class="feature-text">
-          <span class="feature-tag">Smart Recording</span>
-          <h3>Every appointment, captured and explained</h3>
-          <p>LumiMD listens to your doctor visits and automatically creates a clear summary. No more frantically
-            scribbling notes or trying to remember what the doctor said.</p>
-          <ul class="feature-list">
+          <span class="eyebrow eyebrow-cyan">Visit Notes</span>
+          <h3>Every appointment noted and explained in plain English</h3>
+          <p>Open the app when your visit starts, tap once, and focus on your conversation. LumiMD listens and pulls out
+            what matters: diagnoses, medication changes, action items, and a full
+            plain-language summary — ready minutes after you leave.</p>
+          <ul class="feature-bullets">
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              AI-generated summaries in plain English
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Clear summary in plain, jargon-free English
             </li>
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Key action items highlighted automatically
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Diagnoses, medications, and action items extracted automatically
             </li>
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Searchable history of all your visits
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Post-visit walkthrough: "What was discussed, what changed, what's next"
+            </li>
+            <li>
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Searchable history of all your visits, forever
             </li>
           </ul>
         </div>
-        <div class="feature-image">
-          <div class="phone-frame">
+        <div class="feature-visual">
+          <div class="feature-phone">
             <div class="phone-screen">
-              <img src="/images/app-screen-3.png" alt="Visit Summary">
+              <img src="/images/app-screen-3.png" alt="LumiMD Visit Summary Screen">
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Feature 2: Medication Auto-Population -->
-      <div class="feature">
+      <!-- Feature 2: AVS Upload -->
+      <div class="feature-block reverse">
         <div class="feature-text">
-          <span class="feature-tag">Medication Tracking</span>
-          <h3>Your meds, always up to date</h3>
-          <p>When your doctor prescribes something new, it appears in your medication list automatically. Set reminders
-            so you never miss a dose or refill.</p>
-          <ul class="feature-list">
+          <span class="eyebrow eyebrow-coral">Document Upload</span>
+          <h3>Got paperwork from your doctor? Just upload it.</h3>
+          <p>Not every visit gets captured in the app — and that's okay. Photograph your after-visit summary or upload a PDF and
+            LumiMD extracts the same structured data: diagnoses, medications, action items, follow-ups. Works for
+            specialist letters, discharge notes, and lab reports too.</p>
+          <ul class="feature-bullets">
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Auto-populated from visit summaries
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Photograph your after-visit summary or upload a PDF
             </li>
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Customizable dose reminders
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Multi-page documents supported — up to 10 pages
             </li>
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Refill alerts before you run out
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Automatically merges with same-day app visits
+            </li>
+            <li>
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Document deleted after processing — we only keep the summary
             </li>
           </ul>
         </div>
-        <div class="feature-image">
-          <div class="phone-frame">
-            <div class="phone-screen">
-              <img src="/images/app-screen-5.png" alt="Medications">
+        <div class="feature-visual">
+          <div class="avs-card">
+            <div class="avs-doc-header">
+              <div class="avs-doc-icon">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div>
+                <div class="avs-doc-name">AfterVisit_DrChen_Mar18.pdf</div>
+                <div class="avs-doc-meta">3 pages · 420 KB</div>
+              </div>
+            </div>
+            <div class="avs-processing">
+              <div class="avs-spinner"></div>
+              Extracting from document…
+            </div>
+            <div class="avs-extracted">
+              <div class="avs-row">
+                <div class="avs-green">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div><span class="avs-label">Diagnoses: </span><span class="avs-value">Hypertension, Type 2
+                    Diabetes</span></div>
+              </div>
+              <div class="avs-row">
+                <div class="avs-green">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div><span class="avs-label">Medications: </span><span class="avs-value">Lisinopril 10mg, Metformin
+                    500mg (new)</span></div>
+              </div>
+              <div class="avs-row">
+                <div class="avs-green">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div><span class="avs-label">Action items: </span><span class="avs-value">Fasting labs in 3 months,
+                    echo scheduled</span></div>
+              </div>
+              <div class="avs-row">
+                <div class="avs-green">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div><span class="avs-label">Follow-up: </span><span class="avs-value">6 weeks with Dr. Chen</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Feature 3: Caregiver Sharing -->
-      <div class="feature">
+      <!-- Feature 3: Medication Reminders + Action Buttons -->
+      <div class="feature-block">
         <div class="feature-text">
-          <span class="feature-tag">Family Sharing</span>
-          <h3>Keep your loved ones in the loop</h3>
-          <p>Whether it's a spouse, adult child, or caregiver—share your visit summaries and let them help you stay on
-            track. No more repeating yourself.</p>
-          <ul class="feature-list">
+          <span class="eyebrow eyebrow-cyan">Smart Reminders</span>
+          <h3>Log a dose with one tap — right from the notification</h3>
+          <p>Medication reminders don't just buzz at you. They include "Took it" and "Skipped" action buttons so you
+            can log your dose without even opening the app. Your adherence history updates in real time — and your
+            caregiver sees it too.</p>
+          <ul class="feature-bullets">
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              One-tap sharing with family members
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Medications auto-populated from your visit summaries
             </li>
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Choose what to share and with whom
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              "Took it" and "Skipped" directly from the lock screen
             </li>
             <li>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              Coordination without the confusion
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Custom schedules — set time, frequency, and quiet hours
+            </li>
+            <li>
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Drug interaction warnings from your full medication list
             </li>
           </ul>
         </div>
-        <div class="feature-image">
-          <div class="phone-frame">
-            <div class="phone-screen">
-              <img src="/images/caregiver-sharing.png" alt="Caregiver Sharing">
+        <div class="feature-visual">
+          <div class="notif-wrap">
+            <div class="notif-card">
+              <div class="notif-top">
+                <div class="notif-app-icon">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                </div>
+                <span class="notif-app-name">LumiMD</span>
+                <span class="notif-time">8:00 AM</span>
+              </div>
+              <div class="notif-title">Time to take Lisinopril 10mg</div>
+              <div class="notif-body">Good morning! Your 8:00 AM dose is ready. Tap below to log it.</div>
+              <div class="notif-actions">
+                <div class="notif-btn notif-took">Took it ✓</div>
+                <div class="notif-btn notif-skipped">Skipped</div>
+              </div>
+            </div>
+            <div class="notif-card-2">
+              <div class="notif-card-2-icon">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div class="notif-card-2-text">
+                <strong>Metformin 500mg</strong> — Due at noon
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 4: LumiBot -->
+      <div class="feature-block reverse">
+        <div class="feature-text">
+          <span class="eyebrow eyebrow-sage">LumiBot</span>
+          <h3>Your health companion between visits</h3>
+          <p>LumiBot doesn't just remind you to take your medications. After each visit, it walks you through what
+            changed and why. It checks in on how you're doing, helps you log vitals, nudges you on overdue action
+            items, and connects you to plain-language resources — all in a conversational, judgment-free way.</p>
+          <ul class="feature-bullets">
+            <li>
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Post-visit walkthrough: what was discussed, what changed, what's next
+            </li>
+            <li>
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Context-aware check-ins tied to your specific conditions
+            </li>
+            <li>
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Health metrics hub: trends, charts, and pattern insights
+            </li>
+            <li>
+              <span class="check-wrap">
+                <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              Never gives clinical advice — always points to your care team
+            </li>
+          </ul>
+        </div>
+        <div class="feature-visual">
+          <div class="lumibot-card">
+            <div class="lumibot-header">
+              <div class="lumibot-avatar">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              </div>
+              <div>
+                <div class="lumibot-name">LumiBot</div>
+                <div class="lumibot-status">● Active</div>
+              </div>
+            </div>
+            <div class="lumibot-messages">
+              <div class="chat-bot">Your visit notes from Dr. Chen are ready. Want me to walk you through them?</div>
+              <div class="chat-user">Yes please</div>
+              <div class="chat-bot">Dr. Chen made changes to 2 medications. Let's start there — then we'll cover your
+                3 new action items.</div>
+            </div>
+            <div class="lumibot-steps">
+              <div class="lb-step">
+                <div class="lb-step-num">1</div>
+                <div><strong>What was discussed</strong> — Diagnoses &amp; key findings</div>
+              </div>
+              <div class="lb-step">
+                <div class="lb-step-num">2</div>
+                <div><strong>What changed</strong> — Medication updates</div>
+              </div>
+              <div class="lb-step">
+                <div class="lb-step-num">3</div>
+                <div><strong>What's next</strong> — Action items &amp; follow-ups</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1237,163 +1703,392 @@
     </div>
   </section>
 
-  <!-- Security -->
+  <!-- ============================================================
+       CAREGIVER SECTION
+  ============================================================ -->
+  <section class="caregiver" id="caregivers">
+    <div class="container">
+
+      <div class="caregiver-intro">
+        <div>
+          <span class="eyebrow eyebrow-sage">For Caregivers</span>
+          <h2>Stay close, even when you can't be there.</h2>
+          <p>Whether you're a spouse, adult child, or professional caregiver — LumiMD gives you a real-time view of
+            the people in your care. No more waiting for a phone call to find out what happened at the last
+            appointment.</p>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <a href="https://testflight.apple.com/join/GnMxymtP" class="btn btn-sage">Download the App</a>
+            <a href="https://portal.lumimd.app" class="btn btn-secondary">Open Caregiver Portal →</a>
+          </div>
+        </div>
+        <div class="cgd">
+          <div class="cgd-topbar">
+            <div class="cgd-title">My Patients</div>
+            <div class="cgd-portal-badge">portal.lumimd.app</div>
+          </div>
+          <div class="cgd-patients">
+            <div class="cgd-patient">
+              <div class="cgd-patient-top">
+                <div class="cgd-patient-name">Margaret T., 74</div>
+                <div class="cgd-status cgd-ok">On track</div>
+              </div>
+              <div class="cgd-meta">Last visit · Cardiology · 3 days ago</div>
+              <div class="cgd-bar-row">
+                <div class="cgd-bar">
+                  <div class="cgd-fill" style="width:87%"></div>
+                </div>
+                <div class="cgd-pct">87% adherence</div>
+              </div>
+            </div>
+            <div class="cgd-patient">
+              <div class="cgd-patient-top">
+                <div class="cgd-patient-name">Robert T., 77</div>
+                <div class="cgd-status cgd-warn">Missed 2 doses</div>
+              </div>
+              <div class="cgd-meta">Last visit · Primary Care · 1 week ago</div>
+              <div class="cgd-bar-row">
+                <div class="cgd-bar">
+                  <div class="cgd-fill" style="width:61%"></div>
+                </div>
+                <div class="cgd-pct">61% adherence</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cg-features">
+        <div class="cg-card">
+          <div class="cg-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h4>Full mobile experience</h4>
+          <p>The same LumiMD app — with a caregiver role. View visit summaries, medications, action items, and health
+            logs for every patient you're connected to.</p>
+        </div>
+        <div class="cg-card">
+          <div class="cg-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <h4>Adherence tracking</h4>
+          <p>See medication adherence trends per patient, with confidence indicators and missed-dose alerts — so you
+            know when to follow up.</p>
+        </div>
+        <div class="cg-card">
+          <div class="cg-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          </div>
+          <h4>Daily briefings &amp; alerts</h4>
+          <p>Get a morning briefing with the day's medication schedule and any needs-attention flags. Instant alerts for
+            missed doses and new visit summaries.</p>
+        </div>
+        <div class="cg-card">
+          <div class="cg-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+          <h4>Message your patient</h4>
+          <p>Send a message directly to your patient's inbox in the app. Useful for reminders, encouragement, or
+            following up after a visit.</p>
+        </div>
+        <div class="cg-card">
+          <div class="cg-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+          </div>
+          <h4>Action item follow-through</h4>
+          <p>See which follow-ups from each visit are on track, pending, or overdue. Create your own tasks and attach
+            them to specific visits.</p>
+        </div>
+        <div class="cg-card">
+          <div class="cg-icon">
+            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+          <h4>Health trend insights</h4>
+          <p>Blood pressure, weight, glucose — health logs with trend charts, period selectors, and insight cards.
+            Shareable summaries you can print for any appointment.</p>
+        </div>
+      </div>
+
+      <div class="portal-callout">
+        <div class="portal-callout-text">
+          <h3>Prefer a bigger screen?</h3>
+          <p>The LumiMD Caregiver Portal at <strong>portal.lumimd.app</strong> gives you a full multi-patient
+            dashboard — visit histories, adherence reports, health trends, messaging, and printable care summaries —
+            all from your browser.</p>
+        </div>
+        <a href="https://portal.lumimd.app" class="btn btn-sage btn-lg" style="white-space:nowrap;">Open Portal →</a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SECURITY / PRIVACY
+  ============================================================ -->
   <section class="security" id="security">
     <div class="container">
-      <h2>Your privacy is not negotiable.</h2>
-      <p>We built LumiMD with security at its core. Your health data belongs to you—always.</p>
-
+      <div class="section-header">
+        <span class="eyebrow eyebrow-coral">Privacy &amp; Security</span>
+        <h2>Your health data belongs to you. Full stop.</h2>
+        <p>We built LumiMD with the assumption that your health information is the most sensitive data you have. Every
+          decision we make starts there.</p>
+      </div>
       <div class="security-grid">
-        <div class="security-card">
-          <div class="security-card-icon">
-            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="sec-card">
+          <div class="sec-icon">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
           <h4>End-to-end encryption</h4>
-          <p>Your recordings and data are encrypted before they leave your device.</p>
+          <p>All visit audio and documents are encrypted before they leave your device. Data in transit and at
+            rest is protected with AES-256.</p>
         </div>
-
-        <div class="security-card">
-          <div class="security-card-icon">
-            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="sec-card">
+          <div class="sec-icon">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </div>
-          <h4>No audio retention</h4>
-          <p>Audio recordings are processed and deleted. We only keep your text summaries.</p>
+          <h4>Audio never stored</h4>
+          <p>Audio is processed to create your visit notes, then permanently deleted within 24 hours. We keep
+            only the notes. We never train AI models on your data.</p>
         </div>
-
-        <div class="security-card">
-          <div class="security-card-icon">
-            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="sec-card">
+          <div class="sec-icon">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
           <h4>You own your data</h4>
-          <p>Export or delete your data anytime. No questions asked.</p>
+          <p>Export everything or delete your account at any time — no friction, no waiting period. Your data is yours,
+            not ours to monetize.</p>
         </div>
-
-        <div class="security-card">
-          <div class="security-card-icon">
-            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="sec-card">
+          <div class="sec-icon">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h4>Controlled caregiver access</h4>
+          <p>You invite caregivers. You control what they see. Revoke access at any time. Caregivers get a read-only
+            view — they can never modify your health records.</p>
+        </div>
+        <div class="sec-card">
+          <div class="sec-icon">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+          <h4>HIPAA-compliant</h4>
+          <p>LumiMD is built to HIPAA standards. Your health information is never sold to insurers, advertisers, or
+            data brokers. Ever.</p>
+        </div>
+        <div class="sec-card">
+          <div class="sec-icon">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <h4>US-based infrastructure</h4>
-          <p>Your data is stored securely on US-based servers.</p>
+          <p>Your data is stored on US-based servers, subject to US data protection laws. No offshore processing of
+            health records.</p>
+        </div>
+      </div>
+      <div class="hipaa-banner">
+        <div class="hipaa-icon">
+          <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <div class="hipaa-text">
+          <h4>Privacy-first by design, not by policy</h4>
+          <p>We don't just comply with privacy regulations — we design for privacy from the ground up. Visit audio is
+            deleted, AI providers store nothing, caregiver access is explicit and revocable, and you have a full
+            privacy audit log of every access event.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- CTA -->
+  <!-- ============================================================
+       FAQ
+  ============================================================ -->
   <section class="faq" id="faq">
     <div class="container">
-      <h2>Frequently Asked Questions</h2>
+      <div class="section-header">
+        <h2>Frequently asked questions</h2>
+      </div>
+      <div class="faq-inner">
 
-      <div class="faq-grid">
         <details class="faq-item">
           <summary class="faq-question">
-            Is it legal to record my doctor visits?
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            Is it legal to use LumiMD during my doctor visits?
+            <svg class="faq-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
           <div class="faq-answer">
-            <p><strong>In most US states (39 out of 50), yes.</strong> These are known as "one-party consent" states,
-              meaning only one person in the conversation (you) needs to consent to the recording.</p>
-            <p>However, 11 states require all parties to consent (California, Florida, Illinois, etc.). Regardless of
-              the law, <strong>we strongly recommend always informing your doctor</strong> out of courtesy. Most
-              providers are supportive when they know it helps you manage your care.</p>
+            <p><strong>In most US states (39 out of 50), yes.</strong> These are "one-party consent" states — only one
+              person (you) needs to consent.</p>
+            <p>However, 11 states require all parties to consent (California, Florida, Illinois, and others). Regardless
+              of law, <strong>we strongly recommend letting your provider know</strong> you're using a note-taking app. Most are
+              supportive when they understand it's for your personal health management. LumiMD detects your location and
+              shows the applicable consent guidance before each visit.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
             Is my health data secure?
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="faq-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
           <div class="faq-answer">
-            <p>Yes. LumiMD uses <strong>end-to-end encryption</strong> for all data transmission and storage. We are
-              HIPAA-compliant and use enterprise-grade security protocols. Your audio recordings are processed to
-              generate summaries and then permanently deleted—we do not retain your voice data.</p>
+            <p>Yes. LumiMD uses end-to-end encryption for all data transmission and storage, is built to HIPAA
+              standards, and uses enterprise-grade security throughout. Visit audio is processed and
+              permanently deleted within 24 hours — we only keep your notes. We do not train AI models on your
+              information, and we never sell data to any third party.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
-            Who can see my recordings and summaries?
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            What is LumiBot and how does it work?
+            <svg class="faq-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
           <div class="faq-answer">
-            <p><strong>Only you.</strong> Your data is yours and yours alone. We do not sell your data to third parties,
-              advertisers, or insurance companies. You can choose to share specific summaries or information with family
-              members or caregivers via our "Family Sharing" feature, but this is entirely under your control.</p>
+            <p>LumiBot is LumiMD's health companion — it doesn't just send reminders, it has context about your
+              specific visits, diagnoses, and medications. After a new visit summary is ready, LumiBot offers a
+              3-step walkthrough: what was discussed, what medications changed, and what your action items are.</p>
+            <p>Between visits, it checks in on relevant health questions, nudges you on overdue action items, and helps
+              you log vitals with trend context. LumiBot never gives clinical advice — it always points to your care
+              team for anything medical.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            How does caregiver sharing work?
+            <svg class="faq-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>From your settings, you invite a caregiver by email. They create their own LumiMD account, accept the
+              invite, and get a read-only view of your health data. You control exactly what they can see, and you can
+              revoke access at any time.</p>
+            <p>Caregivers can use the LumiMD mobile app (with a caregiver role) or the Caregiver Portal at <a
+                href="https://portal.lumimd.app">portal.lumimd.app</a> for a full multi-patient dashboard experience.
+              They never have the ability to edit or delete your health records.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">
+            Can I upload paperwork instead of using the app during my visit?
+            <svg class="faq-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes — this is one of our most-used features. Photograph your after-visit summary (up to 10 pages) or
+              upload a PDF from your patient portal, and LumiMD extracts the same structured data as an in-app visit:
+              diagnoses, medications, action items, and follow-up instructions. If you both used the app and received
+              paperwork from the same visit, LumiMD merges them automatically.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
             Does it work for telehealth or phone appointments?
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="faq-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
           <div class="faq-answer">
-            <p>Absolutely. You can use LumiMD to record audio from your computer speakers or another device during a
-              telehealth visit. The AI works just as effectively to summarize virtual consultations as in-person ones.
-            </p>
+            <p>Yes. For telehealth visits, you can use LumiMD on the same device or have it listen nearby.
+              It works just as well for virtual visits.
+              Alternatively, if your provider sends an after-visit summary, just upload the document instead.</p>
           </div>
         </details>
 
         <details class="faq-item">
           <summary class="faq-question">
-            What if my doctor doesn't want me to record?
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            Is LumiMD free?
+            <svg class="faq-chevron" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
           <div class="faq-answer">
-            <p>We recommend always informing your provider before recording. Most are supportive once they understand
-              it's for your personal health management. If your provider has concerns, you can share our <a
-                href="/providers" style="color: var(--brand-dark); font-weight: 500;">Information for Providers</a>
-              page, which includes clinical research showing that recordings do not increase liability risk and can
-              actually improve patient outcomes.</p>
+            <p>LumiMD is free to use during the beta period. The app, caregiver sharing, medication reminders, LumiBot,
+              and the caregiver portal are all included. We'll share pricing plans before the beta ends — and early
+              users will receive favorable terms as a thank-you for helping us build the product.</p>
           </div>
         </details>
-
 
       </div>
     </div>
   </section>
 
-  <!-- CTA -->
+  <!-- ============================================================
+       CTA
+  ============================================================ -->
   <section class="cta">
     <div class="container">
-      <h2>Ready to take control of your health?</h2>
-      <p>Join thousands of people who never forget what their doctor said again.</p>
-      <a href="https://testflight.apple.com/join/GnMxymtP" class="btn">Join the Beta</a>
-      <p class="cta-note">Free to start • No credit card required</p>
+      <div class="cta-inner">
+        <h2>Your health, finally in focus.</h2>
+        <p class="cta-sub">Download for free and join the beta. Your first set of visit notes is one tap away.</p>
+        <div class="cta-buttons">
+          <a href="https://testflight.apple.com/join/GnMxymtP" class="btn btn-cta-white btn-lg">
+            Join the Beta — iOS
+          </a>
+          <a href="https://portal.lumimd.app" class="btn btn-outline-white btn-lg">
+            Caregiver Portal →
+          </a>
+        </div>
+        <p class="cta-note">Free during beta · No credit card required · iOS only for now</p>
+      </div>
     </div>
   </section>
 
-  <!-- Sources -->
-  <section id="sources" style="padding: 60px 0; background: white;">
+  <!-- ============================================================
+       SOURCES
+  ============================================================ -->
+  <section class="sources-section" id="sources">
     <div class="container">
-      <div class="sources">
+      <div class="sources-box">
         <h4>Sources</h4>
         <ol>
           <li>Kessels, R.P.C. (2003). "Patients' memory for medical information." <em>Journal of the Royal Society of
-              Medicine</em>, 96(5), 219-222. <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC539473/"
+              Medicine</em>, 96(5), 219–222. <a href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC539473/"
               target="_blank" rel="noopener">NIH PubMed Central</a></li>
           <li>World Health Organization (2003). "Adherence to Long-Term Therapies: Evidence for Action." <a
               href="https://www.who.int/chp/knowledge/publications/adherence_report/en/" target="_blank"
@@ -1403,28 +2098,43 @@
     </div>
   </section>
 
-  <!-- Footer -->
+  <!-- ============================================================
+       FOOTER
+  ============================================================ -->
   <footer>
     <div class="container">
-      <div class="footer-content">
+      <div class="footer-grid">
         <div class="footer-brand">
-          <div class="logo">
-            <div class="logo-text">Lumi<span>MD</span></div>
-          </div>
-          <p>Your personal health assistant. Never forget what your doctor said again.</p>
+          <a href="/" class="logo">
+            <div class="logo-mark">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </div>
+            <span class="logo-wordmark">Lumi<span>MD</span></span>
+          </a>
+          <p>Your health, organized. Your caregivers, informed. Built for patients and the people who care for them.</p>
         </div>
-
-        <div class="footer-links">
+        <div class="footer-col">
           <h5>Product</h5>
           <ul>
-            <li><a href="#features">Features</a></li>
+            <li><a href="#features">For Patients</a></li>
+            <li><a href="#caregivers">For Caregivers</a></li>
             <li><a href="#how-it-works">How It Works</a></li>
-            <li><a href="#security">Security</a></li>
-            <li><a href="/providers" style="opacity: 0.7; font-size: 13px;">For Providers</a></li>
+            <li><a href="#security">Privacy &amp; Security</a></li>
+            <li><a href="/providers" style="opacity:0.6; font-size:13px;">For Providers</a></li>
           </ul>
         </div>
-
-        <div class="footer-links">
+        <div class="footer-col">
+          <h5>Get Started</h5>
+          <ul>
+            <li><a href="https://testflight.apple.com/join/GnMxymtP">iOS Beta</a></li>
+            <li><a href="https://portal.lumimd.app">Caregiver Portal</a></li>
+            <li><a href="https://lumimd.app/sign-in">Sign In</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
           <h5>Legal</h5>
           <ul>
             <li><a href="https://lumimd.app/privacy">Privacy Policy</a></li>
@@ -1432,90 +2142,58 @@
           </ul>
         </div>
       </div>
-
       <div class="footer-bottom">
         <p>© 2026 LumiMD Inc. All rights reserved.</p>
+        <div class="footer-bottom-links">
+          <a href="https://lumimd.app/privacy">Privacy</a>
+          <a href="https://lumimd.app/terms">Terms</a>
+        </div>
       </div>
     </div>
   </footer>
 
   <script type="module" src="/src/main.ts"></script>
 
-  <!-- Demo Slideshow Script -->
+  <!-- Demo Slideshow -->
   <script>
     (function () {
       const slides = document.querySelectorAll('.demo-slide');
       const indicators = document.querySelectorAll('.demo-indicator');
       const captionEl = document.getElementById('demoCaption');
-      const audio = document.getElementById('demoAudio');
-      const audioBtn = document.getElementById('demoAudioBtn');
-      const audioLabel = document.getElementById('audioLabel');
-      const audioIcon = document.getElementById('audioIcon');
-      let currentSlide = 0;
-      const slideInterval = 7000; // 7 seconds per slide
-      let isMuted = true;
+      if (!slides.length || !captionEl) return;
+
+      let current = 0;
 
       const captions = [
-        { title: 'Welcome to LumiMD', desc: 'Your health journey, organized and easy to find' },
-        { title: 'One tap to record', desc: 'Focus on the conversation, not on taking notes' },
-        { title: 'We handle the details', desc: 'Clear, concise summary in plain language' },
-        { title: 'Medications added automatically', desc: 'No manual entry, no missed prescriptions' },
-        { title: 'Your schedule, your way', desc: 'Edit anytime to fit your routine' }
+        { title: 'Your health dashboard', desc: 'Everything that matters, at a glance' },
+        { title: 'One tap to start', desc: 'Focus on your doctor, not on notes' },
+        { title: 'Your visit notes', desc: 'Plain English, ready minutes after your visit' },
+        { title: 'Medications, organized', desc: 'Auto-populated — no manual entry needed' },
+        { title: 'Log a dose from the notification', desc: '"Took it" or "Skipped" — one tap' }
       ];
 
-      // Mute/unmute icons
-      const mutedIcon = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />';
-      const unmutedIcon = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15z" />';
-
-      function goToSlide(index) {
-        slides[currentSlide].classList.remove('active');
-        indicators[currentSlide].classList.remove('active');
-        currentSlide = index;
-        if (currentSlide >= slides.length) currentSlide = 0;
-        if (currentSlide < 0) currentSlide = slides.length - 1;
-        slides[currentSlide].classList.add('active');
-        indicators[currentSlide].classList.add('active');
-        captionEl.querySelector('h4').textContent = captions[currentSlide].title;
-        captionEl.querySelector('p').textContent = captions[currentSlide].desc;
+      function goTo(index) {
+        slides[current].classList.remove('active');
+        indicators[current].classList.remove('active');
+        current = (index + slides.length) % slides.length;
+        slides[current].classList.add('active');
+        indicators[current].classList.add('active');
+        captionEl.querySelector('h4').textContent = captions[current].title;
+        captionEl.querySelector('p').textContent = captions[current].desc;
       }
 
-      function nextSlide() {
-        goToSlide(currentSlide + 1);
-        // Restart audio when looping back to start
-        if (currentSlide === 0 && !isMuted) {
-          audio.currentTime = 0;
-          audio.play();
-        }
-      }
+      let timer = setInterval(() => goTo(current + 1), 7000);
 
-      // Auto-advance
-      let autoPlay = setInterval(nextSlide, slideInterval);
-
-      // Click on indicators
-      indicators.forEach((indicator, index) => {
-        indicator.addEventListener('click', () => {
-          clearInterval(autoPlay);
-          goToSlide(index);
-          autoPlay = setInterval(nextSlide, slideInterval);
+      indicators.forEach((dot, i) => {
+        dot.addEventListener('click', () => {
+          clearInterval(timer);
+          goTo(i);
+          timer = setInterval(() => goTo(current + 1), 7000);
         });
-      });
-
-      // Audio mute/unmute toggle
-      audioBtn.addEventListener('click', () => {
-        if (isMuted) {
-          audio.play();
-          audioLabel.textContent = 'Mute narration';
-          audioIcon.innerHTML = unmutedIcon;
-          isMuted = false;
-        } else {
-          audio.pause();
-          audioLabel.textContent = 'Unmute narration';
-          audioIcon.innerHTML = mutedIcon;
-          isMuted = true;
-        }
       });
     })();
   </script>
+
 </body>
 
 </html>
