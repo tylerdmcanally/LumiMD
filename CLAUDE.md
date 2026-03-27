@@ -309,6 +309,23 @@ cd mobile && eas update --branch default --message "description"
 firebase use lumimd-dev   # or lumimd (prod)
 ```
 
+## Testing (Mobile)
+
+Run a single test file: `npx jest __tests__/<file> --no-coverage` (from `mobile/`)
+Run multiple: `npx jest __tests__/file1 __tests__/file2 --no-coverage`
+
+**Pre-existing failures:** 9 test suites (`auth-context.test.tsx`, `home.test.tsx`, `sign-in.test.tsx`, `visits.test.tsx`, etc.) fail with `SyntaxError: Unexpected token 'export'` from `lib/appleAuth.ts` or Firebase Firestore ESM issues. These are infrastructure-level failures unrelated to app changes — do not attempt to fix unless explicitly tasked.
+
+**Healthy test files:** `role-resolution.test.tsx`, `notification-handler.test.tsx`, `notifications-registration.test.ts` — these pass reliably and cover auth, push tokens, and notification routing.
+
+## Mobile Architecture Notes
+
+**`@react-native-firebase/auth` fast path:** `auth().currentUser` is synchronously available (unlike web Firebase SDK). Used in `AuthContext` to unblock navigation before `onAuthStateChanged` fires. Mocked in `jest.setup.ts` as `jest.fn(() => ({ currentUser: null }))`.
+
+**Role cache:** Stored as JSON `{ role, at }` in AsyncStorage key `lumimd:cachedRole`. TTL = 1 hour — skips `/v1/users/me` network fetch if fresh. Legacy plain-string values still parse as valid but stale.
+
+**`fetchWithAuth` is private** in `mobile/lib/api/hooks.ts` — cannot be imported externally. Wrap shared prefetch logic in named exports (e.g. `prefetchOnAuth`).
+
 ## Common Patterns
 
 **Cache-Control for mutable data:** Use `Cache-Control: private, no-cache` (NOT `max-age`). React Native's `fetch` respects HTTP cache headers, so `max-age` causes stale reads after mutations even when React Query triggers a refetch.

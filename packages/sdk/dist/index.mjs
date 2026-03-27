@@ -636,6 +636,12 @@ function createApiClient(config) {
       }),
       unreadCount: () => apiRequest("/v1/messages/unread-count")
     },
+    medicationLogs: {
+      create: (data) => apiRequest("/v1/medication-logs", {
+        method: "POST",
+        body: JSON.stringify(data)
+      })
+    },
     // Caregiver → Patient messaging
     careMessages: {
       send: (patientId, data) => apiRequest(

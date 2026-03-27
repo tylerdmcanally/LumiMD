@@ -763,6 +763,17 @@ declare function createApiClient(config: ApiClientConfig): {
             count: number;
         }>;
     };
+    medicationLogs: {
+        create: (data: {
+            medicationId: string;
+            medicationName: string;
+            action: "taken" | "skipped" | "snoozed";
+            scheduledTime: string;
+            reminderId?: string;
+        }) => Promise<{
+            id: string;
+        }>;
+    };
     careMessages: {
         send: (patientId: string, data: {
             message: string;
