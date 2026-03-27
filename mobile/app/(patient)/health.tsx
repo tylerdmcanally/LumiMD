@@ -411,6 +411,7 @@ export default function HealthScreen() {
       </View>
 
       <ScrollView
+        key={selectedType}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
