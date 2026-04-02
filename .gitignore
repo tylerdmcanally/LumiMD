@@ -97,3 +97,7 @@ firebase-admin-key.json
 mobile/ios/
 mobile/android/
 mobile/.expo/*.log
+
+# Business docs (sensitive)
+docs/*.docx
+docs/*.code-workspace

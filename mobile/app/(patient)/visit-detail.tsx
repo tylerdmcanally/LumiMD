@@ -809,23 +809,42 @@ export default function VisitDetailScreen() {
                 )}
 
               {/* Medication confirmation banner */}
-              {visit.medicationConfirmationStatus === 'pending' && (
-                <Pressable
-                  style={styles.medReviewBanner}
-                  onPress={() => setShowMedicationReview(true)}
-                >
-                  <Ionicons name="medkit" size={22} color={Colors.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.medReviewBannerTitle}>
-                      Review Medication Changes
-                    </Text>
-                    <Text style={styles.medReviewBannerSubtitle}>
-                      Medications need your confirmation before saving
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
-                </Pressable>
-              )}
+              {visit.medicationConfirmationStatus === 'pending' && (() => {
+                const pending = (visit as any).pendingMedicationChanges;
+                const pendingCount =
+                  (pending?.started?.length ?? 0) +
+                  (pending?.stopped?.length ?? 0) +
+                  (pending?.changed?.length ?? 0);
+                return (
+                  <Pressable
+                    style={styles.medReviewBanner}
+                    onPress={() => setShowMedicationReview(true)}
+                  >
+                    <View style={styles.medReviewBannerIconBadge}>
+                      <Ionicons name="medkit" size={20} color="#fff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.medReviewBannerTitleRow}>
+                        <Text style={styles.medReviewBannerTitle}>
+                          Review Medication Changes
+                        </Text>
+                        {pendingCount > 0 && (
+                          <View style={styles.medReviewBannerCountBadge}>
+                            <Text style={styles.medReviewBannerCountText}>{pendingCount}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.medReviewBannerSubtitle}>
+                        Confirm which medications to save to your list
+                      </Text>
+                    </View>
+                    <View style={styles.medReviewBannerCTA}>
+                      <Text style={styles.medReviewBannerCTAText}>Review</Text>
+                      <Ionicons name="chevron-forward" size={14} color="#fff" />
+                    </View>
+                  </Pressable>
+                );
+              })()}
 
               {/* AVS add prompt — recording-only completed visits */}
               {showAvsPrompt && (
@@ -1196,6 +1215,13 @@ export default function VisitDetailScreen() {
             refetch();
           }}
           onConfirmComplete={(count) => {
+            // Optimistic cache update: immediately mark as confirmed so the
+            // banner disappears before the refetch round-trip completes.
+            // This prevents the user from tapping the banner again and hitting a 409.
+            queryClient.setQueriesData(
+              { queryKey: queryKeys.visit(visit.id) },
+              (old: any) => old ? { ...old, medicationConfirmationStatus: 'confirmed' } : old,
+            );
             Alert.alert(
               'Medications Confirmed',
               `${count} medication${count > 1 ? 's' : ''} saved to your list.`,
@@ -1397,22 +1423,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(3),
-    backgroundColor: `${Colors.accent}12`,
-    borderRadius: spacing(3),
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
     padding: spacing(4),
     marginBottom: spacing(4),
-    borderWidth: 1,
-    borderColor: `${Colors.accent}30`,
+  },
+  medReviewBannerIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medReviewBannerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(2),
   },
   medReviewBannerTitle: {
     fontSize: 15,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: Colors.text,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: '#fff',
+  },
+  medReviewBannerCountBadge: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 10,
+    paddingHorizontal: spacing(2),
+    paddingVertical: 1,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  medReviewBannerCountText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: '#fff',
   },
   medReviewBannerSubtitle: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: 'rgba(255,255,255,0.8)',
     marginTop: 2,
+  },
+  medReviewBannerCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: Radius.sm,
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(2),
+  },
+  medReviewBannerCTAText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: '#fff',
   },
 
   /* ── AI Disclaimer Banner ── */

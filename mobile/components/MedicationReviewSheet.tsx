@@ -208,9 +208,15 @@ export function MedicationReviewSheet({
 
       onConfirmComplete?.(result.confirmedCount);
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('[MedicationReviewSheet] Confirm failed:', error);
-      Alert.alert('Error', 'Failed to confirm medication changes. Please try again.');
+      // Handle 409 "already confirmed" gracefully — the previous confirmation
+      // succeeded but the UI didn't update in time (stale cache race).
+      if (error?.status === 409 || error?.code === 'not_pending') {
+        onClose();
+      } else {
+        Alert.alert('Error', 'Failed to confirm medication changes. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }

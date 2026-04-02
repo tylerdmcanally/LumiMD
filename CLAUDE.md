@@ -15,7 +15,7 @@ LumiMD/Codebase/
 ├── web-portal/      # Next.js 15 + React 19 (caregiver dashboard)
 ├── packages/sdk/    # Shared TypeScript types, API client, React Query hooks
 ├── firebase-setup/  # firestore.rules, storage.rules
-├── marketing-site/  # Vite static landing page
+├── marketing-site/  # Vite static landing page (note-taking positioning, no transcript references)
 ├── firestore.indexes.json
 ├── firebase.json
 └── docs/            # Architecture docs, schema, guides, reports
@@ -56,7 +56,8 @@ Switch with `firebase use lumimd-dev`.
 | `visits/{id}` | Visits with status machine + AI summary |
 | `medications/{id}` | Medication list (active/inactive, safety warnings) |
 | `actions/{id}` | Action items / follow-ups |
-| `nudges/{id}` | Context-rich health check-ins (medication follow-ups, symptom checks, side effects, condition reminders) |
+| `nudges/{id}` | Context-rich health check-ins (medication follow-ups, symptom checks, side effects, condition reminders). Nudges with `careFlowId` link back to a care flow |
+| `careFlows/{id}` | Per-patient, per-condition lifecycle documents (care flow engine). Indexes: status+nextTouchpointAt, userId+condition+status |
 | `healthLogs/{id}` | Vitals / symptoms |
 | `medicationLogs/{id}` | Medication dose logs (taken/skipped, source: manual or nudge_response) |
 | `medicationReminders/{id}` | Reminder schedules with times + timezone |
@@ -162,6 +163,13 @@ LumiMD is positioned as a **note-taking companion**, not a recording/transcripti
 - `services/walkthroughQA.ts` — 3-tier visit Q&A (keyword match → data match → guarded LLM)
 - `services/trendAnalyzer.ts` — Rule-based health trend detection (no AI calls)
 - `services/nudgeNotificationService.ts` — Nudge delivery + priority map
+- `services/careFlowEngine.ts` — Care flow advancement: processes due flows, creates nudges, handles phase transitions, skip-if-logged, no-response timeout, BP escalation
+- `services/careFlowCreator.ts` — Creates care flows from visit medication signals (called from confirm-medications endpoint, NOT post-commit)
+- `services/careFlowResponseHandler.ts` — Updates care flow cadence/phase when patient responds to a care flow nudge
+- `data/careFlowTemplates.ts` — Condition-specific flow templates (HTN active, DM/COPD/asthma/HF placeholder). Medication + diagnosis detection helpers
+- `types/careFlows.ts` — CareFlow, CareFlowTouchpoint, CareFlowTemplate, cadence/context types
+- `routes/careFlows.ts` — GET /v1/care-flows/active endpoint (mobile reads flow progress)
+- `triggers/advanceCareFlows.ts` — Scheduled Cloud Function (every 15 min) that runs the care flow engine
 - `services/notificationPreferences.ts` — Patient notification preference reader (defaults-to-true semantics, configurable quiet hours)
 - `services/repositories/` — Firestore data access (query building, pagination, soft-delete filtering)
 - `services/domain/` — Domain service layer (VisitDomainService, MedicationDomainService, MedicationLogDomainService, etc.)
@@ -265,6 +273,7 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `/v1/care/:patientId/medication-status` | GET | Today's medication status |
 | `/v1/care/:patientId/medication-changes` | GET | Medication change history |
 | `/v1/care/:patientId/nudge-history` | GET | Nudge response history for caregivers |
+| `/v1/care-flows/active` | GET | Active care flows for authenticated user (phase, weekNumber, consecutiveNormalCount) |
 | `/v1/visits/:id/ask` | POST | Visit Q&A (walkthrough) |
 | `/v1/visits/:id/process-document` | POST | Extract structured data from AVS document |
 | `/v1/care/:patientId/visits/:visitId/follow-through` | GET | Per-visit follow-through (med changes + action items) |
@@ -298,11 +307,11 @@ All routes are under `/v1/` and require `Authorization: Bearer <firebase-jwt>`.
 | `checkPendingTranscriptions` | Every minute | Retry stuck transcriptions |
 | `processAndNotifyMedicationReminders` | Every 5 min | Send due reminders + catch-up for missed (no-token) reminders |
 | `processAndNotifyDueNudges` | Every 15 min | Send nudge notifications |
-| `processMedicationFollowUpNudges` | Every 15 min | Send follow-up nudges for unlogged doses |
+| `processMedicationFollowUpNudges` | Every 15 min | Send follow-up nudges for unlogged doses (currently disabled — replaced by action buttons) |
+| `processAdvanceCareFlows` | Every 15 min | Advance active care flows: create nudges, check phase transitions, handle no-response timeouts |
 | `processActionItemReminderNudges` | Every 15 min | Create nudges for pending/overdue action items |
 | `processActionOverdueNotifier` | Every 15 min | Push notifications for overdue actions |
 | `processCaregiverAlerts` | Every 15 min | Missed-med + visit-ready push to caregivers (respects `alertPreferences`) |
-| `processConditionReminders` | Hourly | Create recurring condition check-in nudges |
 | `processCaregiverDailyBriefing` | Hourly | Timezone-aware daily briefing push (respects `briefingEnabled`) |
 | `staleVisitSweeper` | Every 10 min | Recover or clean up stuck/failed visits |
 | `retryVisitPostCommitOperations` | Every 30 min | Retry failed post-commit ops (denorm sync, walkthrough, nudges) |
@@ -405,6 +414,9 @@ Run multiple: `npx jest __tests__/file1 __tests__/file2 --no-coverage`
 - `docs/POSTVISIT-INSPIRED-ENHANCEMENTS.md` — PostVisit-inspired enhancements planning doc (Phases 5-7 complete, Strategic CRUD next)
 - `docs/DATA-INTEGRATION-DESIGN.md` — Data integration design (AVS upload + action nudges)
 - `docs/SECURITY.md` — Consolidated security & privacy doc (posture, incidents, open items, compliance)
+- `docs/APP-STORE-LAUNCH-TRACKER.md` — iOS App Store submission tracker (completed tasks, remaining steps, archived task specs)
+- `docs/BRAINSTORM-NOTETAKING-PIVOT.docx` — Note-taking pivot brainstorm for co-founder (competitive landscape, HealthPAL validation, design direction)
+- `docs/FUNDING-STRATEGY.docx` — Bootstrap vs raise analysis (operating costs, exit math, funding sources, decision framework)
 - `docs/archive/` — Completed execution guides (LumiBot v2, PostVisit, data integration, privacy remediation, etc.)
 - `docs/guides/` — Quick Start, Firebase setup, deployment checklists
 - `docs/architecture/` — System design docs
@@ -626,6 +638,57 @@ Single-app dual-experience: Expo Router route groups `(patient)/` and `(caregive
 - `functions/src/triggers/caregiverAlerts.ts`, `caregiverDailyBriefing.ts` — Scheduled push notifications
 - `docs/CAREGIVER-MOBILE-CROSSCHECK.md` — Hook crosscheck checklist and fix patterns
 
+### Care Flows (March–April 2026)
+
+Unified care flow engine replacing legacy condition reminder system (`conditionReminderService` deleted, `processConditionReminders` Cloud Function removed).
+
+**Architecture:**
+- One care flow per patient × condition (currently HTN only). Lifecycle: understand → establish → maintain → coast
+- `careFlows/{id}` Firestore collection with composite indexes on `status+nextTouchpointAt` and `userId+condition+status`
+- `processAdvanceCareFlows` scheduled trigger (every 15 min) queries due flows and creates nudges
+- Care flows PRODUCE nudges — `nudges/{id}`, `nudgeNotificationService`, `LumiBotContainer` all unchanged
+- Flow creation happens in `POST /v1/visits/:id/confirm-medications` (after user confirms meds, NOT during post-commit)
+- Engine also runs immediately after confirmation for instant first nudge
+
+**Flow creation triggers:**
+- New medication matching condition drug list (e.g., lisinopril → HTN)
+- New diagnosis matching condition name (e.g., "hypertension" → HTN)
+- Medication change on existing flow → restarts at understand phase with immediate touchpoint
+
+**Adaptive cadence:**
+- Positive responses (good, okay, none, taking_it, got_it) → increment normal count, decay interval at threshold (3 consecutives × 1.5 multiplier)
+- Concerning responses (having_trouble, issues, concerning, mild) → reset count, halve interval (min 2 days)
+- `too_frequent` → double interval, set `patientRequestedSlowdown` flag
+- `already_talked_to_doctor` → skip next side-effect check
+- No response for 14+ days → mark stale, tighten cadence, re-engage
+- BP ≥ 180/120 → escalate to min interval (2 days)
+- Concerning in coast/maintain → re-escalate to establish phase
+
+**Touchpoint → action type mapping:**
+- `log_prompt` / `combined` → `log_bp` (opens BP log modal)
+- `side_effect_check` → `side_effects` (None / Mild / Concerning)
+- `educate` / `trend_summary` → `feeling_check` (Good / Okay / Having issues)
+- `celebration` → `acknowledge`
+- `escalation` → `symptom_check`
+
+**Key files:**
+- `functions/src/services/careFlowEngine.ts` — Core engine logic
+- `functions/src/services/careFlowCreator.ts` — Flow creation from visit signals
+- `functions/src/services/careFlowResponseHandler.ts` — Response → cadence updates
+- `functions/src/data/careFlowTemplates.ts` — HTN template + condition/medication detection
+- `functions/src/types/careFlows.ts` — Type definitions
+- `functions/src/routes/careFlows.ts` — GET /v1/care-flows/active
+- `functions/src/triggers/advanceCareFlows.ts` — Scheduled trigger
+- `mobile/components/lumibot/LumiBotBanner.tsx` — "Too frequent" button for care flow nudges
+- `mobile/components/lumibot/PostLogFeedback.tsx` — `flowProgress` prop for care flow context
+- `mobile/lib/api/hooks.ts` — `useActiveCareFlows` hook
+
+**Legacy cleanup:**
+- `conditionReminderService.ts` deleted
+- `processConditionReminders` Cloud Function deleted from cloud
+- `lumibotAnalyzer.ts` delta analyzer filters out `condition_tracking` and `followup` nudge types (care flows own those)
+- `createConditionNudges()`, `hasExistingConditionNudges()`, `findAvailableTimeSlot()`, `getActionTypeForTracking()` removed from lumibotAnalyzer
+
 ### Medication Reminder Action Buttons (March 2026)
 
 **Problem:** Medication follow-up nudges ("Did you take X?") sent 2-4 hours after reminders were redundant with the existing reminder system ("Time to take X"), creating double-notifications.
@@ -668,3 +731,29 @@ Single-app dual-experience: Expo Router route groups `(patient)/` and `(caregive
 - **Native builds:** `eas build --platform ios --profile production --auto-submit` for native module changes
 - **TestFlight:** Same-version builds (e.g., 1.5.0 build 124 → 125) skip Beta App Review. New version numbers trigger review (12-48 hours)
 - **Google OAuth consent screen:** Published (production mode) in Google Cloud Console — required for all Gmail accounts to sign in
+- **Sentry:** DSN configured in `eas.json` production env. Native `@sentry/react-native` module requires next EAS build to activate — current OTA builds have init code but no native binding (silently no-op until native build)
+- **Launch Firebase project:** `lumimd-dev` (production migration to `lumimd` deferred until ~100 active users or funding conversation)
+
+### App Store Launch Prep (March 2026)
+
+Compliance and positioning work for initial iOS App Store submission. See `docs/APP-STORE-LAUNCH-TRACKER.md` for full status.
+
+**Compliance (all deployed via OTA 2026-03-26):**
+- Removed privacy policy beta section from `PRIVACY_POLICY.md` (was flagged with TODO for removal before launch)
+- Added medical disclaimer to sign-in screen (`mobile/app/sign-in.tsx`) — Apple Guideline 1.4 requires prominent health disclaimers
+- Added AI transparency disclosure to recording consent card (`mobile/app/(patient)/record-visit.tsx`) — both one-party and two-party variants now disclose AssemblyAI and OpenAI processing with no-data-retention statement
+- Added "AI-generated summary" disclaimer banner on completed visit detail (`mobile/app/(patient)/visit-detail.tsx`)
+- Wrapped all `console.log`/`console.warn` statements in `mobile/app/` and `mobile/lib/` with `if (__DEV__)` guards for production hygiene
+- Initialized Sentry crash reporting (`@sentry/react-native`) with `sendDefaultPii: false` and health data stripping in `beforeSend` — pending native build
+
+**Bug fix (deployed via OTA 2026-03-26):**
+- Fixed Apple Sign-In blank screen — navigation race condition in sign-in.tsx where two concurrent `router.replace('/')` calls confused Expo Router. Fixed with `hasNavigated` ref dedup.
+
+**Marketing site (2026-03-27):**
+- Reframed all copy from "recording" language to "note-taking companion" positioning
+- Removed all surfacing of verbatim transcripts — references now point to plain-language summaries only
+- Consistent with Copy & Positioning Guidelines section above
+
+**Strategic planning docs (2026-03-27):**
+- `docs/BRAINSTORM-NOTETAKING-PIVOT.docx` — Competitive landscape analysis, HealthPAL taxonomy validation, note-taking pivot design direction (for co-founder)
+- `docs/FUNDING-STRATEGY.docx` — Bootstrap vs raise analysis with exit math, operating cost projections, hybrid model (one founder full-time, one keeps PA job)
