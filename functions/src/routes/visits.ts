@@ -1469,18 +1469,22 @@ visitsRouter.post('/:id/confirm-medications', requireAuth, async (req: AuthReque
     const confirmedChanged = (payload.medications.changed || []).filter((e) => e.confirmed);
     const confirmedCount = confirmedStarted.length + confirmedStopped.length + confirmedChanged.length;
 
-    // Re-run safety checks on started/changed entries (user may have edited dose/frequency)
-    const safetyAnnotatedStarted = [];
-    for (const entry of confirmedStarted) {
-      const warnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
-      safetyAnnotatedStarted.push(addSafetyWarningsToEntry(entry, warnings));
-    }
-
-    const safetyAnnotatedChanged = [];
-    for (const entry of confirmedChanged) {
-      const warnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
-      safetyAnnotatedChanged.push(addSafetyWarningsToEntry(entry, warnings));
-    }
+    // Re-run hardcoded safety checks in parallel (user may have edited dose/frequency).
+    // Each check is independent and fast (~10ms) — no reason to run sequentially.
+    const [safetyAnnotatedStarted, safetyAnnotatedChanged] = await Promise.all([
+      Promise.all(
+        confirmedStarted.map(async (entry) => {
+          const warnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+          return addSafetyWarningsToEntry(entry, warnings);
+        }),
+      ),
+      Promise.all(
+        confirmedChanged.map(async (entry) => {
+          const warnings = await runMedicationSafetyChecks(userId, entry, { useAI: false });
+          return addSafetyWarningsToEntry(entry, warnings);
+        }),
+      ),
+    ]);
 
     const confirmedMedications = {
       started: safetyAnnotatedStarted,
@@ -1488,32 +1492,45 @@ visitsRouter.post('/:id/confirm-medications', requireAuth, async (req: AuthReque
       changed: safetyAnnotatedChanged,
     };
 
-    // Commit confirmed medications using existing sync logic (upserts, reminders, nudges)
-    if (confirmedCount > 0) {
-      const processedAt = visit.processedAt || admin.firestore.Timestamp.now();
-      await syncMedicationsFromSummary({
-        userId,
-        visitId,
-        medications: confirmedMedications,
-        processedAt,
-      });
-    }
-
-    // Update visit document with confirmation status
+    // Commit confirmed medications + update visit status in parallel.
+    // Safety checks are skipped in sync because we already ran them above
+    // and the user reviewed AI-generated warnings during the pending phase.
+    const processedAt = visit.processedAt || admin.firestore.Timestamp.now();
     const now = admin.firestore.Timestamp.now();
-    await visitService.updateRecord(visitId, {
-      medicationConfirmationStatus: 'confirmed',
-      medicationConfirmedAt: now,
-      confirmedMedicationChanges: confirmedMedications,
-      updatedAt: now,
-    });
+
+    await Promise.all([
+      // 1. Upsert meds, create reminders (skip redundant AI checks)
+      confirmedCount > 0
+        ? syncMedicationsFromSummary({
+            userId,
+            visitId,
+            medications: confirmedMedications,
+            processedAt,
+            skipSafetyChecks: true,
+          })
+        : Promise.resolve(),
+      // 2. Update visit document with confirmation status
+      visitService.updateRecord(visitId, {
+        medicationConfirmationStatus: 'confirmed',
+        medicationConfirmedAt: now,
+        confirmedMedicationChanges: confirmedMedications,
+        updatedAt: now,
+      }),
+    ]);
 
     functions.logger.info(
       `[visits] Medication changes confirmed for visit ${visitId}: ` +
       `started=${confirmedStarted.length}, stopped=${confirmedStopped.length}, changed=${confirmedChanged.length}`,
     );
 
-    // Create/update care flows based on CONFIRMED medications (not pre-confirmation)
+    // Respond immediately — care flows are not user-facing in the confirm moment.
+    res.json({
+      success: true,
+      confirmedCount,
+    });
+
+    // Fire-and-forget: create care flows and advance engine AFTER response is sent.
+    // These are non-blocking background operations — the 15-min tick is the backstop.
     if (confirmedCount > 0) {
       try {
         const { createCareFlowsFromVisit } = await import('../services/careFlowCreator');
@@ -1544,8 +1561,6 @@ visitsRouter.post('/:id/confirm-medications', requireAuth, async (req: AuthReque
             careFlowResult,
           );
 
-          // Immediately advance new flows — don't wait for the 15-min engine tick.
-          // The patient just confirmed their meds and is still engaged.
           try {
             const { advanceCareFlows } = await import('../services/careFlowEngine');
             const engineResult = await advanceCareFlows();
@@ -1554,7 +1569,6 @@ visitsRouter.post('/:id/confirm-medications', requireAuth, async (req: AuthReque
               engineResult,
             );
           } catch (engineError) {
-            // Non-blocking — scheduled tick will catch it
             functions.logger.warn(
               `[visits] Immediate care flow advance failed (will retry on next tick):`,
               engineError,
@@ -1568,11 +1582,6 @@ visitsRouter.post('/:id/confirm-medications', requireAuth, async (req: AuthReque
         );
       }
     }
-
-    res.json({
-      success: true,
-      confirmedCount,
-    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({

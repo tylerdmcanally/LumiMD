@@ -47,7 +47,6 @@ export {
   syncReminderDenormalizationOnMedicationWrite,
   syncShareOwnerDenormalizationOnUserWrite,
 } from './triggers/denormalizationSync';
-export { analyzeMedicationSafety } from './callables/medicationSafety';
 export { privacyDataSweeper } from './triggers/privacySweeper';
 export { staleVisitSweeper } from './triggers/staleVisitSweeper';
 // Disabled: follow-up nudges replaced by action buttons on reminder notifications

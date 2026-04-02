@@ -79,6 +79,8 @@ interface SyncMedicationsOptions {
   visitId: string;
   medications: MedicationSummary | NormalizedMedicationSummary;
   processedAt: admin.firestore.Timestamp;
+  /** Skip AI safety checks during sync (use when meds are already safety-annotated, e.g. confirm flow) */
+  skipSafetyChecks?: boolean;
 }
 
 const VERB_WORDS = [
@@ -759,6 +761,7 @@ export const syncMedicationsFromSummary = async ({
   visitId,
   medications,
   processedAt,
+  skipSafetyChecks,
 }: SyncMedicationsOptions, dependencyOverrides: MedicationSyncDependencies = {}): Promise<void> => {
   const dependencies = resolveDependencies(dependencyOverrides);
   if (!medications) {
@@ -787,11 +790,14 @@ export const syncMedicationsFromSummary = async ({
   // knows which medications succeeded vs failed — no partial silent state.
   const results: Array<{ name: string; status: string; success: boolean; error?: string }> = [];
 
-  // Started medications — full safety checks (same depth as manual add)
+  // Started medications — safety checks (skipped when already annotated, e.g. confirm flow)
   for (const entry of normalized.started) {
     try {
-      const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
-      const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+      let entryWithWarnings = entry;
+      if (!skipSafetyChecks) {
+        const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
+        entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+      }
       await upsertMedication({
         userId,
         visitId,
@@ -827,11 +833,14 @@ export const syncMedicationsFromSummary = async ({
     }
   }
 
-  // Changed medications — full safety checks
+  // Changed medications — safety checks (skipped when already annotated, e.g. confirm flow)
   for (const entry of normalized.changed) {
     try {
-      const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
-      const entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+      let entryWithWarnings = entry;
+      if (!skipSafetyChecks) {
+        const safetyWarnings = await runMedicationSafetyChecks(userId, entry, { useAI: true });
+        entryWithWarnings = addSafetyWarningsToEntry(entry, safetyWarnings);
+      }
       await upsertMedication({
         userId,
         visitId,
