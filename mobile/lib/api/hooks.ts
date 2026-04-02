@@ -27,6 +27,7 @@ import type {
   HealthInsightsResponse,
   Share,
   ShareInvite,
+  CareFlowSummary,
 } from '@lumimd/sdk';
 import { api } from './client';
 import { filterDueNudges } from './nudgeFilters';
@@ -528,6 +529,15 @@ export function useNudges(options?: ApiHookQueryOptions<Nudge[]>) {
   return hooks.useNudges({
     ...options,
     queryKey: [...queryKeys.nudges, getSessionKey()],
+  });
+}
+
+export function useActiveCareFlows(options?: ApiHookQueryOptions<CareFlowSummary[]>) {
+  return useQuery({
+    queryKey: ['care-flows', 'active', getSessionKey()],
+    queryFn: () => fetchWithAuth<CareFlowSummary[]>('/v1/care-flows/active'),
+    staleTime: 60 * 1000,
+    ...options,
   });
 }
 

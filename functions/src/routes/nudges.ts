@@ -55,6 +55,8 @@ const respondToNudgeSchema = z.object({
         'took_it', 'skipped_it',
         // Action item follow-up responses
         'done', 'remind_later',
+        // Care flow cadence control
+        'too_frequent', 'already_talked_to_doctor',
     ]),
     note: z.string().optional(),
     sideEffects: z.array(z.string()).optional(), // Side effect IDs when having_issues
@@ -93,6 +95,7 @@ nudgesRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
                 status: nudge.status,
                 createdAt: nudge.createdAt.toDate().toISOString(),
                 ...(nudgeData.context ? { context: nudgeData.context } : {}),
+                ...(nudgeData.careFlowId ? { careFlowId: nudgeData.careFlowId } : {}),
             };
         });
 
@@ -365,6 +368,27 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
         }
 
         // =========================================================================
+        // CARE FLOW UPDATE: Update care flow when nudge has careFlowId
+        // =========================================================================
+        if (nudgeData.careFlowId) {
+            try {
+                const { updateCareFlowFromResponse } = await import('../services/careFlowResponseHandler');
+                await updateCareFlowFromResponse({
+                    careFlowId: nudgeData.careFlowId as string,
+                    nudgeId,
+                    response: data.response,
+                    note: data.note,
+                    sideEffects: data.sideEffects,
+                });
+            } catch (careFlowError) {
+                functions.logger.error(
+                    `[nudges] Error updating care flow ${nudgeData.careFlowId}:`,
+                    careFlowError,
+                );
+            }
+        }
+
+        // =========================================================================
         // SMART TIMING: Adjust future nudges based on response
         // =========================================================================
 
@@ -436,8 +460,13 @@ nudgesRouter.post('/:id/respond', requireAuth, async (req: AuthRequest, res) => 
 
         // Return appropriate message based on response
         let message = 'Thanks for letting us know!';
+        // Care flow cadence responses
+        if (data.response === 'too_frequent') {
+            message = 'Got it — we\'ll check in less often.';
+        } else if (data.response === 'already_talked_to_doctor') {
+            message = 'Good to hear! We\'ll note that.';
         // Action item follow-up responses
-        if (data.response === 'done') {
+        } else if (data.response === 'done') {
             message = 'Great job! Marked as complete.';
         } else if (data.response === 'remind_later') {
             message = 'No problem! We\'ll remind you again tomorrow.';
@@ -743,6 +772,7 @@ nudgesRouter.get('/history', requireAuth, async (req: AuthRequest, res) => {
                 status: data.status,
                 createdAt: data.createdAt?.toDate().toISOString(),
                 ...(data.context ? { context: data.context } : {}),
+                ...(data.careFlowId ? { careFlowId: data.careFlowId } : {}),
             };
         });
 

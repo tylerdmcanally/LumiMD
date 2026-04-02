@@ -32,7 +32,7 @@ export interface LumiBotBannerProps {
     nudges: Nudge[];
     isLoading: boolean;
     onUpdateNudge: (id: string, data: { status: 'snoozed' | 'dismissed'; snoozeDays?: number }) => void;
-    onRespondToNudge: (id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later'; note?: string }) => void;
+    onRespondToNudge: (id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later' | 'too_frequent' | 'already_talked_to_doctor'; note?: string }) => void;
     onOpenLogModal: (nudge: Nudge) => void;
     onOpenSideEffectsModal: (nudge: Nudge) => void;
 }
@@ -129,16 +129,16 @@ export function LumiBotBanner({
                 nudge.message,
                 [
                     {
-                        text: '👎 Issues',
+                        text: 'Having issues',
                         style: 'destructive',
                         onPress: () => onOpenSideEffectsModal(nudge),
                     },
                     {
-                        text: '😐 Okay',
+                        text: 'Okay',
                         onPress: () => onRespondToNudge(nudge.id, { response: 'okay' }),
                     },
                     {
-                        text: '👍 Good',
+                        text: 'Good',
                         onPress: () => onRespondToNudge(nudge.id, { response: 'good' }),
                     },
                 ],
@@ -150,16 +150,16 @@ export function LumiBotBanner({
                 nudge.message,
                 [
                     {
-                        text: '👎 Concerning',
+                        text: 'Concerning',
                         style: 'destructive',
                         onPress: () => onOpenSideEffectsModal(nudge),
                     },
                     {
-                        text: '😐 Mild',
+                        text: 'Mild',
                         onPress: () => onRespondToNudge(nudge.id, { response: 'mild' }),
                     },
                     {
-                        text: '👍 None',
+                        text: 'None',
                         onPress: () => onRespondToNudge(nudge.id, { response: 'none' }),
                     },
                 ],
@@ -182,6 +182,23 @@ export function LumiBotBanner({
                     {
                         text: 'Done',
                         onPress: () => onRespondToNudge(nudge.id, { response: 'done' }),
+                    },
+                ],
+            );
+        } else if (nudge.careFlowId && (nudge.actionType === 'log_bp' || nudge.actionType === 'log_glucose' || nudge.actionType === 'log_weight')) {
+            // Care flow log prompt: offer log + too frequent option
+            Alert.alert(
+                nudge.title,
+                nudge.message,
+                [
+                    {
+                        text: 'Too frequent',
+                        style: 'destructive',
+                        onPress: () => onRespondToNudge(nudge.id, { response: 'too_frequent' }),
+                    },
+                    {
+                        text: 'Log reading',
+                        onPress: () => onOpenLogModal(nudge),
                     },
                 ],
             );

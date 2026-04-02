@@ -27,8 +27,10 @@ import {
     useUpdateNudge,
     useRespondToNudge,
     useCreateHealthLog,
+    useActiveCareFlows,
 } from '../../lib/api/hooks';
-import type { Nudge, AlertLevel, BloodPressureValue, GlucoseValue, HealthLogType } from '@lumimd/sdk';
+import type { Nudge, AlertLevel, BloodPressureValue, GlucoseValue, HealthLogType, CareFlowSummary } from '@lumimd/sdk';
+import type { CareFlowProgress } from './PostLogFeedback';
 
 
 export interface LumiBotContainerProps {
@@ -73,10 +75,12 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         alertLevel: AlertLevel;
         healthLogType: HealthLogType;
         recentReadings: RecentReading[];
+        flowProgress?: CareFlowProgress;
     }>({ visible: false, currentValue: '', alertLevel: 'normal', healthLogType: 'bp', recentReadings: [] });
 
     // Queries and Mutations - use realtime hook for instant updates
     const { data: nudges = [], isLoading } = useRealtimeNudges(userId, { enabled });
+    const { data: activeCareFlows = [] } = useActiveCareFlows({ enabled });
     const updateNudge = useUpdateNudge();
     const respondToNudge = useRespondToNudge();
     const createHealthLog = useCreateHealthLog();
@@ -91,7 +95,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
         });
     }, [updateNudge]);
 
-    const handleRespondToNudge = useCallback((id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later'; note?: string; sideEffects?: string[] }) => {
+    const handleRespondToNudge = useCallback((id: string, data: { response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later' | 'took_it' | 'skipped_it' | 'too_frequent' | 'already_talked_to_doctor'; note?: string; sideEffects?: string[] }) => {
         respondToNudge.mutate({ id, data }, {
             onSuccess: (result) => {
                 Alert.alert('Response Recorded', result.message);
@@ -170,14 +174,31 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
             });
         }
 
+        // Look up care flow progress if this nudge came from a care flow
+        let flowProgress: CareFlowProgress | undefined;
+        if (nudge?.careFlowId && activeCareFlows.length > 0) {
+            const matchingFlow = activeCareFlows.find(
+                (f: CareFlowSummary) => f.id === nudge.careFlowId,
+            );
+            if (matchingFlow) {
+                flowProgress = {
+                    phase: matchingFlow.phase,
+                    weekNumber: matchingFlow.weekNumber,
+                    consecutiveNormalCount: matchingFlow.consecutiveNormalCount,
+                    condition: matchingFlow.condition,
+                };
+            }
+        }
+
         setPostLogFeedback({
             visible: true,
             currentValue: formatted,
             alertLevel: level,
             healthLogType: type,
             recentReadings,
+            flowProgress,
         });
-    }, []);
+    }, [activeCareFlows]);
 
     const handleBPSubmit = useCallback(async (value: BloodPressureValue) => {
         try {
@@ -359,6 +380,7 @@ export function LumiBotContainer({ userId, enabled = true }: LumiBotContainerPro
                 alertLevel={postLogFeedback.alertLevel}
                 healthLogType={postLogFeedback.healthLogType}
                 recentReadings={postLogFeedback.recentReadings}
+                flowProgress={postLogFeedback.flowProgress}
                 onViewTrend={handleViewTrend}
                 onDismiss={handleDismissPostLogFeedback}
             />

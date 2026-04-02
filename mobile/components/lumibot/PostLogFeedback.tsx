@@ -20,12 +20,20 @@ export interface RecentReading {
     date: string;    // e.g. "March 4"
 }
 
+export interface CareFlowProgress {
+    phase: 'understand' | 'establish' | 'maintain' | 'coast';
+    weekNumber: number;
+    consecutiveNormalCount: number;
+    condition: string;
+}
+
 export interface PostLogFeedbackProps {
     visible: boolean;
     currentValue: string;            // Formatted current reading
     alertLevel: AlertLevel;
     healthLogType: HealthLogType;
     recentReadings?: RecentReading[];  // Last 3-5 prior readings (oldest first)
+    flowProgress?: CareFlowProgress;  // Care flow context (if part of a flow)
     onViewTrend?: () => void;
     onDismiss: () => void;
 }
@@ -48,12 +56,33 @@ function getTypeIcon(type: HealthLogType): keyof typeof Ionicons.glyphMap {
     }
 }
 
+function getFlowProgressMessage(progress: CareFlowProgress): string | null {
+    const weekText = progress.weekNumber === 1
+        ? 'Week 1 of tracking'
+        : `Week ${progress.weekNumber} of tracking`;
+
+    if (progress.consecutiveNormalCount >= 5) {
+        return `${weekText} — your readings have been consistently good!`;
+    }
+    if (progress.consecutiveNormalCount >= 3) {
+        return `${weekText} — nice streak of healthy readings!`;
+    }
+    if (progress.phase === 'coast') {
+        return `${weekText} — you've been stable, so we're checking in less often.`;
+    }
+    if (progress.phase === 'maintain') {
+        return `${weekText} — keeping things on track!`;
+    }
+    return weekText;
+}
+
 export function PostLogFeedback({
     visible,
     currentValue,
     alertLevel,
     healthLogType,
     recentReadings,
+    flowProgress,
     onViewTrend,
     onDismiss,
 }: PostLogFeedbackProps) {
@@ -111,6 +140,16 @@ export function PostLogFeedback({
                                     {r.date}: {r.value}
                                 </Text>
                             ))}
+                        </View>
+                    )}
+
+                    {/* Care flow progress (if part of a flow) */}
+                    {isNormal && flowProgress && (
+                        <View style={styles.flowProgressSection}>
+                            <Ionicons name="trending-up-outline" size={16} color={Colors.success} />
+                            <Text style={styles.flowProgressText}>
+                                {getFlowProgressMessage(flowProgress)}
+                            </Text>
                         </View>
                     )}
 
@@ -216,6 +255,22 @@ const styles = StyleSheet.create({
         color: Colors.text,
         lineHeight: 20,
         paddingLeft: spacing(2),
+    },
+    flowProgressSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing(2),
+        marginBottom: spacing(3),
+        paddingVertical: spacing(2),
+        paddingHorizontal: spacing(3),
+        backgroundColor: `${Colors.success}10`,
+        borderRadius: Radius.sm,
+    },
+    flowProgressText: {
+        flex: 1,
+        fontSize: 14,
+        color: Colors.success,
+        lineHeight: 20,
     },
     disclaimer: {
         fontSize: 12,

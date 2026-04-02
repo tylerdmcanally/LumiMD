@@ -5,7 +5,6 @@
  * based on diagnoses discussed and medications started/changed.
  */
 
-import crypto from 'crypto';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import {
@@ -17,7 +16,6 @@ import {
 } from '../types/lumibot';
 import {
     matchDiagnosesToProtocols,
-    ConditionProtocol,
 } from '../data/conditionProtocols';
 import {
     getConditionsCoveredByMedications,
@@ -33,10 +31,7 @@ import { FirestoreHealthLogRepository } from './repositories/healthLogs/Firestor
 // Helpers
 // =============================================================================
 
-/** Generate a short random ID for sequence grouping */
-function generateShortId(): string {
-    return crypto.randomBytes(4).toString('hex');
-}
+// generateShortId removed — was only used by legacy createConditionNudges
 
 // =============================================================================
 // Firestore Access
@@ -152,63 +147,8 @@ async function buildNudgeContext(params: {
 // Rate Limiting & Deduplication Helpers
 // =============================================================================
 
-const MIN_HOURS_BETWEEN_NUDGES = 4;
-
-/**
- * Check if user already has pending/active nudges for this condition
- */
-async function hasExistingConditionNudges(userId: string, conditionId: string): Promise<boolean> {
-    const nudgeService = getNudgeDomainService();
-    return nudgeService.hasByUserConditionAndStatuses(userId, conditionId, [
-        'pending',
-        'active',
-        'snoozed',
-    ]);
-}
-
-/**
- * Find a suitable time slot that's at least 4 hours from existing nudges
- */
-async function findAvailableTimeSlot(userId: string, preferredDate: Date): Promise<Date> {
-    // Get all pending nudges for this user in the next 48 hours
-    const startDate = new Date(preferredDate);
-    startDate.setHours(0, 0, 0, 0);
-
-    const endDate = new Date(preferredDate);
-    endDate.setDate(endDate.getDate() + 2);
-
-    const nudgeService = getNudgeDomainService();
-    const existingNudges = await nudgeService.listByUserStatusesScheduledBetween(
-        userId,
-        ['pending', 'active'],
-        admin.firestore.Timestamp.fromDate(startDate),
-        admin.firestore.Timestamp.fromDate(endDate),
-    );
-
-    const existingTimes: Date[] = existingNudges
-        .map((nudge) => (nudge.scheduledFor as admin.firestore.Timestamp | undefined)?.toDate?.())
-        .filter((value): value is Date => value instanceof Date);
-
-    // Check if preferredDate is far enough from existing nudges
-    let candidateDate = new Date(preferredDate);
-
-    for (let attempt = 0; attempt < 6; attempt++) { // Try up to 6 shifts (24 hours)
-        const tooClose = existingTimes.some(existingTime => {
-            const diffHours = Math.abs(candidateDate.getTime() - existingTime.getTime()) / (1000 * 60 * 60);
-            return diffHours < MIN_HOURS_BETWEEN_NUDGES;
-        });
-
-        if (!tooClose) {
-            return candidateDate;
-        }
-
-        // Shift by 4 hours and try again
-        candidateDate = new Date(candidateDate.getTime() + MIN_HOURS_BETWEEN_NUDGES * 60 * 60 * 1000);
-    }
-
-    // If no good slot found, return original (rare edge case)
-    return preferredDate;
-}
+// Legacy constants/helpers (MIN_HOURS_BETWEEN_NUDGES, hasExistingConditionNudges,
+// findAvailableTimeSlot) removed — condition scheduling replaced by care flow engine
 
 /**
  * Check if user already has pending/active nudges for this medication
@@ -375,137 +315,7 @@ async function createIntroductionNudge(params: IntroNudgeParams): Promise<string
 // Condition Nudge Generation
 // =============================================================================
 
-function getActionTypeForTracking(trackingType: string): NudgeActionType {
-    switch (trackingType) {
-        case 'bp':
-            return 'log_bp';
-        case 'glucose':
-            return 'log_glucose';
-        case 'weight':
-            return 'log_weight';
-        case 'symptom_check':
-            return 'symptom_check';
-        default:
-            return 'symptom_check';
-    }
-}
-
-async function createConditionNudges(
-    userId: string,
-    visitId: string,
-    protocol: ConditionProtocol,
-    visitDate: Date
-): Promise<number> {
-    // Deduplication: Check if user already has pending nudges for this condition
-    const hasExisting = await hasExistingConditionNudges(userId, protocol.id);
-    if (hasExisting) {
-        functions.logger.info(`[LumibotAnalyzer] Skipping condition ${protocol.id} - user already has pending nudges`);
-        return 0;
-    }
-
-    const sequenceId = `${protocol.id}_${visitId}_${generateShortId()}`;
-    let nudgesCreated = 0;
-
-    // Get primary tracking type for this condition
-    const primaryTracking = protocol.tracking[0];
-    const actionType = getActionTypeForTracking(primaryTracking.type);
-
-    // Build v2 context once for all nudges in this sequence
-    const context = await buildNudgeContext({
-        userId,
-        actionType,
-        visitId,
-        visitDate,
-        diagnosisName: protocol.name,
-        trackingReason: 'to help track how things are going',
-    });
-
-    for (const scheduleItem of protocol.nudgeSchedule) {
-        // Calculate scheduled date
-        let scheduledDate = new Date(visitDate);
-        scheduledDate.setDate(scheduledDate.getDate() + scheduleItem.day);
-
-        // Try AI-generated message once per schedule item, fall back to template
-        let title = protocol.name;
-        let message = scheduleItem.message;
-        let aiGenerated = false;
-
-        try {
-            const { getIntelligentNudgeGenerator } = await import('./intelligentNudgeGenerator');
-            const generator = getIntelligentNudgeGenerator();
-            const aiNudge = await generator.generateNudge(userId, {
-                type: 'condition_tracking',
-                trigger: 'log_reading',
-                conditionId: protocol.id,
-            });
-            title = aiNudge.title;
-            message = aiNudge.message;
-            aiGenerated = true;
-        } catch (error) {
-            functions.logger.warn(`[LumibotAnalyzer] AI condition nudge failed, using template:`, error);
-        }
-
-        // Only create nudge if it's in the future
-        if (scheduledDate > new Date()) {
-            // Smart scheduling: Find time slot 4+ hours from other nudges
-            scheduledDate = await findAvailableTimeSlot(userId, scheduledDate);
-
-            await createNudge({
-                userId,
-                visitId,
-                type: 'condition_tracking',
-                conditionId: protocol.id,
-                title,
-                message,
-                actionType,
-                scheduledFor: scheduledDate,
-                sequenceDay: scheduleItem.day,
-                sequenceId,
-                aiGenerated,
-                context,
-            });
-            nudgesCreated++;
-        }
-
-        // Handle recurring nudges - create next 4 occurrences
-        if (scheduleItem.recurring && scheduleItem.interval) {
-            for (let i = 1; i <= 4; i++) {
-                let recurringDate = new Date(scheduledDate);
-                recurringDate.setDate(recurringDate.getDate() + (scheduleItem.interval * i));
-
-                if (recurringDate > new Date()) {
-                    // Smart scheduling for recurring nudges too
-                    recurringDate = await findAvailableTimeSlot(userId, recurringDate);
-
-                    // Use same AI-generated content for recurring (avoid multiple API calls)
-                    await createNudge({
-                        userId,
-                        visitId,
-                        type: 'condition_tracking',
-                        conditionId: protocol.id,
-                        title,
-                        message,
-                        actionType,
-                        scheduledFor: recurringDate,
-                        sequenceDay: scheduleItem.day + (scheduleItem.interval * i),
-                        sequenceId,
-                        context,
-                        aiGenerated,
-                    });
-                    nudgesCreated++;
-                }
-            }
-        }
-    }
-
-    functions.logger.info(`[LumibotAnalyzer] Created ${nudgesCreated} nudges for condition ${protocol.id}`, {
-        userId,
-        visitId,
-        conditionId: protocol.id,
-    });
-
-    return nudgesCreated;
-}
+// getActionTypeForTracking + createConditionNudges removed — replaced by care flow engine
 
 // =============================================================================
 // Medication Nudge Generation (Simplified - Personal RN handles check-ins)
@@ -652,31 +462,10 @@ export async function analyzeVisitForNudges(
     for (const protocol of matchedProtocols) {
         result.matchedConditions.push(protocol.name);
 
-        // CONSOLIDATION: Skip if medication already covers this condition's tracking
-        if (conditionsCoveredByMeds.includes(protocol.id)) {
-            functions.logger.info(`[LumibotAnalyzer] Skipping ${protocol.id} nudges - covered by medication`);
-            continue;
-        }
-
-        // Check if user already has active nudges for this condition from recent visits
-        const nudgeService = getNudgeDomainService();
-        const hasExistingNudges = await nudgeService.hasByUserConditionAndStatuses(
-            userId,
-            protocol.id,
-            ['pending', 'active', 'snoozed'],
-        );
-
-        if (!hasExistingNudges) {
-            const nudgesCreated = await createConditionNudges(
-                userId,
-                visitId,
-                protocol,
-                effectiveVisitDate
-            );
-            result.conditionNudges += nudgesCreated;
-        } else {
-            functions.logger.info(`[LumibotAnalyzer] User already has active nudges for ${protocol.id}, skipping`);
-        }
+        // Legacy condition nudge scheduling replaced by care flow engine (advanceCareFlows).
+        // Care flows handle adaptive cadence, phase transitions, and skip-if-logged logic.
+        // The care flow creator (in visitProcessor post-commit) handles flow creation for this condition.
+        functions.logger.info(`[LumibotAnalyzer] Skipping legacy condition nudges for ${protocol.id} — handled by care flows`);
     }
 
 
@@ -981,6 +770,12 @@ export async function analyzeVisitWithDelta(
         let nudgesCreated = 0;
 
         for (const rec of analysis.nudgesToCreate) {
+            // condition_tracking and followup nudges are now created by the care flow engine — skip
+            if (rec.type === 'condition_tracking' || rec.type === 'followup') {
+                functions.logger.info(`[LumibotAnalyzer] Skipping delta ${rec.type} nudge — handled by care flows`);
+                continue;
+            }
+
             try {
                 // Determine scheduled date based on urgency
                 const scheduledFor = new Date(effectiveVisitDate);
@@ -1052,12 +847,12 @@ export async function analyzeVisitWithDelta(
     } catch (error) {
         functions.logger.error(`[LumibotAnalyzer] Delta analysis failed, falling back to legacy:`, error);
 
-        // Fall back to legacy analysis
+        // Fall back to legacy analysis (condition nudges now handled by care flow engine)
         const legacyResult = await analyzeVisitForNudges(userId, visitId, summary, visitDate);
 
         return {
-            nudgesCreated: legacyResult.conditionNudges + legacyResult.medicationNudges,
-            reasoning: 'Fallback to legacy analysis',
+            nudgesCreated: legacyResult.medicationNudges,
+            reasoning: 'Fallback to legacy analysis (condition nudges handled by care flows)',
             conditionsAdded: legacyResult.matchedConditions,
             trackingEnabled: [],
         };

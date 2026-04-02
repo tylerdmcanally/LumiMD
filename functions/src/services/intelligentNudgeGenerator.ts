@@ -23,6 +23,12 @@ export interface NudgePurpose {
     trigger: 'pickup_check' | 'started_check' | 'side_effects' | 'feeling_check' | 'log_reading' | 'symptom_check' | 'general';
     medicationName?: string;
     conditionId?: string;
+    /** Care flow context — when present, the nudge is part of a care flow */
+    careFlowPhase?: 'understand' | 'establish' | 'maintain' | 'coast';
+    /** Number of touchpoints already delivered in this flow */
+    touchpointCount?: number;
+    /** Issues the patient has reported in this flow */
+    reportedIssues?: string[];
 }
 
 export interface GeneratedNudge {
@@ -223,6 +229,18 @@ export class IntelligentNudgeGenerator {
         // Diagnoses
         if (context.recentDiagnoses.length > 0) {
             parts.push(`DIAGNOSES: ${context.recentDiagnoses.join(', ')}`);
+        }
+
+        // Care flow context (if part of a care flow)
+        if (purpose.careFlowPhase) {
+            parts.push('CARE FLOW:');
+            parts.push(`  - Phase: ${purpose.careFlowPhase}`);
+            if (purpose.touchpointCount !== undefined) {
+                parts.push(`  - Touchpoints delivered: ${purpose.touchpointCount}`);
+            }
+            if (purpose.reportedIssues && purpose.reportedIssues.length > 0) {
+                parts.push(`  - Reported issues: ${purpose.reportedIssues.join(', ')}`);
+            }
         }
 
         // Engagement
