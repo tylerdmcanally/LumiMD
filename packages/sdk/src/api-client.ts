@@ -17,6 +17,7 @@ import type {
   MedicationReminder,
   CreateMedicationReminderRequest,
   UpdateMedicationReminderRequest,
+  CareFlowSummary,
 } from './models/lumibot';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -750,6 +751,11 @@ export function createApiClient(config: ApiClientConfig) {
           method: 'POST',
           body: JSON.stringify(data),
         }),
+    },
+
+    // Care Flows
+    careFlows: {
+      active: () => apiRequest<CareFlowSummary[]>('/v1/care-flows/active'),
     },
 
     // LumiBot Health Logs

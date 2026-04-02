@@ -1513,6 +1513,62 @@ visitsRouter.post('/:id/confirm-medications', requireAuth, async (req: AuthReque
       `started=${confirmedStarted.length}, stopped=${confirmedStopped.length}, changed=${confirmedChanged.length}`,
     );
 
+    // Create/update care flows based on CONFIRMED medications (not pre-confirmation)
+    if (confirmedCount > 0) {
+      try {
+        const { createCareFlowsFromVisit } = await import('../services/careFlowCreator');
+        const visitDate = visit.visitDate?.toDate?.() || visit.processedAt?.toDate?.() || new Date();
+        const careFlowResult = await createCareFlowsFromVisit({
+          userId,
+          visitId,
+          visitDate: visitDate.toISOString().split('T')[0],
+          providerName: visit.providerName || undefined,
+          diagnoses: (visit.diagnoses || []).map((d: string | { name?: string }) =>
+            typeof d === 'string' ? d : (d?.name || ''),
+          ).filter(Boolean),
+          medicationsStarted: confirmedStarted.map((m) => ({
+            name: m.name || '',
+            dose: m.dose || undefined,
+            frequency: m.frequency || undefined,
+          })),
+          medicationsChanged: confirmedChanged.map((m) => ({
+            name: m.name || '',
+            dose: m.dose || undefined,
+            frequency: m.frequency || undefined,
+          })),
+        });
+
+        if (careFlowResult.flowsCreated > 0 || careFlowResult.flowsUpdated > 0) {
+          functions.logger.info(
+            `[visits] Care flows from confirmed meds for visit ${visitId}`,
+            careFlowResult,
+          );
+
+          // Immediately advance new flows — don't wait for the 15-min engine tick.
+          // The patient just confirmed their meds and is still engaged.
+          try {
+            const { advanceCareFlows } = await import('../services/careFlowEngine');
+            const engineResult = await advanceCareFlows();
+            functions.logger.info(
+              `[visits] Immediate care flow advancement after confirmation`,
+              engineResult,
+            );
+          } catch (engineError) {
+            // Non-blocking — scheduled tick will catch it
+            functions.logger.warn(
+              `[visits] Immediate care flow advance failed (will retry on next tick):`,
+              engineError,
+            );
+          }
+        }
+      } catch (careFlowError) {
+        functions.logger.error(
+          `[visits] Care flow creation failed after med confirmation for visit ${visitId}:`,
+          careFlowError,
+        );
+      }
+    }
+
     res.json({
       success: true,
       confirmedCount,

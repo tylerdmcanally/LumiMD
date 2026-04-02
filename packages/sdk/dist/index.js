@@ -566,6 +566,10 @@ function createApiClient(config) {
         body: JSON.stringify(data)
       })
     },
+    // Care Flows
+    careFlows: {
+      active: () => apiRequest("/v1/care-flows/active")
+    },
     // LumiBot Health Logs
     healthLogs: {
       list: (params) => {

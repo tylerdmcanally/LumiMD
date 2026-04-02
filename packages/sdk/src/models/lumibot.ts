@@ -60,6 +60,8 @@ export interface Nudge {
     dismissedAt?: string;
     createdAt: string;
     context?: NudgeContext;
+    /** Set when this nudge was created by the care flow engine */
+    careFlowId?: string;
 }
 
 export type HealthLogType = 'bp' | 'glucose' | 'weight' | 'med_compliance' | 'symptom_check' | 'steps' | 'heart_rate' | 'oxygen_saturation';
@@ -200,7 +202,13 @@ export interface UpdateNudgeRequest {
 }
 
 export interface RespondToNudgeRequest {
-    response: 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble' | 'good' | 'okay' | 'issues' | 'none' | 'mild' | 'concerning' | 'done' | 'remind_later';
+    response:
+        | 'got_it' | 'not_yet' | 'taking_it' | 'having_trouble'
+        | 'good' | 'okay' | 'issues'
+        | 'none' | 'mild' | 'concerning'
+        | 'took_it' | 'skipped_it'
+        | 'done' | 'remind_later'
+        | 'too_frequent' | 'already_talked_to_doctor';
     note?: string;
     sideEffects?: string[]; // Side effect IDs when reporting issues
 }
@@ -328,6 +336,25 @@ export interface VisitWalkthrough {
         };
     };
     suggestedQuestions: WalkthroughSuggestedQuestion[];
+}
+
+// =============================================================================
+// Care Flow Types
+// =============================================================================
+
+export type CareFlowCondition = 'htn' | 'dm' | 'copd' | 'asthma' | 'heart_failure';
+export type CareFlowPhase = 'understand' | 'establish' | 'maintain' | 'coast';
+export type CareFlowStatus = 'active' | 'paused' | 'completed' | 'cancelled';
+
+export interface CareFlowSummary {
+    id: string;
+    condition: CareFlowCondition;
+    phase: CareFlowPhase;
+    status: CareFlowStatus;
+    weekNumber: number;
+    consecutiveNormalCount: number;
+    medicationName?: string;
+    createdAt: string;
 }
 
 export interface VisitAskRequest {

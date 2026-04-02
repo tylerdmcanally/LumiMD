@@ -540,6 +540,13 @@ export async function summarizeVisit({
           );
         }
       })(),
+
+      // 7. Care Flow Creation — moved to POST /v1/visits/:id/confirm-medications
+      // Care flows are created after the user confirms medication changes, not during
+      // initial post-commit, because meds need confirmation before starting a care journey.
+      (async () => {
+        // no-op: care flow creation now runs in confirm-medications endpoint
+      })(),
     ]);
 
     const failedPostCommitOperations: PostCommitOperationName[] = [];

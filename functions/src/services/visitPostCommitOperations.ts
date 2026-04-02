@@ -5,6 +5,7 @@ export const POST_COMMIT_OPERATION_NAMES = [
   'pushNotification',
   'caregiverEmails',
   'walkthroughGeneration',
+  'careFlowCreation',
 ] as const;
 
 export type PostCommitOperationName = (typeof POST_COMMIT_OPERATION_NAMES)[number];
@@ -16,6 +17,7 @@ export const RETRYABLE_POST_COMMIT_OPERATIONS: ReadonlySet<PostCommitOperationNa
   'pushNotification',
   'caregiverEmails',
   'walkthroughGeneration',
+  'careFlowCreation',
 ]);
 
 export const POST_COMMIT_RETRY_ALERT_THRESHOLD = 3;

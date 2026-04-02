@@ -14,6 +14,7 @@ import { webhooksRouter } from './routes/webhooks';
 import { usersRouter } from './routes/users';
 import { sharesRouter } from './routes/shares';
 import { nudgesRouter } from './routes/nudges';
+import { careFlowsRouter } from './routes/careFlows';
 import { insightsRouter } from './routes/insights';
 import { nudgesDebugRouter } from './routes/nudgesDebug';
 import { healthLogsRouter } from './routes/healthLogs';
@@ -209,6 +210,7 @@ app.use('/v1/users', usersRouter);
 app.use('/v1/shares', sharesRouter);
 app.use('/v1/nudges', nudgesRouter);
 app.use('/v1/nudges', nudgesDebugRouter); // Debug endpoints under same path
+app.use('/v1/care-flows', careFlowsRouter);
 app.use('/v1/health-logs', healthLogsRouter);
 app.use('/v1/medication-reminders', medicationRemindersRouter);
 app.use('/v1/medication-logs', medicationLogsRouter);
@@ -475,28 +477,7 @@ export const generateWeeklyProductMetrics = onSchedule(
   },
 );
 
-// Scheduled function to create recurring condition check-in nudges (daily at 9 AM)
-export const processConditionReminders = onSchedule(
-  {
-    region: 'us-central1',
-    schedule: 'every hour',
-    timeZone: 'Etc/UTC',
-    memory: '256MiB',
-    timeoutSeconds: 120,
-    maxInstances: 1,
-  },
-  async () => {
-    functions.logger.info('[Scheduler] Running condition reminder processor');
+// Scheduled function to advance care flows (every 15 minutes)
+export { processAdvanceCareFlows } from './triggers/advanceCareFlows';
 
-    // Import dynamically to avoid circular dependencies
-    const { processConditionReminders: runReminders } = await import('./services/conditionReminderService');
-
-    try {
-      const result = await runReminders();
-      functions.logger.info('[Scheduler] Condition reminder processing complete', result);
-    } catch (error) {
-      functions.logger.error('[Scheduler] Error processing condition reminders:', error);
-      throw error;
-    }
-  }
-);
+// Legacy processConditionReminders removed — replaced by processAdvanceCareFlows (care flow engine)
