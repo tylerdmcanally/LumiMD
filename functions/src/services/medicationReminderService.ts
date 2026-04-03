@@ -835,20 +835,38 @@ export async function processAndNotifyMedicationReminders(
                 }
             }
 
-            // Send notification for each due reminder candidate.
+            // Acquire send locks for all due reminders, filtering out locked ones.
+            const lockedReminders: DueReminderCandidate[] = [];
             for (const reminder of dueReminders) {
                 const lockAcquired = await acquireReminderSendLock(
                     reminder.id,
                     now,
                     dependencies.reminderProcessingRepository,
                 );
-                if (!lockAcquired) {
+                if (lockAcquired) {
+                    lockedReminders.push(reminder);
+                } else {
                     functions.logger.info(
                         `[MedReminders] Skipping reminder ${reminder.id} - send lock not acquired`,
                     );
-                    continue;
                 }
+            }
 
+            if (lockedReminders.length === 0) {
+                continue;
+            }
+
+            // Split into time-sensitive (individual notification) vs standard (batchable).
+            const timeSensitive = lockedReminders.filter(r => r.criticality === 'time_sensitive');
+            const standard = lockedReminders.filter(r => r.criticality !== 'time_sensitive');
+
+            // Batch standard reminders: 2+ get a single grouped notification.
+            // 1 standard reminder still sends individually (more informative).
+            const sendIndividually = [...timeSensitive, ...(standard.length === 1 ? standard : [])];
+            const batchGroup = standard.length >= 2 ? standard : [];
+
+            // Send individual notifications (time-sensitive meds + single standard)
+            for (const reminder of sendIndividually) {
                 const doseText = reminder.medicationDose ? ` (${reminder.medicationDose})` : '';
                 const notificationBody = `Time to take your ${reminder.medicationName}${doseText}`;
 
@@ -873,14 +891,64 @@ export async function processAndNotifyMedicationReminders(
                 const responses = await notificationService.sendNotifications(payloads);
                 const successCount = responses.filter(r => r.status === 'ok').length;
 
-                // Handle invalid tokens
                 responses.forEach((response, index) => {
                     if (response.details?.error === 'DeviceNotRegistered') {
                         void notificationService.removeInvalidToken(userId, tokens[index].token);
                     }
                 });
 
-                // Update lastSentAt and clear any missed flag
+                stats.processed++;
+                if (successCount > 0) stats.sent++;
+
+                functions.logger.info(`[MedReminders] Sent individual notification for ${reminder.id}`, {
+                    userId,
+                    medication: reminder.medicationName,
+                    criticality: reminder.criticality,
+                });
+            }
+
+            // Send batched notification for 2+ standard reminders
+            if (batchGroup.length > 0) {
+                const medNames = batchGroup.map(r => r.medicationName);
+                const batchBody = medNames.length <= 3
+                    ? `Time to take ${medNames.join(', ')}`
+                    : `Time to take ${medNames.slice(0, 2).join(', ')}, and ${medNames.length - 2} more`;
+
+                const payloads: PushNotificationPayload[] = tokens.map(({ token }) => ({
+                    to: token,
+                    title: `Medication Reminder — ${batchGroup.length} due`,
+                    body: batchBody,
+                    categoryId: 'medication_reminder',
+                    data: {
+                        type: 'medication_reminder_batch',
+                        medicationCount: batchGroup.length,
+                        medicationNames: medNames,
+                        scheduledTime: batchGroup[0].matchedTime,
+                    },
+                    sound: 'default',
+                    priority: 'high',
+                }));
+
+                const responses = await notificationService.sendNotifications(payloads);
+                const successCount = responses.filter(r => r.status === 'ok').length;
+
+                responses.forEach((response, index) => {
+                    if (response.details?.error === 'DeviceNotRegistered') {
+                        void notificationService.removeInvalidToken(userId, tokens[index].token);
+                    }
+                });
+
+                stats.processed += batchGroup.length;
+                if (successCount > 0) stats.sent++;
+
+                functions.logger.info(`[MedReminders] Sent batched notification (${batchGroup.length} meds)`, {
+                    userId,
+                    medications: medNames,
+                });
+            }
+
+            // Update lastSentAt for all locked reminders
+            for (const reminder of lockedReminders) {
                 reminderUpdates.push({
                     reminderId: reminder.id,
                     updates: {
@@ -893,20 +961,6 @@ export async function processAndNotifyMedicationReminders(
                         lastSentLockAt: admin.firestore.FieldValue.delete(),
                         updatedAt: now,
                     },
-                });
-
-                stats.processed++;
-                if (successCount > 0) {
-                    stats.sent++;
-                }
-
-                functions.logger.info(`[MedReminders] Sent notification for ${reminder.id}`, {
-                    userId,
-                    medication: reminder.medicationName,
-                    dueReason: reminder.dueReason,
-                    scheduledTime: reminder.matchedTime,
-                    evaluationTimezone: reminder.evaluationTimezone,
-                    successCount,
                 });
             }
         } catch (userError) {

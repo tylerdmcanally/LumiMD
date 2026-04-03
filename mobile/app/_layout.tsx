@@ -70,7 +70,7 @@ function RootFallback({ reset }: { reset: () => void }) {
 }
 
 // Patient notification types that route to patient screens
-const PATIENT_NOTIFICATION_TYPES = ['medication_reminder', 'visit-ready', 'nudge', 'caregiver_message'];
+const PATIENT_NOTIFICATION_TYPES = ['medication_reminder', 'medication_reminder_batch', 'visit-ready', 'nudge', 'caregiver_message'];
 // Caregiver notification types that route to caregiver screens
 const CAREGIVER_NOTIFICATION_TYPES = ['daily_briefing', 'missed_medication_caregiver', 'overdue_action_caregiver', 'visit_ready_caregiver'];
 
@@ -261,8 +261,8 @@ function NotificationHandler() {
 
       // Patient notification routing
       if (PATIENT_NOTIFICATION_TYPES.includes(notificationType) && currentRole === 'patient') {
-        if (notificationType === 'medication_reminder') {
-          router.push('/medication-schedule');
+        if (notificationType === 'medication_reminder' || notificationType === 'medication_reminder_batch') {
+          router.push('/(patient)/medication-schedule');
         } else if (notificationType === 'visit-ready' && data?.visitId) {
           router.push(`/visit-detail?id=${data.visitId}`);
         } else if (notificationType === 'nudge') {
