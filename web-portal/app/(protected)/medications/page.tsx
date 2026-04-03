@@ -900,6 +900,7 @@ function MedicationCard({
   };
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div
       className={cn(
         'relative rounded-3xl border border-border-light bg-surface px-5 py-5 shadow-soft transition-all',
@@ -1117,6 +1118,7 @@ function MedicationCard({
         </div>
       )}
     </div>
+    </TooltipProvider>
   );
 }
 
